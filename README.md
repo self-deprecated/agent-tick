@@ -64,6 +64,12 @@ go run ./cmd/agent-tick agent-token revoke agent_...
 go run ./cmd/agent-tick agent-token rotate agent_...
 ```
 
+Use the stdio JSON adapter from an agent:
+
+```sh
+printf '{"title":"Run command?","command":"npm install"}' | go run ./cmd/agent-tick adapter
+```
+
 Build release artifacts for the server/CLI:
 
 ```sh

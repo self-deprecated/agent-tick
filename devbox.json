@@ -24,6 +24,9 @@
       "agent-token": [
         "cd apps/server && go run ./cmd/agent-tick agent-token"
       ],
+      "adapter-demo": [
+        "cd apps/server && printf '{\"title\":\"Run command?\",\"command\":\"npm install\"}' | go run ./cmd/agent-tick adapter"
+      ],
       "build:server": [
         "sh scripts/build-server-release.sh"
       ],

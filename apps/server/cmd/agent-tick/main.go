@@ -33,9 +33,44 @@ func main() {
 		runPair(os.Args[2:])
 	case "agent-token":
 		runAgentToken(os.Args[2:])
+	case "adapter":
+		runAdapter(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
+	}
+}
+
+func runAdapter(args []string) {
+	flags := flag.NewFlagSet("adapter", flag.ExitOnError)
+	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
+	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
+	_ = flags.Parse(args)
+
+	var input approval.CreateRequest
+	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
+		log.Fatal(err)
+	}
+	if input.Requester.AgentID == "" {
+		input.Requester = requester()
+	}
+	if input.Title == "" {
+		input.Title = "Approval requested"
+	}
+	if input.ExpiresAt == nil {
+		expiresAt := time.Now().UTC().Add(5 * time.Minute)
+		input.ExpiresAt = &expiresAt
+	}
+	if input.Risk == "" {
+		input.Risk = classifyRisk(input.Command)
+	}
+
+	response, err := requestApproval(*server, input, *timeout)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -464,5 +499,5 @@ func workingDirectory() string {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request|guard|pair|agent-token> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request|guard|pair|agent-token|adapter> [flags]")
 }
