@@ -13,6 +13,7 @@ import (
 type API struct {
 	store    Store
 	pairings PairingStore
+	agents   AgentStore
 	push     *PushSender
 	token    string
 }
@@ -21,6 +22,9 @@ func NewAPI(store Store, token string) *API {
 	api := &API{store: store, push: NewPushSender(), token: token}
 	if pairings, ok := store.(PairingStore); ok {
 		api.pairings = pairings
+	}
+	if agents, ok := store.(AgentStore); ok {
+		api.agents = agents
 	}
 	return api
 }
@@ -224,6 +228,17 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if a.agents != nil {
+			ok, err := a.agents.VerifyAgentToken(token, requiredScope(r))
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
 		if a.pairings != nil && token != "" {
 			ok, err := a.pairings.VerifyDeviceToken(token)
 			if err != nil {
@@ -237,6 +252,16 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		}
 		writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
 	})
+}
+
+func requiredScope(r *http.Request) string {
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests" {
+		return "approval:write"
+	}
+	if strings.HasPrefix(r.URL.Path, "/v1/approval-requests") && r.Method == http.MethodGet {
+		return "approval:read"
+	}
+	return "admin"
 }
 
 func bearerToken(r *http.Request) string {

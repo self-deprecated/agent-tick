@@ -21,6 +21,9 @@
       "pair": [
         "cd apps/server && go run ./cmd/agent-tick pair"
       ],
+      "agent-token": [
+        "cd apps/server && go run ./cmd/agent-tick agent-token"
+      ],
       "build:server": [
         "sh scripts/build-server-release.sh"
       ],

@@ -70,6 +70,13 @@ type PushTokenRequest struct {
 	Token string `json:"token"`
 }
 
+type AgentCredential struct {
+	AgentID string   `json:"agentId"`
+	Name    string   `json:"name"`
+	Token   string   `json:"token"`
+	Scopes  []string `json:"scopes"`
+}
+
 const (
 	StatusPending   = "pending"
 	StatusResponded = "responded"

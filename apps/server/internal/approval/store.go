@@ -31,6 +31,11 @@ type PairingStore interface {
 	ListDevicePushTokens() ([]string, error)
 }
 
+type AgentStore interface {
+	CreateAgentToken(name string, scopes []string) (AgentCredential, error)
+	VerifyAgentToken(token string, scope string) (bool, error)
+}
+
 type FileStore struct {
 	path string
 	mu   sync.Mutex

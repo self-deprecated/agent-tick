@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -376,6 +377,60 @@ func (s *SQLiteStore) ListDevicePushTokens() ([]string, error) {
 	return tokens, rows.Err()
 }
 
+func (s *SQLiteStore) CreateAgentToken(name string, scopes []string) (AgentCredential, error) {
+	if strings.TrimSpace(name) == "" {
+		name = "agent"
+	}
+	if len(scopes) == 0 {
+		scopes = []string{"approval:write", "approval:read"}
+	}
+	now := time.Now().UTC()
+	agentID := "agent_" + newID()
+	token := "agent_" + newID()
+	scopesJSON, err := marshalJSON(scopes)
+	if err != nil {
+		return AgentCredential{}, err
+	}
+
+	_, err = s.db.Exec(
+		"INSERT INTO agent_tokens (id, name, token_hash, scopes_json, created_at) VALUES (?, ?, ?, ?, ?)",
+		agentID,
+		name,
+		tokenHash(token),
+		scopesJSON,
+		timeText(&now),
+	)
+	if err != nil {
+		return AgentCredential{}, err
+	}
+
+	return AgentCredential{AgentID: agentID, Name: name, Token: token, Scopes: scopes}, nil
+}
+
+func (s *SQLiteStore) VerifyAgentToken(token string, scope string) (bool, error) {
+	if strings.TrimSpace(token) == "" {
+		return false, nil
+	}
+
+	var scopesJSON string
+	err := s.db.QueryRow(
+		"SELECT scopes_json FROM agent_tokens WHERE token_hash = ? LIMIT 1",
+		tokenHash(token),
+	).Scan(&scopesJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	var scopes []string
+	if err := json.Unmarshal([]byte(scopesJSON), &scopes); err != nil {
+		return false, err
+	}
+	return slices.Contains(scopes, scope) || slices.Contains(scopes, "*"), nil
+}
+
 func (s *SQLiteStore) migrate() error {
 	_, err := s.db.Exec(`
 		PRAGMA journal_mode = WAL;
@@ -429,6 +484,14 @@ func (s *SQLiteStore) migrate() error {
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			expo_push_token TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS agent_tokens (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			scopes_json TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);
 	`)

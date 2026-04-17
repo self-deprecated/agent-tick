@@ -179,6 +179,50 @@ func TestAPIRegistersDevicePushToken(t *testing.T) {
 	}
 }
 
+func TestAPIAcceptsScopedAgentTokenForApprovalRequests(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	credential, err := store.CreateAgentToken("codex", []string{"approval:write", "approval:read"})
+	if err != nil {
+		t.Fatalf("CreateAgentToken() error = %v", err)
+	}
+	handler := NewAPI(store, "admin-token").Handler()
+
+	body, err := json.Marshal(CreateRequest{Title: "Run command?"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/approval-requests", bytes.NewReader(body))
+	req.RemoteAddr = "192.0.2.1:1234"
+	req.Header.Set("Authorization", "Bearer "+credential.Token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusCreated)
+	}
+}
+
+func TestAPIRejectsAgentTokenForAdminEndpoints(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	credential, err := store.CreateAgentToken("codex", []string{"approval:write", "approval:read"})
+	if err != nil {
+		t.Fatalf("CreateAgentToken() error = %v", err)
+	}
+	handler := NewAPI(store, "admin-token").Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/pairing-tokens", bytes.NewReader([]byte("{}")))
+	req.RemoteAddr = "192.0.2.1:1234"
+	req.Header.Set("Authorization", "Bearer "+credential.Token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
+	}
+}
+
 func request[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
 	t.Helper()
 

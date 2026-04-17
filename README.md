@@ -47,6 +47,13 @@ cd apps/server
 go run ./cmd/agent-tick pair
 ```
 
+Create a scoped token for an agent:
+
+```sh
+cd apps/server
+go run ./cmd/agent-tick agent-token --name codex
+```
+
 Build release artifacts for the server/CLI:
 
 ```sh

@@ -31,6 +31,8 @@ func main() {
 		runGuard(os.Args[2:])
 	case "pair":
 		runPair(os.Args[2:])
+	case "agent-token":
+		runAgentToken(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -159,6 +161,30 @@ func runPair(args []string) {
 	}
 }
 
+func runAgentToken(args []string) {
+	flags := flag.NewFlagSet("agent-token", flag.ExitOnError)
+	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
+	name := flags.String("name", "agent", "agent token name")
+	scopesValue := flags.String("scopes", "approval:write,approval:read", "comma-separated scopes")
+	_ = flags.Parse(args)
+
+	store, err := approval.NewSQLiteStore(*data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer store.Close()
+
+	credential, err := store.CreateAgentToken(*name, splitScopes(*scopesValue))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("agent id: %s\n", credential.AgentID)
+	fmt.Printf("name: %s\n", credential.Name)
+	fmt.Printf("token: %s\n", credential.Token)
+	fmt.Printf("scopes: %s\n", strings.Join(credential.Scopes, ","))
+}
+
 func pairingPayload(server string, token string) string {
 	payload := map[string]string{
 		"serverURL":   server,
@@ -271,6 +297,18 @@ func requester() approval.Requester {
 	}
 }
 
+func splitScopes(value string) []string {
+	parts := strings.Split(value, ",")
+	scopes := make([]string, 0, len(parts))
+	for _, part := range parts {
+		scope := strings.TrimSpace(part)
+		if scope != "" {
+			scopes = append(scopes, scope)
+		}
+	}
+	return scopes
+}
+
 func hostname() string {
 	name, err := os.Hostname()
 	if err != nil {
@@ -288,5 +326,5 @@ func workingDirectory() string {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request|guard|pair> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request|guard|pair|agent-token> [flags]")
 }
