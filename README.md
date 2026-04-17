@@ -15,8 +15,10 @@ Run the server:
 
 ```sh
 cd apps/server
-go run ./cmd/agent-tick server --addr :8787 --data ./agent-tick.json
+go run ./cmd/agent-tick server --addr :8787 --data ./agent-tick.db
 ```
+
+The server stores approvals, responses, and audit events in SQLite.
 
 Submit a blocking approval request:
 

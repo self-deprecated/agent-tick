@@ -34,7 +34,7 @@ func main() {
 func runServer(args []string) {
 	flags := flag.NewFlagSet("server", flag.ExitOnError)
 	addr := flags.String("addr", ":8787", "address to listen on")
-	data := flags.String("data", "./agent-tick.json", "path to approval data file")
+	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
 	_ = flags.Parse(args)
 
 	token := os.Getenv("AGENT_TICK_TOKEN")
@@ -42,7 +42,13 @@ func runServer(args []string) {
 		log.Print("AGENT_TICK_TOKEN is not set; only localhost requests are allowed")
 	}
 
-	api := approval.NewAPI(approval.NewFileStore(*data), token)
+	store, err := approval.NewSQLiteStore(*data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer store.Close()
+
+	api := approval.NewAPI(store, token)
 	log.Printf("agent-tick listening on %s", *addr)
 	if err := http.ListenAndServe(*addr, api.Handler()); err != nil {
 		log.Fatal(err)
