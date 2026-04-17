@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"agent-tick/apps/server/internal/approval"
+	qrterminal "github.com/mdp/qrterminal/v3"
 )
 
 func main() {
@@ -141,6 +142,7 @@ func runGuard(args []string) {
 func runPair(args []string) {
 	flags := flag.NewFlagSet("pair", flag.ExitOnError)
 	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
+	qr := flags.Bool("qr", true, "print a terminal QR code")
 	_ = flags.Parse(args)
 
 	token, err := postJSON[approval.PairingToken](*server+"/v1/pairing-tokens", map[string]string{})
@@ -151,6 +153,22 @@ func runPair(args []string) {
 	fmt.Printf("pairing code: %s\n", token.Token)
 	fmt.Printf("expires at: %s\n", token.ExpiresAt.Format(time.RFC3339))
 	fmt.Printf("server: %s\n", *server)
+	if *qr {
+		fmt.Println()
+		qrterminal.Generate(pairingPayload(*server, token.Token), qrterminal.L, os.Stdout)
+	}
+}
+
+func pairingPayload(server string, token string) string {
+	payload := map[string]string{
+		"serverURL":   server,
+		"pairingCode": token,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return token
+	}
+	return string(data)
 }
 
 func requestApproval(server string, input approval.CreateRequest, timeout time.Duration) (approval.ApprovalRequest, error) {

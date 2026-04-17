@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,7 +16,7 @@ import {
   View,
 } from "react-native";
 
-type Screen = "approvals" | "history" | "settings";
+type Screen = "approvals" | "history" | "settings" | "scanner";
 type ConnectionStatus = "checking" | "connected" | "disconnected";
 type NotificationStatus = "checking" | "granted" | "denied" | "undetermined";
 
@@ -56,6 +57,11 @@ type DeviceCredential = {
   token: string;
 };
 
+type PairingPayload = {
+  serverURL?: string;
+  pairingCode?: string;
+};
+
 const defaultServer = "http://localhost:8787";
 const serverURLKey = "agent-tick.serverURL";
 const tokenKey = "agent-tick.token";
@@ -86,6 +92,7 @@ export default function App() {
   const [notificationStatus, setNotificationStatus] =
     useState<NotificationStatus>("checking");
   const [error, setError] = useState<string | null>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const seenRequestIDs = useRef<Set<string>>(new Set());
   const didPrimeNotifications = useRef(false);
 
@@ -270,7 +277,10 @@ export default function App() {
   };
 
   const pairDevice = async () => {
-    const code = pairingCode.trim();
+    await pairWithCode(pairingCode.trim());
+  };
+
+  const pairWithCode = async (code: string) => {
     if (!code) {
       Alert.alert("Pairing code required", "Enter the code from agent-tick pair.");
       return;
@@ -288,12 +298,26 @@ export default function App() {
       setPairingCode("");
       Alert.alert("Paired", "This device can now receive approval requests.");
       await load({ visible: true });
+      setScreen("approvals");
     } catch (err) {
       Alert.alert(
         "Pairing failed",
         err instanceof Error ? err.message : "Could not pair this device",
       );
     }
+  };
+
+  const handlePairingScan = async (result: BarcodeScanningResult) => {
+    const payload = parsePairingPayload(result.data);
+    if (payload.serverURL) {
+      setServerURL(payload.serverURL);
+    }
+    if (payload.pairingCode) {
+      setPairingCode(payload.pairingCode);
+      await pairWithCode(payload.pairingCode);
+      return;
+    }
+    Alert.alert("Invalid QR code", "This does not look like an Agent Tick pairing code.");
   };
 
   return (
@@ -317,6 +341,13 @@ export default function App() {
             <Text style={styles.iconButtonText}>
               {screen === "history" ? "Tick" : "Hist"}
             </Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Scan Pairing Code"
+            onPress={() => setScreen("scanner")}
+            style={styles.iconButton}
+          >
+            <Text style={styles.iconButtonText}>Scan</Text>
           </Pressable>
           <Pressable
             accessibilityLabel={screen === "settings" ? "Approvals" : "Settings"}
@@ -351,6 +382,13 @@ export default function App() {
           setToken={setToken}
           token={token}
         />
+      ) : screen === "scanner" ? (
+        <ScannerScreen
+          cameraPermission={cameraPermission}
+          onCancel={() => setScreen("settings")}
+          onRequestPermission={() => void requestCameraPermission()}
+          onScan={(result) => void handlePairingScan(result)}
+        />
       ) : screen === "history" ? (
         <HistoryScreen
           error={error}
@@ -374,6 +412,18 @@ export default function App() {
       )}
     </SafeAreaView>
   );
+}
+
+function parsePairingPayload(value: string): PairingPayload {
+  try {
+    const parsed = JSON.parse(value) as PairingPayload;
+    return {
+      serverURL: parsed.serverURL,
+      pairingCode: parsed.pairingCode,
+    };
+  } catch {
+    return value.startsWith("pair_") ? { pairingCode: value } : {};
+  }
 }
 
 function ConnectionBadge({ status }: { status: ConnectionStatus }) {
@@ -623,6 +673,47 @@ function HistoryScreen({
   );
 }
 
+function ScannerScreen({
+  cameraPermission,
+  onCancel,
+  onRequestPermission,
+  onScan,
+}: {
+  cameraPermission: ReturnType<typeof useCameraPermissions>[0];
+  onCancel: () => void;
+  onRequestPermission: () => void;
+  onScan: (result: BarcodeScanningResult) => void;
+}) {
+  if (!cameraPermission?.granted) {
+    return (
+      <View style={styles.waitingPane}>
+        <Text style={styles.waitingTitle}>Camera Access</Text>
+        <Pressable onPress={onRequestPermission} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Enable Camera</Text>
+        </Pressable>
+        <Pressable onPress={onCancel} style={styles.secondaryButton}>
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.scannerPane}>
+      <CameraView
+        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+        onBarcodeScanned={onScan}
+        style={styles.scanner}
+      />
+      <View style={styles.scannerFooter}>
+        <Pressable onPress={onCancel} style={styles.secondaryButton}>
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function SettingsScreen({
   connectionStatus,
   error,
@@ -767,6 +858,16 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: "row",
     gap: 8,
+  },
+  scannerPane: {
+    flex: 1,
+  },
+  scanner: {
+    flex: 1,
+  },
+  scannerFooter: {
+    backgroundColor: "#f7f2e8",
+    padding: 20,
   },
   iconButtonText: {
     color: "#ffffff",
