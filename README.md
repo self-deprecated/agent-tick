@@ -20,10 +20,10 @@ go run ./cmd/agent-tick server --addr :8787 --data ./agent-tick.db
 
 The server stores approvals, responses, and audit events in SQLite.
 
-Run with Docker Compose:
+Run with Podman Compose:
 
 ```sh
-AGENT_TICK_TOKEN=change-me docker compose up --build
+AGENT_TICK_TOKEN=change-me podman compose up --build
 ```
 
 Submit a blocking approval request:
