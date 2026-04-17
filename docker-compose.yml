@@ -1,0 +1,14 @@
+services:
+  server:
+    build:
+      context: ./apps/server
+    environment:
+      AGENT_TICK_TOKEN: ${AGENT_TICK_TOKEN:?set AGENT_TICK_TOKEN}
+    ports:
+      - "8787:8787"
+    volumes:
+      - agent_tick_data:/data
+    restart: unless-stopped
+
+volumes:
+  agent_tick_data:

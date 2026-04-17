@@ -1,0 +1,9 @@
+.devbox/
+.git/
+.jj/
+node_modules/
+apps/mobile/node_modules/
+apps/mobile/.expo/
+agent-tick.db
+agent-tick.db-shm
+agent-tick.db-wal
