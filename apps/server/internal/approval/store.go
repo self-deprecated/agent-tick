@@ -26,6 +26,9 @@ type PairingStore interface {
 	CreatePairingToken(ttl time.Duration) (PairingToken, error)
 	PairDevice(token string, deviceName string) (DeviceCredential, error)
 	VerifyDeviceToken(token string) (bool, error)
+	VerifyDeviceTokenForDevice(deviceID string, token string) (bool, error)
+	SetDevicePushToken(deviceID string, token string) error
+	ListDevicePushTokens() ([]string, error)
 }
 
 type FileStore struct {

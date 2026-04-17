@@ -133,6 +133,52 @@ func TestAPIPairingTokenIsSingleUse(t *testing.T) {
 	}
 }
 
+func TestAPIRegistersDevicePushToken(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	pairing := request[PairingToken](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/pairing-tokens",
+		map[string]string{},
+	)
+	credential := requestWithoutAuth[DeviceCredential](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/devices/pair",
+		PairDeviceRequest{Token: pairing.Token, DeviceName: "iPhone"},
+	)
+
+	reqBody, err := json.Marshal(PushTokenRequest{Token: "ExponentPushToken[test]"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/devices/"+credential.DeviceID+"/push-token",
+		bytes.NewReader(reqBody),
+	)
+	req.Header.Set("Authorization", "Bearer "+credential.Token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+
+	tokens, err := store.ListDevicePushTokens()
+	if err != nil {
+		t.Fatalf("ListDevicePushTokens() error = %v", err)
+	}
+	if len(tokens) != 1 || tokens[0] != "ExponentPushToken[test]" {
+		t.Fatalf("tokens = %#v, want ExponentPushToken[test]", tokens)
+	}
+}
+
 func request[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
 	t.Helper()
 

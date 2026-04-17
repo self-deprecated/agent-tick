@@ -315,6 +315,67 @@ func (s *SQLiteStore) VerifyDeviceToken(token string) (bool, error) {
 	return exists == 1, nil
 }
 
+func (s *SQLiteStore) VerifyDeviceTokenForDevice(deviceID string, token string) (bool, error) {
+	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(token) == "" {
+		return false, nil
+	}
+
+	var exists int
+	err := s.db.QueryRow(
+		"SELECT 1 FROM devices WHERE id = ? AND token_hash = ? LIMIT 1",
+		deviceID,
+		tokenHash(token),
+	).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
+}
+
+func (s *SQLiteStore) SetDevicePushToken(deviceID string, token string) error {
+	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(token) == "" {
+		return ErrNotFound
+	}
+
+	result, err := s.db.Exec(
+		"UPDATE devices SET expo_push_token = ? WHERE id = ?",
+		token,
+		deviceID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) ListDevicePushTokens() ([]string, error) {
+	rows, err := s.db.Query("SELECT expo_push_token FROM devices WHERE expo_push_token != ''")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []string
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens, rows.Err()
+}
+
 func (s *SQLiteStore) migrate() error {
 	_, err := s.db.Exec(`
 		PRAGMA journal_mode = WAL;
@@ -367,9 +428,43 @@ func (s *SQLiteStore) migrate() error {
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
+			expo_push_token TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL
 		);
 	`)
+	if err != nil {
+		return err
+	}
+
+	return s.addColumnIfMissing("devices", "expo_push_token", "TEXT NOT NULL DEFAULT ''")
+}
+
+func (s *SQLiteStore) addColumnIfMissing(table string, column string, definition string) error {
+	rows, err := s.db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var columnType string
+		var notNull int
+		var defaultValue sql.NullString
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition)
 	return err
 }
 

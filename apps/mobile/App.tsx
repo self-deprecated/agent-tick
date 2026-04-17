@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
+import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +20,7 @@ import {
 type Screen = "approvals" | "history" | "settings" | "scanner";
 type ConnectionStatus = "checking" | "connected" | "disconnected";
 type NotificationStatus = "checking" | "granted" | "denied" | "undetermined";
+type PushStatus = "idle" | "registered" | "unsupported" | "failed";
 
 type Requester = {
   name: string;
@@ -65,6 +67,7 @@ type PairingPayload = {
 const defaultServer = "http://localhost:8787";
 const serverURLKey = "agent-tick.serverURL";
 const tokenKey = "agent-tick.token";
+const deviceIDKey = "agent-tick.deviceID";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -79,6 +82,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("approvals");
   const [serverURL, setServerURL] = useState(defaultServer);
   const [token, setToken] = useState("");
+  const [deviceID, setDeviceID] = useState("");
   const [pairingCode, setPairingCode] = useState("");
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
@@ -91,6 +95,7 @@ export default function App() {
     useState<ConnectionStatus>("checking");
   const [notificationStatus, setNotificationStatus] =
     useState<NotificationStatus>("checking");
+  const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const seenRequestIDs = useRef<Set<string>>(new Set());
@@ -126,9 +131,14 @@ export default function App() {
 
     const restoreSettings = async () => {
       try {
-        const entries = await AsyncStorage.multiGet([serverURLKey, tokenKey]);
+        const entries = await AsyncStorage.multiGet([
+          serverURLKey,
+          tokenKey,
+          deviceIDKey,
+        ]);
         const savedServerURL = entries.find(([key]) => key === serverURLKey)?.[1];
         const savedToken = entries.find(([key]) => key === tokenKey)?.[1];
+        const savedDeviceID = entries.find(([key]) => key === deviceIDKey)?.[1];
 
         if (!cancelled) {
           if (savedServerURL) {
@@ -136,6 +146,9 @@ export default function App() {
           }
           if (savedToken) {
             setToken(savedToken);
+          }
+          if (savedDeviceID) {
+            setDeviceID(savedDeviceID);
           }
         }
       } finally {
@@ -163,8 +176,9 @@ export default function App() {
     void AsyncStorage.multiSet([
       [serverURLKey, serverURL],
       [tokenKey, token],
+      [deviceIDKey, deviceID],
     ]);
-  }, [serverURL, settingsLoaded, token]);
+  }, [deviceID, serverURL, settingsLoaded, token]);
 
   const load = useCallback(async (options?: { visible?: boolean }) => {
     const visible = options?.visible ?? false;
@@ -294,15 +308,71 @@ export default function App() {
           deviceName: `${Platform.OS} phone`,
         }),
       });
+      setDeviceID(credential.deviceId);
       setToken(credential.token);
       setPairingCode("");
       Alert.alert("Paired", "This device can now receive approval requests.");
+      await registerPushToken(credential.deviceId, credential.token);
       await load({ visible: true });
       setScreen("approvals");
     } catch (err) {
       Alert.alert(
         "Pairing failed",
         err instanceof Error ? err.message : "Could not pair this device",
+      );
+    }
+  };
+
+  const registerPushToken = async (
+    overrideDeviceID?: string,
+    overrideToken?: string,
+  ) => {
+    const activeDeviceID = overrideDeviceID ?? deviceID;
+    const activeToken = overrideToken ?? token;
+    if (!activeDeviceID || !activeToken) {
+      Alert.alert("Pair first", "Pair this device before registering push notifications.");
+      return;
+    }
+
+    try {
+      const permissions = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: false,
+          allowSound: true,
+        },
+      });
+      setNotificationStatus(toNotificationStatus(permissions));
+      if (!permissions.granted) {
+        setPushStatus("failed");
+        return;
+      }
+
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      const pushToken = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : undefined,
+      );
+      const trimmed = serverURL.replace(/\/$/, "");
+      const response = await fetch(
+        `${trimmed}/v1/devices/${activeDeviceID}/push-token`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${activeToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token: pushToken.data }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      setPushStatus("registered");
+    } catch (err) {
+      setPushStatus("failed");
+      Alert.alert(
+        "Push registration failed",
+        err instanceof Error ? err.message : "Could not register push notifications",
       );
     }
   };
@@ -373,9 +443,11 @@ export default function App() {
           notificationStatus={notificationStatus}
           onCheck={() => void checkConnection()}
           onPairDevice={() => void pairDevice()}
+          onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
           onSendTestNotification={() => void sendTestNotification()}
           pairingCode={pairingCode}
+          pushStatus={pushStatus}
           serverURL={serverURL}
           setPairingCode={setPairingCode}
           setServerURL={setServerURL}
@@ -721,9 +793,11 @@ function SettingsScreen({
   notificationStatus,
   onCheck,
   onPairDevice,
+  onRegisterPush,
   onRequestNotifications,
   onSendTestNotification,
   pairingCode,
+  pushStatus,
   serverURL,
   setPairingCode,
   setServerURL,
@@ -736,9 +810,11 @@ function SettingsScreen({
   notificationStatus: NotificationStatus;
   onCheck: () => void;
   onPairDevice: () => void;
+  onRegisterPush: () => void;
   onRequestNotifications: () => void;
   onSendTestNotification: () => void;
   pairingCode: string;
+  pushStatus: PushStatus;
   serverURL: string;
   setPairingCode: (value: string) => void;
   setServerURL: (value: string) => void;
@@ -823,6 +899,12 @@ function SettingsScreen({
             <Text style={styles.secondaryActionText}>Test</Text>
           </Pressable>
         </View>
+        <Text style={styles.notificationStatus}>
+          Push: {pushStatus === "registered" ? "Registered" : pushStatus}
+        </Text>
+        <Pressable onPress={onRegisterPush} style={styles.secondaryActionButton}>
+          <Text style={styles.secondaryActionText}>Register Push</Text>
+        </Pressable>
       </View>
     </View>
   );

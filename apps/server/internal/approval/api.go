@@ -13,11 +13,12 @@ import (
 type API struct {
 	store    Store
 	pairings PairingStore
+	push     *PushSender
 	token    string
 }
 
 func NewAPI(store Store, token string) *API {
-	api := &API{store: store, token: token}
+	api := &API{store: store, push: NewPushSender(), token: token}
 	if pairings, ok := store.(PairingStore); ok {
 		api.pairings = pairings
 	}
@@ -33,6 +34,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/approval-requests/{id}/responses", a.respond)
 	mux.HandleFunc("POST /v1/pairing-tokens", a.createPairingToken)
 	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
+	mux.HandleFunc("POST /v1/devices/{id}/push-token", a.setDevicePushToken)
 	return a.withAuth(a.withCORS(mux))
 }
 
@@ -56,6 +58,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	a.sendPush(request)
 	writeJSON(w, http.StatusCreated, request)
 }
 
@@ -148,6 +151,61 @@ func (a *API) pairDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, credential)
+}
+
+func (a *API) setDevicePushToken(w http.ResponseWriter, r *http.Request) {
+	if a.pairings == nil {
+		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
+		return
+	}
+
+	var input PushTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid push token JSON")
+		return
+	}
+	if strings.TrimSpace(input.Token) == "" {
+		writeError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	deviceID := r.PathValue("id")
+	if !a.canManageDevice(r, deviceID) {
+		writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
+		return
+	}
+
+	if err := a.pairings.SetDevicePushToken(deviceID, input.Token); errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "device not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) sendPush(request ApprovalRequest) {
+	if a.pairings == nil || a.push == nil {
+		return
+	}
+	tokens, err := a.pairings.ListDevicePushTokens()
+	if err != nil {
+		return
+	}
+	_ = a.push.SendApprovalRequest(tokens, request)
+}
+
+func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
+	token := bearerToken(r)
+	if a.token != "" && tokenMatches(token, a.token) {
+		return true
+	}
+	if a.pairings == nil {
+		return false
+	}
+	ok, err := a.pairings.VerifyDeviceTokenForDevice(deviceID, token)
+	return err == nil && ok
 }
 
 func (a *API) withAuth(next http.Handler) http.Handler {

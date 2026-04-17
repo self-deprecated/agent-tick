@@ -66,6 +66,10 @@ type DeviceCredential struct {
 	Token    string `json:"token"`
 }
 
+type PushTokenRequest struct {
+	Token string `json:"token"`
+}
+
 const (
 	StatusPending   = "pending"
 	StatusResponded = "responded"
