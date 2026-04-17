@@ -69,6 +69,16 @@ For a physical phone on the same network, use:
 devbox run mobile:lan
 ```
 
+For remote push notification testing, use an EAS development build rather than Expo Go:
+
+```sh
+cd apps/mobile
+npx eas init
+npx eas build --profile development --platform ios
+```
+
+After `eas init`, replace the placeholder `extra.eas.projectId` in `apps/mobile/app.json` with the generated project id.
+
 Enter the backend URL and token in the app. On a physical phone, `localhost` means the phone itself, so use your computer's LAN address for the backend, for example `http://192.168.1.20:8787`.
 
 The app polls for pending approvals and lets the user approve, deny, choose an option, or attach a short reply.

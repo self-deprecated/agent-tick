@@ -5,11 +5,25 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "scheme": "agenttick",
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "app.agenttick.mobile"
+    },
+    "android": {
+      "package": "app.agenttick.mobile"
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-camera"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      }
     }
   }
 }
