@@ -168,6 +168,20 @@ func runPair(args []string) {
 }
 
 func runAgentToken(args []string) {
+	if len(args) > 0 {
+		switch args[0] {
+		case "list":
+			runAgentTokenList(args[1:])
+			return
+		case "revoke":
+			runAgentTokenRevoke(args[1:])
+			return
+		case "rotate":
+			runAgentTokenRotate(args[1:])
+			return
+		}
+	}
+
 	flags := flag.NewFlagSet("agent-token", flag.ExitOnError)
 	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
 	name := flags.String("name", "agent", "agent token name")
@@ -189,6 +203,73 @@ func runAgentToken(args []string) {
 	fmt.Printf("name: %s\n", credential.Name)
 	fmt.Printf("token: %s\n", credential.Token)
 	fmt.Printf("scopes: %s\n", strings.Join(credential.Scopes, ","))
+}
+
+func runAgentTokenList(args []string) {
+	flags := flag.NewFlagSet("agent-token list", flag.ExitOnError)
+	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
+	_ = flags.Parse(args)
+
+	store := openSQLiteStore(*data)
+	defer store.Close()
+
+	records, err := store.ListAgentTokens()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, record := range records {
+		status := "active"
+		if record.RevokedAt != nil {
+			status = "revoked"
+		}
+		fmt.Printf("%s\t%s\t%s\t%s\n", record.AgentID, record.Name, status, strings.Join(record.Scopes, ","))
+	}
+}
+
+func runAgentTokenRevoke(args []string) {
+	flags := flag.NewFlagSet("agent-token revoke", flag.ExitOnError)
+	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
+	_ = flags.Parse(args)
+	if flags.NArg() != 1 {
+		log.Fatal("agent-token revoke requires an agent id")
+	}
+
+	store := openSQLiteStore(*data)
+	defer store.Close()
+
+	if err := store.RevokeAgentToken(flags.Arg(0)); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("revoked")
+}
+
+func runAgentTokenRotate(args []string) {
+	flags := flag.NewFlagSet("agent-token rotate", flag.ExitOnError)
+	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
+	_ = flags.Parse(args)
+	if flags.NArg() != 1 {
+		log.Fatal("agent-token rotate requires an agent id")
+	}
+
+	store := openSQLiteStore(*data)
+	defer store.Close()
+
+	credential, err := store.RotateAgentToken(flags.Arg(0))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("agent id: %s\n", credential.AgentID)
+	fmt.Printf("name: %s\n", credential.Name)
+	fmt.Printf("token: %s\n", credential.Token)
+	fmt.Printf("scopes: %s\n", strings.Join(credential.Scopes, ","))
+}
+
+func openSQLiteStore(path string) *approval.SQLiteStore {
+	store, err := approval.NewSQLiteStore(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return store
 }
 
 func pairingPayload(server string, token string) string {

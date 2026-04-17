@@ -35,6 +35,9 @@ type PairingStore interface {
 type AgentStore interface {
 	CreateAgentToken(name string, scopes []string) (AgentCredential, error)
 	VerifyAgentToken(token string, scope string) (bool, error)
+	ListAgentTokens() ([]AgentTokenRecord, error)
+	RevokeAgentToken(agentID string) error
+	RotateAgentToken(agentID string) (AgentCredential, error)
 }
 
 type FileStore struct {

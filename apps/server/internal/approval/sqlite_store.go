@@ -440,7 +440,7 @@ func (s *SQLiteStore) VerifyAgentToken(token string, scope string) (bool, error)
 
 	var scopesJSON string
 	err := s.db.QueryRow(
-		"SELECT scopes_json FROM agent_tokens WHERE token_hash = ? LIMIT 1",
+		"SELECT scopes_json FROM agent_tokens WHERE token_hash = ? AND revoked_at = '' LIMIT 1",
 		tokenHash(token),
 	).Scan(&scopesJSON)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -455,6 +455,97 @@ func (s *SQLiteStore) VerifyAgentToken(token string, scope string) (bool, error)
 		return false, err
 	}
 	return slices.Contains(scopes, scope) || slices.Contains(scopes, "*"), nil
+}
+
+func (s *SQLiteStore) ListAgentTokens() ([]AgentTokenRecord, error) {
+	rows, err := s.db.Query("SELECT id, name, scopes_json, created_at, revoked_at FROM agent_tokens ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []AgentTokenRecord
+	for rows.Next() {
+		var record AgentTokenRecord
+		var scopesJSON string
+		var createdAt string
+		var revokedAt string
+		if err := rows.Scan(&record.AgentID, &record.Name, &scopesJSON, &createdAt, &revokedAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(scopesJSON), &record.Scopes); err != nil {
+			return nil, err
+		}
+		parsedCreatedAt, err := parseTime(createdAt)
+		if err != nil {
+			return nil, err
+		}
+		record.CreatedAt = parsedCreatedAt
+		record.RevokedAt = parseOptionalTime(revokedAt)
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (s *SQLiteStore) RevokeAgentToken(agentID string) error {
+	now := time.Now().UTC()
+	result, err := s.db.Exec(
+		"UPDATE agent_tokens SET revoked_at = ? WHERE id = ? AND revoked_at = ''",
+		timeText(&now),
+		agentID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) RotateAgentToken(agentID string) (AgentCredential, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return AgentCredential{}, err
+	}
+	defer rollback(tx)
+
+	var name string
+	var scopesJSON string
+	err = tx.QueryRow(
+		"SELECT name, scopes_json FROM agent_tokens WHERE id = ? AND revoked_at = ''",
+		agentID,
+	).Scan(&name, &scopesJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AgentCredential{}, ErrNotFound
+	}
+	if err != nil {
+		return AgentCredential{}, err
+	}
+
+	var scopes []string
+	if err := json.Unmarshal([]byte(scopesJSON), &scopes); err != nil {
+		return AgentCredential{}, err
+	}
+
+	token := "agent_" + newID()
+	_, err = tx.Exec(
+		"UPDATE agent_tokens SET token_hash = ? WHERE id = ?",
+		tokenHash(token),
+		agentID,
+	)
+	if err != nil {
+		return AgentCredential{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return AgentCredential{}, err
+	}
+
+	return AgentCredential{AgentID: agentID, Name: name, Token: token, Scopes: scopes}, nil
 }
 
 func (s *SQLiteStore) migrate() error {
@@ -518,14 +609,18 @@ func (s *SQLiteStore) migrate() error {
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			scopes_json TEXT NOT NULL,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			revoked_at TEXT NOT NULL DEFAULT ''
 		);
 	`)
 	if err != nil {
 		return err
 	}
 
-	return s.addColumnIfMissing("devices", "expo_push_token", "TEXT NOT NULL DEFAULT ''")
+	if err := s.addColumnIfMissing("devices", "expo_push_token", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return s.addColumnIfMissing("agent_tokens", "revoked_at", "TEXT NOT NULL DEFAULT ''")
 }
 
 func (s *SQLiteStore) addColumnIfMissing(table string, column string, definition string) error {

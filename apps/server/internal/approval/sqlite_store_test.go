@@ -164,6 +164,57 @@ func TestSQLiteStoreWritesAuditEvents(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreManagesAgentTokens(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	credential, err := store.CreateAgentToken("codex", []string{"approval:write"})
+	if err != nil {
+		t.Fatalf("CreateAgentToken() error = %v", err)
+	}
+	ok, err := store.VerifyAgentToken(credential.Token, "approval:write")
+	if err != nil {
+		t.Fatalf("VerifyAgentToken() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("VerifyAgentToken() = false, want true")
+	}
+
+	records, err := store.ListAgentTokens()
+	if err != nil {
+		t.Fatalf("ListAgentTokens() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records length = %d, want 1", len(records))
+	}
+
+	rotated, err := store.RotateAgentToken(credential.AgentID)
+	if err != nil {
+		t.Fatalf("RotateAgentToken() error = %v", err)
+	}
+	if rotated.Token == credential.Token {
+		t.Fatal("RotateAgentToken() returned same token")
+	}
+	ok, err = store.VerifyAgentToken(credential.Token, "approval:write")
+	if err != nil {
+		t.Fatalf("VerifyAgentToken() old error = %v", err)
+	}
+	if ok {
+		t.Fatal("old token still verifies after rotation")
+	}
+
+	if err := store.RevokeAgentToken(credential.AgentID); err != nil {
+		t.Fatalf("RevokeAgentToken() error = %v", err)
+	}
+	ok, err = store.VerifyAgentToken(rotated.Token, "approval:write")
+	if err != nil {
+		t.Fatalf("VerifyAgentToken() revoked error = %v", err)
+	}
+	if ok {
+		t.Fatal("revoked token still verifies")
+	}
+}
+
 func newTestSQLiteStore(t *testing.T) *SQLiteStore {
 	t.Helper()
 

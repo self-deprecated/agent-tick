@@ -54,6 +54,14 @@ cd apps/server
 go run ./cmd/agent-tick agent-token --name codex
 ```
 
+Manage agent tokens:
+
+```sh
+go run ./cmd/agent-tick agent-token list
+go run ./cmd/agent-tick agent-token revoke agent_...
+go run ./cmd/agent-tick agent-token rotate agent_...
+```
+
 Build release artifacts for the server/CLI:
 
 ```sh

@@ -77,6 +77,14 @@ type AgentCredential struct {
 	Scopes  []string `json:"scopes"`
 }
 
+type AgentTokenRecord struct {
+	AgentID   string     `json:"agentId"`
+	Name      string     `json:"name"`
+	Scopes    []string   `json:"scopes"`
+	CreatedAt time.Time  `json:"createdAt"`
+	RevokedAt *time.Time `json:"revokedAt,omitempty"`
+}
+
 const (
 	StatusPending   = "pending"
 	StatusResponded = "responded"
