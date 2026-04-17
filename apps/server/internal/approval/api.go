@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -11,11 +12,12 @@ import (
 )
 
 type API struct {
-	store    Store
-	pairings PairingStore
-	agents   AgentStore
-	push     *PushSender
-	token    string
+	store            Store
+	pairings         PairingStore
+	agents           AgentStore
+	push             *PushSender
+	token            string
+	requireSignature bool
 }
 
 func NewAPI(store Store, token string) *API {
@@ -27,6 +29,10 @@ func NewAPI(store Store, token string) *API {
 		api.agents = agents
 	}
 	return api
+}
+
+func (a *API) RequireSignatures(required bool) {
+	a.requireSignature = required
 }
 
 func (a *API) Handler() http.Handler {
@@ -48,8 +54,20 @@ func (a *API) health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *API) create(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "could not read request body")
+		return
+	}
+	if a.requireSignature {
+		if err := verifySignature(r, body, time.Now().UTC()); err != nil {
+			writeError(w, http.StatusUnauthorized, err.Error())
+			return
+		}
+	}
+
 	var input CreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := json.Unmarshal(body, &input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request JSON")
 		return
 	}

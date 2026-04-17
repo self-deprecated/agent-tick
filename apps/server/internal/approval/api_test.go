@@ -2,11 +2,16 @@ package approval
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func TestAPICreateListRespond(t *testing.T) {
@@ -220,6 +225,47 @@ func TestAPIRejectsAgentTokenForAdminEndpoints(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
+	}
+}
+
+func TestAPIRequiresSignedCreateRequestsWhenEnabled(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	api.RequireSignatures(true)
+	handler := api.Handler()
+
+	body, err := json.Marshal(CreateRequest{Title: "Run command?"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/approval-requests", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unsigned status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	timestamp := time.Now().Unix()
+	message := append([]byte(strconv.FormatInt(timestamp, 10)+"."), body...)
+	signature := ed25519.Sign(privateKey, message)
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/approval-requests", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set(timestampHeader, strconv.FormatInt(timestamp, 10))
+	req.Header.Set(publicKeyHeader, base64.StdEncoding.EncodeToString(publicKey))
+	req.Header.Set(signatureHeader, base64.StdEncoding.EncodeToString(signature))
+	rec = httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("signed status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusCreated)
 	}
 }
 

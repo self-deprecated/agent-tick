@@ -92,6 +92,7 @@ func runServer(args []string) {
 	defer store.Close()
 
 	api := approval.NewAPI(store, token)
+	api.RequireSignatures(os.Getenv("AGENT_TICK_REQUIRE_SIGNATURE") == "1")
 	log.Printf("agent-tick listening on %s", *addr)
 	if err := http.ListenAndServe(*addr, api.Handler()); err != nil {
 		log.Fatal(err)

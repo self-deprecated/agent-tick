@@ -78,6 +78,14 @@ AGENT_TICK_VERSION=0.1.0 devbox run build:server
 
 For non-localhost deployments, set `AGENT_TICK_TOKEN` on the server and clients. Requests must include `Authorization: Bearer <token>`.
 
+To require Ed25519 signatures on approval creation, start the server with:
+
+```sh
+AGENT_TICK_REQUIRE_SIGNATURE=1 AGENT_TICK_TOKEN=change-me go run ./cmd/agent-tick server
+```
+
+Signed create requests must include `X-Agent-Tick-Timestamp`, `X-Agent-Tick-Public-Key`, and `X-Agent-Tick-Signature`. The signature is over `<timestamp>.<raw-json-body>`.
+
 ## Mobile
 
 Run the Expo app:
