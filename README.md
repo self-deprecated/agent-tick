@@ -20,6 +20,8 @@ go run ./cmd/agent-tick server --addr :8787 --data ./agent-tick.db
 
 The server stores approvals, responses, and audit events in SQLite.
 
+Open the local dashboard at `http://localhost:8787/` and enter an admin bearer token.
+
 Run with Podman Compose:
 
 ```sh

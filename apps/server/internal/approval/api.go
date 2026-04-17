@@ -31,6 +31,7 @@ func NewAPI(store Store, token string) *API {
 
 func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", a.admin)
 	mux.HandleFunc("GET /healthz", a.health)
 	mux.HandleFunc("POST /v1/approval-requests", a.create)
 	mux.HandleFunc("GET /v1/approval-requests", a.list)
