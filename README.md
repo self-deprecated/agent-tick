@@ -47,6 +47,12 @@ cd apps/server
 go run ./cmd/agent-tick pair
 ```
 
+Build release artifacts for the server/CLI:
+
+```sh
+AGENT_TICK_VERSION=0.1.0 devbox run build:server
+```
+
 For non-localhost deployments, set `AGENT_TICK_TOKEN` on the server and clients. Requests must include `Authorization: Bearer <token>`.
 
 ## Mobile
