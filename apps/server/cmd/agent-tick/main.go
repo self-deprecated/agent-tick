@@ -69,6 +69,7 @@ func runRequest(args []string) {
 	title := flags.String("title", "", "approval title")
 	body := flags.String("body", "", "approval body")
 	command := flags.String("command", "", "command being requested")
+	contextFile := flags.String("context-file", "", "path to extra context to attach")
 	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
 	expiresIn := flags.Duration("expires-in", 5*time.Minute, "approval expiry duration")
 	_ = flags.Parse(args)
@@ -85,6 +86,7 @@ func runRequest(args []string) {
 		Command:   *command,
 		ExpiresAt: &expiresAt,
 		Risk:      classifyRisk(*command),
+		Metadata:  requestMetadata(*contextFile),
 	}
 
 	current, err := requestApproval(*server, input, *timeout)
@@ -104,6 +106,7 @@ func runGuard(args []string) {
 	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
 	title := flags.String("title", "Run command?", "approval title")
 	body := flags.String("body", "", "approval body")
+	contextFile := flags.String("context-file", "", "path to extra context to attach")
 	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
 	expiresIn := flags.Duration("expires-in", 5*time.Minute, "approval expiry duration")
 	_ = flags.Parse(args)
@@ -127,6 +130,7 @@ func runGuard(args []string) {
 		Command:   commandText,
 		ExpiresAt: &expiresAt,
 		Risk:      classifyRisk(commandText),
+		Metadata:  requestMetadata(*contextFile),
 	}, *timeout)
 	if err != nil {
 		log.Fatal(err)
@@ -427,6 +431,20 @@ func classifyRisk(command string) string {
 		return "low"
 	}
 	return "medium"
+}
+
+func requestMetadata(contextFile string) map[string]string {
+	metadata := map[string]string{}
+	if strings.TrimSpace(contextFile) == "" {
+		return metadata
+	}
+	data, err := os.ReadFile(contextFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	metadata["context"] = string(data)
+	metadata["contextFile"] = contextFile
+	return metadata
 }
 
 func hostname() string {

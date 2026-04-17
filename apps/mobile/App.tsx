@@ -53,6 +53,7 @@ type ApprovalRequest = {
   status: "pending" | "responded" | string;
   createdAt: string;
   response?: ApprovalResponse;
+  metadata?: Record<string, string>;
 };
 
 type DeviceCredential = {
@@ -739,6 +740,16 @@ function ApprovalsScreen({
             {selected.command}
           </Text>
         ) : null}
+        {selected.metadata?.context ? (
+          <View style={styles.contextPanel}>
+            <Text style={styles.contextTitle}>
+              {selected.metadata.contextFile || "Context"}
+            </Text>
+            <Text selectable style={styles.contextText}>
+              {selected.metadata.context}
+            </Text>
+          </View>
+        ) : null}
         {selected.allowFreeformReply ? (
           <TextInput
             multiline
@@ -1255,6 +1266,26 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 18,
     padding: 14,
+  },
+  contextPanel: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 18,
+    padding: 12,
+  },
+  contextTitle: {
+    color: "#545044",
+    fontSize: 13,
+    fontWeight: "900",
+    marginBottom: 8,
+  },
+  contextText: {
+    color: "#202124",
+    fontFamily: "monospace",
+    fontSize: 13,
+    lineHeight: 19,
   },
   reply: {
     backgroundColor: "#ffffff",
