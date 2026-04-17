@@ -84,6 +84,7 @@ func runRequest(args []string) {
 		Body:      *body,
 		Command:   *command,
 		ExpiresAt: &expiresAt,
+		Risk:      classifyRisk(*command),
 	}
 
 	current, err := requestApproval(*server, input, *timeout)
@@ -125,6 +126,7 @@ func runGuard(args []string) {
 		Body:      requestBody,
 		Command:   commandText,
 		ExpiresAt: &expiresAt,
+		Risk:      classifyRisk(commandText),
 	}, *timeout)
 	if err != nil {
 		log.Fatal(err)
@@ -397,6 +399,34 @@ func splitScopes(value string) []string {
 		}
 	}
 	return scopes
+}
+
+func classifyRisk(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return ""
+	}
+	lower := strings.ToLower(command)
+	if strings.Contains(lower, "rm -rf") ||
+		strings.Contains(lower, "sudo ") ||
+		strings.Contains(lower, "chmod 777") ||
+		strings.Contains(lower, "git reset --hard") ||
+		strings.Contains(lower, "kubectl delete") {
+		return "high"
+	}
+	if strings.Contains(lower, "npm install") ||
+		strings.Contains(lower, "curl ") ||
+		strings.Contains(lower, "wget ") ||
+		strings.Contains(lower, "go get") ||
+		strings.Contains(lower, "cargo install") {
+		return "medium"
+	}
+	if strings.HasPrefix(lower, "ls") ||
+		strings.HasPrefix(lower, "pwd") ||
+		strings.HasPrefix(lower, "git status") {
+		return "low"
+	}
+	return "medium"
 }
 
 func hostname() string {

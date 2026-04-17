@@ -49,6 +49,7 @@ type ApprovalRequest = {
   choices: Choice[];
   allowFreeformReply: boolean;
   risk?: string;
+  expiresAt?: string;
   status: "pending" | "responded" | string;
   createdAt: string;
   response?: ApprovalResponse;
@@ -632,6 +633,16 @@ function notificationBody(request: ApprovalRequest) {
   return request.body || "Approval requested";
 }
 
+function formatRequestTime(value?: string) {
+  if (!value) {
+    return "";
+  }
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function ApprovalsScreen({
   error,
   loading,
@@ -698,6 +709,30 @@ function ApprovalsScreen({
           {selected.requester.name || selected.requester.agentId}
           {selected.requester.host ? ` on ${selected.requester.host}` : ""}
         </Text>
+        <View style={styles.detailFacts}>
+          {selected.risk ? (
+            <Text
+              style={[
+                styles.riskBadge,
+                selected.risk === "high" ? styles.riskHigh : null,
+                selected.risk === "medium" ? styles.riskMedium : null,
+                selected.risk === "low" ? styles.riskLow : null,
+              ]}
+            >
+              {selected.risk}
+            </Text>
+          ) : null}
+          {selected.expiresAt ? (
+            <Text style={styles.factText}>
+              Expires {formatRequestTime(selected.expiresAt)}
+            </Text>
+          ) : null}
+        </View>
+        {selected.requester.workingDirectory ? (
+          <Text selectable numberOfLines={2} style={styles.cwdText}>
+            {selected.requester.workingDirectory}
+          </Text>
+        ) : null}
         {selected.body ? <Text style={styles.bodyText}>{selected.body}</Text> : null}
         {selected.command ? (
           <Text selectable style={styles.commandText}>
@@ -1166,6 +1201,44 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     marginTop: 8,
+  },
+  detailFacts: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  riskBadge: {
+    borderRadius: 8,
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    textTransform: "uppercase",
+  },
+  riskHigh: {
+    backgroundColor: "#a33b2f",
+  },
+  riskMedium: {
+    backgroundColor: "#8a681f",
+  },
+  riskLow: {
+    backgroundColor: "#1f6f5b",
+  },
+  factText: {
+    color: "#5f5a4f",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  cwdText: {
+    color: "#6d6657",
+    fontFamily: "monospace",
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 12,
   },
   bodyText: {
     color: "#202124",
