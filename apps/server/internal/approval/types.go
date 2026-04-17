@@ -51,6 +51,21 @@ type Response struct {
 	Message  string `json:"message,omitempty"`
 }
 
+type PairingToken struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+type PairDeviceRequest struct {
+	Token      string `json:"token"`
+	DeviceName string `json:"deviceName"`
+}
+
+type DeviceCredential struct {
+	DeviceID string `json:"deviceId"`
+	Token    string `json:"token"`
+}
+
 const (
 	StatusPending   = "pending"
 	StatusResponded = "responded"

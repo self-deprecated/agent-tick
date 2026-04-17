@@ -62,6 +62,77 @@ func TestAPIRequiresAuthForRemoteRequests(t *testing.T) {
 	}
 }
 
+func TestAPIPairsDeviceToken(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	pairing := request[PairingToken](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/pairing-tokens",
+		map[string]string{},
+	)
+	if pairing.Token == "" {
+		t.Fatal("pairing token is empty")
+	}
+
+	credential := requestWithoutAuth[DeviceCredential](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/devices/pair",
+		PairDeviceRequest{Token: pairing.Token, DeviceName: "iPhone"},
+	)
+	if credential.Token == "" {
+		t.Fatal("device token is empty")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/approval-requests", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	req.Header.Set("Authorization", "Bearer "+credential.Token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+}
+
+func TestAPIPairingTokenIsSingleUse(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	pairing := request[PairingToken](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/pairing-tokens",
+		map[string]string{},
+	)
+	_ = requestWithoutAuth[DeviceCredential](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/devices/pair",
+		PairDeviceRequest{Token: pairing.Token, DeviceName: "iPhone"},
+	)
+
+	reqBody, err := json.Marshal(PairDeviceRequest{Token: pairing.Token, DeviceName: "iPad"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/devices/pair", bytes.NewReader(reqBody))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
+	}
+}
+
 func request[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
 	t.Helper()
 
@@ -74,6 +145,31 @@ func request[T any](t *testing.T, handler http.Handler, method string, path stri
 
 	req := httptest.NewRequest(method, path, &body)
 	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code < 200 || rec.Code >= 300 {
+		t.Fatalf("%s %s status = %d body = %s", method, path, rec.Code, rec.Body.String())
+	}
+
+	var output T
+	if err := json.NewDecoder(rec.Body).Decode(&output); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	return output
+}
+
+func requestWithoutAuth[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
+	t.Helper()
+
+	var body bytes.Buffer
+	if input != nil {
+		if err := json.NewEncoder(&body).Encode(input); err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(method, path, &body)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)

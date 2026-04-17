@@ -22,6 +22,12 @@ type Store interface {
 	Respond(id string, response Response) (ApprovalRequest, error)
 }
 
+type PairingStore interface {
+	CreatePairingToken(ttl time.Duration) (PairingToken, error)
+	PairDevice(token string, deviceName string) (DeviceCredential, error)
+	VerifyDeviceToken(token string) (bool, error)
+}
+
 type FileStore struct {
 	path string
 	mu   sync.Mutex

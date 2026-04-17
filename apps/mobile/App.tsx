@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -50,6 +51,11 @@ type ApprovalRequest = {
   response?: ApprovalResponse;
 };
 
+type DeviceCredential = {
+  deviceId: string;
+  token: string;
+};
+
 const defaultServer = "http://localhost:8787";
 const serverURLKey = "agent-tick.serverURL";
 const tokenKey = "agent-tick.token";
@@ -67,6 +73,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("approvals");
   const [serverURL, setServerURL] = useState(defaultServer);
   const [token, setToken] = useState("");
+  const [pairingCode, setPairingCode] = useState("");
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [reply, setReply] = useState("");
@@ -239,6 +246,33 @@ export default function App() {
     });
   };
 
+  const pairDevice = async () => {
+    const code = pairingCode.trim();
+    if (!code) {
+      Alert.alert("Pairing code required", "Enter the code from agent-tick pair.");
+      return;
+    }
+
+    try {
+      const credential = await api<DeviceCredential>("/v1/devices/pair", {
+        method: "POST",
+        body: JSON.stringify({
+          token: code,
+          deviceName: `${Platform.OS} phone`,
+        }),
+      });
+      setToken(credential.token);
+      setPairingCode("");
+      Alert.alert("Paired", "This device can now receive approval requests.");
+      await load({ visible: true });
+    } catch (err) {
+      Alert.alert(
+        "Pairing failed",
+        err instanceof Error ? err.message : "Could not pair this device",
+      );
+    }
+  };
+
   return (
     <SafeAreaView style={styles.shell}>
       <StatusBar style="dark" />
@@ -269,9 +303,12 @@ export default function App() {
           loading={loading}
           notificationStatus={notificationStatus}
           onCheck={() => void checkConnection()}
+          onPairDevice={() => void pairDevice()}
           onRequestNotifications={() => void requestNotifications()}
           onSendTestNotification={() => void sendTestNotification()}
+          pairingCode={pairingCode}
           serverURL={serverURL}
+          setPairingCode={setPairingCode}
           setServerURL={setServerURL}
           setToken={setToken}
           token={token}
@@ -487,9 +524,12 @@ function SettingsScreen({
   loading,
   notificationStatus,
   onCheck,
+  onPairDevice,
   onRequestNotifications,
   onSendTestNotification,
+  pairingCode,
   serverURL,
+  setPairingCode,
   setServerURL,
   setToken,
   token,
@@ -499,9 +539,12 @@ function SettingsScreen({
   loading: boolean;
   notificationStatus: NotificationStatus;
   onCheck: () => void;
+  onPairDevice: () => void;
   onRequestNotifications: () => void;
   onSendTestNotification: () => void;
+  pairingCode: string;
   serverURL: string;
+  setPairingCode: (value: string) => void;
   setServerURL: (value: string) => void;
   setToken: (value: string) => void;
   token: string;
@@ -543,6 +586,21 @@ function SettingsScreen({
       <Pressable onPress={onCheck} style={styles.primaryButton}>
         <Text style={styles.primaryButtonText}>Check Connection</Text>
       </Pressable>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.label}>Pairing Code</Text>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setPairingCode}
+          placeholder="pair_..."
+          style={styles.input}
+          value={pairingCode}
+        />
+        <Pressable onPress={onPairDevice} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Pair This Device</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.notificationPanel}>
         <Text style={styles.label}>Notifications</Text>

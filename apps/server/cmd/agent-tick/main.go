@@ -28,6 +28,8 @@ func main() {
 		runRequest(os.Args[2:])
 	case "guard":
 		runGuard(os.Args[2:])
+	case "pair":
+		runPair(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -134,6 +136,21 @@ func runGuard(args []string) {
 		}
 		log.Fatal(err)
 	}
+}
+
+func runPair(args []string) {
+	flags := flag.NewFlagSet("pair", flag.ExitOnError)
+	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
+	_ = flags.Parse(args)
+
+	token, err := postJSON[approval.PairingToken](*server+"/v1/pairing-tokens", map[string]string{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("pairing code: %s\n", token.Token)
+	fmt.Printf("expires at: %s\n", token.ExpiresAt.Format(time.RFC3339))
+	fmt.Printf("server: %s\n", *server)
 }
 
 func requestApproval(server string, input approval.CreateRequest, timeout time.Duration) (approval.ApprovalRequest, error) {
@@ -253,5 +270,5 @@ func workingDirectory() string {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request|guard> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request|guard|pair> [flags]")
 }

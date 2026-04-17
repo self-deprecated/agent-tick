@@ -1,20 +1,27 @@
 package approval
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type API struct {
-	store Store
-	token string
+	store    Store
+	pairings PairingStore
+	token    string
 }
 
 func NewAPI(store Store, token string) *API {
-	return &API{store: store, token: token}
+	api := &API{store: store, token: token}
+	if pairings, ok := store.(PairingStore); ok {
+		api.pairings = pairings
+	}
+	return api
 }
 
 func (a *API) Handler() http.Handler {
@@ -24,6 +31,8 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/approval-requests", a.list)
 	mux.HandleFunc("GET /v1/approval-requests/{id}", a.get)
 	mux.HandleFunc("POST /v1/approval-requests/{id}/responses", a.respond)
+	mux.HandleFunc("POST /v1/pairing-tokens", a.createPairingToken)
+	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
 	return a.withAuth(a.withCORS(mux))
 }
 
@@ -103,9 +112,47 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, request)
 }
 
+func (a *API) createPairingToken(w http.ResponseWriter, _ *http.Request) {
+	if a.pairings == nil {
+		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
+		return
+	}
+
+	token, err := a.pairings.CreatePairingToken(10 * time.Minute)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, token)
+}
+
+func (a *API) pairDevice(w http.ResponseWriter, r *http.Request) {
+	if a.pairings == nil {
+		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
+		return
+	}
+
+	var input PairDeviceRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid pairing JSON")
+		return
+	}
+
+	credential, err := a.pairings.PairDevice(input.Token, input.DeviceName)
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusUnauthorized, "invalid or expired pairing token")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, credential)
+}
+
 func (a *API) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" {
+		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -113,12 +160,41 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if a.token != "" && r.Header.Get("Authorization") == "Bearer "+a.token {
+
+		token := bearerToken(r)
+		if a.token != "" && tokenMatches(token, a.token) {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if a.pairings != nil && token != "" {
+			ok, err := a.pairings.VerifyDeviceToken(token)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
 		writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
 	})
+}
+
+func bearerToken(r *http.Request) string {
+	value := r.Header.Get("Authorization")
+	token, ok := strings.CutPrefix(value, "Bearer ")
+	if !ok {
+		return ""
+	}
+	return token
+}
+
+func tokenMatches(got string, want string) bool {
+	if got == "" || want == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 func (a *API) withCORS(next http.Handler) http.Handler {

@@ -1,10 +1,12 @@
 package approval
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -221,6 +223,98 @@ func (s *SQLiteStore) Respond(id string, response Response) (ApprovalRequest, er
 	return request, nil
 }
 
+func (s *SQLiteStore) CreatePairingToken(ttl time.Duration) (PairingToken, error) {
+	token := "pair_" + newID()
+	now := time.Now().UTC()
+	expiresAt := now.Add(ttl)
+
+	_, err := s.db.Exec(
+		"INSERT INTO pairing_tokens (token_hash, expires_at, created_at) VALUES (?, ?, ?)",
+		tokenHash(token),
+		timeText(&expiresAt),
+		timeText(&now),
+	)
+	if err != nil {
+		return PairingToken{}, err
+	}
+
+	return PairingToken{Token: token, ExpiresAt: expiresAt}, nil
+}
+
+func (s *SQLiteStore) PairDevice(token string, deviceName string) (DeviceCredential, error) {
+	if strings.TrimSpace(token) == "" {
+		return DeviceCredential{}, ErrNotFound
+	}
+	if strings.TrimSpace(deviceName) == "" {
+		deviceName = "Phone"
+	}
+
+	now := time.Now().UTC()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return DeviceCredential{}, err
+	}
+	defer rollback(tx)
+
+	var tokenID int64
+	err = tx.QueryRow(`
+		SELECT id
+		FROM pairing_tokens
+		WHERE token_hash = ? AND used_at = '' AND expires_at > ?
+	`, tokenHash(token), timeText(&now)).Scan(&tokenID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DeviceCredential{}, ErrNotFound
+	}
+	if err != nil {
+		return DeviceCredential{}, err
+	}
+
+	deviceID := "dev_" + newID()
+	deviceToken := "device_" + newID()
+	_, err = tx.Exec(
+		"INSERT INTO devices (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)",
+		deviceID,
+		deviceName,
+		tokenHash(deviceToken),
+		timeText(&now),
+	)
+	if err != nil {
+		return DeviceCredential{}, err
+	}
+	_, err = tx.Exec(
+		"UPDATE pairing_tokens SET used_at = ? WHERE id = ?",
+		timeText(&now),
+		tokenID,
+	)
+	if err != nil {
+		return DeviceCredential{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return DeviceCredential{}, err
+	}
+
+	return DeviceCredential{DeviceID: deviceID, Token: deviceToken}, nil
+}
+
+func (s *SQLiteStore) VerifyDeviceToken(token string) (bool, error) {
+	if strings.TrimSpace(token) == "" {
+		return false, nil
+	}
+
+	var exists int
+	err := s.db.QueryRow(
+		"SELECT 1 FROM devices WHERE token_hash = ? LIMIT 1",
+		tokenHash(token),
+	).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
+}
+
 func (s *SQLiteStore) migrate() error {
 	_, err := s.db.Exec(`
 		PRAGMA journal_mode = WAL;
@@ -258,6 +352,21 @@ func (s *SQLiteStore) migrate() error {
 			event_type TEXT NOT NULL,
 			request_id TEXT NOT NULL,
 			payload_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS pairing_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			used_at TEXT NOT NULL DEFAULT ''
+		);
+
+		CREATE TABLE IF NOT EXISTS devices (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
 			created_at TEXT NOT NULL
 		);
 	`)
@@ -365,6 +474,11 @@ func timeText(value *time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func tokenHash(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", hash[:])
 }
 
 func parseOptionalTime(value string) *time.Time {

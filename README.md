@@ -34,6 +34,13 @@ cd apps/server
 go run ./cmd/agent-tick guard -- npm install
 ```
 
+Create a short-lived pairing code for a phone:
+
+```sh
+cd apps/server
+go run ./cmd/agent-tick pair
+```
+
 For non-localhost deployments, set `AGENT_TICK_TOKEN` on the server and clients. Requests must include `Authorization: Bearer <token>`.
 
 ## Mobile
