@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 
-type Screen = "approvals" | "settings";
+type Screen = "approvals" | "history" | "settings";
 type ConnectionStatus = "checking" | "connected" | "disconnected";
 type NotificationStatus = "checking" | "granted" | "denied" | "undetermined";
 
@@ -75,9 +75,11 @@ export default function App() {
   const [token, setToken] = useState("");
   const [pairingCode, setPairingCode] = useState("");
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
+  const [history, setHistory] = useState<ApprovalRequest[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("checking");
@@ -195,6 +197,27 @@ export default function App() {
     return () => clearInterval(timer);
   }, [load, settingsLoaded]);
 
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      const allRequests = await api<ApprovalRequest[]>("/v1/approval-requests");
+      setHistory(allRequests);
+      setConnectionStatus("connected");
+    } catch (err) {
+      setConnectionStatus("disconnected");
+      setError(err instanceof Error ? err.message : "Failed to load history");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (screen === "history") {
+      void loadHistory();
+    }
+  }, [loadHistory, screen]);
+
   const respond = async (request: ApprovalRequest, choice: Choice) => {
     try {
       await api<ApprovalRequest>(`/v1/approval-requests/${request.id}/responses`, {
@@ -281,19 +304,34 @@ export default function App() {
           <Text style={styles.brand}>Agent Tick</Text>
           <ConnectionBadge status={connectionStatus} />
         </View>
-        <Pressable
-          accessibilityLabel={screen === "settings" ? "Approvals" : "Settings"}
-          onPress={() =>
-            setScreen((current) =>
-              current === "settings" ? "approvals" : "settings",
-            )
-          }
-          style={styles.iconButton}
-        >
-          <Text style={styles.iconButtonText}>
-            {screen === "settings" ? "Tick" : "Set"}
-          </Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityLabel={screen === "history" ? "Approvals" : "History"}
+            onPress={() =>
+              setScreen((current) =>
+                current === "history" ? "approvals" : "history",
+              )
+            }
+            style={styles.iconButton}
+          >
+            <Text style={styles.iconButtonText}>
+              {screen === "history" ? "Tick" : "Hist"}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel={screen === "settings" ? "Approvals" : "Settings"}
+            onPress={() =>
+              setScreen((current) =>
+                current === "settings" ? "approvals" : "settings",
+              )
+            }
+            style={styles.iconButton}
+          >
+            <Text style={styles.iconButtonText}>
+              {screen === "settings" ? "Tick" : "Set"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       {screen === "settings" ? (
@@ -312,6 +350,13 @@ export default function App() {
           setServerURL={setServerURL}
           setToken={setToken}
           token={token}
+        />
+      ) : screen === "history" ? (
+        <HistoryScreen
+          error={error}
+          history={history}
+          loading={historyLoading}
+          onRefresh={() => void loadHistory()}
         />
       ) : (
         <ApprovalsScreen
@@ -518,6 +563,66 @@ function ApprovalsScreen({
   );
 }
 
+function HistoryScreen({
+  error,
+  history,
+  loading,
+  onRefresh,
+}: {
+  error: string | null;
+  history: ApprovalRequest[];
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <View style={styles.historyPane}>
+      <View style={styles.historyHeader}>
+        <Text style={styles.sectionHeading}>History</Text>
+        <Pressable onPress={onRefresh} style={styles.smallButton}>
+          <Text style={styles.smallButtonText}>{loading ? "..." : "Refresh"}</Text>
+        </Pressable>
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <ScrollView contentContainerStyle={styles.historyList}>
+        {history.length === 0 ? (
+          <Text style={styles.emptyText}>No approval history yet.</Text>
+        ) : (
+          history.map((request) => (
+            <View key={request.id} style={styles.historyRow}>
+              <View style={styles.historyRowTop}>
+                <Text numberOfLines={2} style={styles.historyTitle}>
+                  {request.title}
+                </Text>
+                <Text
+                  style={[
+                    styles.historyStatus,
+                    request.response?.choiceId === "approve"
+                      ? styles.historyStatusApprove
+                      : null,
+                    request.response?.choiceId === "deny"
+                      ? styles.historyStatusDeny
+                      : null,
+                  ]}
+                >
+                  {request.response?.choiceId ?? request.status}
+                </Text>
+              </View>
+              <Text numberOfLines={1} style={styles.historyMeta}>
+                {request.requester.host || request.requester.name || "Agent"}
+              </Text>
+              {request.command ? (
+                <Text numberOfLines={2} style={styles.historyCommand}>
+                  {request.command}
+                </Text>
+              ) : null}
+            </View>
+          ))
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
 function SettingsScreen({
   connectionStatus,
   error,
@@ -659,6 +764,10 @@ const styles = StyleSheet.create({
     minWidth: 64,
     paddingHorizontal: 12,
   },
+  headerActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
   iconButtonText: {
     color: "#ffffff",
     fontSize: 14,
@@ -701,6 +810,88 @@ const styles = StyleSheet.create({
   },
   approvalsPane: {
     flex: 1,
+  },
+  historyPane: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  historyHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  sectionHeading: {
+    color: "#202124",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  smallButton: {
+    alignItems: "center",
+    borderColor: "#202124",
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 40,
+    justifyContent: "center",
+    minWidth: 88,
+    paddingHorizontal: 12,
+  },
+  smallButtonText: {
+    color: "#202124",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  historyList: {
+    gap: 10,
+    paddingBottom: 22,
+  },
+  historyRow: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    padding: 12,
+  },
+  historyRowTop: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+  },
+  historyTitle: {
+    color: "#202124",
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  historyStatus: {
+    color: "#5f5a4f",
+    fontSize: 13,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  historyStatusApprove: {
+    color: "#1f6f5b",
+  },
+  historyStatusDeny: {
+    color: "#a33b2f",
+  },
+  historyMeta: {
+    color: "#6d6657",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  historyCommand: {
+    color: "#202124",
+    fontFamily: "monospace",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  emptyText: {
+    color: "#6d6657",
+    paddingVertical: 16,
+    textAlign: "center",
   },
   requestStrip: {
     flexDirection: "row",
