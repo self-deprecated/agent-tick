@@ -240,6 +240,22 @@ export default function App() {
     return () => clearInterval(timer);
   }, [load, settingsLoaded]);
 
+  useEffect(() => {
+    if (!settingsLoaded || !token) {
+      return;
+    }
+
+    const wsURL = serverURL
+      .replace(/^http:\/\//, "ws://")
+      .replace(/^https:\/\//, "wss://")
+      .replace(/\/$/, "");
+    const socket = new WebSocket(
+      `${wsURL}/v1/events?token=${encodeURIComponent(token)}`,
+    );
+    socket.onmessage = () => void load({ visible: false });
+    return () => socket.close();
+  }, [load, serverURL, settingsLoaded, token]);
+
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     setError(null);

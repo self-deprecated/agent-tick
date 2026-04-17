@@ -16,12 +16,13 @@ type API struct {
 	pairings         PairingStore
 	agents           AgentStore
 	push             *PushSender
+	events           *EventHub
 	token            string
 	requireSignature bool
 }
 
 func NewAPI(store Store, token string) *API {
-	api := &API{store: store, push: NewPushSender(), token: token}
+	api := &API{store: store, push: NewPushSender(), events: NewEventHub(), token: token}
 	if pairings, ok := store.(PairingStore); ok {
 		api.pairings = pairings
 	}
@@ -46,6 +47,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/pairing-tokens", a.createPairingToken)
 	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/push-token", a.setDevicePushToken)
+	mux.HandleFunc("GET /v1/events", a.eventsSocket)
 	return a.withAuth(a.withCORS(mux))
 }
 
@@ -82,6 +84,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.sendPush(request)
+	a.events.Publish(Event{Type: "approval.created", RequestID: request.ID})
 	writeJSON(w, http.StatusCreated, request)
 }
 
@@ -104,7 +107,12 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	a.events.Publish(Event{Type: "approval.responded", RequestID: request.ID})
 	writeJSON(w, http.StatusOK, request)
+}
+
+func (a *API) eventsSocket(w http.ResponseWriter, r *http.Request) {
+	_ = a.events.Subscribe(w, r)
 }
 
 func (a *API) respond(w http.ResponseWriter, r *http.Request) {
@@ -291,7 +299,7 @@ func bearerToken(r *http.Request) string {
 	value := r.Header.Get("Authorization")
 	token, ok := strings.CutPrefix(value, "Bearer ")
 	if !ok {
-		return ""
+		return r.URL.Query().Get("token")
 	}
 	return token
 }
