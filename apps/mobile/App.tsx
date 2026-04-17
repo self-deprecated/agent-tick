@@ -87,6 +87,9 @@ export default function App() {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
+  const [notificationTargetID, setNotificationTargetID] = useState<string | null>(
+    null,
+  );
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -169,6 +172,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const id = response.notification.request.content.data
+          .approvalRequestID;
+        if (typeof id === "string") {
+          setNotificationTargetID(id);
+          setSelectedID(id);
+          setScreen("approvals");
+        }
+      },
+    );
+
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      const id = response?.notification.request.content.data.approvalRequestID;
+      if (typeof id === "string") {
+        setNotificationTargetID(id);
+        setSelectedID(id);
+        setScreen("approvals");
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     if (!settingsLoaded) {
       return;
     }
@@ -194,10 +222,14 @@ export default function App() {
       setRequests(pending);
       setConnectionStatus("connected");
       setSelectedID((current) =>
-        current && pending.some((request) => request.id === current)
-          ? current
-          : (pending[0]?.id ?? null),
+        selectApprovalID(pending, notificationTargetID, current),
       );
+      if (
+        notificationTargetID &&
+        pending.some((request) => request.id === notificationTargetID)
+      ) {
+        setNotificationTargetID(null);
+      }
     } catch (err) {
       setConnectionStatus("disconnected");
       setError(err instanceof Error ? err.message : "Failed to load requests");
@@ -206,7 +238,7 @@ export default function App() {
         setLoading(false);
       }
     }
-  }, [api]);
+  }, [api, notificationTargetID]);
 
   useEffect(() => {
     if (!settingsLoaded) {
@@ -496,6 +528,23 @@ function parsePairingPayload(value: string): PairingPayload {
   } catch {
     return value.startsWith("pair_") ? { pairingCode: value } : {};
   }
+}
+
+function selectApprovalID(
+  requests: ApprovalRequest[],
+  notificationTargetID: string | null,
+  currentID: string | null,
+) {
+  if (
+    notificationTargetID &&
+    requests.some((request) => request.id === notificationTargetID)
+  ) {
+    return notificationTargetID;
+  }
+  if (currentID && requests.some((request) => request.id === currentID)) {
+    return currentID;
+  }
+  return requests[0]?.id ?? null;
 }
 
 function ConnectionBadge({ status }: { status: ConnectionStatus }) {
