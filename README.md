@@ -27,6 +27,13 @@ cd apps/server
 go run ./cmd/agent-tick request --title "Run command?" --body "codex wants to run npm install"
 ```
 
+Guard a command so it only runs after phone approval:
+
+```sh
+cd apps/server
+go run ./cmd/agent-tick guard -- npm install
+```
+
 For non-localhost deployments, set `AGENT_TICK_TOKEN` on the server and clients. Requests must include `Authorization: Bearer <token>`.
 
 ## Mobile

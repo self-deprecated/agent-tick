@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ func main() {
 		runServer(os.Args[2:])
 	case "request":
 		runRequest(os.Args[2:])
+	case "guard":
+		runGuard(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -69,42 +72,100 @@ func runRequest(args []string) {
 	}
 
 	input := approval.CreateRequest{
-		Requester: approval.Requester{
-			Name:    getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"),
-			AgentID: getenv("AGENT_TICK_AGENT_ID", "local-agent"),
-			Host:    hostname(),
-		},
-		Title:   *title,
-		Body:    *body,
-		Command: *command,
+		Requester: requester(),
+		Title:     *title,
+		Body:      *body,
+		Command:   *command,
 	}
 
-	request, err := postJSON[approval.ApprovalRequest](*server+"/v1/approval-requests", input)
+	current, err := requestApproval(*server, input, *timeout)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	printResponse(current.Response)
+	if current.Response != nil && current.Response.ChoiceID == "approve" {
+		return
+	}
+	os.Exit(1)
+}
+
+func runGuard(args []string) {
+	flags := flag.NewFlagSet("guard", flag.ExitOnError)
+	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
+	title := flags.String("title", "Run command?", "approval title")
+	body := flags.String("body", "", "approval body")
+	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
+	_ = flags.Parse(args)
+
+	command := flags.Args()
+	if len(command) == 0 {
+		log.Fatal("guard requires a command after --")
+	}
+
+	commandText := strings.Join(command, " ")
+	requestBody := *body
+	if strings.TrimSpace(requestBody) == "" {
+		requestBody = "Approve running this command?"
+	}
+
+	current, err := requestApproval(*server, approval.CreateRequest{
+		Requester: requester(),
+		Title:     *title,
+		Body:      requestBody,
+		Command:   commandText,
+	}, *timeout)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	printResponse(current.Response)
+	if current.Response == nil || current.Response.ChoiceID != "approve" {
+		os.Exit(1)
+	}
+
+	cmd := exec.Command(command[0], command[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+		log.Fatal(err)
+	}
+}
+
+func requestApproval(server string, input approval.CreateRequest, timeout time.Duration) (approval.ApprovalRequest, error) {
+	request, err := postJSON[approval.ApprovalRequest](server+"/v1/approval-requests", input)
+	if err != nil {
+		return approval.ApprovalRequest{}, err
+	}
 	fmt.Printf("approval request created: %s\n", request.ID)
 
-	deadline := time.Now().Add(*timeout)
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		current, err := getJSON[approval.ApprovalRequest](*server + "/v1/approval-requests/" + request.ID)
+		current, err := getJSON[approval.ApprovalRequest](server + "/v1/approval-requests/" + request.ID)
 		if err != nil {
-			log.Fatal(err)
+			return approval.ApprovalRequest{}, err
 		}
 		if current.Response != nil {
-			fmt.Printf("response: %s\n", current.Response.ChoiceID)
-			if current.Response.Message != "" {
-				fmt.Printf("message: %s\n", current.Response.Message)
-			}
-			if current.Response.ChoiceID == "approve" {
-				return
-			}
-			os.Exit(1)
+			return current, nil
 		}
 		time.Sleep(2 * time.Second)
 	}
 
-	log.Fatal("timed out waiting for approval")
+	return approval.ApprovalRequest{}, fmt.Errorf("timed out waiting for approval")
+}
+
+func printResponse(response *approval.Response) {
+	if response == nil {
+		return
+	}
+	fmt.Printf("response: %s\n", response.ChoiceID)
+	if response.Message != "" {
+		fmt.Printf("message: %s\n", response.Message)
+	}
 }
 
 func postJSON[T any](url string, input any) (T, error) {
@@ -166,6 +227,15 @@ func getenv(name string, fallback string) string {
 	return fallback
 }
 
+func requester() approval.Requester {
+	return approval.Requester{
+		Name:             getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"),
+		AgentID:          getenv("AGENT_TICK_AGENT_ID", "local-agent"),
+		Host:             hostname(),
+		WorkingDirectory: workingDirectory(),
+	}
+}
+
 func hostname() string {
 	name, err := os.Hostname()
 	if err != nil {
@@ -174,6 +244,14 @@ func hostname() string {
 	return name
 }
 
+func workingDirectory() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return cwd
+}
+
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request|guard> [flags]")
 }

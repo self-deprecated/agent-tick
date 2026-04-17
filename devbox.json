@@ -15,6 +15,9 @@
       "server": [
         "cd apps/server && go run ./cmd/agent-tick server"
       ],
+      "demo-request": [
+        "cd apps/server && go run ./cmd/agent-tick request --title 'Run command?' --body 'Agent Tick test approval from the CLI' --command 'npm install'"
+      ],
       "mobile": [
         "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start -- --host localhost --port 8081"
       ],
