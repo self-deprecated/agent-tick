@@ -14,6 +14,7 @@ import (
 var ErrNotFound = errors.New("approval request not found")
 var ErrAlreadyResponded = errors.New("approval request already has a response")
 var ErrInvalidChoice = errors.New("approval response choice is not allowed")
+var ErrExpired = errors.New("approval request has expired")
 
 type Store interface {
 	Create(CreateRequest) (ApprovalRequest, error)
@@ -87,6 +88,10 @@ func (s *FileStore) List(status string) ([]ApprovalRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+	requests = expireRequests(requests)
+	if err := s.save(requests); err != nil {
+		return nil, err
+	}
 
 	if status == "" {
 		return requests, nil
@@ -109,6 +114,10 @@ func (s *FileStore) Get(id string) (ApprovalRequest, error) {
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
+	requests = expireRequests(requests)
+	if err := s.save(requests); err != nil {
+		return ApprovalRequest{}, err
+	}
 
 	for _, request := range requests {
 		if request.ID == id {
@@ -126,11 +135,15 @@ func (s *FileStore) Respond(id string, response Response) (ApprovalRequest, erro
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
+	requests = expireRequests(requests)
 
 	for i := range requests {
 		if requests[i].ID == id {
 			if requests[i].Response != nil {
 				return ApprovalRequest{}, ErrAlreadyResponded
+			}
+			if requests[i].Status == StatusExpired {
+				return ApprovalRequest{}, ErrExpired
 			}
 			if !hasChoice(requests[i], response.ChoiceID) {
 				return ApprovalRequest{}, ErrInvalidChoice
@@ -144,6 +157,16 @@ func (s *FileStore) Respond(id string, response Response) (ApprovalRequest, erro
 		}
 	}
 	return ApprovalRequest{}, ErrNotFound
+}
+
+func expireRequests(requests []ApprovalRequest) []ApprovalRequest {
+	now := time.Now().UTC()
+	for i := range requests {
+		if requests[i].Status == StatusPending && requests[i].ExpiresAt != nil && !requests[i].ExpiresAt.After(now) {
+			requests[i].Status = StatusExpired
+		}
+	}
+	return requests
 }
 
 func hasChoice(request ApprovalRequest, choiceID string) bool {

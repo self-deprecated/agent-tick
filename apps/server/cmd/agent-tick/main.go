@@ -70,17 +70,20 @@ func runRequest(args []string) {
 	body := flags.String("body", "", "approval body")
 	command := flags.String("command", "", "command being requested")
 	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
+	expiresIn := flags.Duration("expires-in", 5*time.Minute, "approval expiry duration")
 	_ = flags.Parse(args)
 
 	if strings.TrimSpace(*title) == "" {
 		log.Fatal("--title is required")
 	}
 
+	expiresAt := time.Now().UTC().Add(*expiresIn)
 	input := approval.CreateRequest{
 		Requester: requester(),
 		Title:     *title,
 		Body:      *body,
 		Command:   *command,
+		ExpiresAt: &expiresAt,
 	}
 
 	current, err := requestApproval(*server, input, *timeout)
@@ -101,6 +104,7 @@ func runGuard(args []string) {
 	title := flags.String("title", "Run command?", "approval title")
 	body := flags.String("body", "", "approval body")
 	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
+	expiresIn := flags.Duration("expires-in", 5*time.Minute, "approval expiry duration")
 	_ = flags.Parse(args)
 
 	command := flags.Args()
@@ -114,11 +118,13 @@ func runGuard(args []string) {
 		requestBody = "Approve running this command?"
 	}
 
+	expiresAt := time.Now().UTC().Add(*expiresIn)
 	current, err := requestApproval(*server, approval.CreateRequest{
 		Requester: requester(),
 		Title:     *title,
 		Body:      requestBody,
 		Command:   commandText,
+		ExpiresAt: &expiresAt,
 	}, *timeout)
 	if err != nil {
 		log.Fatal(err)
@@ -212,6 +218,9 @@ func requestApproval(server string, input approval.CreateRequest, timeout time.D
 		}
 		if current.Response != nil {
 			return current, nil
+		}
+		if current.Status == approval.StatusExpired {
+			return approval.ApprovalRequest{}, fmt.Errorf("approval request expired")
 		}
 		time.Sleep(2 * time.Second)
 	}

@@ -112,6 +112,10 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "approval request already has a response")
 		return
 	}
+	if errors.Is(err, ErrExpired) {
+		writeError(w, http.StatusConflict, "approval request has expired")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

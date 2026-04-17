@@ -107,6 +107,10 @@ func (s *SQLiteStore) Create(input CreateRequest) (ApprovalRequest, error) {
 }
 
 func (s *SQLiteStore) List(status string) ([]ApprovalRequest, error) {
+	if err := s.expirePendingRequests(); err != nil {
+		return nil, err
+	}
+
 	query := `
 		SELECT
 			r.id, r.requester_json, r.title, r.body, r.command, r.choices_json,
@@ -141,6 +145,10 @@ func (s *SQLiteStore) List(status string) ([]ApprovalRequest, error) {
 }
 
 func (s *SQLiteStore) Get(id string) (ApprovalRequest, error) {
+	if err := s.expirePendingRequests(); err != nil {
+		return ApprovalRequest{}, err
+	}
+
 	row := s.db.QueryRow(`
 		SELECT
 			r.id, r.requester_json, r.title, r.body, r.command, r.choices_json,
@@ -160,6 +168,10 @@ func (s *SQLiteStore) Get(id string) (ApprovalRequest, error) {
 }
 
 func (s *SQLiteStore) Respond(id string, response Response) (ApprovalRequest, error) {
+	if err := s.expirePendingRequests(); err != nil {
+		return ApprovalRequest{}, err
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return ApprovalRequest{}, err
@@ -186,6 +198,9 @@ func (s *SQLiteStore) Respond(id string, response Response) (ApprovalRequest, er
 	}
 	if request.Response != nil {
 		return ApprovalRequest{}, ErrAlreadyResponded
+	}
+	if request.Status == StatusExpired {
+		return ApprovalRequest{}, ErrExpired
 	}
 	if !hasChoice(request, response.ChoiceID) {
 		return ApprovalRequest{}, ErrInvalidChoice
@@ -222,6 +237,17 @@ func (s *SQLiteStore) Respond(id string, response Response) (ApprovalRequest, er
 	request.RespondedAt = &now
 	request.Response = &response
 	return request, nil
+}
+
+func (s *SQLiteStore) expirePendingRequests() error {
+	now := time.Now().UTC()
+	_, err := s.db.Exec(
+		"UPDATE approval_requests SET status = ? WHERE status = ? AND expires_at != '' AND expires_at <= ?",
+		StatusExpired,
+		StatusPending,
+		timeText(&now),
+	)
+	return err
 }
 
 func (s *SQLiteStore) CreatePairingToken(ttl time.Duration) (PairingToken, error) {

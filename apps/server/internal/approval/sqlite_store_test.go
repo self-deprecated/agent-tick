@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -46,6 +47,39 @@ func TestSQLiteStoreCreateListRespond(t *testing.T) {
 	}
 	if len(pending) != 0 {
 		t.Fatalf("pending length = %d, want 0", len(pending))
+	}
+}
+
+func TestSQLiteStoreExpiresPendingRequests(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	request, err := store.Create(CreateRequest{
+		Title:     "Expired",
+		ExpiresAt: &expiredAt,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	pending, err := store.List(StatusPending)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("pending length = %d, want 0", len(pending))
+	}
+
+	found, err := store.Get(request.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if found.Status != StatusExpired {
+		t.Fatalf("Status = %q, want %q", found.Status, StatusExpired)
+	}
+	if _, err := store.Respond(request.ID, Response{ChoiceID: "approve"}); err != ErrExpired {
+		t.Fatalf("Respond() error = %v, want %v", err, ErrExpired)
 	}
 }
 

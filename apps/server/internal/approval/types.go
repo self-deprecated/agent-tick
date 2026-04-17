@@ -80,6 +80,7 @@ type AgentCredential struct {
 const (
 	StatusPending   = "pending"
 	StatusResponded = "responded"
+	StatusExpired   = "expired"
 )
 
 func DefaultChoices() []Choice {
