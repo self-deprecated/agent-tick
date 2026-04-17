@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.14.2/.schema/devbox.schema.json",
+  "packages": [
+    "go@latest",
+    "nodejs_22@latest"
+  ],
+  "shell": {
+    "scripts": {
+      "test": [
+        "cd apps/server && go test ./..."
+      ],
+      "typecheck": [
+        "cd apps/mobile && npm run typecheck"
+      ],
+      "server": [
+        "cd apps/server && go run ./cmd/agent-tick server"
+      ],
+      "mobile": [
+        "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start -- --host localhost --port 8081"
+      ],
+      "mobile:lan": [
+        "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start -- --host lan --port 8081"
+      ]
+    }
+  }
+}

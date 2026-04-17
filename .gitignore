@@ -1,0 +1,7 @@
+.devbox/
+node_modules/
+.expo/
+dist/
+coverage/
+agent-tick.json
+agent-tick.json.tmp
