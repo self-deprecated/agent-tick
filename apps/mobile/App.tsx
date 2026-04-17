@@ -70,6 +70,7 @@ const defaultServer = "http://localhost:8787";
 const serverURLKey = "agent-tick.serverURL";
 const tokenKey = "agent-tick.token";
 const deviceIDKey = "agent-tick.deviceID";
+const approvalCategoryID = "approval-request";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -171,31 +172,18 @@ export default function App() {
 
   useEffect(() => {
     void refreshNotificationStatus(setNotificationStatus);
-  }, []);
-
-  useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const id = response.notification.request.content.data
-          .approvalRequestID;
-        if (typeof id === "string") {
-          setNotificationTargetID(id);
-          setSelectedID(id);
-          setScreen("approvals");
-        }
+    void Notifications.setNotificationCategoryAsync(approvalCategoryID, [
+      {
+        identifier: "approve",
+        buttonTitle: "Approve",
+        options: { opensAppToForeground: false },
       },
-    );
-
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      const id = response?.notification.request.content.data.approvalRequestID;
-      if (typeof id === "string") {
-        setNotificationTargetID(id);
-        setSelectedID(id);
-        setScreen("approvals");
-      }
-    });
-
-    return () => subscription.remove();
+      {
+        identifier: "deny",
+        buttonTitle: "Deny",
+        options: { opensAppToForeground: false, isDestructive: true },
+      },
+    ]);
   }, []);
 
   useEffect(() => {
@@ -288,6 +276,53 @@ export default function App() {
       );
     }
   };
+
+  const respondByID = useCallback(
+    async (requestID: string, choiceID: string) => {
+      try {
+        await api<ApprovalRequest>(`/v1/approval-requests/${requestID}/responses`, {
+          method: "POST",
+          body: JSON.stringify({ choiceId: choiceID }),
+        });
+        await load({ visible: false });
+      } catch {
+        setNotificationTargetID(requestID);
+        setSelectedID(requestID);
+        setScreen("approvals");
+      }
+    },
+    [api, load],
+  );
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const id = response.notification.request.content.data
+          .approvalRequestID;
+        const action = response.actionIdentifier;
+        if (typeof id === "string") {
+          if (action === "approve" || action === "deny") {
+            void respondByID(id, action);
+            return;
+          }
+          setNotificationTargetID(id);
+          setSelectedID(id);
+          setScreen("approvals");
+        }
+      },
+    );
+
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      const id = response?.notification.request.content.data.approvalRequestID;
+      if (typeof id === "string") {
+        setNotificationTargetID(id);
+        setSelectedID(id);
+        setScreen("approvals");
+      }
+    });
+
+    return () => subscription.remove();
+  }, [respondByID]);
 
   const checkConnection = async () => {
     setConnectionStatus("checking");
@@ -618,6 +653,7 @@ async function notifyForNewRequests(
       content: {
         title: request.command ? "Run Command?" : request.title,
         body: notificationBody(request),
+        categoryIdentifier: approvalCategoryID,
         data: { approvalRequestID: request.id },
         sound: true,
       },

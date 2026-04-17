@@ -26,10 +26,11 @@ func (s *PushSender) SendApprovalRequest(tokens []string, request ApprovalReques
 	messages := make([]expoPushMessage, 0, len(tokens))
 	for _, token := range tokens {
 		messages = append(messages, expoPushMessage{
-			To:    token,
-			Sound: "default",
-			Title: pushTitle(request),
-			Body:  pushBody(request),
+			To:         token,
+			Sound:      "default",
+			Title:      pushTitle(request),
+			Body:       pushBody(request),
+			CategoryID: "approval-request",
 			Data: map[string]string{
 				"approvalRequestID": request.ID,
 			},
@@ -54,11 +55,12 @@ func (s *PushSender) SendApprovalRequest(tokens []string, request ApprovalReques
 }
 
 type expoPushMessage struct {
-	To    string            `json:"to"`
-	Sound string            `json:"sound"`
-	Title string            `json:"title"`
-	Body  string            `json:"body"`
-	Data  map[string]string `json:"data"`
+	To         string            `json:"to"`
+	Sound      string            `json:"sound"`
+	Title      string            `json:"title"`
+	Body       string            `json:"body"`
+	CategoryID string            `json:"categoryId,omitempty"`
+	Data       map[string]string `json:"data"`
 }
 
 func pushTitle(request ApprovalRequest) string {
