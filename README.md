@@ -31,8 +31,8 @@ AGENT_TICK_TOKEN=change-me podman compose up --build
 Submit a blocking approval request:
 
 ```sh
-cd apps/server
-go run ./cmd/agent-tick request --title "Run command?" --body "codex wants to run npm install"
+agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick request --title "Run command?" --body "codex wants to run npm install"
 ```
 
 Guard a command so it only runs after phone approval:

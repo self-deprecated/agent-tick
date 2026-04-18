@@ -2,6 +2,7 @@ package approval
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -52,7 +53,8 @@ const adminHTML = `<!doctype html>
     <section id="approvals"></section>
   </main>
   <script>
-    const serverMode = '__MODE__';
+    const serverMode = "__MODE__";
+    const serverPublicURL = "__PUBLIC_URL__" || window.location.origin;
     const tokenInput = document.getElementById('token');
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
@@ -149,9 +151,9 @@ const adminHTML = `<!doctype html>
           method: 'POST',
           body: JSON.stringify({ name: 'agent', scopes: ['approval:write'] })
         });
-        const origin = window.location.origin;
-        const command = 'AGENT_TICK_SERVER=' + shellQuote(origin) + ' AGENT_TICK_TOKEN=' + shellQuote(credential.token) + ' devbox run demo-request';
-        if (target) target.innerHTML = '<div class="meta">Copy this command now. The token will not be shown again.</div><pre>' + escapeHTML(command) + '</pre>';
+        const setup = 'agent-tick setup --server ' + shellQuote(serverPublicURL) + ' --token ' + shellQuote(credential.token);
+        const test = "agent-tick request --title 'Run command?' --body 'Agent Tick test approval from the CLI' --command 'npm install'";
+        if (target) target.innerHTML = '<div class="meta">Run setup once. The token will not be shown again.</div><pre>' + escapeHTML(setup + '\n' + test) + '</pre>';
       } catch (error) {
         if (target) target.innerHTML = renderError(error.message);
       }
@@ -257,5 +259,10 @@ const adminHTML = `<!doctype html>
 func (a *API) admin(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(strings.Replace(adminHTML, "__MODE__", a.mode, 1)))
+	publicURL := a.publicURL
+	page := strings.NewReplacer(
+		`"__MODE__"`, strconv.Quote(a.mode),
+		`"__PUBLIC_URL__"`, strconv.Quote(publicURL),
+	).Replace(adminHTML)
+	_, _ = w.Write([]byte(page))
 }

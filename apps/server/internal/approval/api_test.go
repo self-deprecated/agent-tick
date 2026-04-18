@@ -81,6 +81,20 @@ func TestAPIServesDashboardWithoutAuth(t *testing.T) {
 	}
 }
 
+func TestAPIDashboardUsesPublicURL(t *testing.T) {
+	api := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token")
+	api.SetPublicURL("http://192.0.2.10:8787")
+	handler := api.Handler()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), `const serverPublicURL = "http://192.0.2.10:8787"`) {
+		t.Fatalf("dashboard did not render public URL: %s", rec.Body.String())
+	}
+}
+
 func TestAPIRejectsInvalidMode(t *testing.T) {
 	api := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token")
 

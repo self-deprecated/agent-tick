@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,6 +24,8 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "setup":
+		runSetup(os.Args[2:])
 	case "server":
 		runServer(os.Args[2:])
 	case "request":
@@ -41,9 +44,37 @@ func main() {
 	}
 }
 
+type clientConfig struct {
+	Server string `json:"server"`
+	Token  string `json:"token"`
+}
+
+func runSetup(args []string) {
+	flags := flag.NewFlagSet("setup", flag.ExitOnError)
+	server := flags.String("server", "", "Agent Tick server URL")
+	token := flags.String("token", "", "Agent Tick agent token")
+	_ = flags.Parse(args)
+
+	if strings.TrimSpace(*server) == "" {
+		log.Fatal("--server is required")
+	}
+	if strings.TrimSpace(*token) == "" {
+		log.Fatal("--token is required")
+	}
+
+	path, err := saveClientConfig(clientConfig{
+		Server: strings.TrimRight(strings.TrimSpace(*server), "/"),
+		Token:  strings.TrimSpace(*token),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("saved Agent Tick config to %s\n", path)
+}
+
 func runAdapter(args []string) {
 	flags := flag.NewFlagSet("adapter", flag.ExitOnError)
-	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
+	server := flags.String("server", defaultServerURL(), "Agent Tick server URL")
 	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
 	_ = flags.Parse(args)
 
@@ -105,7 +136,7 @@ func runServer(args []string) {
 
 func runRequest(args []string) {
 	flags := flag.NewFlagSet("request", flag.ExitOnError)
-	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
+	server := flags.String("server", defaultServerURL(), "Agent Tick server URL")
 	title := flags.String("title", "", "approval title")
 	body := flags.String("body", "", "approval body")
 	command := flags.String("command", "", "command being requested")
@@ -143,7 +174,7 @@ func runRequest(args []string) {
 
 func runGuard(args []string) {
 	flags := flag.NewFlagSet("guard", flag.ExitOnError)
-	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
+	server := flags.String("server", defaultServerURL(), "Agent Tick server URL")
 	title := flags.String("title", "Run command?", "approval title")
 	body := flags.String("body", "", "approval body")
 	contextFile := flags.String("context-file", "", "path to extra context to attach")
@@ -195,7 +226,7 @@ func runGuard(args []string) {
 
 func runPair(args []string) {
 	flags := flag.NewFlagSet("pair", flag.ExitOnError)
-	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
+	server := flags.String("server", defaultServerURL(), "Agent Tick server URL")
 	qr := flags.Bool("qr", true, "print a terminal QR code")
 	qrLarge := flags.Bool("qr-large", false, "print a larger terminal QR code")
 	_ = flags.Parse(args)
@@ -433,9 +464,76 @@ func getJSON[T any](url string) (T, error) {
 }
 
 func setAuth(req *http.Request) {
-	if token := os.Getenv("AGENT_TICK_TOKEN"); token != "" {
+	if token := defaultToken(); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+}
+
+func defaultServerURL() string {
+	if value := os.Getenv("AGENT_TICK_SERVER"); value != "" {
+		return value
+	}
+	if config, err := loadClientConfig(); err == nil && config.Server != "" {
+		return config.Server
+	}
+	return "http://localhost:8787"
+}
+
+func defaultToken() string {
+	if value := os.Getenv("AGENT_TICK_TOKEN"); value != "" {
+		return value
+	}
+	if config, err := loadClientConfig(); err == nil {
+		return config.Token
+	}
+	return ""
+}
+
+func loadClientConfig() (clientConfig, error) {
+	var config clientConfig
+	path, err := clientConfigPath()
+	if err != nil {
+		return config, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return config, err
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return config, err
+	}
+	config.Server = strings.TrimRight(strings.TrimSpace(config.Server), "/")
+	config.Token = strings.TrimSpace(config.Token)
+	return config, nil
+}
+
+func saveClientConfig(config clientConfig) (string, error) {
+	path, err := clientConfigPath()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return "", err
+	}
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func clientConfigPath() (string, error) {
+	if path := os.Getenv("AGENT_TICK_CONFIG"); path != "" {
+		return path, nil
+	}
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "agent-tick", "config.json"), nil
 }
 
 func getenv(name string, fallback string) string {
@@ -525,5 +623,5 @@ func workingDirectory() string {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: agent-tick <server|request|guard|pair|agent-token|adapter> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: agent-tick <setup|server|request|guard|pair|agent-token|adapter> [flags]")
 }
