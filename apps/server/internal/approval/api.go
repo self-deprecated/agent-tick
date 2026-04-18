@@ -3,6 +3,7 @@ package approval
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"rsc.io/qr"
 )
 
 type API struct {
@@ -306,6 +309,7 @@ func (a *API) createPairingToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	token.QRDataURL = pairingQRDataURL(r, token.Token)
 	writeJSON(w, http.StatusCreated, token)
 }
 
@@ -502,6 +506,38 @@ func bearerToken(r *http.Request) string {
 		return r.URL.Query().Get("token")
 	}
 	return token
+}
+
+func pairingQRDataURL(r *http.Request, pairingCode string) string {
+	payload, err := json.Marshal(map[string]string{
+		"serverURL":   publicServerURL(r),
+		"pairingCode": pairingCode,
+	})
+	if err != nil {
+		return ""
+	}
+	code, err := qr.Encode(string(payload), qr.M)
+	if err != nil {
+		return ""
+	}
+	code.Scale = 6
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(code.PNG())
+}
+
+func publicServerURL(r *http.Request) string {
+	proto := r.Header.Get("X-Forwarded-Proto")
+	if proto == "" {
+		if r.TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	return proto + "://" + host
 }
 
 func tokenMatches(got string, want string) bool {

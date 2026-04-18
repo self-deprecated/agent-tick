@@ -1,6 +1,9 @@
 package approval
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
 const adminHTML = `<!doctype html>
 <html>
@@ -31,9 +34,15 @@ const adminHTML = `<!doctype html>
     </div>
   </header>
   <main>
-    <section class="toolbar">
+    <section class="toolbar" id="single-auth">
       <input id="token" type="password" autocomplete="off" placeholder="Bearer token">
       <button onclick="connectDashboard()">Connect</button>
+      <button onclick="refreshDashboard()">Refresh</button>
+    </section>
+    <section class="toolbar" id="user-auth">
+      <input id="email" type="email" autocomplete="username" placeholder="Email">
+      <input id="password" type="password" autocomplete="current-password" placeholder="Password">
+      <button onclick="loginDashboard()">Sign In</button>
       <button onclick="refreshDashboard()">Refresh</button>
     </section>
     <section id="devices"></section>
@@ -41,16 +50,39 @@ const adminHTML = `<!doctype html>
     <section id="approvals"></section>
   </main>
   <script>
+    const serverMode = '__MODE__';
     const tokenInput = document.getElementById('token');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
     let pairingClearTimer;
-    let pairingToken = '';
     localStorage.removeItem('agent-tick.adminToken');
+    document.getElementById('single-auth').style.display = serverMode === 'user' ? 'none' : 'flex';
+    document.getElementById('user-auth').style.display = serverMode === 'user' ? 'flex' : 'none';
     tokenInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') connectDashboard();
     });
+    passwordInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') loginDashboard();
+    });
 
     function headers() {
-      return { 'Authorization': 'Bearer ' + tokenInput.value, 'Content-Type': 'application/json' };
+      const output = { 'Content-Type': 'application/json' };
+      if (tokenInput.value) output.Authorization = 'Bearer ' + tokenInput.value;
+      return output;
+    }
+
+    async function loginDashboard() {
+      document.getElementById('approvals').innerHTML = '<div class="card meta">Signing in...</div>';
+      try {
+        await requestJSON('/v1/session', {
+          method: 'POST',
+          body: JSON.stringify({ email: emailInput.value, password: passwordInput.value })
+        });
+        passwordInput.value = '';
+        await connectDashboard();
+      } catch (error) {
+        document.getElementById('approvals').innerHTML = renderError(error.message);
+      }
     }
 
     async function connectDashboard() {
@@ -95,8 +127,7 @@ const adminHTML = `<!doctype html>
       try {
         const pairing = await requestJSON('/v1/pairing-tokens', { method: 'POST', body: '{}' });
         const expiresAt = new Date(pairing.expiresAt);
-        pairingToken = pairing.token;
-        renderPairing(expiresAt);
+        renderPairing(pairing.qrDataUrl, expiresAt);
         clearTimeout(pairingClearTimer);
         pairingClearTimer = setTimeout(clearPairing, Math.max(0, expiresAt.getTime() - Date.now()));
       } catch (error) {
@@ -124,12 +155,12 @@ const adminHTML = `<!doctype html>
 
     function clearPairing() {
       clearTimeout(pairingClearTimer);
-      pairingToken = '';
       document.getElementById('pairing').innerHTML = '';
     }
 
-    function renderPairing(expiresAt) {
-      document.getElementById('pairing').innerHTML = '<div class="card"><b>Pairing ready</b><div class="meta">One hidden pairing secret is active until ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="createPairing()">Renew</button> <button class="secondary" onclick="clearPairing()">Clear</button></div>';
+    function renderPairing(qrDataUrl, expiresAt) {
+      const qr = qrDataUrl ? '<img alt="Pairing QR" src="' + escapeHTML(qrDataUrl) + '" style="width:220px;height:220px;image-rendering:pixelated;display:block;margin:12px 0;">' : '';
+      document.getElementById('pairing').innerHTML = '<div class="card"><b>Connect device</b>' + qr + '<div class="meta">Scan this QR in the phone app. The pairing secret is hidden and expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="createPairing()">Renew</button> <button class="secondary" onclick="clearPairing()">Clear</button></div>';
     }
 
     function renderDevice(device) {
@@ -153,7 +184,9 @@ const adminHTML = `<!doctype html>
       return '<div class="card error"><b>Error</b><div>' + escapeHTML(message) + '</div></div>';
     }
 
-    document.getElementById('approvals').innerHTML = '<div class="card meta">Enter the bearer token and press Enter.</div>';
+    document.getElementById('approvals').innerHTML = serverMode === 'user'
+      ? '<div class="card meta">Sign in to connect this dashboard.</div>'
+      : '<div class="card meta">Enter the bearer token and press Enter.</div>';
   </script>
 </body>
 </html>`
@@ -161,5 +194,5 @@ const adminHTML = `<!doctype html>
 func (a *API) admin(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(adminHTML))
+	_, _ = w.Write([]byte(strings.Replace(adminHTML, "__MODE__", a.mode, 1)))
 }

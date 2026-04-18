@@ -55,6 +55,7 @@ type Response struct {
 type PairingToken struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	QRDataURL string    `json:"qrDataUrl,omitempty"`
 }
 
 type PairDeviceRequest struct {

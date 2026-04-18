@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -143,6 +144,9 @@ func TestAPIPairsDeviceToken(t *testing.T) {
 	)
 	if pairing.Token == "" {
 		t.Fatal("pairing token is empty")
+	}
+	if !strings.HasPrefix(pairing.QRDataURL, "data:image/png;base64,") {
+		t.Fatalf("pairing QR data URL = %q, want PNG data URL", pairing.QRDataURL)
 	}
 
 	credential := requestWithoutAuth[DeviceCredential](
