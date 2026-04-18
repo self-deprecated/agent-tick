@@ -209,15 +209,20 @@ export default function App() {
       const pending = await api<ApprovalRequest[]>(
         "/v1/approval-requests?status=pending",
       );
-      await notifyForNewRequests(pending, seenRequestIDs, didPrimeNotifications);
-      setRequests(pending);
+      const pendingRequests = normalizeApprovals(pending);
+      await notifyForNewRequests(
+        pendingRequests,
+        seenRequestIDs,
+        didPrimeNotifications,
+      );
+      setRequests(pendingRequests);
       setConnectionStatus("connected");
       setSelectedID((current) =>
-        selectApprovalID(pending, notificationTargetID, current),
+        selectApprovalID(pendingRequests, notificationTargetID, current),
       );
       if (
         notificationTargetID &&
-        pending.some((request) => request.id === notificationTargetID)
+        pendingRequests.some((request) => request.id === notificationTargetID)
       ) {
         setNotificationTargetID(null);
       }
@@ -262,7 +267,7 @@ export default function App() {
     setError(null);
     try {
       const allRequests = await api<ApprovalRequest[]>("/v1/approval-requests");
-      setHistory(allRequests);
+      setHistory(normalizeApprovals(allRequests));
       setConnectionStatus("connected");
     } catch (err) {
       setConnectionStatus("disconnected");
@@ -478,7 +483,7 @@ export default function App() {
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
-    const pending = (await response.json()) as ApprovalRequest[];
+    const pending = normalizeApprovals(await response.json());
     await notifyForNewRequests(pending, seenRequestIDs, didPrimeNotifications);
     setRequests(pending);
     setConnectionStatus("connected");
@@ -689,6 +694,10 @@ function selectApprovalID(
     return currentID;
   }
   return requests[0]?.id ?? null;
+}
+
+function normalizeApprovals(value: unknown): ApprovalRequest[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function isUsableProjectID(value: unknown): value is string {
@@ -915,7 +924,7 @@ function ApprovalsScreen({
       </ScrollView>
 
       <View style={styles.actions}>
-        {selected.choices.map((choice) => (
+        {(selected.choices ?? []).map((choice) => (
           <Pressable
             key={choice.id}
             onPress={() => onRespond(selected, choice)}

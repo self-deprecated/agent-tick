@@ -197,6 +197,9 @@ func (s *FileStore) load() ([]ApprovalRequest, error) {
 	if err := json.Unmarshal(data, &requests); err != nil {
 		return nil, err
 	}
+	if requests == nil {
+		return []ApprovalRequest{}, nil
+	}
 	return requests, nil
 }
 

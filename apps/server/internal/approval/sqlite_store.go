@@ -133,7 +133,7 @@ func (s *SQLiteStore) List(status string) ([]ApprovalRequest, error) {
 	}
 	defer rows.Close()
 
-	var requests []ApprovalRequest
+	requests := []ApprovalRequest{}
 	for rows.Next() {
 		request, err := scanRequest(rows)
 		if err != nil {
