@@ -164,6 +164,31 @@ func TestSQLiteStoreWritesAuditEvents(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreCreatesDefaultUser(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	if _, err := store.Create(CreateRequest{Title: "User scoped"}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	var count int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM users WHERE id = ?", defaultUserID).Scan(&count); err != nil {
+		t.Fatalf("Scan() users error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("default users = %d, want 1", count)
+	}
+
+	var userID string
+	if err := store.db.QueryRow("SELECT user_id FROM approval_requests LIMIT 1").Scan(&userID); err != nil {
+		t.Fatalf("Scan() approval user error = %v", err)
+	}
+	if userID != defaultUserID {
+		t.Fatalf("approval user_id = %q, want %q", userID, defaultUserID)
+	}
+}
+
 func TestSQLiteStoreManagesAgentTokens(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

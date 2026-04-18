@@ -17,6 +17,8 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
+const defaultUserID = "usr_default"
+
 func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -78,12 +80,13 @@ func (s *SQLiteStore) Create(input CreateRequest) (ApprovalRequest, error) {
 
 	_, err = tx.Exec(`
 		INSERT INTO approval_requests (
-			id, requester_json, title, body, command, choices_json,
+			id, user_id, requester_json, title, body, command, choices_json,
 			default_choice, allow_freeform_reply, expires_at, risk,
 			metadata_json, status, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		request.ID,
+		defaultUserID,
 		requesterJSON,
 		request.Title,
 		request.Body,
@@ -256,7 +259,8 @@ func (s *SQLiteStore) CreatePairingToken(ttl time.Duration) (PairingToken, error
 	expiresAt := now.Add(ttl)
 
 	_, err := s.db.Exec(
-		"INSERT INTO pairing_tokens (token_hash, expires_at, created_at) VALUES (?, ?, ?)",
+		"INSERT INTO pairing_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+		defaultUserID,
 		tokenHash(token),
 		timeText(&expiresAt),
 		timeText(&now),
@@ -299,8 +303,9 @@ func (s *SQLiteStore) PairDevice(token string, deviceName string) (DeviceCredent
 	deviceID := "dev_" + newID()
 	deviceToken := "device_" + newID()
 	_, err = tx.Exec(
-		"INSERT INTO devices (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)",
+		"INSERT INTO devices (id, user_id, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)",
 		deviceID,
+		defaultUserID,
 		deviceName,
 		tokenHash(deviceToken),
 		timeText(&now),
@@ -445,8 +450,9 @@ func (s *SQLiteStore) CreateAgentToken(name string, scopes []string) (AgentCrede
 	}
 
 	_, err = s.db.Exec(
-		"INSERT INTO agent_tokens (id, name, token_hash, scopes_json, created_at) VALUES (?, ?, ?, ?, ?)",
+		"INSERT INTO agent_tokens (id, user_id, name, token_hash, scopes_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 		agentID,
+		defaultUserID,
 		name,
 		tokenHash(token),
 		scopesJSON,
@@ -579,8 +585,16 @@ func (s *SQLiteStore) migrate() error {
 		PRAGMA journal_mode = WAL;
 		PRAGMA foreign_keys = ON;
 
+		CREATE TABLE IF NOT EXISTS users (
+			id TEXT PRIMARY KEY,
+			email TEXT NOT NULL DEFAULT '',
+			name TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS approval_requests (
 			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL DEFAULT 'usr_default',
 			requester_json TEXT NOT NULL,
 			title TEXT NOT NULL,
 			body TEXT NOT NULL DEFAULT '',
@@ -608,6 +622,7 @@ func (s *SQLiteStore) migrate() error {
 
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id TEXT NOT NULL DEFAULT 'usr_default',
 			event_type TEXT NOT NULL,
 			request_id TEXT NOT NULL,
 			payload_json TEXT NOT NULL DEFAULT '{}',
@@ -616,6 +631,7 @@ func (s *SQLiteStore) migrate() error {
 
 		CREATE TABLE IF NOT EXISTS pairing_tokens (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id TEXT NOT NULL DEFAULT 'usr_default',
 			token_hash TEXT NOT NULL UNIQUE,
 			expires_at TEXT NOT NULL,
 			created_at TEXT NOT NULL,
@@ -624,6 +640,7 @@ func (s *SQLiteStore) migrate() error {
 
 		CREATE TABLE IF NOT EXISTS devices (
 			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL DEFAULT 'usr_default',
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			expo_push_token TEXT NOT NULL DEFAULT '',
@@ -632,6 +649,7 @@ func (s *SQLiteStore) migrate() error {
 
 		CREATE TABLE IF NOT EXISTS agent_tokens (
 			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL DEFAULT 'usr_default',
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			scopes_json TEXT NOT NULL,
@@ -643,10 +661,46 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 
+	now := time.Now().UTC()
+	if _, err := s.db.Exec(
+		"INSERT OR IGNORE INTO users (id, email, name, created_at) VALUES (?, '', ?, ?)",
+		defaultUserID,
+		"Single User",
+		timeText(&now),
+	); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("approval_requests", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("audit_events", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("pairing_tokens", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("devices", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("agent_tokens", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("devices", "expo_push_token", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
-	return s.addColumnIfMissing("agent_tokens", "revoked_at", "TEXT NOT NULL DEFAULT ''")
+	if err := s.addColumnIfMissing("agent_tokens", "revoked_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		CREATE INDEX IF NOT EXISTS approval_requests_user_status_created_at_idx
+			ON approval_requests (user_id, status, created_at);
+		CREATE INDEX IF NOT EXISTS devices_user_created_at_idx
+			ON devices (user_id, created_at);
+		CREATE INDEX IF NOT EXISTS agent_tokens_user_created_at_idx
+			ON agent_tokens (user_id, created_at);
+	`)
+	return err
 }
 
 func (s *SQLiteStore) addColumnIfMissing(table string, column string, definition string) error {
