@@ -176,6 +176,47 @@ func TestAPIUserModeLoginScopesDashboardRequests(t *testing.T) {
 	}
 }
 
+func TestAPIUserModeCannotRevokeOtherUsersDevicesOrAgentTokens(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	aliceCookie := loginCookie(t, handler, "alice@example.com")
+	bobCookie := loginCookie(t, handler, "bob@example.com")
+
+	pairing := requestWithCookie[PairingToken](t, handler, aliceCookie, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
+	device := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairing.Token, DeviceName: "Alice Phone"})
+	agent := requestWithCookie[AgentCredential](t, handler, aliceCookie, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "alice-agent"})
+
+	rec := statusWithCookie(t, handler, bobCookie, http.MethodPost, "/v1/devices/"+device.DeviceID+"/unpair", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unpair status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusNotFound)
+	}
+	ok, err := store.VerifyDeviceToken(device.Token)
+	if err != nil {
+		t.Fatalf("VerifyDeviceToken() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("other user's device token was revoked")
+	}
+
+	rec = statusWithCookie(t, handler, bobCookie, http.MethodPost, "/v1/agent-tokens/"+agent.AgentID+"/revoke", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("revoke status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusNotFound)
+	}
+	ok, err = store.VerifyAgentToken(agent.Token, "approval:write")
+	if err != nil {
+		t.Fatalf("VerifyAgentToken() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("other user's agent token was revoked")
+	}
+}
+
 func TestAPIPairsDeviceToken(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
@@ -579,6 +620,57 @@ func requestWithoutAuth[T any](t *testing.T, handler http.Handler, method string
 		t.Fatalf("Decode() error = %v", err)
 	}
 	return output
+}
+
+func loginCookie(t *testing.T, handler http.Handler, email string) *http.Cookie {
+	t.Helper()
+
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(LoginRequest{Email: email, Password: "secret"}); err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/session", &body)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("cookies = %#v, want one session cookie", cookies)
+	}
+	return cookies[0]
+}
+
+func requestWithCookie[T any](t *testing.T, handler http.Handler, cookie *http.Cookie, method string, path string, input any) T {
+	t.Helper()
+
+	rec := statusWithCookie(t, handler, cookie, method, path, input)
+	if rec.Code < 200 || rec.Code >= 300 {
+		t.Fatalf("%s %s status = %d body = %s", method, path, rec.Code, rec.Body.String())
+	}
+
+	var output T
+	if err := json.NewDecoder(rec.Body).Decode(&output); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	return output
+}
+
+func statusWithCookie(t *testing.T, handler http.Handler, cookie *http.Cookie, method string, path string, input any) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var body bytes.Buffer
+	if input != nil {
+		if err := json.NewEncoder(&body).Encode(input); err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+	}
+	req := httptest.NewRequest(method, path, &body)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
 }
 
 type recordingEventBus struct {

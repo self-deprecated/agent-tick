@@ -45,6 +45,7 @@ type UserScopedPairingStore interface {
 	CreatePairingTokenForUser(userID string, ttl time.Duration) (PairingToken, error)
 	ListDevicesForUser(userID string) ([]DeviceRecord, error)
 	ListDevicePushTokensForUser(userID string) ([]string, error)
+	UnpairDeviceForUser(userID string, deviceID string) error
 }
 
 type AgentStore interface {
@@ -58,6 +59,7 @@ type AgentStore interface {
 type UserScopedAgentStore interface {
 	CreateAgentTokenForUser(userID string, name string, scopes []string) (AgentCredential, error)
 	ListAgentTokensForUser(userID string) ([]AgentTokenRecord, error)
+	RevokeAgentTokenForUser(userID string, agentID string) error
 }
 
 type UserTokenStore interface {

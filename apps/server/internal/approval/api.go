@@ -132,6 +132,13 @@ func (a *API) listDevicePushTokensForUser(userID string) ([]string, error) {
 	return a.pairings.ListDevicePushTokens()
 }
 
+func (a *API) unpairDeviceForUser(userID string, deviceID string) error {
+	if a.scopedPairings != nil {
+		return a.scopedPairings.UnpairDeviceForUser(userID, deviceID)
+	}
+	return a.pairings.UnpairDevice(deviceID)
+}
+
 func (a *API) createAgentTokenForUser(userID string, name string, scopes []string) (AgentCredential, error) {
 	if a.scopedAgents != nil {
 		return a.scopedAgents.CreateAgentTokenForUser(userID, name, scopes)
@@ -144,6 +151,13 @@ func (a *API) listAgentTokensForUser(userID string) ([]AgentTokenRecord, error) 
 		return a.scopedAgents.ListAgentTokensForUser(userID)
 	}
 	return a.agents.ListAgentTokens()
+}
+
+func (a *API) revokeAgentTokenForUser(userID string, agentID string) error {
+	if a.scopedAgents != nil {
+		return a.scopedAgents.RevokeAgentTokenForUser(userID, agentID)
+	}
+	return a.agents.RevokeAgentToken(agentID)
 }
 
 func (a *API) SetMode(mode string) error {
@@ -467,7 +481,7 @@ func (a *API) unpairDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	deviceID := r.PathValue("id")
-	if err := a.pairings.UnpairDevice(deviceID); errors.Is(err, ErrNotFound) {
+	if err := a.unpairDeviceForUser(currentAuth(r).UserID, deviceID); errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "device not found")
 		return
 	} else if err != nil {
@@ -483,7 +497,7 @@ func (a *API) revokeAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agentID := r.PathValue("id")
-	if err := a.agents.RevokeAgentToken(agentID); errors.Is(err, ErrNotFound) {
+	if err := a.revokeAgentTokenForUser(currentAuth(r).UserID, agentID); errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "agent token not found")
 		return
 	} else if err != nil {

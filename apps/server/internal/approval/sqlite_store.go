@@ -691,11 +691,19 @@ func (s *SQLiteStore) ListAgentTokensForUser(userID string) ([]AgentTokenRecord,
 }
 
 func (s *SQLiteStore) RevokeAgentToken(agentID string) error {
+	return s.RevokeAgentTokenForUser(defaultUserID, agentID)
+}
+
+func (s *SQLiteStore) RevokeAgentTokenForUser(userID string, agentID string) error {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	now := time.Now().UTC()
 	result, err := s.db.Exec(
-		"UPDATE agent_tokens SET revoked_at = ? WHERE id = ? AND revoked_at = ''",
+		"UPDATE agent_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at = ''",
 		timeText(&now),
 		agentID,
+		userID,
 	)
 	if err != nil {
 		return err
@@ -711,11 +719,19 @@ func (s *SQLiteStore) RevokeAgentToken(agentID string) error {
 }
 
 func (s *SQLiteStore) UnpairDevice(deviceID string) error {
+	return s.UnpairDeviceForUser(defaultUserID, deviceID)
+}
+
+func (s *SQLiteStore) UnpairDeviceForUser(userID string, deviceID string) error {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	now := time.Now().UTC()
 	result, err := s.db.Exec(
-		"UPDATE devices SET unpaired_at = ? WHERE id = ? AND unpaired_at = ''",
+		"UPDATE devices SET unpaired_at = ? WHERE id = ? AND user_id = ? AND unpaired_at = ''",
 		timeText(&now),
 		deviceID,
+		userID,
 	)
 	if err != nil {
 		return err
