@@ -193,6 +193,7 @@ func runPair(args []string) {
 	flags := flag.NewFlagSet("pair", flag.ExitOnError)
 	server := flags.String("server", getenv("AGENT_TICK_SERVER", "http://localhost:8787"), "Agent Tick server URL")
 	qr := flags.Bool("qr", true, "print a terminal QR code")
+	qrLarge := flags.Bool("qr-large", false, "print a larger terminal QR code")
 	_ = flags.Parse(args)
 
 	token, err := postJSON[approval.PairingToken](*server+"/v1/pairing-tokens", map[string]string{})
@@ -205,14 +206,28 @@ func runPair(args []string) {
 	fmt.Printf("server: %s\n", *server)
 	if *qr {
 		fmt.Println()
-		qrterminal.GenerateWithConfig(pairingPayload(*server, token.Token), qrterminal.Config{
-			Level:     qrterminal.L,
-			Writer:    os.Stdout,
-			BlackChar: "  ",
-			WhiteChar: "██",
-			QuietZone: 2,
-		})
+		printPairingQR(pairingPayload(*server, token.Token), *qrLarge)
 	}
+}
+
+func printPairingQR(payload string, large bool) {
+	config := qrterminal.Config{
+		Level:          qrterminal.L,
+		Writer:         os.Stdout,
+		HalfBlocks:     true,
+		BlackChar:      " ",
+		WhiteBlackChar: "▀",
+		WhiteChar:      "█",
+		BlackWhiteChar: "▄",
+		QuietZone:      1,
+	}
+	if large {
+		config.HalfBlocks = false
+		config.BlackChar = "  "
+		config.WhiteChar = "██"
+		config.QuietZone = 2
+	}
+	qrterminal.GenerateWithConfig(payload, config)
 }
 
 func runAgentToken(args []string) {
