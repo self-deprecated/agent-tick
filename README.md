@@ -94,6 +94,10 @@ Or guard a command:
 agent-tick guard -- npm install
 ```
 
+## Agent Skill
+
+This repo includes a Codex-compatible skill at `skills/agent-tick`. Install it into your agent's skills directory so the agent knows when to call `agent-tick guard`, `agent-tick request`, and `agent-tick setup`.
+
 ## Security Notes
 
 - Run production deployments behind HTTPS.

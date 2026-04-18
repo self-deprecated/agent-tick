@@ -132,6 +132,16 @@ agent-tick agent-token rotate agent_...
 
 The dashboard is preferred for user-mode agent tokens because it scopes tokens to the signed-in user.
 
+## Agent Skill
+
+The repo ships a Codex-compatible skill in `skills/agent-tick`.
+
+Validate it after edits:
+
+```sh
+python /home/jmo/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/agent-tick
+```
+
 ## Mobile
 
 Run the Expo app:
