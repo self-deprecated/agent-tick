@@ -2,6 +2,12 @@
 
 This project uses Devbox for local dependencies.
 
+Run the full local check loop:
+
+```sh
+devbox run check
+```
+
 ## Project Shape
 
 - `apps/server`: Go server and CLI in one binary.
@@ -205,4 +211,3 @@ Create a release by pushing a version tag:
 git tag v0.1.0
 git push origin v0.1.0
 ```
-

@@ -10,8 +10,17 @@
       "test": [
         "cd apps/server && go test ./..."
       ],
+      "vet": [
+        "cd apps/server && go vet ./..."
+      ],
       "typecheck": [
         "cd apps/mobile && npm run typecheck"
+      ],
+      "mobile:test": [
+        "cd apps/mobile && npm test -- --runInBand"
+      ],
+      "check": [
+        "cd apps/server && go test ./... && go vet ./... && cd ../mobile && npm run typecheck && npm test -- --runInBand"
       ],
       "server": [
         "cd apps/server && go run ./cmd/agent-tick server"
