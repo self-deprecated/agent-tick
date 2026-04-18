@@ -62,8 +62,8 @@ brews:
       name: homebrew-tap
     directory: Formula
     homepage: https://github.com/self-deprecated/agent-tick
-    description: Agent tick — server heartbeat daemon and CLI
-    license: MIT
+    description: Human-in-the-loop approval gateway for AI agents
+    license: BUSL-1.1
     install: |
       bin.install "agent-tick"
     test: |
@@ -76,5 +76,5 @@ scoops:
       name: scoop-bucket
     directory: bucket
     homepage: https://github.com/self-deprecated/agent-tick
-    description: Agent tick — server heartbeat daemon and CLI
-    license: MIT
+    description: Human-in-the-loop approval gateway for AI agents
+    license: BUSL-1.1
