@@ -300,7 +300,7 @@ func TestAPIRegistersDevicePushToken(t *testing.T) {
 func TestAPIAcceptsScopedAgentTokenForApprovalRequests(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
-	credential, err := store.CreateAgentToken("codex", []string{"approval:write", "approval:read"})
+	credential, err := store.CreateAgentToken("codex", []string{"approval:write"})
 	if err != nil {
 		t.Fatalf("CreateAgentToken() error = %v", err)
 	}
@@ -318,6 +318,30 @@ func TestAPIAcceptsScopedAgentTokenForApprovalRequests(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusCreated)
+	}
+
+	var created ApprovalRequest
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/v1/approval-requests/"+created.ID, nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	req.Header.Set("Authorization", "Bearer "+credential.Token)
+	rec = httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/approval-requests", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	req.Header.Set("Authorization", "Bearer "+credential.Token)
+	rec = httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("list status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
 	}
 }
 

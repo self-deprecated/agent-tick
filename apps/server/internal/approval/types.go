@@ -100,6 +100,11 @@ type AgentCredential struct {
 	Scopes  []string `json:"scopes"`
 }
 
+type CreateAgentTokenRequest struct {
+	Name   string   `json:"name"`
+	Scopes []string `json:"scopes,omitempty"`
+}
+
 type AgentTokenRecord struct {
 	AgentID   string     `json:"agentId"`
 	Name      string     `json:"name"`

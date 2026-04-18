@@ -48,6 +48,7 @@ const adminHTML = `<!doctype html>
     </section>
     <section id="session"></section>
     <section id="devices"></section>
+    <section id="agents"></section>
     <section id="approvals"></section>
   </main>
   <script>
@@ -93,7 +94,7 @@ const adminHTML = `<!doctype html>
     }
 
     async function refreshDashboard() {
-      await Promise.all([loadDevices(), loadApprovals()]);
+      await Promise.all([loadDevices(), loadAgents(), loadApprovals()]);
     }
 
     async function loadDevices() {
@@ -121,6 +122,37 @@ const adminHTML = `<!doctype html>
           : '<div class="card meta">No approval requests yet.</div>';
       } catch (error) {
         target.innerHTML = renderError(error.message);
+      }
+    }
+
+    async function loadAgents() {
+      const target = document.getElementById('agents');
+      target.innerHTML = '<details class="card"><summary>Agents</summary><div class="meta">Loading agents...</div></details>';
+      try {
+        const agents = await requestJSON('/v1/agent-tokens');
+        target.innerHTML = '<details class="card"><summary>Agents</summary>' + (
+          agents.length
+            ? agents.map(renderAgent).join('')
+            : '<div class="meta">No agent tokens yet.</div>'
+        ) + '<div id="new-agent-token"><button class="secondary" onclick="createAgentToken()">Create Agent Token</button></div></details>';
+      } catch (error) {
+        target.innerHTML = renderError(error.message);
+      }
+    }
+
+    async function createAgentToken() {
+      const target = document.getElementById('new-agent-token');
+      if (target) target.innerHTML = '<div class="meta">Creating token...</div>';
+      try {
+        const credential = await requestJSON('/v1/agent-tokens', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'agent', scopes: ['approval:write'] })
+        });
+        const origin = window.location.origin;
+        const command = 'AGENT_TICK_SERVER=' + shellQuote(origin) + ' AGENT_TICK_TOKEN=' + shellQuote(credential.token) + ' devbox run demo-request';
+        if (target) target.innerHTML = '<div class="meta">Copy this command now. The token will not be shown again.</div><pre>' + escapeHTML(command) + '</pre>';
+      } catch (error) {
+        if (target) target.innerHTML = renderError(error.message);
       }
     }
 
@@ -179,6 +211,15 @@ const adminHTML = `<!doctype html>
     function renderDevice(device) {
       const push = device.pushNotifications ? 'Push on' : 'Push off';
       return '<div><pre>' + escapeHTML(device.deviceId) + '</pre><div class="meta">' + escapeHTML(device.name) + ' · ' + push + ' · Paired ' + escapeHTML(new Date(device.createdAt).toLocaleString()) + '</div></div>';
+    }
+
+    function renderAgent(agent) {
+      const state = agent.revokedAt ? 'Revoked' : 'Active';
+      return '<div><pre>' + escapeHTML(agent.agentId) + '</pre><div class="meta">' + escapeHTML(agent.name) + ' · ' + state + ' · Created ' + escapeHTML(new Date(agent.createdAt).toLocaleString()) + '</div></div>';
+    }
+
+    function shellQuote(value) {
+      return "'" + String(value).replace(/'/g, "'\\''") + "'";
     }
 
     function renderApproval(approval) {

@@ -132,6 +132,20 @@ func (a *API) listDevicePushTokensForUser(userID string) ([]string, error) {
 	return a.pairings.ListDevicePushTokens()
 }
 
+func (a *API) createAgentTokenForUser(userID string, name string, scopes []string) (AgentCredential, error) {
+	if a.scopedAgents != nil {
+		return a.scopedAgents.CreateAgentTokenForUser(userID, name, scopes)
+	}
+	return a.agents.CreateAgentToken(name, scopes)
+}
+
+func (a *API) listAgentTokensForUser(userID string) ([]AgentTokenRecord, error) {
+	if a.scopedAgents != nil {
+		return a.scopedAgents.ListAgentTokensForUser(userID)
+	}
+	return a.agents.ListAgentTokens()
+}
+
 func (a *API) SetMode(mode string) error {
 	switch strings.TrimSpace(mode) {
 	case "", ModeSingle:
@@ -166,6 +180,8 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/devices", a.listDevices)
 	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/push-token", a.setDevicePushToken)
+	mux.HandleFunc("GET /v1/agent-tokens", a.listAgentTokens)
+	mux.HandleFunc("POST /v1/agent-tokens", a.createAgentToken)
 	mux.HandleFunc("GET /v1/events", a.eventsSocket)
 	return a.withAuth(a.withCORS(mux))
 }
@@ -409,6 +425,40 @@ func (a *API) setDevicePushToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (a *API) listAgentTokens(w http.ResponseWriter, r *http.Request) {
+	if a.agents == nil {
+		writeError(w, http.StatusNotImplemented, "agent tokens are not supported by this store")
+		return
+	}
+	records, err := a.listAgentTokensForUser(currentAuth(r).UserID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, records)
+}
+
+func (a *API) createAgentToken(w http.ResponseWriter, r *http.Request) {
+	if a.agents == nil {
+		writeError(w, http.StatusNotImplemented, "agent tokens are not supported by this store")
+		return
+	}
+	var input CreateAgentTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid agent token JSON")
+		return
+	}
+	if len(input.Scopes) == 0 {
+		input.Scopes = []string{"approval:write"}
+	}
+	credential, err := a.createAgentTokenForUser(currentAuth(r).UserID, input.Name, input.Scopes)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, credential)
+}
+
 func (a *API) sendPush(request ApprovalRequest) {
 	if a.pairings == nil || a.push == nil {
 		return
@@ -525,8 +575,11 @@ func requiredScope(r *http.Request) string {
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests" {
 		return "approval:write"
 	}
-	if strings.HasPrefix(r.URL.Path, "/v1/approval-requests") && r.Method == http.MethodGet {
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests" {
 		return "approval:read"
+	}
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/approval-requests/") {
+		return "approval:write"
 	}
 	return "admin"
 }
