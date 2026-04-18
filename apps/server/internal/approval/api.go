@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -513,9 +514,12 @@ func (a *API) sendPush(request ApprovalRequest) {
 	}
 	tokens, err := a.listDevicePushTokensForUser(request.UserID)
 	if err != nil {
+		log.Printf("list push tokens for request %s: %v", request.ID, err)
 		return
 	}
-	_ = a.push.SendApprovalRequest(tokens, request)
+	if err := a.push.SendApprovalRequest(tokens, request); err != nil {
+		log.Printf("send push for request %s: %v", request.ID, err)
+	}
 }
 
 func (a *API) canManageDevice(r *http.Request, deviceID string) bool {

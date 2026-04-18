@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -51,6 +52,9 @@ func (s *PushSender) SendApprovalRequest(tokens []string, request ApprovalReques
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("expo push service returned %s", resp.Status)
 	}
+	if err := checkExpoPushTickets(resp.Body); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -61,6 +65,48 @@ type expoPushMessage struct {
 	Body       string            `json:"body"`
 	CategoryID string            `json:"categoryId,omitempty"`
 	Data       map[string]string `json:"data"`
+}
+
+type expoPushTicket struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type expoPushResponse struct {
+	Data []expoPushTicket `json:"data"`
+}
+
+func checkExpoPushTickets(body io.Reader) error {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
+
+	var wrapped expoPushResponse
+	if err := json.Unmarshal(data, &wrapped); err == nil && wrapped.Data != nil {
+		return firstExpoTicketError(wrapped.Data)
+	}
+
+	var tickets []expoPushTicket
+	if err := json.Unmarshal(data, &tickets); err != nil {
+		return err
+	}
+	return firstExpoTicketError(tickets)
+}
+
+func firstExpoTicketError(tickets []expoPushTicket) error {
+	for _, ticket := range tickets {
+		if ticket.Status == "error" {
+			if ticket.Message == "" {
+				return fmt.Errorf("expo push ticket error")
+			}
+			return fmt.Errorf("expo push ticket error: %s", ticket.Message)
+		}
+	}
+	return nil
 }
 
 func pushTitle(request ApprovalRequest) string {
