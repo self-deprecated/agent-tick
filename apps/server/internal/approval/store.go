@@ -23,6 +23,13 @@ type Store interface {
 	Respond(id string, response Response) (ApprovalRequest, error)
 }
 
+type UserScopedStore interface {
+	CreateForUser(userID string, input CreateRequest) (ApprovalRequest, error)
+	ListForUser(userID string, status string) ([]ApprovalRequest, error)
+	GetForUser(userID string, id string) (ApprovalRequest, error)
+	RespondForUser(userID string, id string, response Response) (ApprovalRequest, error)
+}
+
 type PairingStore interface {
 	CreatePairingToken(ttl time.Duration) (PairingToken, error)
 	PairDevice(token string, deviceName string) (DeviceCredential, error)
@@ -33,12 +40,23 @@ type PairingStore interface {
 	ListDevicePushTokens() ([]string, error)
 }
 
+type UserScopedPairingStore interface {
+	CreatePairingTokenForUser(userID string, ttl time.Duration) (PairingToken, error)
+	ListDevicesForUser(userID string) ([]DeviceRecord, error)
+	ListDevicePushTokensForUser(userID string) ([]string, error)
+}
+
 type AgentStore interface {
 	CreateAgentToken(name string, scopes []string) (AgentCredential, error)
 	VerifyAgentToken(token string, scope string) (bool, error)
 	ListAgentTokens() ([]AgentTokenRecord, error)
 	RevokeAgentToken(agentID string) error
 	RotateAgentToken(agentID string) (AgentCredential, error)
+}
+
+type UserScopedAgentStore interface {
+	CreateAgentTokenForUser(userID string, name string, scopes []string) (AgentCredential, error)
+	ListAgentTokensForUser(userID string) ([]AgentTokenRecord, error)
 }
 
 type UserTokenStore interface {

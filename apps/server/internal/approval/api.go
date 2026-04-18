@@ -14,8 +14,11 @@ import (
 
 type API struct {
 	store            Store
+	scopedStore      UserScopedStore
 	pairings         PairingStore
+	scopedPairings   UserScopedPairingStore
 	agents           AgentStore
+	scopedAgents     UserScopedAgentStore
 	push             *PushSender
 	events           *EventHub
 	userTokens       UserTokenStore
@@ -25,11 +28,20 @@ type API struct {
 
 func NewAPI(store Store, token string) *API {
 	api := &API{store: store, push: NewPushSender(), events: NewEventHub(), token: token}
+	if scopedStore, ok := store.(UserScopedStore); ok {
+		api.scopedStore = scopedStore
+	}
 	if pairings, ok := store.(PairingStore); ok {
 		api.pairings = pairings
 	}
+	if scopedPairings, ok := store.(UserScopedPairingStore); ok {
+		api.scopedPairings = scopedPairings
+	}
 	if agents, ok := store.(AgentStore); ok {
 		api.agents = agents
+	}
+	if scopedAgents, ok := store.(UserScopedAgentStore); ok {
+		api.scopedAgents = scopedAgents
 	}
 	if userTokens, ok := store.(UserTokenStore); ok {
 		api.userTokens = userTokens
@@ -53,6 +65,55 @@ func currentAuth(r *http.Request) authContext {
 		return authContext{UserID: defaultUserID}
 	}
 	return auth
+}
+
+func (a *API) createForUser(userID string, input CreateRequest) (ApprovalRequest, error) {
+	if a.scopedStore != nil {
+		return a.scopedStore.CreateForUser(userID, input)
+	}
+	return a.store.Create(input)
+}
+
+func (a *API) listForUser(userID string, status string) ([]ApprovalRequest, error) {
+	if a.scopedStore != nil {
+		return a.scopedStore.ListForUser(userID, status)
+	}
+	return a.store.List(status)
+}
+
+func (a *API) getForUser(userID string, id string) (ApprovalRequest, error) {
+	if a.scopedStore != nil {
+		return a.scopedStore.GetForUser(userID, id)
+	}
+	return a.store.Get(id)
+}
+
+func (a *API) respondForUser(userID string, id string, response Response) (ApprovalRequest, error) {
+	if a.scopedStore != nil {
+		return a.scopedStore.RespondForUser(userID, id, response)
+	}
+	return a.store.Respond(id, response)
+}
+
+func (a *API) createPairingTokenForUser(userID string, ttl time.Duration) (PairingToken, error) {
+	if a.scopedPairings != nil {
+		return a.scopedPairings.CreatePairingTokenForUser(userID, ttl)
+	}
+	return a.pairings.CreatePairingToken(ttl)
+}
+
+func (a *API) listDevicesForUser(userID string) ([]DeviceRecord, error) {
+	if a.scopedPairings != nil {
+		return a.scopedPairings.ListDevicesForUser(userID)
+	}
+	return a.pairings.ListDevices()
+}
+
+func (a *API) listDevicePushTokensForUser(userID string) ([]string, error) {
+	if a.scopedPairings != nil {
+		return a.scopedPairings.ListDevicePushTokensForUser(userID)
+	}
+	return a.pairings.ListDevicePushTokens()
 }
 
 func (a *API) RequireSignatures(required bool) {
@@ -102,7 +163,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, err := a.store.Create(input)
+	request, err := a.createForUser(currentAuth(r).UserID, input)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -113,7 +174,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	requests, err := a.store.List(r.URL.Query().Get("status"))
+	requests, err := a.listForUser(currentAuth(r).UserID, r.URL.Query().Get("status"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -122,7 +183,7 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) get(w http.ResponseWriter, r *http.Request) {
-	request, err := a.store.Get(r.PathValue("id"))
+	request, err := a.getForUser(currentAuth(r).UserID, r.PathValue("id"))
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "approval request not found")
 		return
@@ -150,7 +211,7 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, err := a.store.Respond(r.PathValue("id"), response)
+	request, err := a.respondForUser(currentAuth(r).UserID, r.PathValue("id"), response)
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "approval request not found")
 		return
@@ -174,13 +235,13 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, request)
 }
 
-func (a *API) createPairingToken(w http.ResponseWriter, _ *http.Request) {
+func (a *API) createPairingToken(w http.ResponseWriter, r *http.Request) {
 	if a.pairings == nil {
 		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
 		return
 	}
 
-	token, err := a.pairings.CreatePairingToken(10 * time.Minute)
+	token, err := a.createPairingTokenForUser(currentAuth(r).UserID, 10*time.Minute)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -188,12 +249,12 @@ func (a *API) createPairingToken(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusCreated, token)
 }
 
-func (a *API) listDevices(w http.ResponseWriter, _ *http.Request) {
+func (a *API) listDevices(w http.ResponseWriter, r *http.Request) {
 	if a.pairings == nil {
 		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
 		return
 	}
-	devices, err := a.pairings.ListDevices()
+	devices, err := a.listDevicesForUser(currentAuth(r).UserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -261,7 +322,7 @@ func (a *API) sendPush(request ApprovalRequest) {
 	if a.pairings == nil || a.push == nil {
 		return
 	}
-	tokens, err := a.pairings.ListDevicePushTokens()
+	tokens, err := a.listDevicePushTokensForUser(request.UserID)
 	if err != nil {
 		return
 	}

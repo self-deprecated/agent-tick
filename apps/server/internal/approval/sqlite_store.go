@@ -38,6 +38,13 @@ func (s *SQLiteStore) Close() error {
 }
 
 func (s *SQLiteStore) Create(input CreateRequest) (ApprovalRequest, error) {
+	return s.CreateForUser(defaultUserID, input)
+}
+
+func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (ApprovalRequest, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	if len(input.Choices) == 0 {
 		input.Choices = DefaultChoices()
 	}
@@ -45,6 +52,7 @@ func (s *SQLiteStore) Create(input CreateRequest) (ApprovalRequest, error) {
 	now := time.Now().UTC()
 	request := ApprovalRequest{
 		ID:                 newID(),
+		UserID:             userID,
 		Requester:          input.Requester,
 		Title:              input.Title,
 		Body:               input.Body,
@@ -86,7 +94,7 @@ func (s *SQLiteStore) Create(input CreateRequest) (ApprovalRequest, error) {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		request.ID,
-		defaultUserID,
+		userID,
 		requesterJSON,
 		request.Title,
 		request.Body,
@@ -103,29 +111,37 @@ func (s *SQLiteStore) Create(input CreateRequest) (ApprovalRequest, error) {
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
-	if err := insertAudit(tx, "approval_request.created", request.ID, nil); err != nil {
+	if err := insertAuditForUser(tx, userID, "approval_request.created", request.ID, nil); err != nil {
 		return ApprovalRequest{}, err
 	}
 	return request, tx.Commit()
 }
 
 func (s *SQLiteStore) List(status string) ([]ApprovalRequest, error) {
+	return s.ListForUser(defaultUserID, status)
+}
+
+func (s *SQLiteStore) ListForUser(userID string, status string) ([]ApprovalRequest, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	if err := s.expirePendingRequests(); err != nil {
 		return nil, err
 	}
 
 	query := `
 		SELECT
-			r.id, r.requester_json, r.title, r.body, r.command, r.choices_json,
+			r.id, r.user_id, r.requester_json, r.title, r.body, r.command, r.choices_json,
 			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
 			r.metadata_json, r.status, r.created_at,
 			resp.choice_id, resp.message, resp.created_at
 		FROM approval_requests r
 		LEFT JOIN approval_responses resp ON resp.request_id = r.id
+		WHERE r.user_id = ?
 	`
-	args := []any{}
+	args := []any{userID}
 	if status != "" {
-		query += " WHERE r.status = ?"
+		query += " AND r.status = ?"
 		args = append(args, status)
 	}
 	query += " ORDER BY r.created_at DESC"
@@ -148,20 +164,27 @@ func (s *SQLiteStore) List(status string) ([]ApprovalRequest, error) {
 }
 
 func (s *SQLiteStore) Get(id string) (ApprovalRequest, error) {
+	return s.GetForUser(defaultUserID, id)
+}
+
+func (s *SQLiteStore) GetForUser(userID string, id string) (ApprovalRequest, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	if err := s.expirePendingRequests(); err != nil {
 		return ApprovalRequest{}, err
 	}
 
 	row := s.db.QueryRow(`
 		SELECT
-			r.id, r.requester_json, r.title, r.body, r.command, r.choices_json,
+			r.id, r.user_id, r.requester_json, r.title, r.body, r.command, r.choices_json,
 			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
 			r.metadata_json, r.status, r.created_at,
 			resp.choice_id, resp.message, resp.created_at
 		FROM approval_requests r
 		LEFT JOIN approval_responses resp ON resp.request_id = r.id
-		WHERE r.id = ?
-	`, id)
+		WHERE r.id = ? AND r.user_id = ?
+	`, id, userID)
 
 	request, err := scanRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -171,6 +194,13 @@ func (s *SQLiteStore) Get(id string) (ApprovalRequest, error) {
 }
 
 func (s *SQLiteStore) Respond(id string, response Response) (ApprovalRequest, error) {
+	return s.RespondForUser(defaultUserID, id, response)
+}
+
+func (s *SQLiteStore) RespondForUser(userID string, id string, response Response) (ApprovalRequest, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	if err := s.expirePendingRequests(); err != nil {
 		return ApprovalRequest{}, err
 	}
@@ -183,14 +213,14 @@ func (s *SQLiteStore) Respond(id string, response Response) (ApprovalRequest, er
 
 	row := tx.QueryRow(`
 		SELECT
-			r.id, r.requester_json, r.title, r.body, r.command, r.choices_json,
+			r.id, r.user_id, r.requester_json, r.title, r.body, r.command, r.choices_json,
 			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
 			r.metadata_json, r.status, r.created_at,
 			resp.choice_id, resp.message, resp.created_at
 		FROM approval_requests r
 		LEFT JOIN approval_responses resp ON resp.request_id = r.id
-		WHERE r.id = ?
-	`, id)
+		WHERE r.id = ? AND r.user_id = ?
+	`, id, userID)
 
 	request, err := scanRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -229,7 +259,7 @@ func (s *SQLiteStore) Respond(id string, response Response) (ApprovalRequest, er
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
-	if err := insertAudit(tx, "approval_request.responded", request.ID, response); err != nil {
+	if err := insertAuditForUser(tx, userID, "approval_request.responded", request.ID, response); err != nil {
 		return ApprovalRequest{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -254,13 +284,20 @@ func (s *SQLiteStore) expirePendingRequests() error {
 }
 
 func (s *SQLiteStore) CreatePairingToken(ttl time.Duration) (PairingToken, error) {
+	return s.CreatePairingTokenForUser(defaultUserID, ttl)
+}
+
+func (s *SQLiteStore) CreatePairingTokenForUser(userID string, ttl time.Duration) (PairingToken, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	token := "pair_" + newID()
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl)
 
 	_, err := s.db.Exec(
 		"INSERT INTO pairing_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
-		defaultUserID,
+		userID,
 		tokenHash(token),
 		timeText(&expiresAt),
 		timeText(&now),
@@ -288,11 +325,12 @@ func (s *SQLiteStore) PairDevice(token string, deviceName string) (DeviceCredent
 	defer rollback(tx)
 
 	var tokenID int64
+	var userID string
 	err = tx.QueryRow(`
-		SELECT id
+		SELECT id, user_id
 		FROM pairing_tokens
 		WHERE token_hash = ? AND used_at = '' AND expires_at > ?
-	`, tokenHash(token), timeText(&now)).Scan(&tokenID)
+	`, tokenHash(token), timeText(&now)).Scan(&tokenID, &userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return DeviceCredential{}, ErrNotFound
 	}
@@ -305,7 +343,7 @@ func (s *SQLiteStore) PairDevice(token string, deviceName string) (DeviceCredent
 	_, err = tx.Exec(
 		"INSERT INTO devices (id, user_id, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)",
 		deviceID,
-		defaultUserID,
+		userID,
 		deviceName,
 		tokenHash(deviceToken),
 		timeText(&now),
@@ -401,7 +439,14 @@ func (s *SQLiteStore) SetDevicePushToken(deviceID string, token string) error {
 }
 
 func (s *SQLiteStore) ListDevicePushTokens() ([]string, error) {
-	rows, err := s.db.Query("SELECT expo_push_token FROM devices WHERE expo_push_token != ''")
+	return s.ListDevicePushTokensForUser(defaultUserID)
+}
+
+func (s *SQLiteStore) ListDevicePushTokensForUser(userID string) ([]string, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	rows, err := s.db.Query("SELECT expo_push_token FROM devices WHERE user_id = ? AND expo_push_token != ''", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +464,14 @@ func (s *SQLiteStore) ListDevicePushTokens() ([]string, error) {
 }
 
 func (s *SQLiteStore) ListDevices() ([]DeviceRecord, error) {
-	rows, err := s.db.Query("SELECT id, name, expo_push_token, created_at FROM devices ORDER BY created_at DESC")
+	return s.ListDevicesForUser(defaultUserID)
+}
+
+func (s *SQLiteStore) ListDevicesForUser(userID string) ([]DeviceRecord, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	rows, err := s.db.Query("SELECT id, name, expo_push_token, created_at FROM devices WHERE user_id = ? ORDER BY created_at DESC", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -445,6 +497,13 @@ func (s *SQLiteStore) ListDevices() ([]DeviceRecord, error) {
 }
 
 func (s *SQLiteStore) CreateAgentToken(name string, scopes []string) (AgentCredential, error) {
+	return s.CreateAgentTokenForUser(defaultUserID, name, scopes)
+}
+
+func (s *SQLiteStore) CreateAgentTokenForUser(userID string, name string, scopes []string) (AgentCredential, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	if strings.TrimSpace(name) == "" {
 		name = "agent"
 	}
@@ -462,7 +521,7 @@ func (s *SQLiteStore) CreateAgentToken(name string, scopes []string) (AgentCrede
 	_, err = s.db.Exec(
 		"INSERT INTO agent_tokens (id, user_id, name, token_hash, scopes_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 		agentID,
-		defaultUserID,
+		userID,
 		name,
 		tokenHash(token),
 		scopesJSON,
@@ -507,7 +566,14 @@ func (s *SQLiteStore) UserIDForAgentToken(token string, scope string) (string, b
 }
 
 func (s *SQLiteStore) ListAgentTokens() ([]AgentTokenRecord, error) {
-	rows, err := s.db.Query("SELECT id, name, scopes_json, created_at, revoked_at FROM agent_tokens ORDER BY created_at DESC")
+	return s.ListAgentTokensForUser(defaultUserID)
+}
+
+func (s *SQLiteStore) ListAgentTokensForUser(userID string) ([]AgentTokenRecord, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	rows, err := s.db.Query("SELECT id, name, scopes_json, created_at, revoked_at FROM agent_tokens WHERE user_id = ? ORDER BY created_at DESC", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -766,6 +832,7 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 
 	err := scanner.Scan(
 		&request.ID,
+		&request.UserID,
 		&requesterJSON,
 		&request.Title,
 		&request.Body,
@@ -819,13 +886,21 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 }
 
 func insertAudit(tx *sql.Tx, eventType string, requestID string, payload any) error {
+	return insertAuditForUser(tx, defaultUserID, eventType, requestID, payload)
+}
+
+func insertAuditForUser(tx *sql.Tx, userID string, eventType string, requestID string, payload any) error {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
 	payloadJSON, err := marshalJSON(payload)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(
-		"INSERT INTO audit_events (event_type, request_id, payload_json, created_at) VALUES (?, ?, ?, ?)",
+		"INSERT INTO audit_events (user_id, event_type, request_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+		userID,
 		eventType,
 		requestID,
 		payloadJSON,

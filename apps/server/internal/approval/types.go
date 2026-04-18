@@ -30,6 +30,7 @@ type CreateRequest struct {
 
 type ApprovalRequest struct {
 	ID                 string            `json:"id"`
+	UserID             string            `json:"userId,omitempty"`
 	Requester          Requester         `json:"requester"`
 	Title              string            `json:"title"`
 	Body               string            `json:"body,omitempty"`

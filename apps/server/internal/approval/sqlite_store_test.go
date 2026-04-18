@@ -189,6 +189,62 @@ func TestSQLiteStoreCreatesDefaultUser(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreScopesRequestsByUser(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	defaultRequest, err := store.CreateForUser(defaultUserID, CreateRequest{Title: "Default"})
+	if err != nil {
+		t.Fatalf("CreateForUser(default) error = %v", err)
+	}
+	otherRequest, err := store.CreateForUser("usr_other", CreateRequest{Title: "Other"})
+	if err != nil {
+		t.Fatalf("CreateForUser(other) error = %v", err)
+	}
+
+	defaultRequests, err := store.ListForUser(defaultUserID, "")
+	if err != nil {
+		t.Fatalf("ListForUser(default) error = %v", err)
+	}
+	if len(defaultRequests) != 1 || defaultRequests[0].ID != defaultRequest.ID {
+		t.Fatalf("default requests = %#v, want only %s", defaultRequests, defaultRequest.ID)
+	}
+
+	if _, err := store.GetForUser(defaultUserID, otherRequest.ID); err != ErrNotFound {
+		t.Fatalf("GetForUser(default, other) error = %v, want %v", err, ErrNotFound)
+	}
+}
+
+func TestSQLiteStoreScopesPairingByUser(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	pairing, err := store.CreatePairingTokenForUser("usr_other", time.Minute)
+	if err != nil {
+		t.Fatalf("CreatePairingTokenForUser() error = %v", err)
+	}
+	credential, err := store.PairDevice(pairing.Token, "iPhone")
+	if err != nil {
+		t.Fatalf("PairDevice() error = %v", err)
+	}
+
+	defaultDevices, err := store.ListDevicesForUser(defaultUserID)
+	if err != nil {
+		t.Fatalf("ListDevicesForUser(default) error = %v", err)
+	}
+	if len(defaultDevices) != 0 {
+		t.Fatalf("default devices = %#v, want none", defaultDevices)
+	}
+
+	otherDevices, err := store.ListDevicesForUser("usr_other")
+	if err != nil {
+		t.Fatalf("ListDevicesForUser(other) error = %v", err)
+	}
+	if len(otherDevices) != 1 || otherDevices[0].DeviceID != credential.DeviceID {
+		t.Fatalf("other devices = %#v, want %s", otherDevices, credential.DeviceID)
+	}
+}
+
 func TestSQLiteStoreManagesAgentTokens(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
