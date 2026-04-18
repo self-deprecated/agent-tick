@@ -55,6 +55,29 @@ func TestAPICreateListRespond(t *testing.T) {
 	}
 }
 
+func TestAPIEventsPublishOnRespondNotGet(t *testing.T) {
+	api := NewAPI(
+		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
+		"test-token",
+	)
+	events := &recordingEventBus{}
+	api.events = events
+	handler := api.Handler()
+
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?"})
+	events.assertEvents(t, Event{Type: "approval.created", RequestID: created.ID})
+
+	_ = request[ApprovalRequest](t, handler, http.MethodGet, "/v1/approval-requests/"+created.ID, nil)
+	events.assertEvents(t, Event{Type: "approval.created", RequestID: created.ID})
+
+	_ = request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
+	events.assertEvents(
+		t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.responded", RequestID: created.ID},
+	)
+}
+
 func TestAPIRequiresAuthForRemoteRequests(t *testing.T) {
 	handler := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token").Handler()
 	req := httptest.NewRequest(http.MethodGet, "/v1/approval-requests", nil)
@@ -556,4 +579,29 @@ func requestWithoutAuth[T any](t *testing.T, handler http.Handler, method string
 		t.Fatalf("Decode() error = %v", err)
 	}
 	return output
+}
+
+type recordingEventBus struct {
+	events []Event
+}
+
+func (b *recordingEventBus) Subscribe(w http.ResponseWriter, _ *http.Request) error {
+	w.WriteHeader(http.StatusSwitchingProtocols)
+	return nil
+}
+
+func (b *recordingEventBus) Publish(event Event) {
+	b.events = append(b.events, event)
+}
+
+func (b *recordingEventBus) assertEvents(t *testing.T, want ...Event) {
+	t.Helper()
+	if len(b.events) != len(want) {
+		t.Fatalf("events = %#v, want %#v", b.events, want)
+	}
+	for i := range want {
+		if b.events[i] != want[i] {
+			t.Fatalf("events = %#v, want %#v", b.events, want)
+		}
+	}
 }

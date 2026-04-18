@@ -23,7 +23,7 @@ type API struct {
 	agents           AgentStore
 	scopedAgents     UserScopedAgentStore
 	push             *PushSender
-	events           *EventHub
+	events           eventBus
 	userTokens       UserTokenStore
 	accounts         UserAccountStore
 	token            string
@@ -300,7 +300,6 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	a.events.Publish(Event{Type: "approval.responded", RequestID: request.ID})
 	writeJSON(w, http.StatusOK, request)
 }
 
@@ -340,6 +339,7 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	a.events.Publish(Event{Type: "approval.responded", RequestID: request.ID})
 	writeJSON(w, http.StatusOK, request)
 }
 

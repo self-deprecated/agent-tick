@@ -15,6 +15,11 @@ type Event struct {
 	RequestID string `json:"requestId,omitempty"`
 }
 
+type eventBus interface {
+	Subscribe(w http.ResponseWriter, r *http.Request) error
+	Publish(event Event)
+}
+
 type EventHub struct {
 	mu      sync.Mutex
 	clients map[*websocket.Conn]struct{}
@@ -34,21 +39,18 @@ func (h *EventHub) Subscribe(w http.ResponseWriter, r *http.Request) error {
 	h.clients[conn] = struct{}{}
 	h.mu.Unlock()
 
-	go func() {
-		defer func() {
-			h.mu.Lock()
-			delete(h.clients, conn)
-			h.mu.Unlock()
-			_ = conn.Close(websocket.StatusNormalClosure, "")
-		}()
-
-		for {
-			if _, _, err := conn.Read(r.Context()); err != nil {
-				return
-			}
-		}
+	defer func() {
+		h.mu.Lock()
+		delete(h.clients, conn)
+		h.mu.Unlock()
+		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
-	return nil
+
+	for {
+		if _, _, err := conn.Read(r.Context()); err != nil {
+			return nil
+		}
+	}
 }
 
 func (h *EventHub) Publish(event Event) {
