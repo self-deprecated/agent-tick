@@ -412,8 +412,8 @@ export default function App() {
       setDeviceID(credential.deviceId);
       setToken(credential.token);
       setPairingCode("");
+      await loadWithCredentials(activeServerURL, credential.token);
       Alert.alert("Paired", "This device can now receive approval requests.");
-      setConnectionStatus("connected");
       setScreen("approvals");
     } catch (err) {
       Alert.alert(
@@ -423,6 +423,28 @@ export default function App() {
     } finally {
       pairingInFlight.current = false;
     }
+  };
+
+  const loadWithCredentials = async (activeServerURL: string, activeToken: string) => {
+    const response = await fetch(
+      `${activeServerURL}/v1/approval-requests?status=pending`,
+      {
+        headers: {
+          Authorization: `Bearer ${activeToken}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+    const pending = (await response.json()) as ApprovalRequest[];
+    await notifyForNewRequests(pending, seenRequestIDs, didPrimeNotifications);
+    setRequests(pending);
+    setConnectionStatus("connected");
+    setSelectedID((current) =>
+      selectApprovalID(pending, notificationTargetID, current),
+    );
   };
 
   const registerPushToken = async (
