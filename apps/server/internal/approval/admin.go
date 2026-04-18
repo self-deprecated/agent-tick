@@ -14,8 +14,10 @@ const adminHTML = `<!doctype html>
     main { padding: 20px; display: grid; gap: 16px; }
     input, button { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid #ded6c6; }
     button { background: #202124; color: white; font-weight: 800; cursor: pointer; }
+    button.secondary { background: white; color: #202124; }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
     .card { background: white; border: 1px solid #ded6c6; border-radius: 8px; padding: 14px; }
+    .error { background: #fff0f0; border-color: #c43737; color: #8a1f1f; }
     .meta { color: #6d6657; font-size: 13px; font-weight: 700; }
     pre { white-space: pre-wrap; background: #202124; color: #f8f5ed; padding: 12px; border-radius: 8px; overflow: auto; }
     .status { text-transform: uppercase; font-size: 12px; font-weight: 900; }
@@ -39,6 +41,7 @@ const adminHTML = `<!doctype html>
   </main>
   <script>
     const tokenInput = document.getElementById('token');
+    let pairingClearTimer;
     tokenInput.value = localStorage.getItem('agent-tick.adminToken') || '';
     tokenInput.addEventListener('input', () => localStorage.setItem('agent-tick.adminToken', tokenInput.value));
 
@@ -47,24 +50,51 @@ const adminHTML = `<!doctype html>
     }
 
     async function loadApprovals() {
-      const response = await fetch('/v1/approval-requests', { headers: headers() });
-      const approvals = await response.json();
-      document.getElementById('approvals').innerHTML = approvals.map(renderApproval).join('');
+      const target = document.getElementById('approvals');
+      target.innerHTML = '<div class="card meta">Loading approvals...</div>';
+      try {
+        const approvals = await requestJSON('/v1/approval-requests');
+        target.innerHTML = approvals.length
+          ? approvals.map(renderApproval).join('')
+          : '<div class="card meta">No approval requests yet.</div>';
+      } catch (error) {
+        target.innerHTML = renderError(error.message);
+      }
     }
 
     async function createPairing() {
-      const response = await fetch('/v1/pairing-tokens', { method: 'POST', headers: headers(), body: '{}' });
-      const pairing = await response.json();
-      document.getElementById('pairing').innerHTML = '<div class="card"><b>Pairing code</b><pre>' + pairing.token + '</pre><div class="meta">Expires ' + pairing.expiresAt + '</div></div>';
+      try {
+        const pairing = await requestJSON('/v1/pairing-tokens', { method: 'POST', body: '{}' });
+        const expiresAt = new Date(pairing.expiresAt);
+        document.getElementById('pairing').innerHTML = '<div class="card"><b>Pairing code</b><pre>' + escapeHTML(pairing.token) + '</pre><div class="meta">Secret. Expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="clearPairing()">Hide</button></div>';
+        clearTimeout(pairingClearTimer);
+        pairingClearTimer = setTimeout(clearPairing, Math.max(0, expiresAt.getTime() - Date.now()));
+      } catch (error) {
+        document.getElementById('pairing').innerHTML = renderError(error.message);
+      }
     }
 
     async function respond(id, choiceId) {
-      await fetch('/v1/approval-requests/' + id + '/responses', {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify({ choiceId })
-      });
-      await loadApprovals();
+      try {
+        await requestJSON('/v1/approval-requests/' + id + '/responses', { method: 'POST', body: JSON.stringify({ choiceId }) });
+        await loadApprovals();
+      } catch (error) {
+        document.getElementById('approvals').innerHTML = renderError(error.message);
+      }
+    }
+
+    async function requestJSON(path, options = {}) {
+      const response = await fetch(path, { ...options, headers: headers() });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error || response.statusText);
+      }
+      return body;
+    }
+
+    function clearPairing() {
+      clearTimeout(pairingClearTimer);
+      document.getElementById('pairing').innerHTML = '';
     }
 
     function renderApproval(approval) {
@@ -79,7 +109,11 @@ const adminHTML = `<!doctype html>
       return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
-    loadApprovals().catch(console.error);
+    function renderError(message) {
+      return '<div class="card error"><b>Error</b><div>' + escapeHTML(message) + '</div></div>';
+    }
+
+    loadApprovals();
   </script>
 </body>
 </html>`
