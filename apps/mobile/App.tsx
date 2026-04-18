@@ -623,12 +623,19 @@ export default function App() {
           loading={loading}
           notificationStatus={notificationStatus}
           onCheck={() => void checkConnection()}
+          onForgetDevice={() => {
+            setDeviceID("");
+            setToken("");
+            setPushStatus("idle");
+            setConnectionStatus("disconnected");
+          }}
           onPairDevice={() => void pairDevice()}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
           onSendTestNotification={() => void sendTestNotification()}
           pairingCode={pairingCode}
           pushStatus={pushStatus}
+          deviceID={deviceID}
           serverURL={serverURL}
           setPairingCode={setPairingCode}
           setServerURL={setServerURL}
@@ -1049,12 +1056,14 @@ function SettingsScreen({
   loading,
   notificationStatus,
   onCheck,
+  onForgetDevice,
   onPairDevice,
   onRegisterPush,
   onRequestNotifications,
   onSendTestNotification,
   pairingCode,
   pushStatus,
+  deviceID,
   serverURL,
   setPairingCode,
   setServerURL,
@@ -1066,12 +1075,14 @@ function SettingsScreen({
   loading: boolean;
   notificationStatus: NotificationStatus;
   onCheck: () => void;
+  onForgetDevice: () => void;
   onPairDevice: () => void;
   onRegisterPush: () => void;
   onRequestNotifications: () => void;
   onSendTestNotification: () => void;
   pairingCode: string;
   pushStatus: PushStatus;
+  deviceID: string;
   serverURL: string;
   setPairingCode: (value: string) => void;
   setServerURL: (value: string) => void;
@@ -1090,13 +1101,6 @@ function SettingsScreen({
           {loading ? <ActivityIndicator color="#202124" /> : null}
         </View>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        <Pressable onPress={onCheck} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Check Connection</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.settingsSection}>
-        <Text style={styles.sectionHeading}>Pair Device</Text>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Server URL</Text>
           <TextInput
@@ -1109,6 +1113,16 @@ function SettingsScreen({
             value={serverURL}
           />
         </View>
+        <Pressable onPress={onCheck} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Check Connection</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.settingsSection}>
+        <Text style={styles.sectionHeading}>Device</Text>
+        <Text style={styles.deviceStatus}>
+          {deviceID ? `Paired as ${deviceID}` : "Not paired"}
+        </Text>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Pairing Code</Text>
           <TextInput
@@ -1122,13 +1136,18 @@ function SettingsScreen({
           <Pressable onPress={onPairDevice} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Pair This Device</Text>
           </Pressable>
+          {deviceID ? (
+            <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
+              <Text style={styles.secondaryActionText}>Forget Device</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
       <View style={styles.settingsSection}>
-        <Text style={styles.sectionHeading}>Manual Token</Text>
+        <Text style={styles.sectionHeading}>Advanced</Text>
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Bearer Token</Text>
+          <Text style={styles.label}>Manual Bearer Token</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
@@ -1512,6 +1531,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
     padding: 14,
+  },
+  deviceStatus: {
+    color: "#202124",
+    fontSize: 16,
+    fontWeight: "900",
   },
   fieldGroup: {
     gap: 8,
