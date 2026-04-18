@@ -1,0 +1,44 @@
+name: CLI release
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - ".github/workflows/cli-release.yml"
+      - "apps/server/**"
+      - "scripts/build-server-release.sh"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/server/go.mod
+          cache-dependency-path: apps/server/go.sum
+
+      - name: Build CLI archives
+        env:
+          AGENT_TICK_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        run: sh scripts/build-server-release.sh
+
+      - name: Upload CLI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-tick-cli
+          path: dist/server/*
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/server/*

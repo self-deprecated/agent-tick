@@ -67,6 +67,8 @@ Open the dashboard and enter `AGENT_TICK_TOKEN`.
 
 ## Configure An Agent
 
+Install the `agent-tick` CLI from the latest GitHub Release for your operating system and architecture, then put the binary on your `PATH`.
+
 The dashboard creates request-only agent tokens. After creating a token, run the shown setup command on the machine where your agent runs:
 
 ```sh

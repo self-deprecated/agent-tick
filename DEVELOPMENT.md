@@ -217,6 +217,31 @@ ghcr.io/<owner>/<repo>:v0.1.0
 
 Images are pushed on `main` and on tags matching `v*`. Pull requests build the image but do not publish it.
 
+## Publishing CLI Binaries
+
+The CLI release workflow builds archives with:
+
+```sh
+sh scripts/build-server-release.sh
+```
+
+Pull requests upload the archives as workflow artifacts. Tags matching `v*` create or update a GitHub Release and attach:
+
+```text
+agent-tick_<version>_linux_amd64.tar.gz
+agent-tick_<version>_linux_arm64.tar.gz
+agent-tick_<version>_darwin_amd64.tar.gz
+agent-tick_<version>_darwin_arm64.tar.gz
+checksums.txt
+```
+
+Create a release by pushing a version tag:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## Security Model
 
 - Single mode maps all records to the implicit `usr_default` user.
