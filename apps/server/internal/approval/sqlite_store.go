@@ -538,7 +538,7 @@ func (s *SQLiteStore) ListDevicePushTokensForUser(userID string) ([]string, erro
 	}
 	defer rows.Close()
 
-	var tokens []string
+	tokens := []string{}
 	for rows.Next() {
 		var token string
 		if err := rows.Scan(&token); err != nil {
@@ -665,7 +665,7 @@ func (s *SQLiteStore) ListAgentTokensForUser(userID string) ([]AgentTokenRecord,
 	}
 	defer rows.Close()
 
-	var records []AgentTokenRecord
+	records := []AgentTokenRecord{}
 	for rows.Next() {
 		var record AgentTokenRecord
 		var scopesJSON string

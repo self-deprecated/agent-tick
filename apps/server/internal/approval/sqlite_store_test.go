@@ -249,6 +249,14 @@ func TestSQLiteStoreManagesAgentTokens(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
 
+	emptyRecords, err := store.ListAgentTokens()
+	if err != nil {
+		t.Fatalf("ListAgentTokens() empty error = %v", err)
+	}
+	if emptyRecords == nil {
+		t.Fatal("ListAgentTokens() empty = nil, want empty slice")
+	}
+
 	credential, err := store.CreateAgentToken("codex", []string{"approval:write"})
 	if err != nil {
 		t.Fatalf("CreateAgentToken() error = %v", err)

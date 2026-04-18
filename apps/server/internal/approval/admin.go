@@ -130,9 +130,10 @@ const adminHTML = `<!doctype html>
       target.innerHTML = '<details class="card"><summary>Agents</summary><div class="meta">Loading agents...</div></details>';
       try {
         const agents = await requestJSON('/v1/agent-tokens');
+        const agentList = Array.isArray(agents) ? agents : [];
         target.innerHTML = '<details class="card"><summary>Agents</summary>' + (
-          agents.length
-            ? agents.map(renderAgent).join('')
+          agentList.length
+            ? agentList.map(renderAgent).join('')
             : '<div class="meta">No agent tokens yet.</div>'
         ) + '<div id="new-agent-token"><button class="secondary" onclick="createAgentToken()">Create Agent Token</button></div></details>';
       } catch (error) {
