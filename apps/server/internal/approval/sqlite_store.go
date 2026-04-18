@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -35,6 +36,91 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
+}
+
+func (s *SQLiteStore) LoginOrCreateUser(email string, password string, name string, ttl time.Duration) (SessionCredential, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	password = strings.TrimSpace(password)
+	if email == "" || password == "" {
+		return SessionCredential{}, ErrNotFound
+	}
+	if strings.TrimSpace(name) == "" {
+		name = email
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return SessionCredential{}, err
+	}
+	defer rollback(tx)
+
+	now := time.Now().UTC()
+	var userID string
+	var storedName string
+	var passwordHash string
+	err = tx.QueryRow("SELECT id, name, password_hash FROM users WHERE email = ?", email).Scan(&userID, &storedName, &passwordHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		userID = "usr_" + newID()
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return SessionCredential{}, err
+		}
+		passwordHash = string(hashedPassword)
+		storedName = name
+		_, err = tx.Exec(
+			"INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+			userID,
+			email,
+			storedName,
+			passwordHash,
+			timeText(&now),
+		)
+		if err != nil {
+			return SessionCredential{}, err
+		}
+	} else if err != nil {
+		return SessionCredential{}, err
+	} else if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
+		return SessionCredential{}, ErrNotFound
+	}
+
+	sessionToken := "session_" + newID()
+	expiresAt := now.Add(ttl)
+	_, err = tx.Exec(
+		"INSERT INTO user_sessions (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+		userID,
+		tokenHash(sessionToken),
+		timeText(&expiresAt),
+		timeText(&now),
+	)
+	if err != nil {
+		return SessionCredential{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SessionCredential{}, err
+	}
+
+	return SessionCredential{UserID: userID, Email: email, Name: storedName, Token: sessionToken, Expiry: expiresAt}, nil
+}
+
+func (s *SQLiteStore) UserIDForSessionToken(token string) (string, bool, error) {
+	if strings.TrimSpace(token) == "" {
+		return "", false, nil
+	}
+	now := time.Now().UTC()
+	var userID string
+	err := s.db.QueryRow(
+		"SELECT user_id FROM user_sessions WHERE token_hash = ? AND expires_at > ? LIMIT 1",
+		tokenHash(token),
+		timeText(&now),
+	).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return userID, true, nil
 }
 
 func (s *SQLiteStore) Create(input CreateRequest) (ApprovalRequest, error) {
@@ -670,8 +756,17 @@ func (s *SQLiteStore) migrate() error {
 
 		CREATE TABLE IF NOT EXISTS users (
 			id TEXT PRIMARY KEY,
-			email TEXT NOT NULL DEFAULT '',
+			email TEXT NOT NULL DEFAULT '' UNIQUE,
 			name TEXT NOT NULL,
+			password_hash TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS user_sessions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id TEXT NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);
 
@@ -754,6 +849,9 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if err := s.addColumnIfMissing("approval_requests", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("users", "password_hash", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfMissing("audit_events", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {

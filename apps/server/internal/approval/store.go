@@ -65,6 +65,11 @@ type UserTokenStore interface {
 	UserIDForDeviceTokenForDevice(deviceID string, token string) (string, bool, error)
 }
 
+type UserAccountStore interface {
+	LoginOrCreateUser(email string, password string, name string, ttl time.Duration) (SessionCredential, error)
+	UserIDForSessionToken(token string) (string, bool, error)
+}
+
 type FileStore struct {
 	path string
 	mu   sync.Mutex

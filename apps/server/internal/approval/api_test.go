@@ -88,6 +88,47 @@ func TestAPIRejectsInvalidMode(t *testing.T) {
 	}
 }
 
+func TestAPIUserModeLoginScopesDashboardRequests(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(LoginRequest{Email: "jane@example.com", Password: "secret"}); err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	loginReq := httptest.NewRequest(http.MethodPost, "/v1/session", &body)
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login status = %d body = %s, want %d", loginRec.Code, loginRec.Body.String(), http.StatusOK)
+	}
+	var session SessionCredential
+	if err := json.NewDecoder(loginRec.Body).Decode(&session); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if session.UserID == "" || session.Token != "" {
+		t.Fatalf("session = %#v, want user without response token", session)
+	}
+	cookies := loginRec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != sessionCookieName {
+		t.Fatalf("cookies = %#v, want session cookie", cookies)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/devices", nil)
+	req.AddCookie(cookies[0])
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+}
+
 func TestAPIPairsDeviceToken(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

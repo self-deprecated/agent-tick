@@ -74,6 +74,20 @@ type DeviceRecord struct {
 	CreatedAt         time.Time `json:"createdAt"`
 }
 
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Name     string `json:"name,omitempty"`
+}
+
+type SessionCredential struct {
+	UserID string    `json:"userId"`
+	Email  string    `json:"email"`
+	Name   string    `json:"name"`
+	Token  string    `json:"token,omitempty"`
+	Expiry time.Time `json:"expiry"`
+}
+
 type PushTokenRequest struct {
 	Token string `json:"token"`
 }

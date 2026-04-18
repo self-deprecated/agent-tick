@@ -22,6 +22,7 @@ type API struct {
 	push             *PushSender
 	events           *EventHub
 	userTokens       UserTokenStore
+	accounts         UserAccountStore
 	token            string
 	mode             string
 	requireSignature bool
@@ -52,8 +53,13 @@ func NewAPI(store Store, token string) *API {
 	if userTokens, ok := store.(UserTokenStore); ok {
 		api.userTokens = userTokens
 	}
+	if accounts, ok := store.(UserAccountStore); ok {
+		api.accounts = accounts
+	}
 	return api
 }
+
+const sessionCookieName = "agent_tick_session"
 
 type authContext struct {
 	UserID string
@@ -142,6 +148,7 @@ func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", a.admin)
 	mux.HandleFunc("GET /healthz", a.health)
+	mux.HandleFunc("POST /v1/session", a.login)
 	mux.HandleFunc("POST /v1/approval-requests", a.create)
 	mux.HandleFunc("GET /v1/approval-requests", a.list)
 	mux.HandleFunc("GET /v1/approval-requests/{id}", a.get)
@@ -156,6 +163,41 @@ func (a *API) Handler() http.Handler {
 
 func (a *API) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) login(w http.ResponseWriter, r *http.Request) {
+	if a.mode != ModeUser {
+		writeError(w, http.StatusNotFound, "user login is disabled")
+		return
+	}
+	if a.accounts == nil {
+		writeError(w, http.StatusNotImplemented, "user accounts are not supported by this store")
+		return
+	}
+	var input LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid login JSON")
+		return
+	}
+	session, err := a.accounts.LoginOrCreateUser(input.Email, input.Password, input.Name, 30*24*time.Hour)
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusUnauthorized, "invalid email or password")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    session.Token,
+		Path:     "/",
+		Expires:  session.Expiry,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	session.Token = ""
+	writeJSON(w, http.StatusOK, session)
 }
 
 func (a *API) create(w http.ResponseWriter, r *http.Request) {
@@ -365,9 +407,23 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 
 func (a *API) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || (r.Method == http.MethodGet && r.URL.Path == "/") {
+		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || (r.Method == http.MethodGet && r.URL.Path == "/") {
 			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
 			return
+		}
+		if a.mode == ModeUser && a.accounts != nil {
+			cookie, err := r.Cookie(sessionCookieName)
+			if err == nil {
+				userID, ok, err := a.accounts.UserIDForSessionToken(cookie.Value)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				if ok {
+					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID}))
+					return
+				}
+			}
 		}
 		if a.token == "" && isLoopback(r.RemoteAddr) {
 			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
