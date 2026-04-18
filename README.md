@@ -109,3 +109,9 @@ This repo includes a Codex-compatible skill at `skills/agent-tick`. Install it i
 ## Development
 
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for local builds, source-based container runs, mobile app development, and release image publishing.
+
+## License
+
+agent-tick is licensed under the [Business Source License 1.1](./LICENSE) (BSL 1.1). You are free to use, modify, and self-host it — including for commercial purposes — but you may not offer agent-tick as a hosted or managed service to third parties. The license converts to Apache 2.0 on 2028-04-18.
+
+When a new release is published, update the `Change Date` in `LICENSE` to two years from that release date.
