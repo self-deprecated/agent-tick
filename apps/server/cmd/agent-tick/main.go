@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,33 +14,15 @@ import (
 	"time"
 
 	"agent-tick/apps/server/internal/approval"
+	"github.com/charmbracelet/fang"
 	qrterminal "github.com/mdp/qrterminal/v3"
+	"github.com/spf13/cobra"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
-	}
-
-	switch os.Args[1] {
-	case "setup":
-		runSetup(os.Args[2:])
-	case "server":
-		runServer(os.Args[2:])
-	case "request":
-		runRequest(os.Args[2:])
-	case "guard":
-		runGuard(os.Args[2:])
-	case "pair":
-		runPair(os.Args[2:])
-	case "agent-token":
-		runAgentToken(os.Args[2:])
-	case "adapter":
-		runAdapter(os.Args[2:])
-	default:
-		usage()
-		os.Exit(2)
+	ctx := context.Background()
+	if err := fang.Execute(ctx, newRootCmd()); err != nil {
+		os.Exit(1)
 	}
 }
 
@@ -49,341 +31,453 @@ type clientConfig struct {
 	Token  string `json:"token"`
 }
 
-func runSetup(args []string) {
-	flags := flag.NewFlagSet("setup", flag.ExitOnError)
-	server := flags.String("server", "", "Agent Tick server URL")
-	token := flags.String("token", "", "Agent Tick agent token")
-	_ = flags.Parse(args)
-
-	if strings.TrimSpace(*server) == "" {
-		log.Fatal("--server is required")
-	}
-	if strings.TrimSpace(*token) == "" {
-		log.Fatal("--token is required")
-	}
-
-	path, err := saveClientConfig(clientConfig{
-		Server: strings.TrimRight(strings.TrimSpace(*server), "/"),
-		Token:  strings.TrimSpace(*token),
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("saved Agent Tick config to %s\n", path)
-}
-
-func runAdapter(args []string) {
-	flags := flag.NewFlagSet("adapter", flag.ExitOnError)
-	server := flags.String("server", defaultServerURL(), "Agent Tick server URL")
-	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
-	_ = flags.Parse(args)
-
-	var input approval.CreateRequest
-	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
-		log.Fatal(err)
-	}
-	if input.Requester.AgentID == "" {
-		input.Requester = requester()
-	}
-	if input.Title == "" {
-		input.Title = "Approval requested"
-	}
-	if input.ExpiresAt == nil {
-		expiresAt := time.Now().UTC().Add(5 * time.Minute)
-		input.ExpiresAt = &expiresAt
-	}
-	if input.Risk == "" {
-		input.Risk = classifyRisk(input.Command)
+func newRootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "agent-tick",
+		Short: "Human-in-the-loop approval gateway for AI agents",
+		Long: `agent-tick puts a human in the loop for AI agent actions. Agents submit
+approval requests; a human reviews and approves or rejects them via the web
+UI or mobile app before the action proceeds.`,
+		Example: `  agent-tick server
+  agent-tick setup --server https://tick.example.com --token <token>
+  agent-tick request --title "Deploy to production?" --command "kubectl apply -f prod.yaml"`,
 	}
 
-	response, err := requestApproval(*server, input, *timeout)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func runServer(args []string) {
-	flags := flag.NewFlagSet("server", flag.ExitOnError)
-	addr := flags.String("addr", ":8787", "address to listen on")
-	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
-	_ = flags.Parse(args)
-
-	token := os.Getenv("AGENT_TICK_TOKEN")
-	if token == "" {
-		log.Print("AGENT_TICK_TOKEN is not set; only localhost requests are allowed")
-	}
-
-	store, err := approval.NewSQLiteStore(*data)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
-	api := approval.NewAPI(store, token)
-	if err := api.SetMode(getenv("AGENT_TICK_MODE", approval.ModeSingle)); err != nil {
-		log.Fatal(err)
-	}
-	api.SetPublicURL(os.Getenv("AGENT_TICK_PUBLIC_URL"))
-	api.RequireSignatures(os.Getenv("AGENT_TICK_REQUIRE_SIGNATURE") == "1")
-	log.Printf("agent-tick listening on %s", *addr)
-	if err := http.ListenAndServe(*addr, api.Handler()); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func runRequest(args []string) {
-	flags := flag.NewFlagSet("request", flag.ExitOnError)
-	server := flags.String("server", defaultServerURL(), "Agent Tick server URL")
-	title := flags.String("title", "", "approval title")
-	body := flags.String("body", "", "approval body")
-	command := flags.String("command", "", "command being requested")
-	contextFile := flags.String("context-file", "", "path to extra context to attach")
-	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
-	expiresIn := flags.Duration("expires-in", 5*time.Minute, "approval expiry duration")
-	_ = flags.Parse(args)
-
-	if strings.TrimSpace(*title) == "" {
-		log.Fatal("--title is required")
-	}
-
-	expiresAt := time.Now().UTC().Add(*expiresIn)
-	input := approval.CreateRequest{
-		Requester: requester(),
-		Title:     *title,
-		Body:      *body,
-		Command:   *command,
-		ExpiresAt: &expiresAt,
-		Risk:      classifyRisk(*command),
-		Metadata:  requestMetadata(*contextFile),
-	}
-
-	current, err := requestApproval(*server, input, *timeout)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	printResponse(current.Response)
-	if current.Response != nil && current.Response.ChoiceID == "approve" {
-		return
-	}
-	os.Exit(1)
-}
-
-func runGuard(args []string) {
-	flags := flag.NewFlagSet("guard", flag.ExitOnError)
-	server := flags.String("server", defaultServerURL(), "Agent Tick server URL")
-	title := flags.String("title", "Run command?", "approval title")
-	body := flags.String("body", "", "approval body")
-	contextFile := flags.String("context-file", "", "path to extra context to attach")
-	timeout := flags.Duration("timeout", 10*time.Minute, "time to wait for a response")
-	expiresIn := flags.Duration("expires-in", 5*time.Minute, "approval expiry duration")
-	_ = flags.Parse(args)
-
-	command := flags.Args()
-	if len(command) == 0 {
-		log.Fatal("guard requires a command after --")
-	}
-
-	commandText := strings.Join(command, " ")
-	requestBody := *body
-	if strings.TrimSpace(requestBody) == "" {
-		requestBody = "Approve running this command?"
-	}
-
-	expiresAt := time.Now().UTC().Add(*expiresIn)
-	current, err := requestApproval(*server, approval.CreateRequest{
-		Requester: requester(),
-		Title:     *title,
-		Body:      requestBody,
-		Command:   commandText,
-		ExpiresAt: &expiresAt,
-		Risk:      classifyRisk(commandText),
-		Metadata:  requestMetadata(*contextFile),
-	}, *timeout)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	printResponse(current.Response)
-	if current.Response == nil || current.Response.ChoiceID != "approve" {
-		os.Exit(1)
-	}
-
-	cmd := exec.Command(command[0], command[1:]...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			os.Exit(exitErr.ExitCode())
+	root.PersistentFlags().String("config", os.Getenv("AGENT_TICK_CONFIG"), "config file path [env: AGENT_TICK_CONFIG]")
+	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if v, _ := cmd.Root().PersistentFlags().GetString("config"); v != "" {
+			os.Setenv("AGENT_TICK_CONFIG", v)
 		}
-		log.Fatal(err)
+		return nil
+	}
+
+	root.AddCommand(
+		newSetupCmd(),
+		newServerCmd(),
+		newRequestCmd(),
+		newGuardCmd(),
+		newPairCmd(),
+		newAgentTokenCmd(),
+		newAdapterCmd(),
+	)
+	return root
+}
+
+func newSetupCmd() *cobra.Command {
+	var server, token string
+	cmd := &cobra.Command{
+		Use:   "setup",
+		Short: "Configure client server URL and authentication token",
+		Long: `setup saves a server URL and agent token to the local config file so that
+client commands (request, guard, adapter, pair) can find the server without
+requiring flags on every invocation.
+
+See also: server, agent-token`,
+		Example: `  agent-tick setup --server https://tick.example.com --token <your-token>
+  agent-tick --config /etc/agent-tick/config.json setup \
+    --server https://tick.example.com --token <your-token>`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(server) == "" {
+				return fmt.Errorf("--server is required")
+			}
+			if strings.TrimSpace(token) == "" {
+				return fmt.Errorf("--token is required")
+			}
+			path, err := saveClientConfig(clientConfig{
+				Server: strings.TrimRight(strings.TrimSpace(server), "/"),
+				Token:  strings.TrimSpace(token),
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Printf("saved Agent Tick config to %s\n", path)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&server, "server", "", "Agent Tick server URL")
+	cmd.Flags().StringVar(&token, "token", "", "Agent Tick agent token")
+	return cmd
+}
+
+func newServerCmd() *cobra.Command {
+	var addr, data, token, mode, publicURL string
+	var requireSignature bool
+	cmd := &cobra.Command{
+		Use:   "server",
+		Short: "Start the approval server",
+		Long: `server starts the agent-tick approval HTTP server. The server stores approval
+requests in a local SQLite database and exposes a REST API for agents and the
+web/mobile UI to consume.
+
+See also: setup, agent-token`,
+		Example: `  agent-tick server
+  agent-tick server --addr :9090 --data /var/lib/agent-tick/agent-tick.db
+  agent-tick server --token <admin-token> --public-url https://tick.example.com`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if token == "" {
+				log.Print("--token is not set; only localhost requests are allowed")
+			}
+			store, err := approval.NewSQLiteStore(data)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			api := approval.NewAPI(store, token)
+			if err := api.SetMode(mode); err != nil {
+				return err
+			}
+			api.SetPublicURL(publicURL)
+			api.RequireSignatures(requireSignature)
+			log.Printf("agent-tick listening on %s", addr)
+			return http.ListenAndServe(addr, api.Handler())
+		},
+	}
+	cmd.Flags().StringVar(&addr, "addr", ":8787", "address to listen on")
+	cmd.Flags().StringVar(&data, "data", "./agent-tick.db", "path to SQLite data file")
+	cmd.Flags().StringVar(&token, "token", os.Getenv("AGENT_TICK_TOKEN"), "admin auth token [env: AGENT_TICK_TOKEN]")
+	cmd.Flags().StringVar(&mode, "mode", getenv("AGENT_TICK_MODE", approval.ModeSingle), "API mode (single) [env: AGENT_TICK_MODE]")
+	cmd.Flags().StringVar(&publicURL, "public-url", os.Getenv("AGENT_TICK_PUBLIC_URL"), "public server URL [env: AGENT_TICK_PUBLIC_URL]")
+	cmd.Flags().BoolVar(&requireSignature, "require-signature", parseBoolEnv(os.Getenv("AGENT_TICK_REQUIRE_SIGNATURE")), "require request signatures [env: AGENT_TICK_REQUIRE_SIGNATURE]")
+	return cmd
+}
+
+func newRequestCmd() *cobra.Command {
+	var server, token, title, body, command, contextFile, requesterName, agentID string
+	var timeout, expiresIn time.Duration
+	cmd := &cobra.Command{
+		Use:   "request",
+		Short: "Create an approval request and wait for a response",
+		Long: `request submits a human approval request to the server and blocks until the
+request is approved, rejected, or times out. Exit code 0 means approved;
+exit code 1 means denied or timed out.
+
+See also: guard, adapter`,
+		Example: `  agent-tick request --title "Deploy to production?" --command "kubectl apply -f prod.yaml"
+  agent-tick request --title "Send customer email" --body "To: alice@example.com" \
+    --timeout 30m --expires-in 15m`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(title) == "" {
+				return fmt.Errorf("--title is required")
+			}
+			current, err := requestApproval(server, approval.CreateRequest{
+				Requester: buildRequester(requesterName, agentID),
+				Title:     title,
+				Body:      body,
+				Command:   command,
+				ExpiresAt: expiresAtPtr(expiresIn),
+				Risk:      classifyRisk(command),
+				Metadata:  requestMetadata(contextFile),
+			}, timeout, token)
+			if err != nil {
+				return err
+			}
+			printResponse(current.Response)
+			if current.Response == nil || current.Response.ChoiceID != "approve" {
+				os.Exit(1)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&server, "server", defaultServerURL(), "Agent Tick server URL [env: AGENT_TICK_SERVER]")
+	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
+	cmd.Flags().StringVar(&requesterName, "requester", getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"), "requester name [env: AGENT_TICK_REQUESTER]")
+	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
+	cmd.Flags().StringVar(&title, "title", "", "approval title (required)")
+	cmd.Flags().StringVar(&body, "body", "", "approval body")
+	cmd.Flags().StringVar(&command, "command", "", "command being requested")
+	cmd.Flags().StringVar(&contextFile, "context-file", "", "path to extra context to attach")
+	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response")
+	cmd.Flags().DurationVar(&expiresIn, "expires-in", 5*time.Minute, "approval expiry duration")
+	return cmd
+}
+
+func newGuardCmd() *cobra.Command {
+	var server, token, title, body, contextFile, requesterName, agentID string
+	var timeout, expiresIn time.Duration
+	cmd := &cobra.Command{
+		Use:   "guard [-- command...]",
+		Short: "Request approval before running a command",
+		Long: `guard requests human approval then, if approved, executes the supplied command.
+Separate guard's flags from the guarded command with --. Exit code mirrors the
+guarded command; exits 1 if the request is denied or times out.
+
+See also: request, adapter`,
+		Example: `  agent-tick guard -- rm -rf /tmp/old-data
+  agent-tick guard --title "Deploy to prod?" --timeout 30m -- kubectl apply -f prod.yaml`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf("guard requires a command after --")
+			}
+			commandText := strings.Join(args, " ")
+			requestBody := body
+			if strings.TrimSpace(requestBody) == "" {
+				requestBody = "Approve running this command?"
+			}
+			current, err := requestApproval(server, approval.CreateRequest{
+				Requester: buildRequester(requesterName, agentID),
+				Title:     title,
+				Body:      requestBody,
+				Command:   commandText,
+				ExpiresAt: expiresAtPtr(expiresIn),
+				Risk:      classifyRisk(commandText),
+				Metadata:  requestMetadata(contextFile),
+			}, timeout, token)
+			if err != nil {
+				return err
+			}
+			printResponse(current.Response)
+			if current.Response == nil || current.Response.ChoiceID != "approve" {
+				os.Exit(1)
+			}
+			c := exec.Command(args[0], args[1:]...)
+			c.Stdin = os.Stdin
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			if err := c.Run(); err != nil {
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					os.Exit(exitErr.ExitCode())
+				}
+				return err
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&server, "server", defaultServerURL(), "Agent Tick server URL [env: AGENT_TICK_SERVER]")
+	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
+	cmd.Flags().StringVar(&requesterName, "requester", getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"), "requester name [env: AGENT_TICK_REQUESTER]")
+	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
+	cmd.Flags().StringVar(&title, "title", "Run command?", "approval title")
+	cmd.Flags().StringVar(&body, "body", "", "approval body")
+	cmd.Flags().StringVar(&contextFile, "context-file", "", "path to extra context to attach")
+	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response")
+	cmd.Flags().DurationVar(&expiresIn, "expires-in", 5*time.Minute, "approval expiry duration")
+	return cmd
+}
+
+func newPairCmd() *cobra.Command {
+	var server, token string
+	var qr, qrLarge bool
+	cmd := &cobra.Command{
+		Use:   "pair",
+		Short: "Generate a pairing code to register a mobile device",
+		Long: `pair creates a short-lived pairing token and prints a QR code so a mobile
+device can register itself with the server. The QR code encodes both the
+server URL and the pairing token.
+
+See also: agent-token, setup`,
+		Example: `  agent-tick pair
+  agent-tick pair --qr-large
+  agent-tick pair --server https://tick.example.com --no-qr`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pToken, err := postJSON[approval.PairingToken](server+"/v1/pairing-tokens", map[string]string{}, token)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("pairing code: %s\n", pToken.Token)
+			fmt.Printf("expires at: %s\n", pToken.ExpiresAt.Format(time.RFC3339))
+			fmt.Printf("server: %s\n", server)
+			if qr {
+				fmt.Println()
+				printPairingQR(pairingPayload(server, pToken.Token), qrLarge)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&server, "server", defaultServerURL(), "Agent Tick server URL [env: AGENT_TICK_SERVER]")
+	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
+	cmd.Flags().BoolVar(&qr, "qr", true, "print a terminal QR code")
+	cmd.Flags().BoolVar(&qrLarge, "qr-large", false, "print a larger terminal QR code")
+	return cmd
+}
+
+func newAgentTokenCmd() *cobra.Command {
+	var data, name, scopes string
+	cmd := &cobra.Command{
+		Use:   "agent-token",
+		Short: "Create and manage agent authentication tokens",
+		Long: `agent-token creates, lists, revokes, and rotates agent credentials stored in
+the server database. These tokens are given to agents as AGENT_TICK_TOKEN so
+they can submit approval requests.
+
+See also: setup, pair`,
+		Example: `  agent-tick agent-token --name my-agent --scopes approval:write,approval:read
+  agent-tick agent-token list
+  agent-tick agent-token revoke <agent-id>
+  agent-tick agent-token rotate <agent-id>`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := approval.NewSQLiteStore(data)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			credential, err := store.CreateAgentToken(name, splitScopes(scopes))
+			if err != nil {
+				return err
+			}
+			fmt.Printf("agent id: %s\n", credential.AgentID)
+			fmt.Printf("name: %s\n", credential.Name)
+			fmt.Printf("token: %s\n", credential.Token)
+			fmt.Printf("scopes: %s\n", strings.Join(credential.Scopes, ","))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&data, "data", "./agent-tick.db", "path to SQLite data file")
+	cmd.Flags().StringVar(&name, "name", "agent", "agent token name")
+	cmd.Flags().StringVar(&scopes, "scopes", "approval:write,approval:read", "comma-separated scopes")
+	cmd.AddCommand(
+		newAgentTokenListCmd(),
+		newAgentTokenRevokeCmd(),
+		newAgentTokenRotateCmd(),
+	)
+	return cmd
+}
+
+func newAgentTokenListCmd() *cobra.Command {
+	var data string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all agent tokens",
+		Long:  "See also: agent-token, revoke, rotate",
+		Example: `  agent-tick agent-token list
+  agent-tick agent-token list --data /var/lib/agent-tick/agent-tick.db`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store := openSQLiteStore(data)
+			defer store.Close()
+			records, err := store.ListAgentTokens()
+			if err != nil {
+				return err
+			}
+			for _, record := range records {
+				status := "active"
+				if record.RevokedAt != nil {
+					status = "revoked"
+				}
+				fmt.Printf("%s\t%s\t%s\t%s\n", record.AgentID, record.Name, status, strings.Join(record.Scopes, ","))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&data, "data", "./agent-tick.db", "path to SQLite data file")
+	return cmd
+}
+
+func newAgentTokenRevokeCmd() *cobra.Command {
+	var data string
+	cmd := &cobra.Command{
+		Use:   "revoke <agent-id>",
+		Short: "Revoke an agent token by agent ID",
+		Long:  "See also: agent-token, list, rotate",
+		Args:  cobra.ExactArgs(1),
+		Example: `  agent-tick agent-token revoke abc123def456`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store := openSQLiteStore(data)
+			defer store.Close()
+			if err := store.RevokeAgentToken(args[0]); err != nil {
+				return err
+			}
+			fmt.Println("revoked")
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&data, "data", "./agent-tick.db", "path to SQLite data file")
+	return cmd
+}
+
+func newAgentTokenRotateCmd() *cobra.Command {
+	var data string
+	cmd := &cobra.Command{
+		Use:   "rotate <agent-id>",
+		Short: "Rotate (regenerate) an agent token by agent ID",
+		Long:  "See also: agent-token, list, revoke",
+		Args:  cobra.ExactArgs(1),
+		Example: `  agent-tick agent-token rotate abc123def456`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store := openSQLiteStore(data)
+			defer store.Close()
+			credential, err := store.RotateAgentToken(args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Printf("agent id: %s\n", credential.AgentID)
+			fmt.Printf("name: %s\n", credential.Name)
+			fmt.Printf("token: %s\n", credential.Token)
+			fmt.Printf("scopes: %s\n", strings.Join(credential.Scopes, ","))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&data, "data", "./agent-tick.db", "path to SQLite data file")
+	return cmd
+}
+
+func newAdapterCmd() *cobra.Command {
+	var server, token, requesterName, agentID string
+	var timeout time.Duration
+	cmd := &cobra.Command{
+		Use:   "adapter",
+		Short: "Request approval from a JSON payload on stdin",
+		Long: `adapter reads a JSON approval request from stdin and blocks until the request
+is approved, rejected, or times out. It writes the approval response JSON to
+stdout. Designed for use in automated pipelines.
+
+See also: request, guard`,
+		Example: `  echo '{"title":"Deploy?","command":"kubectl apply"}' | agent-tick adapter
+  cat request.json | agent-tick adapter --timeout 30m`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var input approval.CreateRequest
+			if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
+				return err
+			}
+			if input.Requester.AgentID == "" {
+				input.Requester = buildRequester(requesterName, agentID)
+			}
+			if input.Title == "" {
+				input.Title = "Approval requested"
+			}
+			if input.ExpiresAt == nil {
+				t := time.Now().UTC().Add(5 * time.Minute)
+				input.ExpiresAt = &t
+			}
+			if input.Risk == "" {
+				input.Risk = classifyRisk(input.Command)
+			}
+			response, err := requestApproval(server, input, timeout, token)
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(os.Stdout).Encode(response)
+		},
+	}
+	cmd.Flags().StringVar(&server, "server", defaultServerURL(), "Agent Tick server URL [env: AGENT_TICK_SERVER]")
+	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
+	cmd.Flags().StringVar(&requesterName, "requester", getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"), "requester name [env: AGENT_TICK_REQUESTER]")
+	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
+	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response")
+	return cmd
+}
+
+func parseBoolEnv(value string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	return lower == "1" || lower == "true" || lower == "yes"
+}
+
+func buildRequester(name, agentID string) approval.Requester {
+	return approval.Requester{
+		Name:             name,
+		AgentID:          agentID,
+		Host:             hostname(),
+		WorkingDirectory: workingDirectory(),
 	}
 }
 
-func runPair(args []string) {
-	flags := flag.NewFlagSet("pair", flag.ExitOnError)
-	server := flags.String("server", defaultServerURL(), "Agent Tick server URL")
-	qr := flags.Bool("qr", true, "print a terminal QR code")
-	qrLarge := flags.Bool("qr-large", false, "print a larger terminal QR code")
-	_ = flags.Parse(args)
-
-	token, err := postJSON[approval.PairingToken](*server+"/v1/pairing-tokens", map[string]string{})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("pairing code: %s\n", token.Token)
-	fmt.Printf("expires at: %s\n", token.ExpiresAt.Format(time.RFC3339))
-	fmt.Printf("server: %s\n", *server)
-	if *qr {
-		fmt.Println()
-		printPairingQR(pairingPayload(*server, token.Token), *qrLarge)
-	}
+func expiresAtPtr(d time.Duration) *time.Time {
+	t := time.Now().UTC().Add(d)
+	return &t
 }
 
-func printPairingQR(payload string, large bool) {
-	config := qrterminal.Config{
-		Level:          qrterminal.L,
-		Writer:         os.Stdout,
-		HalfBlocks:     true,
-		BlackChar:      " ",
-		WhiteBlackChar: "▀",
-		WhiteChar:      "█",
-		BlackWhiteChar: "▄",
-		QuietZone:      1,
-	}
-	if large {
-		config.HalfBlocks = false
-		config.BlackChar = "  "
-		config.WhiteChar = "██"
-		config.QuietZone = 2
-	}
-	qrterminal.GenerateWithConfig(payload, config)
-}
-
-func runAgentToken(args []string) {
-	if len(args) > 0 {
-		switch args[0] {
-		case "list":
-			runAgentTokenList(args[1:])
-			return
-		case "revoke":
-			runAgentTokenRevoke(args[1:])
-			return
-		case "rotate":
-			runAgentTokenRotate(args[1:])
-			return
-		}
-	}
-
-	flags := flag.NewFlagSet("agent-token", flag.ExitOnError)
-	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
-	name := flags.String("name", "agent", "agent token name")
-	scopesValue := flags.String("scopes", "approval:write,approval:read", "comma-separated scopes")
-	_ = flags.Parse(args)
-
-	store, err := approval.NewSQLiteStore(*data)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
-	credential, err := store.CreateAgentToken(*name, splitScopes(*scopesValue))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("agent id: %s\n", credential.AgentID)
-	fmt.Printf("name: %s\n", credential.Name)
-	fmt.Printf("token: %s\n", credential.Token)
-	fmt.Printf("scopes: %s\n", strings.Join(credential.Scopes, ","))
-}
-
-func runAgentTokenList(args []string) {
-	flags := flag.NewFlagSet("agent-token list", flag.ExitOnError)
-	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
-	_ = flags.Parse(args)
-
-	store := openSQLiteStore(*data)
-	defer store.Close()
-
-	records, err := store.ListAgentTokens()
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, record := range records {
-		status := "active"
-		if record.RevokedAt != nil {
-			status = "revoked"
-		}
-		fmt.Printf("%s\t%s\t%s\t%s\n", record.AgentID, record.Name, status, strings.Join(record.Scopes, ","))
-	}
-}
-
-func runAgentTokenRevoke(args []string) {
-	flags := flag.NewFlagSet("agent-token revoke", flag.ExitOnError)
-	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
-	_ = flags.Parse(args)
-	if flags.NArg() != 1 {
-		log.Fatal("agent-token revoke requires an agent id")
-	}
-
-	store := openSQLiteStore(*data)
-	defer store.Close()
-
-	if err := store.RevokeAgentToken(flags.Arg(0)); err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("revoked")
-}
-
-func runAgentTokenRotate(args []string) {
-	flags := flag.NewFlagSet("agent-token rotate", flag.ExitOnError)
-	data := flags.String("data", "./agent-tick.db", "path to SQLite data file")
-	_ = flags.Parse(args)
-	if flags.NArg() != 1 {
-		log.Fatal("agent-token rotate requires an agent id")
-	}
-
-	store := openSQLiteStore(*data)
-	defer store.Close()
-
-	credential, err := store.RotateAgentToken(flags.Arg(0))
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("agent id: %s\n", credential.AgentID)
-	fmt.Printf("name: %s\n", credential.Name)
-	fmt.Printf("token: %s\n", credential.Token)
-	fmt.Printf("scopes: %s\n", strings.Join(credential.Scopes, ","))
-}
-
-func openSQLiteStore(path string) *approval.SQLiteStore {
-	store, err := approval.NewSQLiteStore(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return store
-}
-
-func pairingPayload(server string, token string) string {
-	payload := map[string]string{
-		"serverURL":   server,
-		"pairingCode": token,
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return token
-	}
-	return string(data)
-}
-
-func requestApproval(server string, input approval.CreateRequest, timeout time.Duration) (approval.ApprovalRequest, error) {
-	request, err := postJSON[approval.ApprovalRequest](server+"/v1/approval-requests", input)
+func requestApproval(server string, input approval.CreateRequest, timeout time.Duration, token string) (approval.ApprovalRequest, error) {
+	request, err := postJSON[approval.ApprovalRequest](server+"/v1/approval-requests", input, token)
 	if err != nil {
 		return approval.ApprovalRequest{}, err
 	}
@@ -391,7 +485,7 @@ func requestApproval(server string, input approval.CreateRequest, timeout time.D
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		current, err := getJSON[approval.ApprovalRequest](server + "/v1/approval-requests/" + request.ID)
+		current, err := getJSON[approval.ApprovalRequest](server+"/v1/approval-requests/"+request.ID, token)
 		if err != nil {
 			return approval.ApprovalRequest{}, err
 		}
@@ -403,7 +497,6 @@ func requestApproval(server string, input approval.CreateRequest, timeout time.D
 		}
 		time.Sleep(2 * time.Second)
 	}
-
 	return approval.ApprovalRequest{}, fmt.Errorf("timed out waiting for approval")
 }
 
@@ -417,56 +510,49 @@ func printResponse(response *approval.Response) {
 	}
 }
 
-func postJSON[T any](url string, input any) (T, error) {
+func postJSON[T any](url string, input any, token string) (T, error) {
 	var output T
 	body, err := json.Marshal(input)
 	if err != nil {
 		return output, err
 	}
-
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return output, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	setAuth(req)
-
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return output, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return output, fmt.Errorf("server returned %s", resp.Status)
 	}
 	return output, json.NewDecoder(resp.Body).Decode(&output)
 }
 
-func getJSON[T any](url string) (T, error) {
+func getJSON[T any](url string, token string) (T, error) {
 	var output T
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return output, err
 	}
-	setAuth(req)
-
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return output, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return output, fmt.Errorf("server returned %s", resp.Status)
 	}
 	return output, json.NewDecoder(resp.Body).Decode(&output)
-}
-
-func setAuth(req *http.Request) {
-	if token := defaultToken(); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
 }
 
 func defaultServerURL() string {
@@ -543,15 +629,6 @@ func getenv(name string, fallback string) string {
 	return fallback
 }
 
-func requester() approval.Requester {
-	return approval.Requester{
-		Name:             getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"),
-		AgentID:          getenv("AGENT_TICK_AGENT_ID", "local-agent"),
-		Host:             hostname(),
-		WorkingDirectory: workingDirectory(),
-	}
-}
-
 func splitScopes(value string) []string {
 	parts := strings.Split(value, ",")
 	scopes := make([]string, 0, len(parts))
@@ -606,6 +683,46 @@ func requestMetadata(contextFile string) map[string]string {
 	return metadata
 }
 
+func pairingPayload(server string, token string) string {
+	payload := map[string]string{
+		"serverURL":   server,
+		"pairingCode": token,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return token
+	}
+	return string(data)
+}
+
+func printPairingQR(payload string, large bool) {
+	config := qrterminal.Config{
+		Level:          qrterminal.L,
+		Writer:         os.Stdout,
+		HalfBlocks:     true,
+		BlackChar:      " ",
+		WhiteBlackChar: "▀",
+		WhiteChar:      "█",
+		BlackWhiteChar: "▄",
+		QuietZone:      1,
+	}
+	if large {
+		config.HalfBlocks = false
+		config.BlackChar = "  "
+		config.WhiteChar = "██"
+		config.QuietZone = 2
+	}
+	qrterminal.GenerateWithConfig(payload, config)
+}
+
+func openSQLiteStore(path string) *approval.SQLiteStore {
+	store, err := approval.NewSQLiteStore(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return store
+}
+
 func hostname() string {
 	name, err := os.Hostname()
 	if err != nil {
@@ -620,8 +737,4 @@ func workingDirectory() string {
 		return ""
 	}
 	return cwd
-}
-
-func usage() {
-	fmt.Fprintln(os.Stderr, "usage: agent-tick <setup|server|request|guard|pair|agent-token|adapter> [flags]")
 }

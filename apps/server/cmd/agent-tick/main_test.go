@@ -38,3 +38,57 @@ func TestClientConfigEnvOverrides(t *testing.T) {
 		t.Fatalf("defaultToken() = %q, want env token", got)
 	}
 }
+
+func TestParseBoolEnv(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{"1", true},
+		{"true", true},
+		{"yes", true},
+		{"TRUE", true},
+		{"YES", true},
+		{"True", true},
+		{"0", false},
+		{"false", false},
+		{"", false},
+		{"no", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			if got := parseBoolEnv(tt.value); got != tt.want {
+				t.Fatalf("parseBoolEnv(%q) = %v, want %v", tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFlagEnvPrecedence(t *testing.T) {
+	t.Run("server env overrides hardcoded default", func(t *testing.T) {
+		t.Setenv("AGENT_TICK_SERVER", "http://env.test:8787")
+		t.Setenv("AGENT_TICK_TOKEN", "")
+		t.Setenv("AGENT_TICK_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+		cmd := newRequestCmd()
+		flag := cmd.Flags().Lookup("server")
+		if flag == nil {
+			t.Fatal("--server flag not found on request command")
+		}
+		if flag.DefValue != "http://env.test:8787" {
+			t.Errorf("--server default = %q, want env value %q", flag.DefValue, "http://env.test:8787")
+		}
+	})
+	t.Run("server uses localhost when env and config absent", func(t *testing.T) {
+		t.Setenv("AGENT_TICK_SERVER", "")
+		t.Setenv("AGENT_TICK_TOKEN", "")
+		t.Setenv("AGENT_TICK_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+		cmd := newRequestCmd()
+		flag := cmd.Flags().Lookup("server")
+		if flag == nil {
+			t.Fatal("--server flag not found on request command")
+		}
+		if flag.DefValue != "http://localhost:8787" {
+			t.Errorf("--server default = %q, want localhost default", flag.DefValue)
+		}
+	})
+}
