@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS build
+FROM docker.io/library/golang:1.25-alpine AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -6,7 +6,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /out/agent-tick ./cmd/agent-tick
 
-FROM alpine:3.22
+FROM docker.io/library/alpine:3.22
 
 RUN addgroup -S agenttick && adduser -S agenttick -G agenttick
 WORKDIR /data

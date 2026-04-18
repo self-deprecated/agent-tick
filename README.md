@@ -199,21 +199,38 @@ npx eas build --profile development --platform ios
 
 After `eas init`, replace the placeholder `extra.eas.projectId` in `apps/mobile/app.json` with the generated project id.
 
-## Podman
+## Container Deployment
 
-Run with Podman Compose:
+The server image runs the same Go binary as the local dev server and stores SQLite data in `/data/agent-tick.db`.
 
-```sh
-AGENT_TICK_TOKEN=change-me podman compose up --build
-```
-
-For user mode, pass the same server environment variables into the container:
+For a normal multi-user deployment:
 
 ```sh
 AGENT_TICK_MODE=user \
 AGENT_TICK_PUBLIC_URL=https://tick.example.com \
-podman compose up --build
+docker compose up -d --build
 ```
+
+Open:
+
+```sh
+https://tick.example.com/
+```
+
+Then sign in, open `Devices` to pair the phone, and open `Agents` to create a request-only agent token.
+
+For a single-user deployment with a dashboard bearer token:
+
+```sh
+AGENT_TICK_MODE=single \
+AGENT_TICK_TOKEN=change-me \
+AGENT_TICK_PUBLIC_URL=https://tick.example.com \
+docker compose up -d --build
+```
+
+Use the same commands with `podman compose` if your server uses Podman.
+
+Production deployments should put the container behind an HTTPS reverse proxy and set `AGENT_TICK_PUBLIC_URL` to the external HTTPS URL. Phone pairing QR codes and dashboard CLI setup commands use that value.
 
 ## Security Model
 

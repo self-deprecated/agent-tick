@@ -3,12 +3,19 @@ services:
     build:
       context: ./apps/server
     environment:
-      AGENT_TICK_TOKEN: ${AGENT_TICK_TOKEN:?set AGENT_TICK_TOKEN}
+      AGENT_TICK_MODE: ${AGENT_TICK_MODE:-user}
+      AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL:?set AGENT_TICK_PUBLIC_URL}
+      AGENT_TICK_TOKEN: ${AGENT_TICK_TOKEN:-}
     ports:
-      - "8787:8787"
+      - "${AGENT_TICK_PORT:-8787}:8787"
     volumes:
       - agent_tick_data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
 volumes:
   agent_tick_data:
