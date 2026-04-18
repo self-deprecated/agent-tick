@@ -413,7 +413,6 @@ export default function App() {
       setToken(credential.token);
       setPairingCode("");
       Alert.alert("Paired", "This device can now receive approval requests.");
-      await registerPushToken(credential.deviceId, credential.token, activeServerURL);
       setConnectionStatus("connected");
       setScreen("approvals");
     } catch (err) {
@@ -453,8 +452,16 @@ export default function App() {
       }
 
       const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      if (!isUsableProjectID(projectId)) {
+        setPushStatus("unsupported");
+        Alert.alert(
+          "Development build required",
+          "Remote push needs a real EAS project id. Pairing still works; use local notifications until an EAS development build is configured.",
+        );
+        return;
+      }
       const pushToken = await Notifications.getExpoPushTokenAsync(
-        projectId ? { projectId } : undefined,
+        { projectId },
       );
       const trimmed = (overrideServerURL || serverURL).replace(/\/$/, "");
       const response = await fetch(
@@ -620,6 +627,16 @@ function selectApprovalID(
     return currentID;
   }
   return requests[0]?.id ?? null;
+}
+
+function isUsableProjectID(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value !== "00000000-0000-0000-0000-000000000000" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
 }
 
 function ConnectionBadge({ status }: { status: ConnectionStatus }) {
