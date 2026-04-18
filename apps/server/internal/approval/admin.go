@@ -48,7 +48,6 @@ const adminHTML = `<!doctype html>
     </section>
     <section id="session"></section>
     <section id="devices"></section>
-    <section id="pairing"></section>
     <section id="approvals"></section>
   </main>
   <script>
@@ -91,7 +90,6 @@ const adminHTML = `<!doctype html>
     async function connectDashboard() {
       clearPairing();
       await refreshDashboard();
-      renderPairingEmpty();
     }
 
     async function refreshDashboard() {
@@ -100,14 +98,14 @@ const adminHTML = `<!doctype html>
 
     async function loadDevices() {
       const target = document.getElementById('devices');
-      target.innerHTML = '<details class="card"><summary>Devices</summary><div class="meta">Loading devices...</div></details>';
+      target.innerHTML = '<details class="card"><summary>Devices</summary><div class="meta">Loading devices...</div>' + renderPairingEmpty() + '</details>';
       try {
         const devices = await requestJSON('/v1/devices');
         target.innerHTML = '<details class="card"><summary>Devices</summary>' + (
           devices.length
             ? devices.map(renderDevice).join('')
             : '<div class="meta">No paired devices yet.</div>'
-        ) + '</details>';
+        ) + renderPairingEmpty() + '</details>';
       } catch (error) {
         target.innerHTML = renderError(error.message);
       }
@@ -130,11 +128,13 @@ const adminHTML = `<!doctype html>
       try {
         const pairing = await requestJSON('/v1/pairing-tokens', { method: 'POST', body: '{}' });
         const expiresAt = new Date(pairing.expiresAt);
-        renderPairing(pairing.qrDataUrl, expiresAt);
+        const pairingTarget = document.getElementById('pairing');
+        if (pairingTarget) pairingTarget.innerHTML = renderPairing(pairing.qrDataUrl, expiresAt);
         clearTimeout(pairingClearTimer);
         pairingClearTimer = setTimeout(clearPairing, Math.max(0, expiresAt.getTime() - Date.now()));
       } catch (error) {
-        document.getElementById('pairing').innerHTML = renderError(error.message);
+        const pairingTarget = document.getElementById('pairing');
+        if (pairingTarget) pairingTarget.innerHTML = renderError(error.message);
       }
     }
 
@@ -158,16 +158,17 @@ const adminHTML = `<!doctype html>
 
     function clearPairing() {
       clearTimeout(pairingClearTimer);
-      renderPairingEmpty();
+      const pairingTarget = document.getElementById('pairing');
+      if (pairingTarget) pairingTarget.innerHTML = renderPairingEmpty();
     }
 
     function renderPairingEmpty() {
-      document.getElementById('pairing').innerHTML = '<details class="card"><summary>Connect device</summary><div class="meta">Create a short-lived QR when you are ready to pair a phone.</div><button class="secondary" onclick="createPairing()">Create QR</button></details>';
+      return '<div id="pairing"><div class="meta">Create a short-lived QR when you are ready to pair a phone.</div><button class="secondary" onclick="createPairing()">Create QR</button></div>';
     }
 
     function renderPairing(qrDataUrl, expiresAt) {
       const qr = qrDataUrl ? '<img alt="Pairing QR" src="' + escapeHTML(qrDataUrl) + '" style="width:220px;height:220px;image-rendering:pixelated;display:block;margin:12px 0;">' : '';
-      document.getElementById('pairing').innerHTML = '<details class="card" open><summary>Connect device</summary>' + qr + '<div class="meta">Scan this QR in the phone app. The pairing secret is hidden and expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="createPairing()">Renew</button> <button class="secondary" onclick="clearPairing()">Clear</button></details>';
+      return qr + '<div class="meta">Scan this QR in the phone app. The pairing secret is hidden and expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="createPairing()">Renew</button> <button class="secondary" onclick="clearPairing()">Clear</button>';
     }
 
     function renderSignedIn(session) {
