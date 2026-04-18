@@ -280,12 +280,28 @@ export default function App() {
 
   const respond = async (request: ApprovalRequest, choice: Choice) => {
     try {
-      await api<ApprovalRequest>(`/v1/approval-requests/${request.id}/responses`, {
-        method: "POST",
-        body: JSON.stringify({ choiceId: choice.id, message: reply }),
-      });
+      const response = await fetch(
+        `${serverURL.replace(/\/$/, "")}/v1/approval-requests/${request.id}/responses`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: token ? `Bearer ${token}` : "",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ choiceId: choice.id, message: reply }),
+        },
+      );
+      if (response.status === 409) {
+        removePendingRequest(request.id);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      await response.json();
+      removePendingRequest(request.id);
       setReply("");
-      await load({ visible: false });
+      void load({ visible: false });
     } catch (err) {
       Alert.alert(
         "Response failed",
@@ -294,21 +310,45 @@ export default function App() {
     }
   };
 
+  const removePendingRequest = (requestID: string) => {
+    setRequests((current) => {
+      const next = current.filter((request) => request.id !== requestID);
+      setSelectedID(next[0]?.id ?? null);
+      return next;
+    });
+  };
+
   const respondByID = useCallback(
     async (requestID: string, choiceID: string) => {
       try {
-        await api<ApprovalRequest>(`/v1/approval-requests/${requestID}/responses`, {
-          method: "POST",
-          body: JSON.stringify({ choiceId: choiceID }),
-        });
-        await load({ visible: false });
+        const response = await fetch(
+          `${serverURL.replace(/\/$/, "")}/v1/approval-requests/${requestID}/responses`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: token ? `Bearer ${token}` : "",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ choiceId: choiceID }),
+          },
+        );
+        if (response.status === 409) {
+          removePendingRequest(requestID);
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}`);
+        }
+        await response.json();
+        removePendingRequest(requestID);
+        void load({ visible: false });
       } catch {
         setNotificationTargetID(requestID);
         setSelectedID(requestID);
         setScreen("approvals");
       }
     },
-    [api, load],
+    [load, serverURL, token],
   );
 
   useEffect(() => {
@@ -1030,59 +1070,69 @@ function SettingsScreen({
   token: string;
 }) {
   return (
-    <View style={styles.settingsPane}>
-      <View style={styles.fieldGroup}>
-        <Text style={styles.label}>Server URL</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          inputMode="url"
-          onChangeText={setServerURL}
-          placeholder="http://192.168.1.20:8787"
-          style={styles.input}
-          value={serverURL}
-        />
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <Text style={styles.label}>Bearer Token</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={setToken}
-          placeholder="test-token"
-          secureTextEntry
-          style={styles.input}
-          value={token}
-        />
-      </View>
-
-      <View style={styles.statusRow}>
-        <ConnectionBadge status={connectionStatus} />
-        {loading ? <ActivityIndicator color="#202124" /> : null}
-      </View>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-      <Pressable onPress={onCheck} style={styles.primaryButton}>
-        <Text style={styles.primaryButtonText}>Check Connection</Text>
-      </Pressable>
-
-      <View style={styles.fieldGroup}>
-        <Text style={styles.label}>Pairing Code</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={setPairingCode}
-          placeholder="pair_..."
-          style={styles.input}
-          value={pairingCode}
-        />
-        <Pressable onPress={onPairDevice} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Pair This Device</Text>
+    <ScrollView
+      contentContainerStyle={styles.settingsContent}
+      style={styles.settingsPane}
+    >
+      <View style={styles.settingsSection}>
+        <Text style={styles.sectionHeading}>Connection</Text>
+        <View style={styles.statusRow}>
+          <ConnectionBadge status={connectionStatus} />
+          {loading ? <ActivityIndicator color="#202124" /> : null}
+        </View>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        <Pressable onPress={onCheck} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Check Connection</Text>
         </Pressable>
       </View>
 
-      <View style={styles.notificationPanel}>
+      <View style={styles.settingsSection}>
+        <Text style={styles.sectionHeading}>Pair Device</Text>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Server URL</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            inputMode="url"
+            onChangeText={setServerURL}
+            placeholder="http://192.168.1.20:8787"
+            style={styles.input}
+            value={serverURL}
+          />
+        </View>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Pairing Code</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setPairingCode}
+            placeholder="pair_..."
+            style={styles.input}
+            value={pairingCode}
+          />
+          <Pressable onPress={onPairDevice} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>Pair This Device</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.settingsSection}>
+        <Text style={styles.sectionHeading}>Manual Token</Text>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Bearer Token</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setToken}
+            placeholder="test-token"
+            secureTextEntry
+            style={styles.input}
+            value={token}
+          />
+        </View>
+      </View>
+
+      <View style={styles.settingsSection}>
         <Text style={styles.label}>Notifications</Text>
         <Text style={styles.notificationStatus}>
           {notificationStatus === "granted"
@@ -1114,7 +1164,7 @@ function SettingsScreen({
           <Text style={styles.secondaryActionText}>Register Push</Text>
         </Pressable>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -1440,8 +1490,19 @@ const styles = StyleSheet.create({
   },
   settingsPane: {
     flex: 1,
-    gap: 18,
-    padding: 20,
+  },
+  settingsContent: {
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+  },
+  settingsSection: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
   },
   fieldGroup: {
     gap: 8,
