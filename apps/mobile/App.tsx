@@ -594,13 +594,6 @@ export default function App() {
             </Text>
           </Pressable>
           <Pressable
-            accessibilityLabel="Scan Pairing Code"
-            onPress={() => setScreen("scanner")}
-            style={styles.iconButton}
-          >
-            <Text style={styles.iconButtonText}>Scan</Text>
-          </Pressable>
-          <Pressable
             accessibilityLabel={screen === "settings" ? "Approvals" : "Settings"}
             onPress={() =>
               setScreen((current) =>
@@ -633,6 +626,7 @@ export default function App() {
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
           onSendTestNotification={() => void sendTestNotification()}
+          onScanPairing={() => setScreen("scanner")}
           pairingCode={pairingCode}
           pushStatus={pushStatus}
           deviceID={deviceID}
@@ -1061,6 +1055,7 @@ function SettingsScreen({
   onRegisterPush,
   onRequestNotifications,
   onSendTestNotification,
+  onScanPairing,
   pairingCode,
   pushStatus,
   deviceID,
@@ -1080,6 +1075,7 @@ function SettingsScreen({
   onRegisterPush: () => void;
   onRequestNotifications: () => void;
   onSendTestNotification: () => void;
+  onScanPairing: () => void;
   pairingCode: string;
   pushStatus: PushStatus;
   deviceID: string;
@@ -1123,8 +1119,20 @@ function SettingsScreen({
         <Text style={styles.deviceStatus}>
           {deviceID ? `Paired as ${deviceID}` : "Not paired"}
         </Text>
+        <Pressable onPress={onScanPairing} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Scan Pairing QR</Text>
+        </Pressable>
+        {deviceID ? (
+          <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
+            <Text style={styles.secondaryActionText}>Forget Device</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View style={styles.settingsSection}>
+        <Text style={styles.sectionHeading}>Advanced</Text>
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Pairing Code</Text>
+          <Text style={styles.label}>Manual Pairing Code</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
@@ -1134,18 +1142,9 @@ function SettingsScreen({
             value={pairingCode}
           />
           <Pressable onPress={onPairDevice} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Pair This Device</Text>
+            <Text style={styles.primaryButtonText}>Pair Manually</Text>
           </Pressable>
-          {deviceID ? (
-            <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>Forget Device</Text>
-            </Pressable>
-          ) : null}
         </View>
-      </View>
-
-      <View style={styles.settingsSection}>
-        <Text style={styles.sectionHeading}>Advanced</Text>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Manual Bearer Token</Text>
           <TextInput
