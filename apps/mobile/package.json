@@ -7,7 +7,21 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "setupFiles": [
+      "./jest.setup.js"
+    ],
+    "moduleNameMapper": {
+      "^expo/src/winter$": "<rootDir>/__mocks__/expo-winter.js",
+      "^expo/virtual/streams$": "<rootDir>/__mocks__/expo-winter.js"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)"
+    ]
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -20,7 +34,12 @@
     "react-native": "0.81.5"
   },
   "devDependencies": {
+    "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
+    "jest": "^30.3.0",
+    "jest-expo": "^54.0.17",
+    "react-test-renderer": "^19.1.0",
     "typescript": "~5.9.2"
   }
 }

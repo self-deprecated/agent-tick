@@ -16,11 +16,10 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
+import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
 
 type Screen = "approvals" | "history" | "settings" | "scanner";
-type ConnectionStatus = "checking" | "connected" | "disconnected";
-type NotificationStatus = "checking" | "granted" | "denied" | "undetermined";
-type PushStatus = "idle" | "registered" | "unsupported" | "failed";
 
 type Requester = {
   name: string;
@@ -728,27 +727,6 @@ function isUsableProjectID(value: unknown): value is string {
   );
 }
 
-function ConnectionBadge({ status }: { status: ConnectionStatus }) {
-  const label =
-    status === "connected"
-      ? "Connected"
-      : status === "checking"
-        ? "Checking"
-        : "Disconnected";
-
-  return (
-    <View style={styles.connectionBadge}>
-      <View
-        style={[
-          styles.connectionDot,
-          status === "connected" ? styles.connectionDotOk : null,
-          status === "disconnected" ? styles.connectionDotBad : null,
-        ]}
-      />
-      <Text style={styles.connectionText}>{label}</Text>
-    </View>
-  );
-}
 
 async function refreshNotificationStatus(
   setNotificationStatus: (status: NotificationStatus) => void,
@@ -1063,156 +1041,6 @@ function ScannerScreen({
   );
 }
 
-function SettingsScreen({
-  connectionStatus,
-  error,
-  loading,
-  notificationStatus,
-  onCheck,
-  onForgetDevice,
-  onPairDevice,
-  onRegisterPush,
-  onRequestNotifications,
-  onSendTestNotification,
-  onScanPairing,
-  pairingCode,
-  pushStatus,
-  deviceID,
-  serverURL,
-  setPairingCode,
-  setServerURL,
-  setToken,
-  token,
-}: {
-  connectionStatus: ConnectionStatus;
-  error: string | null;
-  loading: boolean;
-  notificationStatus: NotificationStatus;
-  onCheck: () => void;
-  onForgetDevice: () => void;
-  onPairDevice: () => void;
-  onRegisterPush: () => void;
-  onRequestNotifications: () => void;
-  onSendTestNotification: () => void;
-  onScanPairing: () => void;
-  pairingCode: string;
-  pushStatus: PushStatus;
-  deviceID: string;
-  serverURL: string;
-  setPairingCode: (value: string) => void;
-  setServerURL: (value: string) => void;
-  setToken: (value: string) => void;
-  token: string;
-}) {
-  return (
-    <ScrollView
-      contentContainerStyle={styles.settingsContent}
-      style={styles.settingsPane}
-    >
-      <View style={styles.settingsSection}>
-        <Text style={styles.sectionHeading}>Connection</Text>
-        <View style={styles.statusRow}>
-          <ConnectionBadge status={connectionStatus} />
-          {loading ? <ActivityIndicator color="#202124" /> : null}
-        </View>
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Server URL</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            inputMode="url"
-            onChangeText={setServerURL}
-            placeholder="http://192.168.1.20:8787"
-            style={styles.input}
-            value={serverURL}
-          />
-        </View>
-        <Pressable onPress={onCheck} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Check Connection</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.settingsSection}>
-        <Text style={styles.sectionHeading}>Device</Text>
-        <Text style={styles.deviceStatus}>
-          {deviceID ? `Paired as ${deviceID}` : "Not paired"}
-        </Text>
-        <Pressable onPress={onScanPairing} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Scan Pairing QR</Text>
-        </Pressable>
-        {deviceID ? (
-          <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>Forget Device</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      <View style={styles.settingsSection}>
-        <Text style={styles.sectionHeading}>Advanced</Text>
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Manual Pairing Code</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            onChangeText={setPairingCode}
-            placeholder="pair_..."
-            style={styles.input}
-            value={pairingCode}
-          />
-          <Pressable onPress={onPairDevice} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Pair Manually</Text>
-          </Pressable>
-        </View>
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Manual Bearer Token</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            onChangeText={setToken}
-            placeholder="test-token"
-            secureTextEntry
-            style={styles.input}
-            value={token}
-          />
-        </View>
-      </View>
-
-      <View style={styles.settingsSection}>
-        <Text style={styles.label}>Notifications</Text>
-        <Text style={styles.notificationStatus}>
-          {notificationStatus === "granted"
-            ? "On"
-            : notificationStatus === "denied"
-              ? "Off"
-              : notificationStatus === "checking"
-                ? "Checking"
-                : "Not Asked"}
-        </Text>
-        <View style={styles.notificationActions}>
-          <Pressable
-            onPress={onRequestNotifications}
-            style={styles.secondaryActionButton}
-          >
-            <Text style={styles.secondaryActionText}>Enable</Text>
-          </Pressable>
-          <Pressable
-            onPress={onSendTestNotification}
-            style={styles.secondaryActionButton}
-          >
-            <Text style={styles.secondaryActionText}>Test</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.notificationStatus}>
-          Push: {pushStatus === "registered" ? "Registered" : pushStatus}
-        </Text>
-        <Pressable onPress={onRegisterPush} style={styles.secondaryActionButton}>
-          <Text style={styles.secondaryActionText}>Register Push</Text>
-        </Pressable>
-      </View>
-    </ScrollView>
-  );
-}
 
 const styles = StyleSheet.create({
   shell: {
@@ -1259,29 +1087,6 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 14,
     fontWeight: "800",
-  },
-  connectionBadge: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 7,
-    marginTop: 4,
-  },
-  connectionDot: {
-    backgroundColor: "#8b8172",
-    borderRadius: 5,
-    height: 10,
-    width: 10,
-  },
-  connectionDotOk: {
-    backgroundColor: "#1f6f5b",
-  },
-  connectionDotBad: {
-    backgroundColor: "#a33b2f",
-  },
-  connectionText: {
-    color: "#5f5a4f",
-    fontSize: 13,
-    fontWeight: "700",
   },
   waitingPane: {
     alignItems: "center",
@@ -1534,52 +1339,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "900",
   },
-  settingsPane: {
-    flex: 1,
-  },
-  settingsContent: {
-    gap: 16,
-    paddingHorizontal: 20,
-    paddingBottom: 32,
-  },
-  settingsSection: {
-    backgroundColor: "#ffffff",
-    borderColor: "#ded6c6",
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 12,
-    padding: 14,
-  },
-  deviceStatus: {
-    color: "#202124",
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  label: {
-    color: "#545044",
-    fontSize: 13,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-  input: {
-    backgroundColor: "#ffffff",
-    borderColor: "#ded6c6",
-    borderRadius: 8,
-    borderWidth: 1,
-    color: "#202124",
-    fontSize: 16,
-    minHeight: 50,
-    padding: 12,
-  },
-  statusRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 12,
-    minHeight: 28,
-  },
   primaryButton: {
     alignItems: "center",
     backgroundColor: "#202124",
@@ -1591,38 +1350,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#ffffff",
     fontSize: 16,
-    fontWeight: "900",
-  },
-  notificationPanel: {
-    backgroundColor: "#ffffff",
-    borderColor: "#ded6c6",
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 10,
-    padding: 14,
-  },
-  notificationStatus: {
-    color: "#202124",
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  notificationActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  secondaryActionButton: {
-    alignItems: "center",
-    borderColor: "#202124",
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    minHeight: 46,
-    justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-  secondaryActionText: {
-    color: "#202124",
-    fontSize: 15,
     fontWeight: "900",
   },
   secondaryButton: {
