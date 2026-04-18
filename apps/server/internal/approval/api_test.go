@@ -176,6 +176,33 @@ func TestAPIUserModeLoginScopesDashboardRequests(t *testing.T) {
 	}
 }
 
+func TestAPIUserModeLoginMarksSessionCookieSecureBehindHTTPS(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(LoginRequest{Email: "secure@example.com", Password: "secret"}); err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/session", &body)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].Secure {
+		t.Fatalf("cookies = %#v, want secure session cookie", cookies)
+	}
+}
+
 func TestAPIUserModeCannotRevokeOtherUsersDevicesOrAgentTokens(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

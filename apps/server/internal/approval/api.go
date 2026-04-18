@@ -257,6 +257,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		Expires:  session.Expiry,
 		HttpOnly: true,
+		Secure:   secureSessionCookie(r, a.publicURL),
 		SameSite: http.SameSiteLaxMode,
 	})
 	session.Token = ""
@@ -679,6 +680,16 @@ func publicServerURL(r *http.Request) string {
 		host = r.Host
 	}
 	return proto + "://" + host
+}
+
+func secureSessionCookie(r *http.Request, publicURL string) bool {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(publicURL)), "https://") {
+		return true
+	}
+	if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		return true
+	}
+	return r.TLS != nil
 }
 
 func tokenMatches(got string, want string) bool {
