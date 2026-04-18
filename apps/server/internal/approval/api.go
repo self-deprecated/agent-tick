@@ -28,6 +28,7 @@ type API struct {
 	accounts         UserAccountStore
 	token            string
 	mode             string
+	publicURL        string
 	requireSignature bool
 }
 
@@ -141,6 +142,10 @@ func (a *API) SetMode(mode string) error {
 		return errors.New("invalid AGENT_TICK_MODE")
 	}
 	return nil
+}
+
+func (a *API) SetPublicURL(url string) {
+	a.publicURL = strings.TrimRight(strings.TrimSpace(url), "/")
 }
 
 func (a *API) RequireSignatures(required bool) {
@@ -309,7 +314,7 @@ func (a *API) createPairingToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	token.QRDataURL = pairingQRDataURL(r, token.Token)
+	token.QRDataURL = a.pairingQRDataURL(r, token.Token)
 	writeJSON(w, http.StatusCreated, token)
 }
 
@@ -508,9 +513,13 @@ func bearerToken(r *http.Request) string {
 	return token
 }
 
-func pairingQRDataURL(r *http.Request, pairingCode string) string {
+func (a *API) pairingQRDataURL(r *http.Request, pairingCode string) string {
+	serverURL := a.publicURL
+	if serverURL == "" {
+		serverURL = publicServerURL(r)
+	}
 	payload, err := json.Marshal(map[string]string{
-		"serverURL":   publicServerURL(r),
+		"serverURL":   serverURL,
 		"pairingCode": pairingCode,
 	})
 	if err != nil {

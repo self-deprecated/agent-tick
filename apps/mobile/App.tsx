@@ -103,6 +103,7 @@ export default function App() {
     useState<NotificationStatus>("checking");
   const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [scannerLocked, setScannerLocked] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const seenRequestIDs = useRef<Set<string>>(new Set());
   const didPrimeNotifications = useRef(false);
@@ -425,16 +426,22 @@ export default function App() {
     await pairWithCode(pairingCode.trim());
   };
 
-  const pairWithCode = async (code: string, serverOverride?: string) => {
+  const pairWithCode = async (
+    code: string,
+    serverOverride?: string,
+    alreadyLocked = false,
+  ) => {
     if (!code) {
       Alert.alert("Pairing code required", "Enter the code from agent-tick pair.");
       return;
     }
-    if (pairingInFlight.current) {
+    if (!alreadyLocked && pairingInFlight.current) {
       return;
     }
 
-    pairingInFlight.current = true;
+    if (!alreadyLocked) {
+      pairingInFlight.current = true;
+    }
     const activeServerURL = (serverOverride || serverURL).replace(/\/$/, "");
 
     try {
@@ -467,6 +474,7 @@ export default function App() {
       );
     } finally {
       pairingInFlight.current = false;
+      setScannerLocked(false);
     }
   };
 
@@ -559,15 +567,19 @@ export default function App() {
     if (pairingInFlight.current) {
       return;
     }
+    pairingInFlight.current = true;
+    setScannerLocked(true);
     const payload = parsePairingPayload(result.data);
     if (payload.serverURL) {
       setServerURL(payload.serverURL);
     }
     if (payload.pairingCode) {
       setPairingCode(payload.pairingCode);
-      await pairWithCode(payload.pairingCode, payload.serverURL);
+      await pairWithCode(payload.pairingCode, payload.serverURL, true);
       return;
     }
+    pairingInFlight.current = false;
+    setScannerLocked(false);
     Alert.alert("Invalid QR code", "This does not look like an Agent Tick pairing code.");
   };
 
@@ -626,7 +638,11 @@ export default function App() {
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
           onSendTestNotification={() => void sendTestNotification()}
-          onScanPairing={() => setScreen("scanner")}
+          onScanPairing={() => {
+            pairingInFlight.current = false;
+            setScannerLocked(false);
+            setScreen("scanner");
+          }}
           pairingCode={pairingCode}
           pushStatus={pushStatus}
           deviceID={deviceID}
@@ -639,6 +655,7 @@ export default function App() {
       ) : screen === "scanner" ? (
         <ScannerScreen
           cameraPermission={cameraPermission}
+          scanning={scannerLocked}
           onCancel={() => setScreen("settings")}
           onRequestPermission={() => void requestCameraPermission()}
           onScan={(result) => void handlePairingScan(result)}
@@ -1008,11 +1025,13 @@ function ScannerScreen({
   onCancel,
   onRequestPermission,
   onScan,
+  scanning,
 }: {
   cameraPermission: ReturnType<typeof useCameraPermissions>[0];
   onCancel: () => void;
   onRequestPermission: () => void;
   onScan: (result: BarcodeScanningResult) => void;
+  scanning: boolean;
 }) {
   if (!cameraPermission?.granted) {
     return (
@@ -1032,7 +1051,7 @@ function ScannerScreen({
     <View style={styles.scannerPane}>
       <CameraView
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={onScan}
+        onBarcodeScanned={scanning ? undefined : onScan}
         style={styles.scanner}
       />
       <View style={styles.scannerFooter}>

@@ -95,6 +95,7 @@ func runServer(args []string) {
 	if err := api.SetMode(getenv("AGENT_TICK_MODE", approval.ModeSingle)); err != nil {
 		log.Fatal(err)
 	}
+	api.SetPublicURL(os.Getenv("AGENT_TICK_PUBLIC_URL"))
 	api.RequireSignatures(os.Getenv("AGENT_TICK_REQUIRE_SIGNATURE") == "1")
 	log.Printf("agent-tick listening on %s", *addr)
 	if err := http.ListenAndServe(*addr, api.Handler()); err != nil {
