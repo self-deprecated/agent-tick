@@ -181,52 +181,6 @@ npx eas build --profile development --platform ios
 
 After `eas init`, replace the placeholder `extra.eas.projectId` in `apps/mobile/app.json` with the generated project id.
 
-## Container Development
-
-The published image is built by GitHub Actions from `apps/server/Dockerfile`.
-
-Build the server image locally:
-
-```sh
-docker build -t agent-tick:dev apps/server
-```
-
-Run the local image with the root compose file:
-
-```sh
-AGENT_TICK_IMAGE=agent-tick:dev \
-AGENT_TICK_MODE=user \
-AGENT_TICK_PUBLIC_URL=http://localhost:8787 \
-AGENT_TICK_PORT=8787 \
-docker compose up -d
-```
-
-For single-user mode:
-
-```sh
-AGENT_TICK_IMAGE=agent-tick:dev \
-AGENT_TICK_MODE=single \
-AGENT_TICK_TOKEN=change-me \
-AGENT_TICK_PUBLIC_URL=http://localhost:8787 \
-AGENT_TICK_PORT=8787 \
-docker compose up -d
-```
-
-Use the same commands with `podman` or `podman compose` if your development machine uses Podman.
-
-## Publishing The Server Image
-
-The workflow publishes to GitHub Container Registry:
-
-```text
-ghcr.io/self-deprecated/agent-tick:latest
-ghcr.io/self-deprecated/agent-tick:main
-ghcr.io/self-deprecated/agent-tick:sha-<commit>
-ghcr.io/self-deprecated/agent-tick:v0.1.0
-```
-
-Images are pushed on `main` and on tags matching `v*`. Pull requests build the image but do not publish it.
-
 ## Publishing CLI Binaries
 
 The CLI release workflow builds archives with:
@@ -252,32 +206,3 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-## Security Model
-
-- Single mode maps all records to the implicit `usr_default` user.
-- User mode scopes approvals, devices, pairing tokens, agent tokens, and audit events by user.
-- Dashboard sessions are HttpOnly cookies.
-- Device pairing uses short-lived one-time pairing secrets.
-- Device tokens are separate from agent tokens.
-- Dashboard-created agent tokens default to request-only `approval:write`.
-- Production deployments should run behind HTTPS.
-
-Optional signed approval creation:
-
-```sh
-AGENT_TICK_REQUIRE_SIGNATURE=1 \
-AGENT_TICK_TOKEN=change-me \
-agent-tick server
-```
-
-Signed create requests must include:
-
-- `X-Agent-Tick-Timestamp`
-- `X-Agent-Tick-Public-Key`
-- `X-Agent-Tick-Signature`
-
-The signature is over:
-
-```text
-<timestamp>.<raw-json-body>
-```
