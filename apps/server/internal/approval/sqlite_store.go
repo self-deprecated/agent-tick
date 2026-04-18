@@ -464,7 +464,7 @@ func (s *SQLiteStore) UserIDForDeviceToken(token string) (string, bool, error) {
 
 	var userID string
 	err := s.db.QueryRow(
-		"SELECT user_id FROM devices WHERE token_hash = ? LIMIT 1",
+		"SELECT user_id FROM devices WHERE token_hash = ? AND unpaired_at = '' LIMIT 1",
 		tokenHash(token),
 	).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -488,7 +488,7 @@ func (s *SQLiteStore) UserIDForDeviceTokenForDevice(deviceID string, token strin
 
 	var userID string
 	err := s.db.QueryRow(
-		"SELECT user_id FROM devices WHERE id = ? AND token_hash = ? LIMIT 1",
+		"SELECT user_id FROM devices WHERE id = ? AND token_hash = ? AND unpaired_at = '' LIMIT 1",
 		deviceID,
 		tokenHash(token),
 	).Scan(&userID)
@@ -532,7 +532,7 @@ func (s *SQLiteStore) ListDevicePushTokensForUser(userID string) ([]string, erro
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
-	rows, err := s.db.Query("SELECT expo_push_token FROM devices WHERE user_id = ? AND expo_push_token != ''", userID)
+	rows, err := s.db.Query("SELECT expo_push_token FROM devices WHERE user_id = ? AND expo_push_token != '' AND unpaired_at = ''", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +557,7 @@ func (s *SQLiteStore) ListDevicesForUser(userID string) ([]DeviceRecord, error) 
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
-	rows, err := s.db.Query("SELECT id, name, expo_push_token, created_at FROM devices WHERE user_id = ? ORDER BY created_at DESC", userID)
+	rows, err := s.db.Query("SELECT id, name, expo_push_token, created_at, unpaired_at FROM devices WHERE user_id = ? ORDER BY created_at DESC", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +568,8 @@ func (s *SQLiteStore) ListDevicesForUser(userID string) ([]DeviceRecord, error) 
 		var device DeviceRecord
 		var pushToken string
 		var createdAt string
-		if err := rows.Scan(&device.DeviceID, &device.Name, &pushToken, &createdAt); err != nil {
+		var unpairedAt string
+		if err := rows.Scan(&device.DeviceID, &device.Name, &pushToken, &createdAt, &unpairedAt); err != nil {
 			return nil, err
 		}
 		parsedCreatedAt, err := time.Parse(time.RFC3339, createdAt)
@@ -576,7 +577,8 @@ func (s *SQLiteStore) ListDevicesForUser(userID string) ([]DeviceRecord, error) 
 			return nil, err
 		}
 		device.CreatedAt = parsedCreatedAt
-		device.PushNotifications = pushToken != ""
+		device.PushNotifications = pushToken != "" && unpairedAt == ""
+		device.UnpairedAt = parseOptionalTime(unpairedAt)
 		devices = append(devices, device)
 	}
 	return devices, rows.Err()
@@ -694,6 +696,26 @@ func (s *SQLiteStore) RevokeAgentToken(agentID string) error {
 		"UPDATE agent_tokens SET revoked_at = ? WHERE id = ? AND revoked_at = ''",
 		timeText(&now),
 		agentID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) UnpairDevice(deviceID string) error {
+	now := time.Now().UTC()
+	result, err := s.db.Exec(
+		"UPDATE devices SET unpaired_at = ? WHERE id = ? AND unpaired_at = ''",
+		timeText(&now),
+		deviceID,
 	)
 	if err != nil {
 		return err
@@ -870,6 +892,9 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if err := s.addColumnIfMissing("agent_tokens", "revoked_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("devices", "unpaired_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 

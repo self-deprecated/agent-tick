@@ -38,6 +38,7 @@ type PairingStore interface {
 	SetDevicePushToken(deviceID string, token string) error
 	ListDevices() ([]DeviceRecord, error)
 	ListDevicePushTokens() ([]string, error)
+	UnpairDevice(deviceID string) error
 }
 
 type UserScopedPairingStore interface {

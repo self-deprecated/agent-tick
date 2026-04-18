@@ -213,12 +213,37 @@ const adminHTML = `<!doctype html>
 
     function renderDevice(device) {
       const push = device.pushNotifications ? 'Push on' : 'Push off';
-      return '<div><pre>' + escapeHTML(device.deviceId) + '</pre><div class="meta">' + escapeHTML(device.name) + ' · ' + push + ' · Paired ' + escapeHTML(new Date(device.createdAt).toLocaleString()) + '</div></div>';
+      if (device.unpairedAt) {
+        return '<div><pre>' + escapeHTML(device.deviceId) + '</pre><div class="meta">' + escapeHTML(device.name) + ' · <span style="opacity:0.5">Unpaired ' + escapeHTML(new Date(device.unpairedAt).toLocaleString()) + '</span></div></div>';
+      }
+      return '<div><pre>' + escapeHTML(device.deviceId) + '</pre><div class="meta">' + escapeHTML(device.name) + ' · ' + push + ' · Paired ' + escapeHTML(new Date(device.createdAt).toLocaleString()) + '</div><button class="secondary" onclick="unpairDevice(' + JSON.stringify(device.deviceId) + ')">Revoke</button></div>';
+    }
+
+    async function unpairDevice(id) {
+      if (!confirm('Revoke this device? The device will no longer be able to authenticate.')) return;
+      try {
+        await requestJSON('/v1/devices/' + id + '/unpair', { method: 'POST' });
+        await loadDevices();
+      } catch (error) {
+        document.getElementById('devices').innerHTML = renderError(error.message);
+      }
     }
 
     function renderAgent(agent) {
-      const state = agent.revokedAt ? 'Revoked' : 'Active';
-      return '<div><pre>' + escapeHTML(agent.agentId) + '</pre><div class="meta">' + escapeHTML(agent.name) + ' · ' + state + ' · Created ' + escapeHTML(new Date(agent.createdAt).toLocaleString()) + '</div></div>';
+      if (agent.revokedAt) {
+        return '<div><pre>' + escapeHTML(agent.agentId) + '</pre><div class="meta">' + escapeHTML(agent.name) + ' · <span style="opacity:0.5">Revoked ' + escapeHTML(new Date(agent.revokedAt).toLocaleString()) + '</span></div></div>';
+      }
+      return '<div><pre>' + escapeHTML(agent.agentId) + '</pre><div class="meta">' + escapeHTML(agent.name) + ' · Active · Created ' + escapeHTML(new Date(agent.createdAt).toLocaleString()) + '</div><button class="secondary" onclick="revokeAgent(' + JSON.stringify(agent.agentId) + ')">Revoke</button></div>';
+    }
+
+    async function revokeAgent(id) {
+      if (!confirm('Revoke this agent token? This cannot be undone.')) return;
+      try {
+        await requestJSON('/v1/agent-tokens/' + id + '/revoke', { method: 'POST' });
+        await loadAgents();
+      } catch (error) {
+        document.getElementById('agents').innerHTML = renderError(error.message);
+      }
     }
 
     function shellQuote(value) {

@@ -69,10 +69,11 @@ type DeviceCredential struct {
 }
 
 type DeviceRecord struct {
-	DeviceID          string    `json:"deviceId"`
-	Name              string    `json:"name"`
-	PushNotifications bool      `json:"pushNotifications"`
-	CreatedAt         time.Time `json:"createdAt"`
+	DeviceID          string     `json:"deviceId"`
+	Name              string     `json:"name"`
+	PushNotifications bool       `json:"pushNotifications"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	UnpairedAt        *time.Time `json:"unpairedAt,omitempty"`
 }
 
 type LoginRequest struct {

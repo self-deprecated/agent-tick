@@ -180,8 +180,10 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/devices", a.listDevices)
 	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/push-token", a.setDevicePushToken)
+	mux.HandleFunc("POST /v1/devices/{id}/unpair", a.unpairDevice)
 	mux.HandleFunc("GET /v1/agent-tokens", a.listAgentTokens)
 	mux.HandleFunc("POST /v1/agent-tokens", a.createAgentToken)
+	mux.HandleFunc("POST /v1/agent-tokens/{id}/revoke", a.revokeAgentToken)
 	mux.HandleFunc("GET /v1/events", a.eventsSocket)
 	return a.withAuth(a.withCORS(mux))
 }
@@ -457,6 +459,38 @@ func (a *API) createAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, credential)
+}
+
+func (a *API) unpairDevice(w http.ResponseWriter, r *http.Request) {
+	if a.pairings == nil {
+		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
+		return
+	}
+	deviceID := r.PathValue("id")
+	if err := a.pairings.UnpairDevice(deviceID); errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "device not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) revokeAgentToken(w http.ResponseWriter, r *http.Request) {
+	if a.agents == nil {
+		writeError(w, http.StatusNotImplemented, "agent tokens are not supported by this store")
+		return
+	}
+	agentID := r.PathValue("id")
+	if err := a.agents.RevokeAgentToken(agentID); errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "agent token not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (a *API) sendPush(request ApprovalRequest) {

@@ -446,6 +446,93 @@ func request[T any](t *testing.T, handler http.Handler, method string, path stri
 	return output
 }
 
+func TestAPIUnpairsDevice(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	pairing := request[PairingToken](t, handler, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
+	credential := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairing.Token, DeviceName: "iPhone"})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/devices/"+credential.DeviceID+"/unpair", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unpair status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+
+	devices := request[[]DeviceRecord](t, handler, http.MethodGet, "/v1/devices", nil)
+	if len(devices) != 1 {
+		t.Fatalf("len(devices) = %d, want 1", len(devices))
+	}
+	if devices[0].UnpairedAt == nil {
+		t.Fatal("devices[0].UnpairedAt is nil, want non-nil after unpair")
+	}
+
+	ok, err := store.VerifyDeviceToken(credential.Token)
+	if err != nil {
+		t.Fatalf("VerifyDeviceToken() error = %v", err)
+	}
+	if ok {
+		t.Fatal("VerifyDeviceToken() = true after unpair, want false")
+	}
+}
+
+func TestAPIUnpairDeviceRequiresAuth(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/devices/dev_123/unpair", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestAPIRevokeAgentTokenEndpoint(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	credential := request[AgentCredential](t, handler, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "bot"})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tokens/"+credential.AgentID+"/revoke", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("revoke status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+
+	ok, err := store.VerifyAgentToken(credential.Token, "approval:write")
+	if err != nil {
+		t.Fatalf("VerifyAgentToken() error = %v", err)
+	}
+	if ok {
+		t.Fatal("VerifyAgentToken() = true after revoke, want false")
+	}
+}
+
+func TestAPIRevokeAgentTokenEndpointRequiresAuth(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tokens/agent_123/revoke", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
 func requestWithoutAuth[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
 	t.Helper()
 
