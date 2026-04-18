@@ -329,42 +329,52 @@ func (s *SQLiteStore) PairDevice(token string, deviceName string) (DeviceCredent
 }
 
 func (s *SQLiteStore) VerifyDeviceToken(token string) (bool, error) {
+	_, ok, err := s.UserIDForDeviceToken(token)
+	return ok, err
+}
+
+func (s *SQLiteStore) UserIDForDeviceToken(token string) (string, bool, error) {
 	if strings.TrimSpace(token) == "" {
-		return false, nil
+		return "", false, nil
 	}
 
-	var exists int
+	var userID string
 	err := s.db.QueryRow(
-		"SELECT 1 FROM devices WHERE token_hash = ? LIMIT 1",
+		"SELECT user_id FROM devices WHERE token_hash = ? LIMIT 1",
 		tokenHash(token),
-	).Scan(&exists)
+	).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+		return "", false, nil
 	}
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
-	return exists == 1, nil
+	return userID, true, nil
 }
 
 func (s *SQLiteStore) VerifyDeviceTokenForDevice(deviceID string, token string) (bool, error) {
+	_, ok, err := s.UserIDForDeviceTokenForDevice(deviceID, token)
+	return ok, err
+}
+
+func (s *SQLiteStore) UserIDForDeviceTokenForDevice(deviceID string, token string) (string, bool, error) {
 	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(token) == "" {
-		return false, nil
+		return "", false, nil
 	}
 
-	var exists int
+	var userID string
 	err := s.db.QueryRow(
-		"SELECT 1 FROM devices WHERE id = ? AND token_hash = ? LIMIT 1",
+		"SELECT user_id FROM devices WHERE id = ? AND token_hash = ? LIMIT 1",
 		deviceID,
 		tokenHash(token),
-	).Scan(&exists)
+	).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+		return "", false, nil
 	}
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
-	return exists == 1, nil
+	return userID, true, nil
 }
 
 func (s *SQLiteStore) SetDevicePushToken(deviceID string, token string) error {
@@ -466,27 +476,34 @@ func (s *SQLiteStore) CreateAgentToken(name string, scopes []string) (AgentCrede
 }
 
 func (s *SQLiteStore) VerifyAgentToken(token string, scope string) (bool, error) {
+	_, ok, err := s.UserIDForAgentToken(token, scope)
+	return ok, err
+}
+
+func (s *SQLiteStore) UserIDForAgentToken(token string, scope string) (string, bool, error) {
 	if strings.TrimSpace(token) == "" {
-		return false, nil
+		return "", false, nil
 	}
 
+	var userID string
 	var scopesJSON string
 	err := s.db.QueryRow(
-		"SELECT scopes_json FROM agent_tokens WHERE token_hash = ? AND revoked_at = '' LIMIT 1",
+		"SELECT user_id, scopes_json FROM agent_tokens WHERE token_hash = ? AND revoked_at = '' LIMIT 1",
 		tokenHash(token),
-	).Scan(&scopesJSON)
+	).Scan(&userID, &scopesJSON)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+		return "", false, nil
 	}
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 
 	var scopes []string
 	if err := json.Unmarshal([]byte(scopesJSON), &scopes); err != nil {
-		return false, err
+		return "", false, err
 	}
-	return slices.Contains(scopes, scope) || slices.Contains(scopes, "*"), nil
+	ok := slices.Contains(scopes, scope) || slices.Contains(scopes, "*")
+	return userID, ok, nil
 }
 
 func (s *SQLiteStore) ListAgentTokens() ([]AgentTokenRecord, error) {

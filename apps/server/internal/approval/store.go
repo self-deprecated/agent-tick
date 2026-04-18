@@ -41,6 +41,12 @@ type AgentStore interface {
 	RotateAgentToken(agentID string) (AgentCredential, error)
 }
 
+type UserTokenStore interface {
+	UserIDForAgentToken(token string, scope string) (string, bool, error)
+	UserIDForDeviceToken(token string) (string, bool, error)
+	UserIDForDeviceTokenForDevice(deviceID string, token string) (string, bool, error)
+}
+
 type FileStore struct {
 	path string
 	mu   sync.Mutex

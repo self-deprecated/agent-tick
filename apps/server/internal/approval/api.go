@@ -1,6 +1,7 @@
 package approval
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ type API struct {
 	agents           AgentStore
 	push             *PushSender
 	events           *EventHub
+	userTokens       UserTokenStore
 	token            string
 	requireSignature bool
 }
@@ -29,7 +31,28 @@ func NewAPI(store Store, token string) *API {
 	if agents, ok := store.(AgentStore); ok {
 		api.agents = agents
 	}
+	if userTokens, ok := store.(UserTokenStore); ok {
+		api.userTokens = userTokens
+	}
 	return api
+}
+
+type authContext struct {
+	UserID string
+}
+
+type authContextKey struct{}
+
+func withAuthContext(r *http.Request, auth authContext) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), authContextKey{}, auth))
+}
+
+func currentAuth(r *http.Request) authContext {
+	auth, ok := r.Context().Value(authContextKey{}).(authContext)
+	if !ok || auth.UserID == "" {
+		return authContext{UserID: defaultUserID}
+	}
+	return auth
 }
 
 func (a *API) RequireSignatures(required bool) {
@@ -253,6 +276,10 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 	if a.pairings == nil {
 		return false
 	}
+	if a.userTokens != nil {
+		userID, ok, err := a.userTokens.UserIDForDeviceTokenForDevice(deviceID, token)
+		return err == nil && ok && userID == currentAuth(r).UserID
+	}
 	ok, err := a.pairings.VerifyDeviceTokenForDevice(deviceID, token)
 	return err == nil && ok
 }
@@ -260,18 +287,42 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 func (a *API) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || (r.Method == http.MethodGet && r.URL.Path == "/") {
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
 			return
 		}
 		if a.token == "" && isLoopback(r.RemoteAddr) {
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
 			return
 		}
 
 		token := bearerToken(r)
 		if a.token != "" && tokenMatches(token, a.token) {
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
 			return
+		}
+		if a.userTokens != nil {
+			if a.agents != nil {
+				userID, ok, err := a.userTokens.UserIDForAgentToken(token, requiredScope(r))
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				if ok {
+					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID}))
+					return
+				}
+			}
+			if a.pairings != nil && token != "" {
+				userID, ok, err := a.userTokens.UserIDForDeviceToken(token)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				if ok {
+					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID}))
+					return
+				}
+			}
 		}
 		if a.agents != nil {
 			ok, err := a.agents.VerifyAgentToken(token, requiredScope(r))
@@ -280,7 +331,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 			if ok {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
 				return
 			}
 		}
@@ -291,7 +342,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 			if ok {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
 				return
 			}
 		}

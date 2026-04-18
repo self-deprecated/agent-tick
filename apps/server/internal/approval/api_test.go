@@ -116,6 +116,14 @@ func TestAPIPairsDeviceToken(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
 	}
+
+	userID, ok, err := store.UserIDForDeviceToken(credential.Token)
+	if err != nil {
+		t.Fatalf("UserIDForDeviceToken() error = %v", err)
+	}
+	if !ok || userID != defaultUserID {
+		t.Fatalf("device user = %q, %v, want %q, true", userID, ok, defaultUserID)
+	}
 }
 
 func TestAPIPairingTokenIsSingleUse(t *testing.T) {
