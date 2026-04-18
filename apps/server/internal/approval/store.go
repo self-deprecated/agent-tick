@@ -29,6 +29,7 @@ type PairingStore interface {
 	VerifyDeviceToken(token string) (bool, error)
 	VerifyDeviceTokenForDevice(deviceID string, token string) (bool, error)
 	SetDevicePushToken(deviceID string, token string) error
+	ListDevices() ([]DeviceRecord, error)
 	ListDevicePushTokens() ([]string, error)
 }
 

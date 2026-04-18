@@ -33,9 +33,10 @@ const adminHTML = `<!doctype html>
   <main>
     <section class="toolbar">
       <input id="token" type="password" autocomplete="off" placeholder="Bearer token">
-      <button onclick="loadApprovals()">Refresh</button>
-      <button onclick="createPairing()">Pairing Code</button>
+      <button onclick="connectDashboard()">Connect</button>
+      <button onclick="refreshDashboard()">Refresh</button>
     </section>
+    <section id="devices"></section>
     <section id="pairing"></section>
     <section id="approvals"></section>
   </main>
@@ -44,9 +45,37 @@ const adminHTML = `<!doctype html>
     let pairingClearTimer;
     let pairingToken = '';
     localStorage.removeItem('agent-tick.adminToken');
+    tokenInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') connectDashboard();
+    });
 
     function headers() {
       return { 'Authorization': 'Bearer ' + tokenInput.value, 'Content-Type': 'application/json' };
+    }
+
+    async function connectDashboard() {
+      clearPairing();
+      await refreshDashboard();
+      await createPairing();
+    }
+
+    async function refreshDashboard() {
+      await Promise.all([loadDevices(), loadApprovals()]);
+    }
+
+    async function loadDevices() {
+      const target = document.getElementById('devices');
+      target.innerHTML = '<div class="card meta">Loading devices...</div>';
+      try {
+        const devices = await requestJSON('/v1/devices');
+        target.innerHTML = '<div class="card"><b>Devices</b>' + (
+          devices.length
+            ? devices.map(renderDevice).join('')
+            : '<div class="meta">No paired devices yet.</div>'
+        ) + '</div>';
+      } catch (error) {
+        target.innerHTML = renderError(error.message);
+      }
     }
 
     async function loadApprovals() {
@@ -67,7 +96,7 @@ const adminHTML = `<!doctype html>
         const pairing = await requestJSON('/v1/pairing-tokens', { method: 'POST', body: '{}' });
         const expiresAt = new Date(pairing.expiresAt);
         pairingToken = pairing.token;
-        renderPairing(false, expiresAt);
+        renderPairing(expiresAt);
         clearTimeout(pairingClearTimer);
         pairingClearTimer = setTimeout(clearPairing, Math.max(0, expiresAt.getTime() - Date.now()));
       } catch (error) {
@@ -99,12 +128,13 @@ const adminHTML = `<!doctype html>
       document.getElementById('pairing').innerHTML = '';
     }
 
-    function renderPairing(revealed, expiresAt) {
-      const visibleToken = revealed ? pairingToken : maskSecret(pairingToken);
-      const action = revealed
-        ? '<button class="secondary" onclick="renderPairing(false, new Date(this.dataset.expiresAt))" data-expires-at="' + expiresAt.toISOString() + '">Mask</button>'
-        : '<button class="secondary" onclick="renderPairing(true, new Date(this.dataset.expiresAt))" data-expires-at="' + expiresAt.toISOString() + '">Reveal</button>';
-      document.getElementById('pairing').innerHTML = '<div class="card"><b>Pairing code</b><pre>' + escapeHTML(visibleToken) + '</pre><div class="meta">Secret. Expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div>' + action + ' <button class="secondary" onclick="clearPairing()">Hide</button></div>';
+    function renderPairing(expiresAt) {
+      document.getElementById('pairing').innerHTML = '<div class="card"><b>Pairing ready</b><div class="meta">One hidden pairing secret is active until ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="createPairing()">Renew</button> <button class="secondary" onclick="clearPairing()">Clear</button></div>';
+    }
+
+    function renderDevice(device) {
+      const push = device.pushNotifications ? 'Push on' : 'Push off';
+      return '<div><pre>' + escapeHTML(device.deviceId) + '</pre><div class="meta">' + escapeHTML(device.name) + ' · ' + push + ' · Paired ' + escapeHTML(new Date(device.createdAt).toLocaleString()) + '</div></div>';
     }
 
     function renderApproval(approval) {
@@ -119,16 +149,11 @@ const adminHTML = `<!doctype html>
       return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
-    function maskSecret(value) {
-      if (!value) return '';
-      return value.slice(0, 10) + '...' + '*'.repeat(Math.max(8, value.length - 18));
-    }
-
     function renderError(message) {
       return '<div class="card error"><b>Error</b><div>' + escapeHTML(message) + '</div></div>';
     }
 
-    loadApprovals();
+    document.getElementById('approvals').innerHTML = '<div class="card meta">Enter the bearer token and press Enter.</div>';
   </script>
 </body>
 </html>`

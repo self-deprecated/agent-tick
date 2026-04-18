@@ -45,6 +45,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/approval-requests/{id}", a.get)
 	mux.HandleFunc("POST /v1/approval-requests/{id}/responses", a.respond)
 	mux.HandleFunc("POST /v1/pairing-tokens", a.createPairingToken)
+	mux.HandleFunc("GET /v1/devices", a.listDevices)
 	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/push-token", a.setDevicePushToken)
 	mux.HandleFunc("GET /v1/events", a.eventsSocket)
@@ -162,6 +163,19 @@ func (a *API) createPairingToken(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, token)
+}
+
+func (a *API) listDevices(w http.ResponseWriter, _ *http.Request) {
+	if a.pairings == nil {
+		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
+		return
+	}
+	devices, err := a.pairings.ListDevices()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, devices)
 }
 
 func (a *API) pairDevice(w http.ResponseWriter, r *http.Request) {

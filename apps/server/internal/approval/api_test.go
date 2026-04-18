@@ -151,6 +151,36 @@ func TestAPIPairingTokenIsSingleUse(t *testing.T) {
 	}
 }
 
+func TestAPIListsPairedDevices(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	pairing := request[PairingToken](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/pairing-tokens",
+		map[string]string{},
+	)
+	credential := requestWithoutAuth[DeviceCredential](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/devices/pair",
+		PairDeviceRequest{Token: pairing.Token, DeviceName: "iPhone"},
+	)
+
+	devices := request[[]DeviceRecord](t, handler, http.MethodGet, "/v1/devices", nil)
+
+	if len(devices) != 1 {
+		t.Fatalf("len(devices) = %d, want 1", len(devices))
+	}
+	if devices[0].DeviceID != credential.DeviceID || devices[0].Name != "iPhone" {
+		t.Fatalf("devices[0] = %#v, want paired iPhone", devices[0])
+	}
+}
+
 func TestAPIRegistersDevicePushToken(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

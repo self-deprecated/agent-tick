@@ -66,6 +66,13 @@ type DeviceCredential struct {
 	Token    string `json:"token"`
 }
 
+type DeviceRecord struct {
+	DeviceID          string    `json:"deviceId"`
+	Name              string    `json:"name"`
+	PushNotifications bool      `json:"pushNotifications"`
+	CreatedAt         time.Time `json:"createdAt"`
+}
+
 type PushTokenRequest struct {
 	Token string `json:"token"`
 }

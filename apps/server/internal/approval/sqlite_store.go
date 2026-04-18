@@ -403,6 +403,32 @@ func (s *SQLiteStore) ListDevicePushTokens() ([]string, error) {
 	return tokens, rows.Err()
 }
 
+func (s *SQLiteStore) ListDevices() ([]DeviceRecord, error) {
+	rows, err := s.db.Query("SELECT id, name, expo_push_token, created_at FROM devices ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	devices := []DeviceRecord{}
+	for rows.Next() {
+		var device DeviceRecord
+		var pushToken string
+		var createdAt string
+		if err := rows.Scan(&device.DeviceID, &device.Name, &pushToken, &createdAt); err != nil {
+			return nil, err
+		}
+		parsedCreatedAt, err := time.Parse(time.RFC3339, createdAt)
+		if err != nil {
+			return nil, err
+		}
+		device.CreatedAt = parsedCreatedAt
+		device.PushNotifications = pushToken != ""
+		devices = append(devices, device)
+	}
+	return devices, rows.Err()
+}
+
 func (s *SQLiteStore) CreateAgentToken(name string, scopes []string) (AgentCredential, error) {
 	if strings.TrimSpace(name) == "" {
 		name = "agent"
