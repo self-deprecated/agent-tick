@@ -3,7 +3,9 @@
   "packages": [
     "go@latest",
     "nodejs_22@latest",
-    "goreleaser@latest"
+    "goreleaser@latest",
+    "python313@latest",
+    "python313Packages.pyyaml@latest"
   ],
   "shell": {
     "scripts": {
@@ -18,6 +20,9 @@
       ],
       "mobile:test": [
         "cd apps/mobile && npm test -- --runInBand"
+      ],
+      "skill:validate": [
+        "python /home/jmo/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/agent-tick"
       ],
       "check": [
         "cd apps/server && go test ./... && go vet ./... && cd ../mobile && npm run typecheck && npm test -- --runInBand"

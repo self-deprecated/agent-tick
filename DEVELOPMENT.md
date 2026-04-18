@@ -145,7 +145,7 @@ The repo ships a Codex-compatible skill in `skills/agent-tick`.
 Validate it after edits:
 
 ```sh
-python /home/jmo/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/agent-tick
+devbox run skill:validate
 ```
 
 ## Mobile
