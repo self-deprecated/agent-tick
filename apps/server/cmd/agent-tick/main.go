@@ -205,7 +205,13 @@ func runPair(args []string) {
 	fmt.Printf("server: %s\n", *server)
 	if *qr {
 		fmt.Println()
-		qrterminal.Generate(pairingPayload(*server, token.Token), qrterminal.L, os.Stdout)
+		qrterminal.GenerateWithConfig(pairingPayload(*server, token.Token), qrterminal.Config{
+			Level:     qrterminal.L,
+			Writer:    os.Stdout,
+			BlackChar: "  ",
+			WhiteChar: "██",
+			QuietZone: 2,
+		})
 	}
 }
 
