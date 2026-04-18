@@ -67,6 +67,19 @@ func TestAPIRequiresAuthForRemoteRequests(t *testing.T) {
 	}
 }
 
+func TestAPIServesDashboardWithoutAuth(t *testing.T) {
+	handler := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token").Handler()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
 func TestAPIPairsDeviceToken(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
