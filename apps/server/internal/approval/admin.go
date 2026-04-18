@@ -32,7 +32,7 @@ const adminHTML = `<!doctype html>
   </header>
   <main>
     <section class="toolbar">
-      <input id="token" placeholder="Bearer token">
+      <input id="token" type="password" autocomplete="off" placeholder="Bearer token">
       <button onclick="loadApprovals()">Refresh</button>
       <button onclick="createPairing()">Pairing Code</button>
     </section>
@@ -42,8 +42,8 @@ const adminHTML = `<!doctype html>
   <script>
     const tokenInput = document.getElementById('token');
     let pairingClearTimer;
-    tokenInput.value = localStorage.getItem('agent-tick.adminToken') || '';
-    tokenInput.addEventListener('input', () => localStorage.setItem('agent-tick.adminToken', tokenInput.value));
+    let pairingToken = '';
+    localStorage.removeItem('agent-tick.adminToken');
 
     function headers() {
       return { 'Authorization': 'Bearer ' + tokenInput.value, 'Content-Type': 'application/json' };
@@ -66,7 +66,8 @@ const adminHTML = `<!doctype html>
       try {
         const pairing = await requestJSON('/v1/pairing-tokens', { method: 'POST', body: '{}' });
         const expiresAt = new Date(pairing.expiresAt);
-        document.getElementById('pairing').innerHTML = '<div class="card"><b>Pairing code</b><pre>' + escapeHTML(pairing.token) + '</pre><div class="meta">Secret. Expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="clearPairing()">Hide</button></div>';
+        pairingToken = pairing.token;
+        renderPairing(false, expiresAt);
         clearTimeout(pairingClearTimer);
         pairingClearTimer = setTimeout(clearPairing, Math.max(0, expiresAt.getTime() - Date.now()));
       } catch (error) {
@@ -94,7 +95,16 @@ const adminHTML = `<!doctype html>
 
     function clearPairing() {
       clearTimeout(pairingClearTimer);
+      pairingToken = '';
       document.getElementById('pairing').innerHTML = '';
+    }
+
+    function renderPairing(revealed, expiresAt) {
+      const visibleToken = revealed ? pairingToken : maskSecret(pairingToken);
+      const action = revealed
+        ? '<button class="secondary" onclick="renderPairing(false, new Date(this.dataset.expiresAt))" data-expires-at="' + expiresAt.toISOString() + '">Mask</button>'
+        : '<button class="secondary" onclick="renderPairing(true, new Date(this.dataset.expiresAt))" data-expires-at="' + expiresAt.toISOString() + '">Reveal</button>';
+      document.getElementById('pairing').innerHTML = '<div class="card"><b>Pairing code</b><pre>' + escapeHTML(visibleToken) + '</pre><div class="meta">Secret. Expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div>' + action + ' <button class="secondary" onclick="clearPairing()">Hide</button></div>';
     }
 
     function renderApproval(approval) {
@@ -107,6 +117,11 @@ const adminHTML = `<!doctype html>
 
     function escapeHTML(value) {
       return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function maskSecret(value) {
+      if (!value) return '';
+      return value.slice(0, 10) + '...' + '*'.repeat(Math.max(8, value.length - 18));
     }
 
     function renderError(message) {
