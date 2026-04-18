@@ -209,10 +209,10 @@ Use the same commands with `podman` or `podman compose` if your development mach
 The workflow publishes to GitHub Container Registry:
 
 ```text
-ghcr.io/<owner>/<repo>:latest
-ghcr.io/<owner>/<repo>:main
-ghcr.io/<owner>/<repo>:sha-<commit>
-ghcr.io/<owner>/<repo>:v0.1.0
+ghcr.io/self-deprecated/agent-tick:latest
+ghcr.io/self-deprecated/agent-tick:main
+ghcr.io/self-deprecated/agent-tick:sha-<commit>
+ghcr.io/self-deprecated/agent-tick:v0.1.0
 ```
 
 Images are pushed on `main` and on tags matching `v*`. Pull requests build the image but do not publish it.

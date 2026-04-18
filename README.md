@@ -7,7 +7,7 @@ Agent Tick is a self-hosted approval broker for agent systems. Agents submit app
 Create a `.env` file on your server:
 
 ```env
-AGENT_TICK_IMAGE=ghcr.io/your-org/agent-tick:latest
+AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
 AGENT_TICK_MODE=user
 AGENT_TICK_PUBLIC_URL=https://tick.example.com
 AGENT_TICK_PORT=8787
@@ -15,7 +15,7 @@ AGENT_TICK_PORT=8787
 
 Replace:
 
-- `ghcr.io/your-org/agent-tick:latest` with your published Agent Tick image.
+- `ghcr.io/self-deprecated/agent-tick:latest` with another image tag if you do not want `latest`.
 - `https://tick.example.com` with the public HTTPS URL for your server.
 
 Create `docker-compose.yml`:
@@ -56,7 +56,7 @@ Sign in, open `Devices` to pair your phone, then open `Agents` to create a reque
 For a private one-user server, use a dashboard bearer token instead of user logins:
 
 ```env
-AGENT_TICK_IMAGE=ghcr.io/your-org/agent-tick:latest
+AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
 AGENT_TICK_MODE=single
 AGENT_TICK_TOKEN=change-me
 AGENT_TICK_PUBLIC_URL=https://tick.example.com
@@ -67,7 +67,11 @@ Open the dashboard and enter `AGENT_TICK_TOKEN`.
 
 ## Configure An Agent
 
-Install the `agent-tick` CLI from the latest GitHub Release for your operating system and architecture, then put the binary on your `PATH`.
+Install the `agent-tick` CLI from the latest GitHub Release for your operating system and architecture, then put the binary on your `PATH`:
+
+```text
+https://github.com/self-deprecated/agent-tick/releases
+```
 
 The dashboard creates request-only agent tokens. After creating a token, run the shown setup command on the machine where your agent runs:
 
