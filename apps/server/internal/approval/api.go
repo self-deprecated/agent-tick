@@ -23,11 +23,17 @@ type API struct {
 	events           *EventHub
 	userTokens       UserTokenStore
 	token            string
+	mode             string
 	requireSignature bool
 }
 
+const (
+	ModeSingle = "single"
+	ModeUser   = "user"
+)
+
 func NewAPI(store Store, token string) *API {
-	api := &API{store: store, push: NewPushSender(), events: NewEventHub(), token: token}
+	api := &API{store: store, push: NewPushSender(), events: NewEventHub(), token: token, mode: ModeSingle}
 	if scopedStore, ok := store.(UserScopedStore); ok {
 		api.scopedStore = scopedStore
 	}
@@ -114,6 +120,18 @@ func (a *API) listDevicePushTokensForUser(userID string) ([]string, error) {
 		return a.scopedPairings.ListDevicePushTokensForUser(userID)
 	}
 	return a.pairings.ListDevicePushTokens()
+}
+
+func (a *API) SetMode(mode string) error {
+	switch strings.TrimSpace(mode) {
+	case "", ModeSingle:
+		a.mode = ModeSingle
+	case ModeUser:
+		a.mode = ModeUser
+	default:
+		return errors.New("invalid AGENT_TICK_MODE")
+	}
+	return nil
 }
 
 func (a *API) RequireSignatures(required bool) {

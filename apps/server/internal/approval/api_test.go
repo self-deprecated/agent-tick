@@ -80,6 +80,14 @@ func TestAPIServesDashboardWithoutAuth(t *testing.T) {
 	}
 }
 
+func TestAPIRejectsInvalidMode(t *testing.T) {
+	api := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token")
+
+	if err := api.SetMode("workspace"); err == nil {
+		t.Fatal("SetMode() error = nil, want error")
+	}
+}
+
 func TestAPIPairsDeviceToken(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
