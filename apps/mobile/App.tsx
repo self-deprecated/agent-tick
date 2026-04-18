@@ -106,6 +106,7 @@ export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const seenRequestIDs = useRef<Set<string>>(new Set());
   const didPrimeNotifications = useRef(false);
+  const pairingInFlight = useRef(false);
 
   const selected = useMemo(
     () => requests.find((request) => request.id === selectedID) ?? requests[0],
@@ -379,38 +380,56 @@ export default function App() {
     await pairWithCode(pairingCode.trim());
   };
 
-  const pairWithCode = async (code: string) => {
+  const pairWithCode = async (code: string, serverOverride?: string) => {
     if (!code) {
       Alert.alert("Pairing code required", "Enter the code from agent-tick pair.");
       return;
     }
+    if (pairingInFlight.current) {
+      return;
+    }
+
+    pairingInFlight.current = true;
+    const activeServerURL = (serverOverride || serverURL).replace(/\/$/, "");
 
     try {
-      const credential = await api<DeviceCredential>("/v1/devices/pair", {
+      const response = await fetch(`${activeServerURL}/v1/devices/pair`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token: code,
           deviceName: `${Platform.OS} phone`,
         }),
       });
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      const credential = (await response.json()) as DeviceCredential;
+
+      if (serverOverride) {
+        setServerURL(serverOverride);
+      }
       setDeviceID(credential.deviceId);
       setToken(credential.token);
       setPairingCode("");
       Alert.alert("Paired", "This device can now receive approval requests.");
-      await registerPushToken(credential.deviceId, credential.token);
-      await load({ visible: true });
+      await registerPushToken(credential.deviceId, credential.token, activeServerURL);
+      setConnectionStatus("connected");
       setScreen("approvals");
     } catch (err) {
       Alert.alert(
         "Pairing failed",
         err instanceof Error ? err.message : "Could not pair this device",
       );
+    } finally {
+      pairingInFlight.current = false;
     }
   };
 
   const registerPushToken = async (
     overrideDeviceID?: string,
     overrideToken?: string,
+    overrideServerURL?: string,
   ) => {
     const activeDeviceID = overrideDeviceID ?? deviceID;
     const activeToken = overrideToken ?? token;
@@ -437,7 +456,7 @@ export default function App() {
       const pushToken = await Notifications.getExpoPushTokenAsync(
         projectId ? { projectId } : undefined,
       );
-      const trimmed = serverURL.replace(/\/$/, "");
+      const trimmed = (overrideServerURL || serverURL).replace(/\/$/, "");
       const response = await fetch(
         `${trimmed}/v1/devices/${activeDeviceID}/push-token`,
         {
@@ -463,13 +482,16 @@ export default function App() {
   };
 
   const handlePairingScan = async (result: BarcodeScanningResult) => {
+    if (pairingInFlight.current) {
+      return;
+    }
     const payload = parsePairingPayload(result.data);
     if (payload.serverURL) {
       setServerURL(payload.serverURL);
     }
     if (payload.pairingCode) {
       setPairingCode(payload.pairingCode);
-      await pairWithCode(payload.pairingCode);
+      await pairWithCode(payload.pairingCode, payload.serverURL);
       return;
     }
     Alert.alert("Invalid QR code", "This does not look like an Agent Tick pairing code.");
