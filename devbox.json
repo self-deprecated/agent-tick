@@ -30,6 +30,9 @@
       "build:server": [
         "sh scripts/build-server-release.sh"
       ],
+      "build:local": [
+        "mkdir -p \"$HOME/.local/bin\" && cd apps/server && go build -trimpath -o \"$HOME/.local/bin/agent-tick\" ./cmd/agent-tick && chmod 755 \"$HOME/.local/bin/agent-tick\""
+      ],
       "mobile": [
         "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start -- --host localhost --port 8081"
       ],
