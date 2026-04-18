@@ -18,6 +18,7 @@ const adminHTML = `<!doctype html>
     input, button { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid #ded6c6; }
     button { background: #202124; color: white; font-weight: 800; cursor: pointer; }
     button.secondary { background: white; color: #202124; }
+    summary { cursor: pointer; font-weight: 900; }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
     .card { background: white; border: 1px solid #ded6c6; border-radius: 8px; padding: 14px; }
     .error { background: #fff0f0; border-color: #c43737; color: #8a1f1f; }
@@ -45,6 +46,7 @@ const adminHTML = `<!doctype html>
       <button onclick="loginDashboard()">Sign In</button>
       <button onclick="refreshDashboard()">Refresh</button>
     </section>
+    <section id="session"></section>
     <section id="devices"></section>
     <section id="pairing"></section>
     <section id="approvals"></section>
@@ -74,11 +76,12 @@ const adminHTML = `<!doctype html>
     async function loginDashboard() {
       document.getElementById('approvals').innerHTML = '<div class="card meta">Signing in...</div>';
       try {
-        await requestJSON('/v1/session', {
+        const session = await requestJSON('/v1/session', {
           method: 'POST',
           body: JSON.stringify({ email: emailInput.value, password: passwordInput.value })
         });
         passwordInput.value = '';
+        renderSignedIn(session);
         await connectDashboard();
       } catch (error) {
         document.getElementById('approvals').innerHTML = renderError(error.message);
@@ -88,7 +91,7 @@ const adminHTML = `<!doctype html>
     async function connectDashboard() {
       clearPairing();
       await refreshDashboard();
-      await createPairing();
+      renderPairingEmpty();
     }
 
     async function refreshDashboard() {
@@ -97,14 +100,14 @@ const adminHTML = `<!doctype html>
 
     async function loadDevices() {
       const target = document.getElementById('devices');
-      target.innerHTML = '<div class="card meta">Loading devices...</div>';
+      target.innerHTML = '<details class="card"><summary>Devices</summary><div class="meta">Loading devices...</div></details>';
       try {
         const devices = await requestJSON('/v1/devices');
-        target.innerHTML = '<div class="card"><b>Devices</b>' + (
+        target.innerHTML = '<details class="card"><summary>Devices</summary>' + (
           devices.length
             ? devices.map(renderDevice).join('')
             : '<div class="meta">No paired devices yet.</div>'
-        ) + '</div>';
+        ) + '</details>';
       } catch (error) {
         target.innerHTML = renderError(error.message);
       }
@@ -155,12 +158,21 @@ const adminHTML = `<!doctype html>
 
     function clearPairing() {
       clearTimeout(pairingClearTimer);
-      document.getElementById('pairing').innerHTML = '';
+      renderPairingEmpty();
+    }
+
+    function renderPairingEmpty() {
+      document.getElementById('pairing').innerHTML = '<details class="card"><summary>Connect device</summary><div class="meta">Create a short-lived QR when you are ready to pair a phone.</div><button class="secondary" onclick="createPairing()">Create QR</button></details>';
     }
 
     function renderPairing(qrDataUrl, expiresAt) {
       const qr = qrDataUrl ? '<img alt="Pairing QR" src="' + escapeHTML(qrDataUrl) + '" style="width:220px;height:220px;image-rendering:pixelated;display:block;margin:12px 0;">' : '';
-      document.getElementById('pairing').innerHTML = '<div class="card"><b>Connect device</b>' + qr + '<div class="meta">Scan this QR in the phone app. The pairing secret is hidden and expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="createPairing()">Renew</button> <button class="secondary" onclick="clearPairing()">Clear</button></div>';
+      document.getElementById('pairing').innerHTML = '<details class="card" open><summary>Connect device</summary>' + qr + '<div class="meta">Scan this QR in the phone app. The pairing secret is hidden and expires ' + escapeHTML(expiresAt.toLocaleString()) + '.</div><button class="secondary" onclick="createPairing()">Renew</button> <button class="secondary" onclick="clearPairing()">Clear</button></details>';
+    }
+
+    function renderSignedIn(session) {
+      document.getElementById('user-auth').style.display = 'none';
+      document.getElementById('session').innerHTML = '<div class="card meta">Signed in as ' + escapeHTML(session.userId) + '</div>';
     }
 
     function renderDevice(device) {
@@ -187,6 +199,14 @@ const adminHTML = `<!doctype html>
     document.getElementById('approvals').innerHTML = serverMode === 'user'
       ? '<div class="card meta">Sign in to connect this dashboard.</div>'
       : '<div class="card meta">Enter the bearer token and press Enter.</div>';
+    if (serverMode === 'user') {
+      requestJSON('/v1/session')
+        .then((session) => {
+          renderSignedIn(session);
+          return connectDashboard();
+        })
+        .catch(() => {});
+    }
   </script>
 </body>
 </html>`

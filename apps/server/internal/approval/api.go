@@ -156,6 +156,7 @@ func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", a.admin)
 	mux.HandleFunc("GET /healthz", a.health)
+	mux.HandleFunc("GET /v1/session", a.session)
 	mux.HandleFunc("POST /v1/session", a.login)
 	mux.HandleFunc("POST /v1/approval-requests", a.create)
 	mux.HandleFunc("GET /v1/approval-requests", a.list)
@@ -171,6 +172,27 @@ func (a *API) Handler() http.Handler {
 
 func (a *API) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) session(w http.ResponseWriter, r *http.Request) {
+	if a.mode != ModeUser {
+		writeError(w, http.StatusNotFound, "user login is disabled")
+		return
+	}
+	if a.accounts == nil {
+		writeError(w, http.StatusNotImplemented, "user accounts are not supported by this store")
+		return
+	}
+	userID, ok, err := a.userIDFromSessionCookie(r)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not signed in")
+		return
+	}
+	writeJSON(w, http.StatusOK, SessionCredential{UserID: userID})
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
@@ -421,17 +443,14 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 			return
 		}
 		if a.mode == ModeUser && a.accounts != nil {
-			cookie, err := r.Cookie(sessionCookieName)
-			if err == nil {
-				userID, ok, err := a.accounts.UserIDForSessionToken(cookie.Value)
-				if err != nil {
-					writeError(w, http.StatusInternalServerError, err.Error())
-					return
-				}
-				if ok {
-					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID}))
-					return
-				}
+			userID, ok, err := a.userIDFromSessionCookie(r)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if ok {
+				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID}))
+				return
 			}
 		}
 		if a.token == "" && isLoopback(r.RemoteAddr) {
@@ -492,6 +511,14 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		}
 		writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
 	})
+}
+
+func (a *API) userIDFromSessionCookie(r *http.Request) (string, bool, error) {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return "", false, nil
+	}
+	return a.accounts.UserIDForSessionToken(cookie.Value)
 }
 
 func requiredScope(r *http.Request) string {

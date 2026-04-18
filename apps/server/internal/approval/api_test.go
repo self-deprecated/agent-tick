@@ -128,6 +128,15 @@ func TestAPIUserModeLoginScopesDashboardRequests(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
 	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v1/session", nil)
+	req.AddCookie(cookies[0])
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("session status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
 }
 
 func TestAPIPairsDeviceToken(t *testing.T) {
