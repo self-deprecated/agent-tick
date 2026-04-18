@@ -1,7 +1,6 @@
 services:
   server:
-    build:
-      context: ./apps/server
+    image: ${AGENT_TICK_IMAGE:?set AGENT_TICK_IMAGE}
     environment:
       AGENT_TICK_MODE: ${AGENT_TICK_MODE:-user}
       AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL:?set AGENT_TICK_PUBLIC_URL}
