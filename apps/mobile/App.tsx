@@ -23,42 +23,19 @@ import {
   type PairingPayload,
   type Screen,
 } from "./AppLogic";
+import {
+  buildQuestionnaireAnswers,
+  isQuestionnaireRequest,
+  normalizeApprovals,
+  notificationBody,
+  questionnaireReady,
+  requestStatusLabel,
+  updateQuestionnaireAnswers,
+  type ApprovalRequest,
+  type Choice,
+} from "./approvalRequests";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
-
-type Requester = {
-  name: string;
-  agentId: string;
-  host?: string;
-  workingDirectory?: string;
-};
-
-type Choice = {
-  id: string;
-  label: string;
-  kind: "approve" | "deny" | "custom" | string;
-};
-
-type ApprovalResponse = {
-  choiceId: string;
-  message?: string;
-};
-
-type ApprovalRequest = {
-  id: string;
-  requester: Requester;
-  title: string;
-  body?: string;
-  command?: string;
-  choices: Choice[];
-  allowFreeformReply: boolean;
-  risk?: string;
-  expiresAt?: string;
-  status: "pending" | "responded" | string;
-  createdAt: string;
-  response?: ApprovalResponse;
-  metadata?: Record<string, string>;
-};
 
 type DeviceCredential = {
   deviceId: string;
@@ -93,6 +70,9 @@ export default function App() {
     null,
   );
   const [reply, setReply] = useState("");
+  const [questionnaireAnswers, setQuestionnaireAnswers] = useState<
+    Record<string, string[]>
+  >({});
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -112,6 +92,15 @@ export default function App() {
     () => requests.find((request) => request.id === selectedID) ?? requests[0],
     [requests, selectedID],
   );
+
+  useEffect(() => {
+    setReply("");
+    if (!selected || !isQuestionnaireRequest(selected)) {
+      setQuestionnaireAnswers({});
+      return;
+    }
+    setQuestionnaireAnswers(buildQuestionnaireAnswers(selected));
+  }, [selected?.id]);
 
   const api = useCallback(
     async <T,>(path: string, init?: RequestInit): Promise<T> => {
@@ -283,7 +272,10 @@ export default function App() {
     }
   }, [loadHistory, screen]);
 
-  const respond = async (request: ApprovalRequest, choice: Choice) => {
+  const submitResponse = async (
+    request: ApprovalRequest,
+    payload: { choiceId?: string; message?: string; answers?: Record<string, string[]> },
+  ) => {
     try {
       const response = await fetch(
         `${serverURL.replace(/\/$/, "")}/v1/approval-requests/${request.id}/responses`,
@@ -293,7 +285,7 @@ export default function App() {
             Authorization: token ? `Bearer ${token}` : "",
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ choiceId: choice.id, message: reply }),
+          body: JSON.stringify(payload),
         },
       );
       if (response.status === 409) {
@@ -306,6 +298,7 @@ export default function App() {
       await response.json();
       removePendingRequest(request.id);
       setReply("");
+      setQuestionnaireAnswers({});
       void load({ visible: false });
     } catch (err) {
       Alert.alert(
@@ -314,6 +307,12 @@ export default function App() {
       );
     }
   };
+
+  const respond = async (request: ApprovalRequest, choice: Choice) =>
+    submitResponse(request, { choiceId: choice.id, message: reply });
+
+  const submitQuestionnaire = async (request: ApprovalRequest) =>
+    submitResponse(request, { answers: questionnaireAnswers });
 
   const removePendingRequest = (requestID: string) => {
     setRequests((current) => {
@@ -673,8 +672,15 @@ export default function App() {
           loading={loading}
           onRefresh={() => void load({ visible: true })}
           onRespond={(request, choice) => void respond(request, choice)}
+          onSubmitQuestionnaire={(request) => void submitQuestionnaire(request)}
+          questionnaireAnswers={questionnaireAnswers}
           reply={reply}
           requests={requests}
+          setQuestionnaireAnswer={(question, option, multiSelect) =>
+            setQuestionnaireAnswers((current) =>
+              updateQuestionnaireAnswers(current, question, option, multiSelect),
+            )
+          }
           selected={selected}
           selectedID={selectedID}
           setReply={setReply}
@@ -700,10 +706,6 @@ function selectApprovalID(
     return currentID;
   }
   return requests[0]?.id ?? null;
-}
-
-function normalizeApprovals(value: unknown): ApprovalRequest[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function isUsableProjectID(value: unknown): value is string {
@@ -764,21 +766,13 @@ async function notifyForNewRequests(
       content: {
         title: request.command ? "Run Command?" : request.title,
         body: notificationBody(request),
-        categoryIdentifier: approvalCategoryID,
+        categoryIdentifier: isQuestionnaireRequest(request) ? undefined : approvalCategoryID,
         data: { approvalRequestID: request.id },
         sound: true,
       },
       trigger: null,
     });
   }
-}
-
-function notificationBody(request: ApprovalRequest) {
-  if (request.command) {
-    const host = request.requester.host || request.requester.name || "Agent";
-    return `${host}: ${request.command}`;
-  }
-  return request.body || "Approval requested";
 }
 
 function formatRequestTime(value?: string) {
@@ -791,13 +785,16 @@ function formatRequestTime(value?: string) {
   });
 }
 
-function ApprovalsScreen({
+export function ApprovalsScreen({
   error,
   loading,
   onRefresh,
   onRespond,
+  onSubmitQuestionnaire,
+  questionnaireAnswers,
   reply,
   requests,
+  setQuestionnaireAnswer,
   selected,
   selectedID,
   setReply,
@@ -807,8 +804,15 @@ function ApprovalsScreen({
   loading: boolean;
   onRefresh: () => void;
   onRespond: (request: ApprovalRequest, choice: Choice) => void;
+  onSubmitQuestionnaire: (request: ApprovalRequest) => void;
+  questionnaireAnswers: Record<string, string[]>;
   reply: string;
   requests: ApprovalRequest[];
+  setQuestionnaireAnswer: (
+    question: string,
+    option: string,
+    multiSelect: boolean,
+  ) => void;
   selected?: ApprovalRequest;
   selectedID: string | null;
   setReply: (value: string) => void;
@@ -897,6 +901,61 @@ function ApprovalsScreen({
             </Text>
           </View>
         ) : null}
+        {isQuestionnaireRequest(selected) ? (
+          <View style={styles.questionnairePanel}>
+            {(selected.questions ?? []).map((question) => {
+              const selectedAnswers = questionnaireAnswers[question.question] ?? [];
+              return (
+                <View key={question.question} style={styles.questionCard}>
+                  <Text style={styles.questionHeader}>{question.header}</Text>
+                  <Text style={styles.questionText}>{question.question}</Text>
+                  <Text style={styles.questionHint}>
+                    {question.multiSelect ? "Select all that apply" : "Select one"}
+                  </Text>
+                  <View style={styles.questionOptions}>
+                    {question.options.map((option) => {
+                      const active = selectedAnswers.includes(option.label);
+                      return (
+                        <Pressable
+                          key={option.label}
+                          onPress={() =>
+                            setQuestionnaireAnswer(
+                              question.question,
+                              option.label,
+                              question.multiSelect,
+                            )
+                          }
+                          style={[
+                            styles.optionButton,
+                            active ? styles.optionButtonActive : null,
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.optionMarker,
+                              question.multiSelect ? styles.optionMarkerMulti : null,
+                              active ? styles.optionMarkerActive : null,
+                            ]}
+                          >
+                            {active ? <View style={styles.optionMarkerDot} /> : null}
+                          </View>
+                          <Text
+                            style={[
+                              styles.optionLabel,
+                              active ? styles.optionLabelActive : null,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
         {selected.allowFreeformReply ? (
           <TextInput
             multiline
@@ -909,19 +968,35 @@ function ApprovalsScreen({
       </ScrollView>
 
       <View style={styles.actions}>
-        {(selected.choices ?? []).map((choice) => (
+        {isQuestionnaireRequest(selected) ? (
           <Pressable
-            key={choice.id}
-            onPress={() => onRespond(selected, choice)}
+            disabled={!questionnaireReady(selected, questionnaireAnswers)}
+            onPress={() => onSubmitQuestionnaire(selected)}
             style={[
               styles.choiceButton,
-              choice.kind === "approve" ? styles.approveButton : null,
-              choice.kind === "deny" ? styles.denyButton : null,
+              styles.submitButton,
+              !questionnaireReady(selected, questionnaireAnswers)
+                ? styles.choiceButtonDisabled
+                : null,
             ]}
           >
-            <Text style={styles.choiceText}>{choice.label}</Text>
+            <Text style={styles.choiceText}>Submit Answers</Text>
           </Pressable>
-        ))}
+        ) : (
+          (selected.choices ?? []).map((choice) => (
+            <Pressable
+              key={choice.id}
+              onPress={() => onRespond(selected, choice)}
+              style={[
+                styles.choiceButton,
+                choice.kind === "approve" ? styles.approveButton : null,
+                choice.kind === "deny" ? styles.denyButton : null,
+              ]}
+            >
+              <Text style={styles.choiceText}>{choice.label}</Text>
+            </Pressable>
+          ))
+        )}
       </View>
     </View>
   );
@@ -960,15 +1035,15 @@ function HistoryScreen({
                 <Text
                   style={[
                     styles.historyStatus,
-                    request.response?.choiceId === "approve"
+                    requestStatusLabel(request) === "approve"
                       ? styles.historyStatusApprove
                       : null,
-                    request.response?.choiceId === "deny"
+                    requestStatusLabel(request) === "deny"
                       ? styles.historyStatusDeny
                       : null,
                   ]}
                 >
-                  {request.response?.choiceId ?? request.status}
+                  {requestStatusLabel(request)}
                 </Text>
               </View>
               <Text numberOfLines={1} style={styles.historyMeta}>
@@ -1290,6 +1365,85 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
+  questionnairePanel: {
+    gap: 14,
+    marginTop: 18,
+  },
+  questionCard: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 14,
+  },
+  questionHeader: {
+    color: "#6d6657",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  questionText: {
+    color: "#202124",
+    fontSize: 18,
+    fontWeight: "800",
+    lineHeight: 24,
+  },
+  questionHint: {
+    color: "#5f5a4f",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  questionOptions: {
+    gap: 8,
+  },
+  optionButton: {
+    alignItems: "center",
+    backgroundColor: "#f8f5ed",
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  optionButtonActive: {
+    backgroundColor: "#edf7f3",
+    borderColor: "#1f6f5b",
+  },
+  optionMarker: {
+    alignItems: "center",
+    borderColor: "#8e8778",
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 20,
+    justifyContent: "center",
+    width: 20,
+  },
+  optionMarkerMulti: {
+    borderRadius: 5,
+  },
+  optionMarkerActive: {
+    borderColor: "#1f6f5b",
+  },
+  optionMarkerDot: {
+    backgroundColor: "#1f6f5b",
+    borderRadius: 999,
+    height: 8,
+    width: 8,
+  },
+  optionLabel: {
+    color: "#202124",
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  optionLabelActive: {
+    color: "#184f42",
+  },
   reply: {
     backgroundColor: "#ffffff",
     borderColor: "#ded6c6",
@@ -1322,6 +1476,12 @@ const styles = StyleSheet.create({
   },
   denyButton: {
     backgroundColor: "#a33b2f",
+  },
+  submitButton: {
+    backgroundColor: "#202124",
+  },
+  choiceButtonDisabled: {
+    backgroundColor: "#8e8778",
   },
   choiceText: {
     color: "#ffffff",

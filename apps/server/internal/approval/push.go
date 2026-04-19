@@ -26,12 +26,16 @@ func (s *PushSender) SendApprovalRequest(tokens []string, request ApprovalReques
 
 	messages := make([]expoPushMessage, 0, len(tokens))
 	for _, token := range tokens {
+		categoryID := "approval-request"
+		if request.RequestType == RequestTypeQuestionnaire {
+			categoryID = ""
+		}
 		messages = append(messages, expoPushMessage{
 			To:         token,
 			Sound:      "default",
 			Title:      pushTitle(request),
 			Body:       pushBody(request),
-			CategoryID: "approval-request",
+			CategoryID: categoryID,
 			Data: map[string]string{
 				"approvalRequestID": request.ID,
 			},
