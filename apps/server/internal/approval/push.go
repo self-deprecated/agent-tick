@@ -113,6 +113,9 @@ func pushTitle(request ApprovalRequest) string {
 	if request.Command != "" {
 		return "Run Command?"
 	}
+	if request.RequestType == RequestTypeQuestionnaire {
+		return request.Title
+	}
 	return request.Title
 }
 
@@ -129,6 +132,9 @@ func pushBody(request ApprovalRequest) string {
 	}
 	if request.Body != "" {
 		return request.Body
+	}
+	if request.RequestType == RequestTypeQuestionnaire && len(request.Questions) > 0 {
+		return request.Questions[0].Question
 	}
 	return "Approval requested"
 }

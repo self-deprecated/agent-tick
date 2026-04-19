@@ -67,3 +67,54 @@ func TestFileStoreRejectsInvalidAndDuplicateResponses(t *testing.T) {
 		t.Fatalf("Respond() error = %v, want %v", err, ErrAlreadyResponded)
 	}
 }
+
+func TestFileStoreQuestionnaireResponse(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
+
+	request, err := store.Create(CreateRequest{
+		RequestType: RequestTypeQuestionnaire,
+		Title:       "Pre-flight questions",
+		Questions: []Question{
+			{
+				Header:   "Environment",
+				Question: "Which environment?",
+				Options: []QuestionOption{
+					{Label: "dev"},
+					{Label: "prod"},
+				},
+			},
+			{
+				Header:      "Checks",
+				Question:    "Which checks should run?",
+				MultiSelect: true,
+				Options: []QuestionOption{
+					{Label: "lint"},
+					{Label: "test"},
+					{Label: "build"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if request.RequestType != RequestTypeQuestionnaire {
+		t.Fatalf("RequestType = %q, want %q", request.RequestType, RequestTypeQuestionnaire)
+	}
+	if len(request.Choices) != 0 {
+		t.Fatalf("Choices length = %d, want 0", len(request.Choices))
+	}
+
+	responded, err := store.Respond(request.ID, Response{
+		Answers: map[string][]string{
+			"Which environment?":       []string{"prod"},
+			"Which checks should run?": []string{"lint", "test"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Respond() error = %v", err)
+	}
+	if responded.Response == nil || len(responded.Response.Answers["Which checks should run?"]) != 2 {
+		t.Fatalf("Response = %#v, want questionnaire answers", responded.Response)
+	}
+}

@@ -2,6 +2,11 @@ package approval
 
 import "time"
 
+const (
+	RequestTypeApproval      = "approval"
+	RequestTypeQuestionnaire = "questionnaire"
+)
+
 type Requester struct {
 	Name             string `json:"name"`
 	AgentID          string `json:"agentId"`
@@ -15,12 +20,25 @@ type Choice struct {
 	Kind  string `json:"kind"`
 }
 
+type QuestionOption struct {
+	Label string `json:"label"`
+}
+
+type Question struct {
+	Header      string           `json:"header"`
+	Question    string           `json:"question"`
+	Options     []QuestionOption `json:"options"`
+	MultiSelect bool             `json:"multiSelect"`
+}
+
 type CreateRequest struct {
 	Requester          Requester         `json:"requester"`
+	RequestType        string            `json:"requestType,omitempty"`
 	Title              string            `json:"title"`
 	Body               string            `json:"body,omitempty"`
 	Command            string            `json:"command,omitempty"`
 	Choices            []Choice          `json:"choices,omitempty"`
+	Questions          []Question        `json:"questions,omitempty"`
 	DefaultChoice      string            `json:"defaultChoice,omitempty"`
 	AllowFreeformReply bool              `json:"allowFreeformReply"`
 	ExpiresAt          *time.Time        `json:"expiresAt,omitempty"`
@@ -32,10 +50,12 @@ type ApprovalRequest struct {
 	ID                 string            `json:"id"`
 	UserID             string            `json:"userId,omitempty"`
 	Requester          Requester         `json:"requester"`
+	RequestType        string            `json:"requestType"`
 	Title              string            `json:"title"`
 	Body               string            `json:"body,omitempty"`
 	Command            string            `json:"command,omitempty"`
 	Choices            []Choice          `json:"choices"`
+	Questions          []Question        `json:"questions,omitempty"`
 	DefaultChoice      string            `json:"defaultChoice,omitempty"`
 	AllowFreeformReply bool              `json:"allowFreeformReply"`
 	ExpiresAt          *time.Time        `json:"expiresAt,omitempty"`
@@ -48,8 +68,9 @@ type ApprovalRequest struct {
 }
 
 type Response struct {
-	ChoiceID string `json:"choiceId"`
-	Message  string `json:"message,omitempty"`
+	ChoiceID string              `json:"choiceId"`
+	Message  string              `json:"message,omitempty"`
+	Answers  map[string][]string `json:"answers,omitempty"`
 }
 
 type PairingToken struct {

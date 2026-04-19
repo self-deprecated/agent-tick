@@ -131,8 +131,9 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
-	if len(input.Choices) == 0 {
-		input.Choices = DefaultChoices()
+	input, err := normalizeCreateRequest(input)
+	if err != nil {
+		return ApprovalRequest{}, err
 	}
 
 	now := time.Now().UTC()
@@ -140,10 +141,12 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 		ID:                 newID(),
 		UserID:             userID,
 		Requester:          input.Requester,
+		RequestType:        input.RequestType,
 		Title:              input.Title,
 		Body:               input.Body,
 		Command:            input.Command,
 		Choices:            input.Choices,
+		Questions:          input.Questions,
 		DefaultChoice:      input.DefaultChoice,
 		AllowFreeformReply: input.AllowFreeformReply,
 		ExpiresAt:          input.ExpiresAt,
@@ -161,6 +164,10 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
+	questionsJSON, err := marshalJSON(request.Questions)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
 	metadataJSON, err := marshalJSON(request.Metadata)
 	if err != nil {
 		return ApprovalRequest{}, err
@@ -174,18 +181,20 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 
 	_, err = tx.Exec(`
 		INSERT INTO approval_requests (
-			id, user_id, requester_json, title, body, command, choices_json,
+			id, user_id, requester_json, request_type, title, body, command, choices_json, questions_json,
 			default_choice, allow_freeform_reply, expires_at, risk,
 			metadata_json, status, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		request.ID,
 		userID,
 		requesterJSON,
+		request.RequestType,
 		request.Title,
 		request.Body,
 		request.Command,
 		choicesJSON,
+		questionsJSON,
 		request.DefaultChoice,
 		request.AllowFreeformReply,
 		timeText(request.ExpiresAt),
@@ -217,10 +226,10 @@ func (s *SQLiteStore) ListForUser(userID string, status string) ([]ApprovalReque
 
 	query := `
 		SELECT
-			r.id, r.user_id, r.requester_json, r.title, r.body, r.command, r.choices_json,
+			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
 			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
 			r.metadata_json, r.status, r.created_at,
-			resp.choice_id, resp.message, resp.created_at
+			resp.choice_id, resp.message, resp.answers_json, resp.created_at
 		FROM approval_requests r
 		LEFT JOIN approval_responses resp ON resp.request_id = r.id
 		WHERE r.user_id = ?
@@ -263,10 +272,10 @@ func (s *SQLiteStore) GetForUser(userID string, id string) (ApprovalRequest, err
 
 	row := s.db.QueryRow(`
 		SELECT
-			r.id, r.user_id, r.requester_json, r.title, r.body, r.command, r.choices_json,
+			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
 			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
 			r.metadata_json, r.status, r.created_at,
-			resp.choice_id, resp.message, resp.created_at
+			resp.choice_id, resp.message, resp.answers_json, resp.created_at
 		FROM approval_requests r
 		LEFT JOIN approval_responses resp ON resp.request_id = r.id
 		WHERE r.id = ? AND r.user_id = ?
@@ -299,10 +308,10 @@ func (s *SQLiteStore) RespondForUser(userID string, id string, response Response
 
 	row := tx.QueryRow(`
 		SELECT
-			r.id, r.user_id, r.requester_json, r.title, r.body, r.command, r.choices_json,
+			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
 			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
 			r.metadata_json, r.status, r.created_at,
-			resp.choice_id, resp.message, resp.created_at
+			resp.choice_id, resp.message, resp.answers_json, resp.created_at
 		FROM approval_requests r
 		LEFT JOIN approval_responses resp ON resp.request_id = r.id
 		WHERE r.id = ? AND r.user_id = ?
@@ -321,16 +330,21 @@ func (s *SQLiteStore) RespondForUser(userID string, id string, response Response
 	if request.Status == StatusExpired {
 		return ApprovalRequest{}, ErrExpired
 	}
-	if !hasChoice(request, response.ChoiceID) {
-		return ApprovalRequest{}, ErrInvalidChoice
+	if err := validateResponseForRequest(request, response); err != nil {
+		return ApprovalRequest{}, err
 	}
 
 	now := time.Now().UTC()
+	answersJSON, err := marshalJSON(response.Answers)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
 	_, err = tx.Exec(
-		"INSERT INTO approval_responses (request_id, choice_id, message, created_at) VALUES (?, ?, ?, ?)",
+		"INSERT INTO approval_responses (request_id, choice_id, message, answers_json, created_at) VALUES (?, ?, ?, ?, ?)",
 		request.ID,
 		response.ChoiceID,
 		response.Message,
+		answersJSON,
 		timeText(&now),
 	)
 	if err != nil {
@@ -812,10 +826,12 @@ func (s *SQLiteStore) migrate() error {
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
 			requester_json TEXT NOT NULL,
+			request_type TEXT NOT NULL DEFAULT 'approval',
 			title TEXT NOT NULL,
 			body TEXT NOT NULL DEFAULT '',
 			command TEXT NOT NULL DEFAULT '',
 			choices_json TEXT NOT NULL,
+			questions_json TEXT NOT NULL DEFAULT '[]',
 			default_choice TEXT NOT NULL DEFAULT '',
 			allow_freeform_reply INTEGER NOT NULL DEFAULT 0,
 			expires_at TEXT NOT NULL DEFAULT '',
@@ -833,6 +849,7 @@ func (s *SQLiteStore) migrate() error {
 			request_id TEXT PRIMARY KEY REFERENCES approval_requests(id) ON DELETE CASCADE,
 			choice_id TEXT NOT NULL,
 			message TEXT NOT NULL DEFAULT '',
+			answers_json TEXT NOT NULL DEFAULT '{}',
 			created_at TEXT NOT NULL
 		);
 
@@ -889,6 +906,12 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.addColumnIfMissing("approval_requests", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("approval_requests", "request_type", "TEXT NOT NULL DEFAULT 'approval'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("approval_requests", "questions_json", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("users", "password_hash", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -911,6 +934,9 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if err := s.addColumnIfMissing("devices", "unpaired_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("approval_responses", "answers_json", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
 		return err
 	}
 
@@ -962,21 +988,25 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 	var request ApprovalRequest
 	var requesterJSON string
 	var choicesJSON string
+	var questionsJSON string
 	var metadataJSON string
 	var expiresAt string
 	var createdAt string
 	var responseChoice sql.NullString
 	var responseMessage sql.NullString
+	var responseAnswers sql.NullString
 	var respondedAt sql.NullString
 
 	err := scanner.Scan(
 		&request.ID,
 		&request.UserID,
 		&requesterJSON,
+		&request.RequestType,
 		&request.Title,
 		&request.Body,
 		&request.Command,
 		&choicesJSON,
+		&questionsJSON,
 		&request.DefaultChoice,
 		&request.AllowFreeformReply,
 		&expiresAt,
@@ -986,17 +1016,24 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 		&createdAt,
 		&responseChoice,
 		&responseMessage,
+		&responseAnswers,
 		&respondedAt,
 	)
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
+	request.RequestType = normalizeRequestType(request.RequestType)
 
 	if err := json.Unmarshal([]byte(requesterJSON), &request.Requester); err != nil {
 		return ApprovalRequest{}, err
 	}
 	if err := json.Unmarshal([]byte(choicesJSON), &request.Choices); err != nil {
 		return ApprovalRequest{}, err
+	}
+	if questionsJSON != "" {
+		if err := json.Unmarshal([]byte(questionsJSON), &request.Questions); err != nil {
+			return ApprovalRequest{}, err
+		}
 	}
 	if metadataJSON != "" {
 		if err := json.Unmarshal([]byte(metadataJSON), &request.Metadata); err != nil {
@@ -1015,6 +1052,11 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 		request.Response = &Response{
 			ChoiceID: responseChoice.String,
 			Message:  responseMessage.String,
+		}
+		if responseAnswers.Valid && responseAnswers.String != "" {
+			if err := json.Unmarshal([]byte(responseAnswers.String), &request.Response.Answers); err != nil {
+				return ApprovalRequest{}, err
+			}
 		}
 		if respondedAt.Valid {
 			request.RespondedAt = parseOptionalTime(respondedAt.String)

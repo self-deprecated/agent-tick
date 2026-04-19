@@ -132,6 +132,60 @@ func TestSQLiteStoreRejectsInvalidAndDuplicateResponses(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreQuestionnaireResponse(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	request, err := store.Create(CreateRequest{
+		RequestType: RequestTypeQuestionnaire,
+		Title:       "Pre-flight questions",
+		Questions: []Question{
+			{
+				Header:   "Environment",
+				Question: "Which environment?",
+				Options: []QuestionOption{
+					{Label: "dev"},
+					{Label: "prod"},
+				},
+			},
+			{
+				Header:      "Checks",
+				Question:    "Which checks should run?",
+				MultiSelect: true,
+				Options: []QuestionOption{
+					{Label: "lint"},
+					{Label: "test"},
+					{Label: "build"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	responded, err := store.Respond(request.ID, Response{
+		Answers: map[string][]string{
+			"Which environment?":       []string{"prod"},
+			"Which checks should run?": []string{"lint", "test"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Respond() error = %v", err)
+	}
+	if responded.Response == nil || len(responded.Response.Answers["Which checks should run?"]) != 2 {
+		t.Fatalf("Response = %#v, want questionnaire answers", responded.Response)
+	}
+
+	found, err := store.Get(request.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if found.Response == nil || found.Response.Answers["Which environment?"][0] != "prod" {
+		t.Fatalf("Stored response = %#v, want persisted answers", found.Response)
+	}
+}
+
 func TestSQLiteStoreWritesAuditEvents(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent-tick.db")
 	store, err := NewSQLiteStore(path)

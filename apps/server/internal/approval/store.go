@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -14,6 +16,8 @@ import (
 var ErrNotFound = errors.New("approval request not found")
 var ErrAlreadyResponded = errors.New("approval request already has a response")
 var ErrInvalidChoice = errors.New("approval response choice is not allowed")
+var ErrInvalidRequest = errors.New("approval request is invalid")
+var ErrInvalidResponse = errors.New("approval response is invalid")
 var ErrExpired = errors.New("approval request has expired")
 
 type Store interface {
@@ -91,18 +95,21 @@ func (s *FileStore) Create(input CreateRequest) (ApprovalRequest, error) {
 		return ApprovalRequest{}, err
 	}
 
-	if len(input.Choices) == 0 {
-		input.Choices = DefaultChoices()
+	input, err = normalizeCreateRequest(input)
+	if err != nil {
+		return ApprovalRequest{}, err
 	}
 
 	now := time.Now().UTC()
 	request := ApprovalRequest{
 		ID:                 newID(),
 		Requester:          input.Requester,
+		RequestType:        input.RequestType,
 		Title:              input.Title,
 		Body:               input.Body,
 		Command:            input.Command,
 		Choices:            input.Choices,
+		Questions:          input.Questions,
 		DefaultChoice:      input.DefaultChoice,
 		AllowFreeformReply: input.AllowFreeformReply,
 		ExpiresAt:          input.ExpiresAt,
@@ -181,8 +188,8 @@ func (s *FileStore) Respond(id string, response Response) (ApprovalRequest, erro
 			if requests[i].Status == StatusExpired {
 				return ApprovalRequest{}, ErrExpired
 			}
-			if !hasChoice(requests[i], response.ChoiceID) {
-				return ApprovalRequest{}, ErrInvalidChoice
+			if err := validateResponseForRequest(requests[i], response); err != nil {
+				return ApprovalRequest{}, err
 			}
 
 			now := time.Now().UTC()
@@ -212,6 +219,179 @@ func hasChoice(request ApprovalRequest, choiceID string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeCreateRequest(input CreateRequest) (CreateRequest, error) {
+	input.RequestType = normalizeRequestType(input.RequestType)
+	switch input.RequestType {
+	case RequestTypeApproval:
+		if len(input.Questions) > 0 {
+			return CreateRequest{}, fmt.Errorf("%w: approval requests do not support questions", ErrInvalidRequest)
+		}
+		if len(input.Choices) == 0 {
+			input.Choices = DefaultChoices()
+		}
+		if strings.TrimSpace(input.DefaultChoice) != "" && !hasChoiceID(input.Choices, input.DefaultChoice) {
+			return CreateRequest{}, fmt.Errorf("%w: defaultChoice is not in choices", ErrInvalidRequest)
+		}
+	case RequestTypeQuestionnaire:
+		if len(input.Choices) > 0 {
+			return CreateRequest{}, fmt.Errorf("%w: questionnaire requests do not support choices", ErrInvalidRequest)
+		}
+		if strings.TrimSpace(input.DefaultChoice) != "" {
+			return CreateRequest{}, fmt.Errorf("%w: questionnaire requests do not support defaultChoice", ErrInvalidRequest)
+		}
+		if input.AllowFreeformReply {
+			return CreateRequest{}, fmt.Errorf("%w: questionnaire requests do not support allowFreeformReply", ErrInvalidRequest)
+		}
+		questions, err := normalizeQuestions(input.Questions)
+		if err != nil {
+			return CreateRequest{}, err
+		}
+		input.Questions = questions
+	default:
+		return CreateRequest{}, fmt.Errorf("%w: unsupported requestType %q", ErrInvalidRequest, input.RequestType)
+	}
+	return input, nil
+}
+
+func normalizeQuestions(input []Question) ([]Question, error) {
+	if len(input) == 0 {
+		return nil, fmt.Errorf("%w: questionnaire requests need at least one question", ErrInvalidRequest)
+	}
+	questions := make([]Question, 0, len(input))
+	seen := make(map[string]struct{}, len(input))
+	for _, question := range input {
+		text := strings.TrimSpace(question.Question)
+		if text == "" {
+			return nil, fmt.Errorf("%w: question text is required", ErrInvalidRequest)
+		}
+		header := strings.TrimSpace(question.Header)
+		if header == "" {
+			header = text
+		}
+		if _, exists := seen[text]; exists {
+			return nil, fmt.Errorf("%w: duplicate question %q", ErrInvalidRequest, text)
+		}
+		seen[text] = struct{}{}
+		if len(question.Options) == 0 {
+			return nil, fmt.Errorf("%w: question %q needs options", ErrInvalidRequest, text)
+		}
+		options := make([]QuestionOption, 0, len(question.Options))
+		labels := make(map[string]struct{}, len(question.Options))
+		for _, option := range question.Options {
+			label := strings.TrimSpace(option.Label)
+			if label == "" {
+				return nil, fmt.Errorf("%w: question %q has an empty option", ErrInvalidRequest, text)
+			}
+			if _, exists := labels[label]; exists {
+				return nil, fmt.Errorf("%w: question %q has duplicate option %q", ErrInvalidRequest, text, label)
+			}
+			labels[label] = struct{}{}
+			options = append(options, QuestionOption{Label: label})
+		}
+		questions = append(questions, Question{
+			Header:      header,
+			Question:    text,
+			Options:     options,
+			MultiSelect: question.MultiSelect,
+		})
+	}
+	return questions, nil
+}
+
+func validateResponseForRequest(request ApprovalRequest, response Response) error {
+	switch normalizeRequestType(request.RequestType) {
+	case RequestTypeApproval:
+		if strings.TrimSpace(response.ChoiceID) == "" {
+			return fmt.Errorf("%w: choiceId is required", ErrInvalidResponse)
+		}
+		if !hasChoice(request, response.ChoiceID) {
+			return ErrInvalidChoice
+		}
+		if len(response.Answers) > 0 {
+			return fmt.Errorf("%w: approval requests do not accept answers", ErrInvalidResponse)
+		}
+		return nil
+	case RequestTypeQuestionnaire:
+		if strings.TrimSpace(response.ChoiceID) != "" {
+			return fmt.Errorf("%w: questionnaire requests do not accept choiceId", ErrInvalidResponse)
+		}
+		if response.Message != "" {
+			return fmt.Errorf("%w: questionnaire requests do not accept message", ErrInvalidResponse)
+		}
+		return validateQuestionnaireAnswers(request.Questions, response.Answers)
+	default:
+		return fmt.Errorf("%w: unsupported requestType %q", ErrInvalidRequest, request.RequestType)
+	}
+}
+
+func validateQuestionnaireAnswers(questions []Question, answers map[string][]string) error {
+	if len(questions) == 0 {
+		return fmt.Errorf("%w: questionnaire request has no questions", ErrInvalidRequest)
+	}
+	if len(answers) == 0 {
+		return fmt.Errorf("%w: answers are required", ErrInvalidResponse)
+	}
+	for _, question := range questions {
+		selected, ok := answers[question.Question]
+		if !ok || len(selected) == 0 {
+			return fmt.Errorf("%w: question %q needs an answer", ErrInvalidResponse, question.Question)
+		}
+		if !question.MultiSelect && len(selected) != 1 {
+			return fmt.Errorf("%w: question %q needs exactly one answer", ErrInvalidResponse, question.Question)
+		}
+		allowed := make(map[string]struct{}, len(question.Options))
+		for _, option := range question.Options {
+			allowed[option.Label] = struct{}{}
+		}
+		seen := make(map[string]struct{}, len(selected))
+		for _, answer := range selected {
+			label := strings.TrimSpace(answer)
+			if _, exists := allowed[label]; !exists {
+				return fmt.Errorf("%w: answer %q is not allowed for question %q", ErrInvalidResponse, answer, question.Question)
+			}
+			if _, exists := seen[label]; exists {
+				return fmt.Errorf("%w: duplicate answer %q for question %q", ErrInvalidResponse, answer, question.Question)
+			}
+			seen[label] = struct{}{}
+		}
+	}
+	for question := range answers {
+		if !hasQuestion(questions, question) {
+			return fmt.Errorf("%w: answer for unknown question %q", ErrInvalidResponse, question)
+		}
+	}
+	return nil
+}
+
+func hasChoiceID(choices []Choice, choiceID string) bool {
+	for _, choice := range choices {
+		if choice.ID == strings.TrimSpace(choiceID) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasQuestion(questions []Question, prompt string) bool {
+	for _, question := range questions {
+		if question.Question == prompt {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeRequestType(value string) string {
+	switch strings.TrimSpace(value) {
+	case "", RequestTypeApproval:
+		return RequestTypeApproval
+	case RequestTypeQuestionnaire:
+		return RequestTypeQuestionnaire
+	default:
+		return strings.TrimSpace(value)
+	}
 }
 
 func (s *FileStore) load() ([]ApprovalRequest, error) {

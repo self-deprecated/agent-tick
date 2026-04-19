@@ -55,6 +55,62 @@ func TestAPICreateListRespond(t *testing.T) {
 	}
 }
 
+func TestAPIQuestionnaireRespond(t *testing.T) {
+	handler := NewAPI(
+		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
+		"test-token",
+	).Handler()
+
+	created := request[ApprovalRequest](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/approval-requests",
+		CreateRequest{
+			RequestType: RequestTypeQuestionnaire,
+			Title:       "Pre-flight questions",
+			Questions: []Question{
+				{
+					Header:   "Environment",
+					Question: "Which environment?",
+					Options: []QuestionOption{
+						{Label: "dev"},
+						{Label: "prod"},
+					},
+				},
+				{
+					Header:      "Checks",
+					Question:    "Which checks should run?",
+					MultiSelect: true,
+					Options: []QuestionOption{
+						{Label: "lint"},
+						{Label: "test"},
+					},
+				},
+			},
+		},
+	)
+	if created.RequestType != RequestTypeQuestionnaire {
+		t.Fatalf("RequestType = %q, want %q", created.RequestType, RequestTypeQuestionnaire)
+	}
+
+	responded := request[ApprovalRequest](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/approval-requests/"+created.ID+"/responses",
+		Response{
+			Answers: map[string][]string{
+				"Which environment?":       []string{"prod"},
+				"Which checks should run?": []string{"lint", "test"},
+			},
+		},
+	)
+	if responded.Response == nil || responded.Response.Answers["Which environment?"][0] != "prod" {
+		t.Fatalf("response = %#v, want questionnaire answers", responded.Response)
+	}
+}
+
 func TestAPIEventsPublishOnRespondNotGet(t *testing.T) {
 	api := NewAPI(
 		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),

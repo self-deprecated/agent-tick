@@ -301,6 +301,10 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	request, err := a.createForUser(currentAuth(r).UserID, input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -342,8 +346,8 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid response JSON")
 		return
 	}
-	if strings.TrimSpace(response.ChoiceID) == "" {
-		writeError(w, http.StatusBadRequest, "choiceId is required")
+	if strings.TrimSpace(response.ChoiceID) == "" && len(response.Answers) == 0 {
+		writeError(w, http.StatusBadRequest, "choiceId or answers is required")
 		return
 	}
 
@@ -354,6 +358,10 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, ErrInvalidChoice) {
 		writeError(w, http.StatusBadRequest, "choiceId is not allowed for this request")
+		return
+	}
+	if errors.Is(err, ErrInvalidResponse) || errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if errors.Is(err, ErrAlreadyResponded) {
