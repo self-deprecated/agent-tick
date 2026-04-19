@@ -16,10 +16,15 @@ import {
   TextInput,
   View,
 } from "react-native";
+import {
+  notificationDecision,
+  notificationFallbackState,
+  parsePairingPayload,
+  type PairingPayload,
+  type Screen,
+} from "./AppLogic";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
-
-type Screen = "approvals" | "history" | "settings" | "scanner";
 
 type Requester = {
   name: string;
@@ -58,11 +63,6 @@ type ApprovalRequest = {
 type DeviceCredential = {
   deviceId: string;
   token: string;
-};
-
-type PairingPayload = {
-  serverURL?: string;
-  pairingCode?: string;
 };
 
 const defaultServer = "http://localhost:8787";
@@ -359,27 +359,28 @@ export default function App() {
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        const id = response.notification.request.content.data
-          .approvalRequestID;
-        const action = response.actionIdentifier;
-        if (typeof id === "string") {
-          if (action === "approve" || action === "deny") {
-            void respondByID(id, action);
-            return;
-          }
-          setNotificationTargetID(id);
-          setSelectedID(id);
-          setScreen("approvals");
+        const decision = notificationDecision(response);
+        if (!decision) {
+          return;
         }
+        if (decision.kind === "respond") {
+          void respondByID(decision.requestID, decision.choiceID);
+          return;
+        }
+        const fallback = notificationFallbackState(decision.requestID);
+        setNotificationTargetID(fallback.notificationTargetID);
+        setSelectedID(fallback.selectedID);
+        setScreen(fallback.screen);
       },
     );
 
     void Notifications.getLastNotificationResponseAsync().then((response) => {
-      const id = response?.notification.request.content.data.approvalRequestID;
-      if (typeof id === "string") {
-        setNotificationTargetID(id);
-        setSelectedID(id);
-        setScreen("approvals");
+      const decision = response ? notificationDecision(response) : null;
+      if (decision) {
+        const fallback = notificationFallbackState(decision.requestID);
+        setNotificationTargetID(fallback.notificationTargetID);
+        setSelectedID(fallback.selectedID);
+        setScreen(fallback.screen);
       }
     });
 
@@ -682,18 +683,6 @@ export default function App() {
       )}
     </SafeAreaView>
   );
-}
-
-function parsePairingPayload(value: string): PairingPayload {
-  try {
-    const parsed = JSON.parse(value) as PairingPayload;
-    return {
-      serverURL: parsed.serverURL,
-      pairingCode: parsed.pairingCode,
-    };
-  } catch {
-    return value.startsWith("pair_") ? { pairingCode: value } : {};
-  }
 }
 
 function selectApprovalID(
