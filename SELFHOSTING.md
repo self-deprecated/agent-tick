@@ -85,6 +85,18 @@ docker compose up -d
 
 Use the same commands with `podman` or `podman compose` if your machine uses Podman.
 
+## Production Hardening
+
+Run Agent Tick behind an HTTPS reverse proxy for production. Set `AGENT_TICK_PUBLIC_URL` to the public `https://` URL and make sure the proxy forwards `X-Forwarded-Proto: https` and `X-Forwarded-Host` so dashboard QR codes and secure-cookie behavior match the public origin.
+
+Back up the `agent_tick_data` Docker volume. It contains the SQLite database with users, devices, agent tokens, approval history, sessions, and audit events. For a simple backup, stop the container or take a filesystem-consistent snapshot before copying the volume contents.
+
+Rotate credentials deliberately. In single-user mode, change `AGENT_TICK_TOKEN` and restart the server if the dashboard token is exposed. For agent tokens, use the dashboard Agents panel or the server-local `agent-tick agent-token rotate <agent-id>` command, then rerun `agent-tick setup` on the machine where that agent runs. Revoke devices from the dashboard if a phone is lost or replaced.
+
+The phone app can show local notifications while it polls. Expo remote push requires an EAS development or production build with a real EAS project id; Expo Go and placeholder project ids are limited to local notification behavior.
+
+Dashboard sessions in user mode use HttpOnly session cookies plus a readable CSRF token cookie for browser writes. Cookies are marked secure when the server sees HTTPS directly, receives `X-Forwarded-Proto: https`, or has an HTTPS `AGENT_TICK_PUBLIC_URL`.
+
 ## Security Notes
 
 - Run production deployments behind HTTPS.
