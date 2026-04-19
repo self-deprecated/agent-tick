@@ -96,6 +96,14 @@ printf '{"title":"Run command?","command":"npm install"}' | agent-tick adapter
 
 Use this for integrations that already produce structured request JSON.
 
+Claude Code `AskUserQuestion` hooks can also go through Agent Tick by piping the hook payload into the repo script:
+
+```sh
+scripts/claude-code-ask-user-question-hook.sh
+```
+
+That script turns Claude Code's question array into an Agent Tick `questionnaire` request and returns Claude-compatible `updatedInput.answers`.
+
 ## Safety Rules
 
 - Do not use Agent Tick to approve its own setup command.

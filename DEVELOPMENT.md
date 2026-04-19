@@ -121,6 +121,28 @@ Use the stdio JSON adapter from an agent:
 printf '{"title":"Run command?","command":"npm install"}' | agent-tick adapter
 ```
 
+Bridge Claude Code `AskUserQuestion` through Agent Tick:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-code-ask-user-question-hook.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook script converts Claude Code question payloads into an Agent Tick `questionnaire` request, waits for the answer on your phone, then returns `updatedInput.answers` back to Claude Code. It needs `jq` and a configured `agent-tick` CLI.
+
 Create a pairing QR from the CLI:
 
 ```sh
