@@ -94,4 +94,4 @@ Use the same commands with `podman` or `podman compose` if your machine uses Pod
 - SQLite data is stored in the `agent_tick_data` Docker volume. Back it up.
 - Single mode maps all records to one implicit user.
 - User mode scopes approvals, devices, pairing tokens, agent tokens, and audit events by user.
-- Dashboard sessions use HttpOnly cookies.
+- Dashboard sessions use HttpOnly cookies plus a CSRF token cookie for browser writes. When the server sees HTTPS directly, `X-Forwarded-Proto: https`, or an HTTPS `AGENT_TICK_PUBLIC_URL`, these cookies are marked secure.

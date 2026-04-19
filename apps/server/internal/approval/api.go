@@ -65,9 +65,12 @@ func NewAPI(store Store, token string) *API {
 }
 
 const sessionCookieName = "agent_tick_session"
+const csrfCookieName = "agent_tick_csrf"
+const csrfHeaderName = "X-Agent-Tick-CSRF"
 
 type authContext struct {
-	UserID string
+	UserID      string
+	FromSession bool
 }
 
 type authContextKey struct{}
@@ -251,13 +254,23 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	csrfToken := "csrf_" + newID()
+	secureCookie := secureSessionCookie(r, a.publicURL)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    session.Token,
 		Path:     "/",
 		Expires:  session.Expiry,
 		HttpOnly: true,
-		Secure:   secureSessionCookie(r, a.publicURL),
+		Secure:   secureCookie,
+		SameSite: http.SameSiteLaxMode,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    csrfToken,
+		Path:     "/",
+		Expires:  session.Expiry,
+		Secure:   secureCookie,
 		SameSite: http.SameSiteLaxMode,
 	})
 	session.Token = ""
@@ -552,7 +565,11 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 			if ok {
-				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID}))
+				if !validCSRF(r) {
+					writeError(w, http.StatusForbidden, "missing or invalid CSRF token")
+					return
+				}
+				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID, FromSession: true}))
 				return
 			}
 		}
@@ -622,6 +639,17 @@ func (a *API) userIDFromSessionCookie(r *http.Request) (string, bool, error) {
 		return "", false, nil
 	}
 	return a.accounts.UserIDForSessionToken(cookie.Value)
+}
+
+func validCSRF(r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		return true
+	}
+	cookie, err := r.Cookie(csrfCookieName)
+	if err != nil {
+		return false
+	}
+	return tokenMatches(r.Header.Get(csrfHeaderName), cookie.Value)
 }
 
 func requiredScope(r *http.Request) string {

@@ -153,12 +153,14 @@ func TestAPIUserModeLoginScopesDashboardRequests(t *testing.T) {
 		t.Fatalf("session = %#v, want user without response token", session)
 	}
 	cookies := loginRec.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != sessionCookieName {
-		t.Fatalf("cookies = %#v, want session cookie", cookies)
+	sessionCookie := findCookie(cookies, sessionCookieName)
+	csrfCookie := findCookie(cookies, csrfCookieName)
+	if sessionCookie == nil || csrfCookie == nil || csrfCookie.HttpOnly {
+		t.Fatalf("cookies = %#v, want session and readable CSRF cookies", cookies)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/devices", nil)
-	req.AddCookie(cookies[0])
+	req.AddCookie(sessionCookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -167,7 +169,7 @@ func TestAPIUserModeLoginScopesDashboardRequests(t *testing.T) {
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/v1/session", nil)
-	req.AddCookie(cookies[0])
+	req.AddCookie(sessionCookie)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -198,8 +200,36 @@ func TestAPIUserModeLoginMarksSessionCookieSecureBehindHTTPS(t *testing.T) {
 	}
 
 	cookies := rec.Result().Cookies()
-	if len(cookies) != 1 || !cookies[0].Secure {
+	sessionCookie := findCookie(cookies, sessionCookieName)
+	csrfCookie := findCookie(cookies, csrfCookieName)
+	if sessionCookie == nil || csrfCookie == nil || !sessionCookie.Secure || !csrfCookie.Secure {
 		t.Fatalf("cookies = %#v, want secure session cookie", cookies)
+	}
+}
+
+func TestAPICookieAuthenticatedWritesRequireCSRF(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+	auth := loginAuth(t, handler, "csrf@example.com")
+
+	rec := statusWithSession(t, handler, auth, http.MethodPost, "/v1/pairing-tokens", map[string]string{}, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("missing CSRF status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusForbidden)
+	}
+
+	rec = statusWithSession(t, handler, auth, http.MethodPost, "/v1/pairing-tokens", map[string]string{}, "wrong")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("invalid CSRF status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusForbidden)
+	}
+
+	rec = statusWithSession(t, handler, auth, http.MethodPost, "/v1/pairing-tokens", map[string]string{}, auth.csrf.Value)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("valid CSRF status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusCreated)
 	}
 }
 
@@ -212,14 +242,14 @@ func TestAPIUserModeCannotRevokeOtherUsersDevicesOrAgentTokens(t *testing.T) {
 	}
 	handler := api.Handler()
 
-	aliceCookie := loginCookie(t, handler, "alice@example.com")
-	bobCookie := loginCookie(t, handler, "bob@example.com")
+	aliceAuth := loginAuth(t, handler, "alice@example.com")
+	bobAuth := loginAuth(t, handler, "bob@example.com")
 
-	pairing := requestWithCookie[PairingToken](t, handler, aliceCookie, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
+	pairing := requestWithSession[PairingToken](t, handler, aliceAuth, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
 	device := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairing.Token, DeviceName: "Alice Phone"})
-	agent := requestWithCookie[AgentCredential](t, handler, aliceCookie, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "alice-agent"})
+	agent := requestWithSession[AgentCredential](t, handler, aliceAuth, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "alice-agent"})
 
-	rec := statusWithCookie(t, handler, bobCookie, http.MethodPost, "/v1/devices/"+device.DeviceID+"/unpair", nil)
+	rec := statusWithSession(t, handler, bobAuth, http.MethodPost, "/v1/devices/"+device.DeviceID+"/unpair", nil, bobAuth.csrf.Value)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unpair status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusNotFound)
 	}
@@ -231,7 +261,7 @@ func TestAPIUserModeCannotRevokeOtherUsersDevicesOrAgentTokens(t *testing.T) {
 		t.Fatal("other user's device token was revoked")
 	}
 
-	rec = statusWithCookie(t, handler, bobCookie, http.MethodPost, "/v1/agent-tokens/"+agent.AgentID+"/revoke", nil)
+	rec = statusWithSession(t, handler, bobAuth, http.MethodPost, "/v1/agent-tokens/"+agent.AgentID+"/revoke", nil, bobAuth.csrf.Value)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("revoke status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusNotFound)
 	}
@@ -649,7 +679,12 @@ func requestWithoutAuth[T any](t *testing.T, handler http.Handler, method string
 	return output
 }
 
-func loginCookie(t *testing.T, handler http.Handler, email string) *http.Cookie {
+type sessionAuth struct {
+	session *http.Cookie
+	csrf    *http.Cookie
+}
+
+func loginAuth(t *testing.T, handler http.Handler, email string) sessionAuth {
 	t.Helper()
 
 	var body bytes.Buffer
@@ -663,16 +698,20 @@ func loginCookie(t *testing.T, handler http.Handler, email string) *http.Cookie 
 		t.Fatalf("login status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
 	}
 	cookies := rec.Result().Cookies()
-	if len(cookies) != 1 {
-		t.Fatalf("cookies = %#v, want one session cookie", cookies)
+	auth := sessionAuth{
+		session: findCookie(cookies, sessionCookieName),
+		csrf:    findCookie(cookies, csrfCookieName),
 	}
-	return cookies[0]
+	if auth.session == nil || auth.csrf == nil {
+		t.Fatalf("cookies = %#v, want session and CSRF cookies", cookies)
+	}
+	return auth
 }
 
-func requestWithCookie[T any](t *testing.T, handler http.Handler, cookie *http.Cookie, method string, path string, input any) T {
+func requestWithSession[T any](t *testing.T, handler http.Handler, auth sessionAuth, method string, path string, input any) T {
 	t.Helper()
 
-	rec := statusWithCookie(t, handler, cookie, method, path, input)
+	rec := statusWithSession(t, handler, auth, method, path, input, auth.csrf.Value)
 	if rec.Code < 200 || rec.Code >= 300 {
 		t.Fatalf("%s %s status = %d body = %s", method, path, rec.Code, rec.Body.String())
 	}
@@ -684,7 +723,7 @@ func requestWithCookie[T any](t *testing.T, handler http.Handler, cookie *http.C
 	return output
 }
 
-func statusWithCookie(t *testing.T, handler http.Handler, cookie *http.Cookie, method string, path string, input any) *httptest.ResponseRecorder {
+func statusWithSession(t *testing.T, handler http.Handler, auth sessionAuth, method string, path string, input any, csrf string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	var body bytes.Buffer
@@ -694,10 +733,23 @@ func statusWithCookie(t *testing.T, handler http.Handler, cookie *http.Cookie, m
 		}
 	}
 	req := httptest.NewRequest(method, path, &body)
-	req.AddCookie(cookie)
+	req.AddCookie(auth.session)
+	req.AddCookie(auth.csrf)
+	if csrf != "" {
+		req.Header.Set(csrfHeaderName, csrf)
+	}
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
+}
+
+func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	return nil
 }
 
 type recordingEventBus struct {

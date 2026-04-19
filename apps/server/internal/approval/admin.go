@@ -72,6 +72,8 @@ const adminHTML = `<!doctype html>
     function headers() {
       const output = { 'Content-Type': 'application/json' };
       if (tokenInput.value) output.Authorization = 'Bearer ' + tokenInput.value;
+      const csrfToken = cookieValue('agent_tick_csrf');
+      if (csrfToken) output['X-Agent-Tick-CSRF'] = csrfToken;
       return output;
     }
 
@@ -248,6 +250,13 @@ const adminHTML = `<!doctype html>
 
     function shellQuote(value) {
       return "'" + String(value).replace(/'/g, "'\\''") + "'";
+    }
+
+    function cookieValue(name) {
+      return document.cookie
+        .split('; ')
+        .map((part) => part.split('='))
+        .find(([key]) => key === name)?.[1] || '';
     }
 
     function renderApproval(approval) {
