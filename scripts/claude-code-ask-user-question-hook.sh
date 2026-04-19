@@ -35,6 +35,7 @@ request_json="$(
   jq -n \
     --arg title "$title" \
     --arg body "$body" \
+    --arg cwd "$(jq -r '.cwd // ""' "$payload_file")" \
     --arg session_id "$(jq -r '.session_id // ""' "$payload_file")" \
     --arg tool_use_id "$(jq -r '.tool_use_id // ""' "$payload_file")" \
     --arg transcript_path "$(jq -r '.transcript_path // ""' "$payload_file")" \
@@ -43,6 +44,11 @@ request_json="$(
       title: $title,
       body: $body,
       requestType: "questionnaire",
+      requester: {
+        name: "Claude Code",
+        agentId: "claude-code",
+        workingDirectory: $cwd
+      },
       questions: $questions,
       metadata: {
         source: "claude-code",

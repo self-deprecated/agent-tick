@@ -143,36 +143,54 @@ See also: setup, agent-token`,
 }
 
 func newRequestCmd() *cobra.Command {
-	var server, token, title, body, command, contextFile, requesterName, agentID string
+	var server, token, title, body, command, contextFile, requesterName, agentID, defaultChoice string
+	var choiceSpecs []string
+	var allowFreeformReply bool
 	var timeout, expiresIn time.Duration
 	cmd := &cobra.Command{
 		Use:   "request",
 		Short: "Create an approval request and wait for a response",
 		Long: `request submits a human approval request to the server and blocks until the
 request is approved, rejected, or times out. Exit code 0 means approved;
-exit code 1 means denied or timed out.
+exit code 1 means denied or timed out. When custom --choice flags are provided,
+the command exits 0 for any valid response and prints the selected choice ID.
 
 See also: guard, adapter`,
 		Example: `  agent-tick request --title "Deploy to production?" --command "kubectl apply -f prod.yaml"
+  agent-tick request --title "Pick a release channel" \
+    --choice stable:Stable --choice beta:Beta --choice nightly:Nightly
   agent-tick request --title "Send customer email" --body "To: alice@example.com" \
     --timeout 30m --expires-in 15m`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(title) == "" {
 				return fmt.Errorf("--title is required")
 			}
+			choices, err := parseChoices(choiceSpecs)
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(defaultChoice) != "" && !hasChoiceID(choices, defaultChoice) {
+				return fmt.Errorf("--default-choice %q must match one of the provided --choice IDs", defaultChoice)
+			}
 			current, err := requestApproval(server, approval.CreateRequest{
-				Requester: buildRequester(requesterName, agentID),
-				Title:     title,
-				Body:      body,
-				Command:   command,
-				ExpiresAt: expiresAtPtr(expiresIn),
-				Risk:      classifyRisk(command),
-				Metadata:  requestMetadata(contextFile),
+				Requester:          buildRequester(requesterName, agentID),
+				Title:              title,
+				Body:               body,
+				Command:            command,
+				Choices:            choices,
+				DefaultChoice:      strings.TrimSpace(defaultChoice),
+				AllowFreeformReply: allowFreeformReply,
+				ExpiresAt:          expiresAtPtr(expiresIn),
+				Risk:               classifyRisk(command),
+				Metadata:           requestMetadata(contextFile),
 			}, timeout, token)
 			if err != nil {
 				return err
 			}
 			printResponse(current.Response)
+			if len(choices) > 0 {
+				return nil
+			}
 			if current.Response == nil || current.Response.ChoiceID != "approve" {
 				os.Exit(1)
 			}
@@ -186,6 +204,9 @@ See also: guard, adapter`,
 	cmd.Flags().StringVar(&title, "title", "", "approval title (required)")
 	cmd.Flags().StringVar(&body, "body", "", "approval body")
 	cmd.Flags().StringVar(&command, "command", "", "command being requested")
+	cmd.Flags().StringArrayVar(&choiceSpecs, "choice", nil, "response choice in id:label[:kind] format; repeat to add more")
+	cmd.Flags().StringVar(&defaultChoice, "default-choice", "", "default choice ID for the request")
+	cmd.Flags().BoolVar(&allowFreeformReply, "allow-reply", false, "allow an optional text reply with the selected choice")
 	cmd.Flags().StringVar(&contextFile, "context-file", "", "path to extra context to attach")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response")
 	cmd.Flags().DurationVar(&expiresIn, "expires-in", 5*time.Minute, "approval expiry duration")
@@ -366,10 +387,10 @@ func newAgentTokenListCmd() *cobra.Command {
 func newAgentTokenRevokeCmd() *cobra.Command {
 	var data string
 	cmd := &cobra.Command{
-		Use:   "revoke <agent-id>",
-		Short: "Revoke an agent token by agent ID",
-		Long:  "See also: agent-token, list, rotate",
-		Args:  cobra.ExactArgs(1),
+		Use:     "revoke <agent-id>",
+		Short:   "Revoke an agent token by agent ID",
+		Long:    "See also: agent-token, list, rotate",
+		Args:    cobra.ExactArgs(1),
 		Example: `  agent-tick agent-token revoke abc123def456`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store := openSQLiteStore(data)
@@ -388,10 +409,10 @@ func newAgentTokenRevokeCmd() *cobra.Command {
 func newAgentTokenRotateCmd() *cobra.Command {
 	var data string
 	cmd := &cobra.Command{
-		Use:   "rotate <agent-id>",
-		Short: "Rotate (regenerate) an agent token by agent ID",
-		Long:  "See also: agent-token, list, revoke",
-		Args:  cobra.ExactArgs(1),
+		Use:     "rotate <agent-id>",
+		Short:   "Rotate (regenerate) an agent token by agent ID",
+		Long:    "See also: agent-token, list, revoke",
+		Args:    cobra.ExactArgs(1),
 		Example: `  agent-tick agent-token rotate abc123def456`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store := openSQLiteStore(data)
@@ -429,9 +450,7 @@ See also: request, guard`,
 			if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
 				return err
 			}
-			if input.Requester.AgentID == "" {
-				input.Requester = buildRequester(requesterName, agentID)
-			}
+			input.Requester = mergeRequester(input.Requester, buildRequester(requesterName, agentID))
 			if input.Title == "" {
 				input.Title = "Approval requested"
 			}
@@ -469,6 +488,22 @@ func buildRequester(name, agentID string) approval.Requester {
 		Host:             hostname(),
 		WorkingDirectory: workingDirectory(),
 	}
+}
+
+func mergeRequester(current approval.Requester, defaults approval.Requester) approval.Requester {
+	if strings.TrimSpace(current.Name) == "" {
+		current.Name = defaults.Name
+	}
+	if strings.TrimSpace(current.AgentID) == "" {
+		current.AgentID = defaults.AgentID
+	}
+	if strings.TrimSpace(current.Host) == "" {
+		current.Host = defaults.Host
+	}
+	if strings.TrimSpace(current.WorkingDirectory) == "" {
+		current.WorkingDirectory = defaults.WorkingDirectory
+	}
+	return current
 }
 
 func expiresAtPtr(d time.Duration) *time.Time {
@@ -639,6 +674,45 @@ func splitScopes(value string) []string {
 		}
 	}
 	return scopes
+}
+
+func parseChoices(specs []string) ([]approval.Choice, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	choices := make([]approval.Choice, 0, len(specs))
+	seen := make(map[string]struct{}, len(specs))
+	for _, raw := range specs {
+		spec := strings.TrimSpace(raw)
+		parts := strings.SplitN(spec, ":", 3)
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("invalid --choice %q: want id:label[:kind]", raw)
+		}
+		id := strings.TrimSpace(parts[0])
+		label := strings.TrimSpace(parts[1])
+		kind := "custom"
+		if len(parts) == 3 && strings.TrimSpace(parts[2]) != "" {
+			kind = strings.TrimSpace(parts[2])
+		}
+		if id == "" || label == "" {
+			return nil, fmt.Errorf("invalid --choice %q: id and label are required", raw)
+		}
+		if _, exists := seen[id]; exists {
+			return nil, fmt.Errorf("invalid --choice %q: duplicate id %q", raw, id)
+		}
+		seen[id] = struct{}{}
+		choices = append(choices, approval.Choice{ID: id, Label: label, Kind: kind})
+	}
+	return choices, nil
+}
+
+func hasChoiceID(choices []approval.Choice, id string) bool {
+	for _, choice := range choices {
+		if choice.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func classifyRisk(command string) string {

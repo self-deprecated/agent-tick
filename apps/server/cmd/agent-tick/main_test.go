@@ -2,7 +2,10 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"agent-tick/apps/server/internal/approval"
 )
 
 func TestClientConfigDefaults(t *testing.T) {
@@ -91,4 +94,95 @@ func TestFlagEnvPrecedence(t *testing.T) {
 			t.Errorf("--server default = %q, want localhost default", flag.DefValue)
 		}
 	})
+}
+
+func TestParseChoices(t *testing.T) {
+	tests := []struct {
+		name    string
+		specs   []string
+		want    []approval.Choice
+		wantErr string
+	}{
+		{
+			name:  "empty",
+			specs: nil,
+		},
+		{
+			name:  "custom kind default",
+			specs: []string{"stable:Stable", "beta:Beta"},
+			want: []approval.Choice{
+				{ID: "stable", Label: "Stable", Kind: "custom"},
+				{ID: "beta", Label: "Beta", Kind: "custom"},
+			},
+		},
+		{
+			name:  "explicit kind",
+			specs: []string{"approve:Approve:approve", "deny:Deny:deny"},
+			want: []approval.Choice{
+				{ID: "approve", Label: "Approve", Kind: "approve"},
+				{ID: "deny", Label: "Deny", Kind: "deny"},
+			},
+		},
+		{
+			name:    "missing label",
+			specs:   []string{"stable"},
+			wantErr: "want id:label[:kind]",
+		},
+		{
+			name:    "duplicate id",
+			specs:   []string{"stable:Stable", "stable:Still stable"},
+			wantErr: "duplicate id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseChoices(tt.specs)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("parseChoices() error = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseChoices() error = %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("parseChoices() len = %d, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("parseChoices()[%d] = %#v, want %#v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestMergeRequesterPreservesExplicitFields(t *testing.T) {
+	current := approval.Requester{
+		Name:             "Claude Code",
+		WorkingDirectory: "/tmp/project/subdir",
+	}
+	defaults := approval.Requester{
+		Name:             "agent-tick-cli",
+		AgentID:          "local-agent",
+		Host:             "workstation",
+		WorkingDirectory: "/tmp/project",
+	}
+
+	got := mergeRequester(current, defaults)
+
+	if got.Name != "Claude Code" {
+		t.Fatalf("Name = %q, want Claude Code", got.Name)
+	}
+	if got.AgentID != "local-agent" {
+		t.Fatalf("AgentID = %q, want local-agent", got.AgentID)
+	}
+	if got.Host != "workstation" {
+		t.Fatalf("Host = %q, want workstation", got.Host)
+	}
+	if got.WorkingDirectory != "/tmp/project/subdir" {
+		t.Fatalf("WorkingDirectory = %q, want /tmp/project/subdir", got.WorkingDirectory)
+	}
 }
