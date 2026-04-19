@@ -9,6 +9,7 @@ on:
       - ".github/workflows/cli-release.yml"
       - "apps/server/**"
       - "scripts/build-server-release.sh"
+      - "scripts/smoke-server-release.sh"
 
 permissions:
   contents: write
@@ -30,6 +31,9 @@ jobs:
         env:
           AGENT_TICK_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
         run: sh scripts/build-server-release.sh
+
+      - name: Smoke test CLI archives
+        run: sh scripts/smoke-server-release.sh
 
       - name: Upload CLI artifacts
         uses: actions/upload-artifact@v4

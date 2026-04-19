@@ -19,6 +19,7 @@ build_one() {
   fi
 
   mkdir -p "$dist/$name"
+  cp "$root/README.md" "$root/LICENSE" "$dist/$name/"
   (
     cd "$server"
     CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build \
