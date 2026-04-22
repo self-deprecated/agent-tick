@@ -11,10 +11,10 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.agenttick.mobile"
+      "bundleIdentifier": "ai.selfdeprecated.agenttick"
     },
     "android": {
-      "package": "app.agenttick.mobile"
+      "package": "ai.selfdeprecated.agenttick"
     },
     "plugins": [
       "expo-notifications",
