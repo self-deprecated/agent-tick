@@ -231,10 +231,23 @@ Open the installed development build on the phone and select the local developme
 To publish a persistent JavaScript/assets update that the development build can load without your laptop running Metro:
 
 ```sh
-devbox run mobile:update:development -- --message "Describe the change"
+devbox run mobile:update:development
+```
+
+To pass an explicit update message, run EAS directly from the mobile app directory:
+
+```sh
+cd apps/mobile
+npx eas update --channel development --message "Describe the change"
 ```
 
 The development EAS build profile uses the `development` update channel. The app is configured for EAS Update with project id `66c26d86-bff7-4681-a7b8-bc865a5212af`.
+
+Validate the mobile EAS config after changing `app.json`, `eas.json`, or mobile Expo dependencies:
+
+```sh
+devbox run mobile:validate-config
+```
 
 ## Publishing CLI Binaries
 
