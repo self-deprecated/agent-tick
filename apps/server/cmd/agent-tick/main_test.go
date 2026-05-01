@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -201,6 +202,113 @@ func TestRequestJSONEventsEmitsIDImmediatelyAndTerminalLater(t *testing.T) {
 
 	if err := <-done; err != nil {
 		t.Fatalf("requestApprovalJSONEvents() error = %v", err)
+	}
+}
+
+func TestRequestJSONEventsEmitsTerminalErrorStatuses(t *testing.T) {
+	for _, tt := range []struct {
+		status  string
+		wantErr string
+	}{
+		{status: approval.StatusAbandoned, wantErr: "abandoned"},
+		{status: approval.StatusExpired, wantErr: "expired"},
+	} {
+		t.Run(tt.status, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+					_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+						ID:        "req_" + tt.status,
+						Title:     "Run command?",
+						Status:    approval.StatusPending,
+						CreatedAt: time.Now().UTC(),
+					})
+				case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_"+tt.status:
+					_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+						ID:        "req_" + tt.status,
+						Title:     "Run command?",
+						Status:    tt.status,
+						CreatedAt: time.Now().UTC(),
+					})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			var output bytes.Buffer
+			_, err := requestApprovalJSONEvents(server.URL, approval.CreateRequest{Title: "Run command?"}, time.Minute, "", &output)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("requestApprovalJSONEvents() error = %v, want substring %q", err, tt.wantErr)
+			}
+
+			events := decodeRequestJSONEvents(t, output.Bytes())
+			if len(events) != 2 {
+				t.Fatalf("events = %#v, want created and terminal", events)
+			}
+			if events[0].Type != "request.created" || events[0].RequestID != "req_"+tt.status {
+				t.Fatalf("created event = %#v, want request ID", events[0])
+			}
+			if events[1].Type != "request.terminal" || events[1].Status != tt.status || !strings.Contains(events[1].Error, tt.wantErr) {
+				t.Fatalf("terminal event = %#v, want status %q and error substring %q", events[1], tt.status, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRequestJSONEventsEmitsTimeoutTerminalEvent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+				ID:        "req_timeout",
+				Title:     "Run command?",
+				Status:    approval.StatusPending,
+				CreatedAt: time.Now().UTC(),
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_timeout":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+				ID:        "req_timeout",
+				Title:     "Run command?",
+				Status:    approval.StatusPending,
+				CreatedAt: time.Now().UTC(),
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	_, err := requestApprovalJSONEvents(server.URL, approval.CreateRequest{Title: "Run command?"}, time.Nanosecond, "", &output)
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("requestApprovalJSONEvents() error = %v, want timeout", err)
+	}
+
+	events := decodeRequestJSONEvents(t, output.Bytes())
+	if len(events) != 2 {
+		t.Fatalf("events = %#v, want created and terminal", events)
+	}
+	if events[1].Type != "request.terminal" || events[1].RequestID != "req_timeout" || events[1].Status != approval.StatusPending || !strings.Contains(events[1].Error, "timed out") {
+		t.Fatalf("terminal event = %#v, want pending timeout", events[1])
+	}
+}
+
+func decodeRequestJSONEvents(t *testing.T, data []byte) []requestJSONEvent {
+	t.Helper()
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	events := []requestJSONEvent{}
+	for {
+		var event requestJSONEvent
+		err := decoder.Decode(&event)
+		if err == io.EOF {
+			return events
+		}
+		if err != nil {
+			t.Fatalf("Decode() error = %v; data = %s", err, string(data))
+		}
+		events = append(events, event)
 	}
 }
 

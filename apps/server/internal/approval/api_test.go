@@ -92,6 +92,31 @@ func TestAPIAbandonPendingRequest(t *testing.T) {
 	}
 }
 
+func TestAPIRejectsSessionAbandon(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+	auth := loginAuth(t, handler, "abandon@example.com")
+
+	created := requestWithSession[ApprovalRequest](t, handler, auth, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?"})
+	rec := statusWithSession(t, handler, auth, http.MethodPost, "/v1/approval-requests/"+created.ID+"/abandon", nil, auth.csrf.Value)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusForbidden)
+	}
+
+	current, err := store.GetForUser(created.UserID, created.ID)
+	if err != nil {
+		t.Fatalf("GetForUser() error = %v", err)
+	}
+	if current.Status != StatusPending {
+		t.Fatalf("Status = %q, want %q", current.Status, StatusPending)
+	}
+}
+
 func TestAPIRejectsDeviceAbandon(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
@@ -190,6 +215,31 @@ func TestAPIQuestionnaireRespond(t *testing.T) {
 	if responded.Response == nil || responded.Response.Answers["Which environment?"][0] != "prod" {
 		t.Fatalf("response = %#v, want questionnaire answers", responded.Response)
 	}
+}
+
+func TestAPIAbandonPublishesOnlyOnTransition(t *testing.T) {
+	api := NewAPI(
+		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
+		"test-token",
+	)
+	events := &recordingEventBus{}
+	api.events = events
+	handler := api.Handler()
+
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?"})
+	_ = request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests/"+created.ID+"/abandon", nil)
+	events.assertEvents(
+		t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.abandoned", RequestID: created.ID},
+	)
+
+	_ = request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests/"+created.ID+"/abandon", nil)
+	events.assertEvents(
+		t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.abandoned", RequestID: created.ID},
+	)
 }
 
 func TestAPIEventsPublishOnRespondNotGet(t *testing.T) {
@@ -457,6 +507,68 @@ func TestAPIPairsDeviceToken(t *testing.T) {
 	}
 	if !ok || userID != defaultUserID {
 		t.Fatalf("device user = %q, %v, want %q, true", userID, ok, defaultUserID)
+	}
+}
+
+func TestAPICreateReturnsBeforePushDeliveryCompletes(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	pairing, err := store.CreatePairingToken(time.Minute)
+	if err != nil {
+		t.Fatalf("CreatePairingToken() error = %v", err)
+	}
+	device, err := store.PairDevice(pairing.Token, "Phone")
+	if err != nil {
+		t.Fatalf("PairDevice() error = %v", err)
+	}
+	if err := store.SetDevicePushToken(device.DeviceID, "ExponentPushToken[test]"); err != nil {
+		t.Fatalf("SetDevicePushToken() error = %v", err)
+	}
+
+	pushStarted := make(chan struct{})
+	releasePush := make(chan struct{})
+	pushServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(pushStarted)
+		<-releasePush
+		writeJSON(w, http.StatusOK, expoPushResponse{Data: []expoPushTicket{{Status: "ok"}}})
+	}))
+	defer pushServer.Close()
+	defer close(releasePush)
+
+	api := NewAPI(store, "test-token")
+	api.push = &PushSender{client: pushServer.Client(), url: pushServer.URL}
+	handler := api.Handler()
+
+	body, err := json.Marshal(CreateRequest{Title: "Run command?"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/approval-requests", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		done <- rec
+	}()
+
+	select {
+	case rec := <-done:
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusCreated)
+		}
+	case <-pushStarted:
+		select {
+		case rec := <-done:
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusCreated)
+			}
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("create response blocked on push delivery")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for create response or push attempt")
 	}
 }
 

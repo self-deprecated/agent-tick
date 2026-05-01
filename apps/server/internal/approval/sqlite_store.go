@@ -383,21 +383,21 @@ func (s *SQLiteStore) RespondForUser(userID string, id string, response Response
 	return request, nil
 }
 
-func (s *SQLiteStore) Abandon(id string) (ApprovalRequest, error) {
+func (s *SQLiteStore) Abandon(id string) (ApprovalRequest, bool, error) {
 	return s.AbandonForUser(defaultUserID, id)
 }
 
-func (s *SQLiteStore) AbandonForUser(userID string, id string) (ApprovalRequest, error) {
+func (s *SQLiteStore) AbandonForUser(userID string, id string) (ApprovalRequest, bool, error) {
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
 	if err := s.expirePendingRequests(); err != nil {
-		return ApprovalRequest{}, err
+		return ApprovalRequest{}, false, err
 	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
-		return ApprovalRequest{}, err
+		return ApprovalRequest{}, false, err
 	}
 	defer rollback(tx)
 
@@ -412,15 +412,16 @@ func (s *SQLiteStore) AbandonForUser(userID string, id string) (ApprovalRequest,
 			)
 	`, StatusAbandoned, id, userID, StatusPending)
 	if err != nil {
-		return ApprovalRequest{}, err
+		return ApprovalRequest{}, false, err
 	}
 	abandonedRows, err := result.RowsAffected()
 	if err != nil {
-		return ApprovalRequest{}, err
+		return ApprovalRequest{}, false, err
 	}
-	if abandonedRows > 0 {
+	changed := abandonedRows > 0
+	if changed {
 		if err := insertAuditForUser(tx, userID, "approval_request.abandoned", id, nil); err != nil {
-			return ApprovalRequest{}, err
+			return ApprovalRequest{}, false, err
 		}
 	}
 
@@ -437,15 +438,15 @@ func (s *SQLiteStore) AbandonForUser(userID string, id string) (ApprovalRequest,
 
 	request, err := scanRequest(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ApprovalRequest{}, ErrNotFound
+		return ApprovalRequest{}, false, ErrNotFound
 	}
 	if err != nil {
-		return ApprovalRequest{}, err
+		return ApprovalRequest{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return ApprovalRequest{}, err
+		return ApprovalRequest{}, false, err
 	}
-	return request, nil
+	return request, changed, nil
 }
 
 func (s *SQLiteStore) expirePendingRequests() error {

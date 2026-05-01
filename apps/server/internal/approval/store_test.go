@@ -75,9 +75,12 @@ func TestFileStoreAbandonPendingAndAnsweredRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() pending error = %v", err)
 	}
-	abandoned, err := store.Abandon(pending.ID)
+	abandoned, changed, err := store.Abandon(pending.ID)
 	if err != nil {
 		t.Fatalf("Abandon() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("Abandon() changed = false, want true")
 	}
 	if abandoned.Status != StatusAbandoned || abandoned.Response != nil {
 		t.Fatalf("Abandon() = %#v, want abandoned without response", abandoned)
@@ -93,9 +96,12 @@ func TestFileStoreAbandonPendingAndAnsweredRequests(t *testing.T) {
 	if _, err := store.Respond(answered.ID, Response{ChoiceID: "approve"}); err != nil {
 		t.Fatalf("Respond() error = %v", err)
 	}
-	current, err := store.Abandon(answered.ID)
+	current, changed, err := store.Abandon(answered.ID)
 	if err != nil {
 		t.Fatalf("Abandon() answered error = %v", err)
+	}
+	if changed {
+		t.Fatal("Abandon() answered changed = true, want false")
 	}
 	if current.Status != StatusResponded || current.Response == nil || current.Response.ChoiceID != "approve" {
 		t.Fatalf("Abandon() answered = %#v, want existing response", current)

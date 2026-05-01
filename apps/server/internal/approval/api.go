@@ -124,7 +124,7 @@ func (a *API) respondForUser(userID string, id string, response Response) (Appro
 	return a.store.Respond(id, response)
 }
 
-func (a *API) abandonForUser(userID string, id string) (ApprovalRequest, error) {
+func (a *API) abandonForUser(userID string, id string) (ApprovalRequest, bool, error) {
 	if a.scopedStore != nil {
 		return a.scopedStore.AbandonForUser(userID, id)
 	}
@@ -408,7 +408,7 @@ func (a *API) abandon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, err := a.abandonForUser(auth.UserID, r.PathValue("id"))
+	request, changed, err := a.abandonForUser(auth.UserID, r.PathValue("id"))
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "approval request not found")
 		return
@@ -417,7 +417,7 @@ func (a *API) abandon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if request.Status == StatusAbandoned {
+	if changed {
 		a.events.Publish(Event{Type: "approval.abandoned", RequestID: request.ID})
 	}
 	writeJSON(w, http.StatusOK, request)
@@ -585,6 +585,8 @@ func (a *API) sendPush(request ApprovalRequest) {
 	if len(tokens) == 0 {
 		return
 	}
+	// Push delivery is intentionally fire-and-forget so request creation can
+	// return the request ID to CLI/automation clients without waiting on Expo.
 	go func() {
 		if err := a.push.SendApprovalRequest(tokens, request); err != nil {
 			log.Printf("send push for request %s: %v", request.ID, err)

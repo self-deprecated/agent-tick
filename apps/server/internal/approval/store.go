@@ -26,7 +26,7 @@ type Store interface {
 	List(status string) ([]ApprovalRequest, error)
 	Get(id string) (ApprovalRequest, error)
 	Respond(id string, response Response) (ApprovalRequest, error)
-	Abandon(id string) (ApprovalRequest, error)
+	Abandon(id string) (ApprovalRequest, bool, error)
 }
 
 type UserScopedStore interface {
@@ -34,7 +34,7 @@ type UserScopedStore interface {
 	ListForUser(userID string, status string) ([]ApprovalRequest, error)
 	GetForUser(userID string, id string) (ApprovalRequest, error)
 	RespondForUser(userID string, id string, response Response) (ApprovalRequest, error)
-	AbandonForUser(userID string, id string) (ApprovalRequest, error)
+	AbandonForUser(userID string, id string) (ApprovalRequest, bool, error)
 }
 
 type PairingStore interface {
@@ -208,25 +208,27 @@ func (s *FileStore) Respond(id string, response Response) (ApprovalRequest, erro
 	return ApprovalRequest{}, ErrNotFound
 }
 
-func (s *FileStore) Abandon(id string) (ApprovalRequest, error) {
+func (s *FileStore) Abandon(id string) (ApprovalRequest, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	requests, err := s.load()
 	if err != nil {
-		return ApprovalRequest{}, err
+		return ApprovalRequest{}, false, err
 	}
 	requests = expireRequests(requests)
 
 	for i := range requests {
 		if requests[i].ID == id {
+			changed := false
 			if requests[i].Status == StatusPending && requests[i].Response == nil {
 				requests[i].Status = StatusAbandoned
+				changed = true
 			}
-			return requests[i], s.save(requests)
+			return requests[i], changed, s.save(requests)
 		}
 	}
-	return ApprovalRequest{}, ErrNotFound
+	return ApprovalRequest{}, false, ErrNotFound
 }
 
 func expireRequests(requests []ApprovalRequest) []ApprovalRequest {
