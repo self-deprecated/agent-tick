@@ -17,5 +17,10 @@
     "production": {
       "autoIncrement": true
     }
+  },
+  "submit": {
+    "production": {
+      "ios": {}
+    }
   }
 }
