@@ -5,6 +5,10 @@ import "time"
 const (
 	RequestTypeApproval      = "approval"
 	RequestTypeQuestionnaire = "questionnaire"
+	RequestTypeSteer         = "steer"
+
+	SteerNoneChoiceID    = "none"
+	SteerNoneChoiceLabel = "Do nothing / skip"
 )
 
 type Requester struct {

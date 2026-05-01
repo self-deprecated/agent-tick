@@ -30,6 +30,7 @@ import {
   notificationBody,
   questionnaireReady,
   requestStatusLabel,
+  supportsNotificationActions,
   updateQuestionnaireAnswers,
   type ApprovalRequest,
   type Choice,
@@ -766,7 +767,7 @@ async function notifyForNewRequests(
       content: {
         title: request.command ? "Run Command?" : request.title,
         body: notificationBody(request),
-        categoryIdentifier: isQuestionnaireRequest(request) ? undefined : approvalCategoryID,
+        categoryIdentifier: supportsNotificationActions(request) ? approvalCategoryID : undefined,
         data: { approvalRequestID: request.id },
         sound: true,
       },

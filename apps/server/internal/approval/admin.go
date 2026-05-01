@@ -261,8 +261,14 @@ const adminHTML = `<!doctype html>
 
     function renderApproval(approval) {
       const command = approval.command ? '<pre>' + escapeHTML(approval.command) + '</pre>' : '';
-      const actions = approval.status === 'pending' && approval.requestType !== 'questionnaire'
-        ? '<button onclick="respond(\'' + approval.id + '\', \'approve\')">Approve</button> <button onclick="respond(\'' + approval.id + '\', \'deny\')">Deny</button>'
+      const choices = Array.isArray(approval.choices) ? approval.choices : [];
+      const choiceButtons = choices.map((choice) => {
+        const label = choice.label || choice.id;
+        const call = 'respond(' + JSON.stringify(approval.id) + ', ' + JSON.stringify(choice.id) + ')';
+        return '<button onclick="' + escapeHTML(call) + '">' + escapeHTML(label) + '</button>';
+      }).join(' ');
+      const actions = approval.status === 'pending' && approval.requestType !== 'questionnaire' && choiceButtons
+        ? choiceButtons
         : approval.requestType === 'questionnaire'
           ? '<div class="meta">Respond in the phone app.</div>'
           : '';

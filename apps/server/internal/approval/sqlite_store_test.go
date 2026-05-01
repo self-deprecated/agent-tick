@@ -14,9 +14,10 @@ func TestSQLiteStoreCreateListRespond(t *testing.T) {
 	defer store.Close()
 
 	request, err := store.Create(CreateRequest{
-		Requester: Requester{Name: "codex", AgentID: "local-agent", Host: "overton"},
-		Title:     "Run command?",
-		Command:   "npm install",
+		Requester:          Requester{Name: "codex", AgentID: "local-agent", Host: "overton"},
+		Title:              "Run command?",
+		Command:            "npm install",
+		AllowFreeformReply: true,
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -154,7 +155,7 @@ func TestSQLiteStoreAbandonPendingAndAnsweredRequests(t *testing.T) {
 		t.Fatalf("Respond() after abandon error = %v, want %v", err, ErrAbandoned)
 	}
 
-	answered, err := store.Create(CreateRequest{Title: "Answered"})
+	answered, err := store.Create(CreateRequest{Title: "Answered", AllowFreeformReply: true})
 	if err != nil {
 		t.Fatalf("Create() answered error = %v", err)
 	}

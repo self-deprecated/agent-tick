@@ -31,7 +31,7 @@ export type ApprovalResponse = {
 export type ApprovalRequest = {
   id: string;
   requester: Requester;
-  requestType?: "approval" | "questionnaire" | string;
+  requestType?: "approval" | "questionnaire" | "steer" | string;
   title: string;
   body?: string;
   command?: string;
@@ -63,11 +63,18 @@ export function normalizeApproval(value: unknown): ApprovalRequest {
     : undefined;
   return {
     ...request,
-    requestType: request.requestType === "questionnaire" ? "questionnaire" : "approval",
+    requestType: normalizeRequestType(request.requestType),
     choices: Array.isArray(request.choices) ? request.choices : [],
     questions: Array.isArray(request.questions) ? request.questions : [],
     response,
   };
+}
+
+function normalizeRequestType(value: unknown) {
+  if (value === "questionnaire" || value === "steer") {
+    return value;
+  }
+  return "approval";
 }
 
 export function normalizeAnswers(value: unknown): Record<string, string[]> {
@@ -142,6 +149,18 @@ export function isQuestionnaireRequest(request: ApprovalRequest) {
   return request.requestType === "questionnaire";
 }
 
+export function isSteerRequest(request: ApprovalRequest) {
+  return request.requestType === "steer";
+}
+
+export function supportsNotificationActions(request: ApprovalRequest) {
+  return (
+    request.requestType === "approval" &&
+    (request.choices ?? []).some((choice) => choice.id === "approve") &&
+    (request.choices ?? []).some((choice) => choice.id === "deny")
+  );
+}
+
 export function notificationBody(request: ApprovalRequest) {
   if (request.command) {
     const host = request.requester.host || request.requester.name || "Agent";
@@ -149,6 +168,9 @@ export function notificationBody(request: ApprovalRequest) {
   }
   if (isQuestionnaireRequest(request) && request.questions?.length) {
     return request.questions[0]?.question || request.body || "Questions waiting";
+  }
+  if (isSteerRequest(request)) {
+    return request.body || "Steering requested";
   }
   return request.body || "Approval requested";
 }

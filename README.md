@@ -64,9 +64,20 @@ agent-tick guard -- npm install
 
 The command only runs after you approve on your phone.
 
+**5. Ask for steering without freeform text**
+
+```bash
+agent-tick steer \
+  --title "How should I continue?" \
+  --option run-tests:"Run tests and fix failures" \
+  --option update-docs:"Update README/docs"
+```
+
+Your phone shows only the supplied options plus **Do nothing / skip**. The CLI prints only the selected option ID, or `none` on skip, timeout, expiry, or delivery failure.
+
 ## How It Works
 
-An agent calls `agent-tick request` or `agent-tick guard`. The CLI sends the request to the server and polls for a response. The server pushes the request to your paired phone. You approve or deny. The server returns the decision to the CLI, and the agent continues.
+An agent calls `agent-tick request`, `agent-tick guard`, or `agent-tick steer`. The CLI sends the request to the server and polls for a response. The server pushes the request to your paired phone. You approve, deny, or select a constrained steering option. The server returns the decision to the CLI, and the agent continues.
 
 ## Agent Skill
 

@@ -1,7 +1,9 @@
 import {
   buildQuestionnaireAnswers,
+  normalizeApproval,
   questionnaireReady,
   requestStatusLabel,
+  supportsNotificationActions,
   updateQuestionnaireAnswers,
 } from "./approvalRequests";
 import {
@@ -112,6 +114,45 @@ const questionnaireRequest = {
   status: "pending",
   createdAt: "2026-04-19T12:00:00Z",
 };
+
+describe("request normalization and notification helpers", () => {
+  it("preserves steer request type and disables approve/deny notification actions", () => {
+    const steer = normalizeApproval({
+      id: "req_steer",
+      requester: { name: "Agent", agentId: "agent" },
+      requestType: "steer",
+      title: "Choose next step",
+      choices: [
+        { id: "run-tests", label: "Run tests", kind: "steer" },
+        { id: "none", label: "Do nothing / skip", kind: "none" },
+      ],
+      allowFreeformReply: false,
+      status: "pending",
+      createdAt: "2026-04-19T12:00:00Z",
+    });
+
+    expect(steer.requestType).toBe("steer");
+    expect(supportsNotificationActions(steer)).toBe(false);
+  });
+
+  it("only enables notification actions for approve/deny approval requests", () => {
+    expect(
+      supportsNotificationActions({
+        id: "req_approve",
+        requester: { name: "Agent", agentId: "agent" },
+        requestType: "approval",
+        title: "Run?",
+        choices: [
+          { id: "approve", label: "Approve", kind: "approve" },
+          { id: "deny", label: "Deny", kind: "deny" },
+        ],
+        allowFreeformReply: false,
+        status: "pending",
+        createdAt: "2026-04-19T12:00:00Z",
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("questionnaire helpers", () => {
   it("keeps only answers that still exist on the request", () => {

@@ -1,6 +1,7 @@
 package approval
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -65,6 +66,73 @@ func TestFileStoreRejectsInvalidAndDuplicateResponses(t *testing.T) {
 
 	if _, err := store.Respond(request.ID, Response{ChoiceID: "deny"}); err != ErrAlreadyResponded {
 		t.Fatalf("Respond() error = %v, want %v", err, ErrAlreadyResponded)
+	}
+}
+
+func TestFileStoreRejectsMessagesWhenFreeformDisabled(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
+
+	request, err := store.Create(CreateRequest{Title: "Run command?"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	_, err = store.Respond(request.ID, Response{ChoiceID: "approve", Message: "typed reply"})
+	if err == nil || !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("Respond() error = %v, want %v", err, ErrInvalidResponse)
+	}
+}
+
+func TestFileStoreSteerRequest(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
+
+	request, err := store.Create(CreateRequest{
+		RequestType: RequestTypeSteer,
+		Title:       "Choose next step",
+		Choices: []Choice{
+			{ID: "run-tests", Label: "Run tests"},
+			{ID: "update_docs", Label: "Update docs"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if request.RequestType != RequestTypeSteer {
+		t.Fatalf("RequestType = %q, want %q", request.RequestType, RequestTypeSteer)
+	}
+	if request.DefaultChoice != SteerNoneChoiceID || !hasChoiceID(request.Choices, SteerNoneChoiceID) {
+		t.Fatalf("steer choices/default = %#v/%q, want built-in none", request.Choices, request.DefaultChoice)
+	}
+	if request.AllowFreeformReply {
+		t.Fatal("AllowFreeformReply = true, want false")
+	}
+
+	if _, err := store.Respond(request.ID, Response{ChoiceID: "run-tests", Message: "extra"}); err == nil || !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("Respond(message) error = %v, want %v", err, ErrInvalidResponse)
+	}
+	responded, err := store.Respond(request.ID, Response{ChoiceID: "run-tests"})
+	if err != nil {
+		t.Fatalf("Respond() error = %v", err)
+	}
+	if responded.Response == nil || responded.Response.ChoiceID != "run-tests" {
+		t.Fatalf("Response = %#v, want run-tests", responded.Response)
+	}
+}
+
+func TestFileStoreRejectsInvalidSteerRequests(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
+
+	invalid := []CreateRequest{
+		{RequestType: RequestTypeSteer, Title: "Choose", Choices: nil},
+		{RequestType: RequestTypeSteer, Title: "Choose", AllowFreeformReply: true, Choices: []Choice{{ID: "next", Label: "Next"}}},
+		{RequestType: RequestTypeSteer, Title: "Choose", Command: "npm test", Choices: []Choice{{ID: "next", Label: "Next"}}},
+		{RequestType: RequestTypeSteer, Title: "Choose", Choices: []Choice{{ID: SteerNoneChoiceID, Label: "Pretend"}}},
+		{RequestType: RequestTypeSteer, Title: "Choose", Choices: []Choice{{ID: "not allowed", Label: "Bad ID"}}},
+	}
+	for _, input := range invalid {
+		if _, err := store.Create(input); err == nil || !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("Create(%#v) error = %v, want %v", input, err, ErrInvalidRequest)
+		}
 	}
 }
 

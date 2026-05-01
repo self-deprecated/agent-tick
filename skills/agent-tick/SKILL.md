@@ -1,11 +1,11 @@
 ---
 name: agent-tick
-description: Request out-of-band human approval through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, or when the user explicitly asks to gate work through Agent Tick. This skill covers `agent-tick setup`, `agent-tick request`, `agent-tick guard`, and `agent-tick adapter`.
+description: Request out-of-band human approval or constrained steering through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, ask for user steering without freeform text, or when the user explicitly asks to gate work through Agent Tick. This skill covers `agent-tick setup`, `agent-tick request`, `agent-tick steer`, `agent-tick guard`, and `agent-tick adapter`.
 ---
 
 # Agent Tick
 
-Agent Tick is a CLI-based approval gate. It sends an approval request to the user's phone and waits for approve/deny before proceeding.
+Agent Tick is a CLI-based approval and steering gate. It sends an approval or constrained steering request to the user's phone and waits before proceeding.
 
 ## First Check
 
@@ -63,6 +63,21 @@ agent-tick request \
 
 Treat denial as a hard stop unless the user gives a new instruction.
 
+## Constrained Steering / Follow-up Selection
+
+Use `agent-tick steer` when the user should select from agent-generated follow-up options and must not type a freeform response:
+
+```sh
+agent-tick steer \
+  --title "How should I continue?" \
+  --option run-tests:"Run tests and fix failures" \
+  --option update-docs:"Update README/docs"
+```
+
+The phone always includes a built-in `none` / “Do nothing / skip” option. The CLI prints only the selected option ID, or `none` on skip, timeout, expiry, abandonment, or delivery failure. Never treat `none` as permission to do risky work.
+
+Option IDs must be stable local tokens (`[A-Za-z0-9_-]{1,64}`); put human-readable text in labels. The user cannot send text back through `steer`.
+
 ## Include Context
 
 For long details, write the extra context to a temporary file and attach it:
@@ -107,7 +122,7 @@ That script turns Claude Code's question array into an Agent Tick `questionnaire
 ## Safety Rules
 
 - Do not use Agent Tick to approve its own setup command.
-- Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in approval titles, bodies, or context files.
-- Do not continue a gated action after denial, timeout, CLI failure, or a non-zero `agent-tick` exit.
+- Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in approval or steering titles, bodies, option labels, or context files.
+- Do not continue a gated action after denial, timeout, CLI failure, or a non-zero `agent-tick` exit. For `agent-tick steer`, treat `none` as no steering selected.
 - Do not replace Agent Tick with a normal prompt when the user asked for Agent Tick approval.
 - Use one approval for one meaningful action. Batch only when the full batch is clearly described.

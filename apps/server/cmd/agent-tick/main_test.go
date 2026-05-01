@@ -111,6 +111,13 @@ func TestRequestAutomationFlagsExist(t *testing.T) {
 		}
 	}
 
+	steer := newSteerCmd()
+	for _, name := range []string{"option", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token"} {
+		if steer.Flags().Lookup(name) == nil {
+			t.Fatalf("--%s flag not found on steer command", name)
+		}
+	}
+
 	abandon := newAbandonCmd()
 	for _, name := range []string{"json", "client-request-id", "reason"} {
 		if abandon.Flags().Lookup(name) == nil {
@@ -121,6 +128,9 @@ func TestRequestAutomationFlagsExist(t *testing.T) {
 	root := newRootCmd()
 	if found, _, err := root.Find([]string{"abandon"}); err != nil || found == nil || found.Name() != "abandon" {
 		t.Fatalf("root.Find(abandon) = %v, %v, want abandon command", found, err)
+	}
+	if found, _, err := root.Find([]string{"steer"}); err != nil || found == nil || found.Name() != "steer" {
+		t.Fatalf("root.Find(steer) = %v, %v, want steer command", found, err)
 	}
 }
 
@@ -209,6 +219,117 @@ func TestRequestNoTimeoutAliasWaitsIndefinitely(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request command error = %v; want --no-timeout to override expired --timeout", err)
 	}
+}
+
+func TestSteerCommandOutputsSelectedIDOnly(t *testing.T) {
+	var createdInput approval.CreateRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			if err := json.NewDecoder(r.Body).Decode(&createdInput); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+				ID:            "req_steer",
+				Status:        approval.StatusPending,
+				RequestType:   createdInput.RequestType,
+				Choices:       steerChoicesForTest(createdInput.Choices),
+				DefaultChoice: approval.SteerNoneChoiceID,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_steer":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+				ID:          "req_steer",
+				Status:      approval.StatusResponded,
+				RequestType: approval.RequestTypeSteer,
+				Choices:     steerChoicesForTest(createdInput.Choices),
+				Response:    &approval.Response{ChoiceID: "run-tests"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout, err := runRootCommandCapturingStdout(t, "steer", "--server", server.URL, "--option", "run-tests:Run tests", "--option", "update-docs:Update docs", "--timeout", "1s")
+	if err != nil {
+		t.Fatalf("steer command error = %v", err)
+	}
+	if string(stdout) != "run-tests\n" {
+		t.Fatalf("stdout = %q, want selected ID only", string(stdout))
+	}
+	if createdInput.RequestType != approval.RequestTypeSteer || createdInput.AllowFreeformReply || createdInput.DefaultChoice != approval.SteerNoneChoiceID {
+		t.Fatalf("created input = %#v, want secure steer request", createdInput)
+	}
+}
+
+func TestSteerCommandDoesNotReturnServerAddedChoice(t *testing.T) {
+	serverChoices := []approval.Choice{
+		{ID: "run-tests", Label: "Run tests", Kind: approval.RequestTypeSteer},
+		{ID: "server-added", Label: "Server-added text", Kind: approval.RequestTypeSteer},
+		{ID: approval.SteerNoneChoiceID, Label: approval.SteerNoneChoiceLabel, Kind: approval.SteerNoneChoiceID},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_steer_injected", Status: approval.StatusPending, Choices: serverChoices})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_steer_injected":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_steer_injected", Status: approval.StatusResponded, Choices: serverChoices, Response: &approval.Response{ChoiceID: "server-added"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout, err := runRootCommandCapturingStdout(t, "steer", "--server", server.URL, "--option", "run-tests:Run tests", "--timeout", "1s")
+	if err != nil {
+		t.Fatalf("steer command error = %v", err)
+	}
+	if string(stdout) != approval.SteerNoneChoiceID+"\n" {
+		t.Fatalf("stdout = %q, want none for server-added choice", string(stdout))
+	}
+}
+
+func TestSteerCommandOutputsNoneOnTimeout(t *testing.T) {
+	oldPollInterval := approvalPollInterval
+	approvalPollInterval = time.Millisecond
+	defer func() { approvalPollInterval = oldPollInterval }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_steer_timeout", Status: approval.StatusPending, Choices: steerChoicesForTest(nil)})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_steer_timeout":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_steer_timeout", Status: approval.StatusPending, Choices: steerChoicesForTest(nil)})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout, err := runRootCommandCapturingStdout(t, "steer", "--server", server.URL, "--option", "run-tests:Run tests", "--timeout", "1ns")
+	if err != nil {
+		t.Fatalf("steer command error = %v, want fail-closed none", err)
+	}
+	if string(stdout) != approval.SteerNoneChoiceID+"\n" {
+		t.Fatalf("stdout = %q, want none", string(stdout))
+	}
+}
+
+func TestSteerCommandRejectsReservedNoneOption(t *testing.T) {
+	stdout, err := runRootCommandCapturingStdout(t, "steer", "--option", "none:Do nothing")
+	if err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("steer command error = %v, want reserved option error", err)
+	}
+	if len(stdout) != 0 {
+		t.Fatalf("stdout = %q, want empty output on invalid local options", string(stdout))
+	}
+}
+
+func steerChoicesForTest(input []approval.Choice) []approval.Choice {
+	choices := append([]approval.Choice{}, input...)
+	choices = append(choices, approval.Choice{ID: approval.SteerNoneChoiceID, Label: approval.SteerNoneChoiceLabel, Kind: approval.SteerNoneChoiceID})
+	return choices
 }
 
 func TestRequestJSONEventsEmitsIDImmediatelyAndTerminalLater(t *testing.T) {
@@ -678,6 +799,21 @@ func TestParseChoices(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseSteerOptions(t *testing.T) {
+	choices, err := parseSteerOptions([]string{"run-tests:Run tests: include integration", "update_docs:Update docs"})
+	if err != nil {
+		t.Fatalf("parseSteerOptions() error = %v", err)
+	}
+	if len(choices) != 2 || choices[0].ID != "run-tests" || choices[0].Label != "Run tests: include integration" || choices[0].Kind != approval.RequestTypeSteer {
+		t.Fatalf("choices = %#v, want steer choices with colon-preserving label", choices)
+	}
+	for _, specs := range [][]string{{}, {"none:No"}, {"bad id:Bad"}, {"x:One", "x:Two"}} {
+		if _, err := parseSteerOptions(specs); err == nil {
+			t.Fatalf("parseSteerOptions(%#v) error = nil, want error", specs)
+		}
 	}
 }
 

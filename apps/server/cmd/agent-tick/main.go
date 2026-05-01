@@ -57,6 +57,7 @@ UI or mobile app before the action proceeds.`,
 		newSetupCmd(),
 		newServerCmd(),
 		newRequestCmd(),
+		newSteerCmd(),
 		newAbandonCmd(),
 		newGuardCmd(),
 		newPairCmd(),
@@ -245,6 +246,77 @@ See also: guard, adapter, abandon`,
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response; 0 waits indefinitely")
 	cmd.Flags().BoolVar(&noTimeout, "no-timeout", false, "alias for --timeout 0; wait indefinitely")
 	cmd.Flags().DurationVar(&expiresIn, "expires-in", 5*time.Minute, "approval expiry duration; 0 disables expiry")
+	cmd.Flags().BoolVar(&noExpiry, "no-expiry", false, "alias for --expires-in 0; disable request expiry")
+	return cmd
+}
+
+func newSteerCmd() *cobra.Command {
+	var server, token, title, body, contextFile, requesterName, agentID string
+	var clientRequestID, correlationToken, metadataJSON string
+	var optionSpecs []string
+	var noTimeout, noExpiry bool
+	var timeout, expiresIn time.Duration
+	cmd := &cobra.Command{
+		Use:     "steer",
+		Aliases: []string{"follow-up", "followup"},
+		Short:   "Ask a human to choose one agent-generated follow-up option",
+		Args:    cobra.NoArgs,
+		Long: `steer submits a constrained steering request and prints only the selected
+option ID. The human cannot type a reply. A built-in none option is always
+available, and timeouts, expiry, abandonment, or delivery errors all resolve to
+none so callers fail closed.
+
+See also: request, guard`,
+		Example: `  agent-tick steer --title "How should I continue?" \
+    --option run-tests:"Run tests and fix failures" \
+    --option update-docs:"Update README/docs"
+  selected="$(agent-tick steer --option stop:'Do nothing else' --option tests:'Run tests')"`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if noTimeout {
+				timeout = 0
+			}
+			if noExpiry {
+				expiresIn = 0
+			}
+			choices, err := parseSteerOptions(optionSpecs)
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(title) == "" {
+				title = "Choose next step"
+			}
+			metadata, err := requestMetadata(contextFile, metadataJSON, clientRequestID, correlationToken)
+			if err != nil {
+				return err
+			}
+			selected := requestSteer(server, approval.CreateRequest{
+				Requester:     buildRequester(requesterName, agentID),
+				RequestType:   approval.RequestTypeSteer,
+				Title:         title,
+				Body:          body,
+				Choices:       choices,
+				DefaultChoice: approval.SteerNoneChoiceID,
+				ExpiresAt:     expiresAtPtr(expiresIn),
+				Metadata:      metadata,
+			}, timeout, token)
+			fmt.Fprintln(os.Stdout, selected)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&server, "server", defaultServerURL(), "Agent Tick server URL [env: AGENT_TICK_SERVER]")
+	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
+	cmd.Flags().StringVar(&requesterName, "requester", getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"), "requester name [env: AGENT_TICK_REQUESTER]")
+	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
+	cmd.Flags().StringVar(&title, "title", "", "steering title")
+	cmd.Flags().StringVar(&body, "body", "", "steering body")
+	cmd.Flags().StringArrayVar(&optionSpecs, "option", nil, "steering option in id:label format; repeat to add more")
+	cmd.Flags().StringVar(&contextFile, "context-file", "", "path to extra context to attach")
+	cmd.Flags().StringVar(&clientRequestID, "client-request-id", "", "client-side/broker request ID to echo in metadata")
+	cmd.Flags().StringVar(&correlationToken, "correlation-token", "", "opaque correlation token to echo in metadata")
+	cmd.Flags().StringVar(&metadataJSON, "metadata", "", "JSON object of scalar metadata values to attach to the request")
+	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "time to wait for a response; 0 waits indefinitely")
+	cmd.Flags().BoolVar(&noTimeout, "no-timeout", false, "alias for --timeout 0; wait indefinitely")
+	cmd.Flags().DurationVar(&expiresIn, "expires-in", 30*time.Minute, "steering request expiry duration; 0 disables expiry")
 	cmd.Flags().BoolVar(&noExpiry, "no-expiry", false, "alias for --expires-in 0; disable request expiry")
 	return cmd
 }
@@ -624,6 +696,28 @@ func requestApproval(server string, input approval.CreateRequest, timeout time.D
 	return waitForApproval(server, request.ID, timeout, token)
 }
 
+func requestSteer(server string, input approval.CreateRequest, timeout time.Duration, token string) string {
+	request, err := createApprovalRequest(server, input, token)
+	if err != nil {
+		return approval.SteerNoneChoiceID
+	}
+	current, err := waitForApproval(server, request.ID, timeout, token)
+	if err != nil || current.Response == nil {
+		return approval.SteerNoneChoiceID
+	}
+	choiceID := strings.TrimSpace(current.Response.ChoiceID)
+	if !hasChoiceID(localSteerChoices(input.Choices), choiceID) {
+		return approval.SteerNoneChoiceID
+	}
+	return choiceID
+}
+
+func localSteerChoices(input []approval.Choice) []approval.Choice {
+	choices := append([]approval.Choice{}, input...)
+	choices = append(choices, approval.Choice{ID: approval.SteerNoneChoiceID, Label: approval.SteerNoneChoiceLabel, Kind: approval.SteerNoneChoiceID})
+	return choices
+}
+
 func requestApprovalJSONEvents(server string, input approval.CreateRequest, timeout time.Duration, token string, writer io.Writer) (approval.ApprovalRequest, error) {
 	request, err := createApprovalRequest(server, input, token)
 	if err != nil {
@@ -927,6 +1021,51 @@ func splitScopes(value string) []string {
 		}
 	}
 	return scopes
+}
+
+func parseSteerOptions(specs []string) ([]approval.Choice, error) {
+	if len(specs) == 0 {
+		return nil, fmt.Errorf("at least one --option is required")
+	}
+	choices := make([]approval.Choice, 0, len(specs))
+	seen := make(map[string]struct{}, len(specs))
+	for _, raw := range specs {
+		spec := strings.TrimSpace(raw)
+		parts := strings.SplitN(spec, ":", 2)
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("invalid --option %q: want id:label", raw)
+		}
+		id := strings.TrimSpace(parts[0])
+		label := strings.TrimSpace(parts[1])
+		if id == "" || label == "" {
+			return nil, fmt.Errorf("invalid --option %q: id and label are required", raw)
+		}
+		if id == approval.SteerNoneChoiceID {
+			return nil, fmt.Errorf("--option id %q is reserved", approval.SteerNoneChoiceID)
+		}
+		if !validSteerOptionID(id) {
+			return nil, fmt.Errorf("--option id %q must match [A-Za-z0-9_-]{1,64}", id)
+		}
+		if _, exists := seen[id]; exists {
+			return nil, fmt.Errorf("invalid --option %q: duplicate id %q", raw, id)
+		}
+		seen[id] = struct{}{}
+		choices = append(choices, approval.Choice{ID: id, Label: label, Kind: approval.RequestTypeSteer})
+	}
+	return choices, nil
+}
+
+func validSteerOptionID(id string) bool {
+	if len(id) == 0 || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func parseChoices(specs []string) ([]approval.Choice, error) {

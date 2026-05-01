@@ -26,16 +26,12 @@ func (s *PushSender) SendApprovalRequest(tokens []string, request ApprovalReques
 
 	messages := make([]expoPushMessage, 0, len(tokens))
 	for _, token := range tokens {
-		categoryID := "approval-request"
-		if request.RequestType == RequestTypeQuestionnaire {
-			categoryID = ""
-		}
 		messages = append(messages, expoPushMessage{
 			To:         token,
 			Sound:      "default",
 			Title:      pushTitle(request),
 			Body:       pushBody(request),
-			CategoryID: categoryID,
+			CategoryID: pushCategoryID(request),
 			Data: map[string]string{
 				"approvalRequestID": request.ID,
 			},
@@ -113,12 +109,16 @@ func firstExpoTicketError(tickets []expoPushTicket) error {
 	return nil
 }
 
+func pushCategoryID(request ApprovalRequest) string {
+	if normalizeRequestType(request.RequestType) == RequestTypeApproval && hasChoice(request, "approve") && hasChoice(request, "deny") {
+		return "approval-request"
+	}
+	return ""
+}
+
 func pushTitle(request ApprovalRequest) string {
 	if request.Command != "" {
 		return "Run Command?"
-	}
-	if request.RequestType == RequestTypeQuestionnaire {
-		return request.Title
 	}
 	return request.Title
 }
@@ -139,6 +139,9 @@ func pushBody(request ApprovalRequest) string {
 	}
 	if request.RequestType == RequestTypeQuestionnaire && len(request.Questions) > 0 {
 		return request.Questions[0].Question
+	}
+	if request.RequestType == RequestTypeSteer {
+		return "Steering requested"
 	}
 	return "Approval requested"
 }

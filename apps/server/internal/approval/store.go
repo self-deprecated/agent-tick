@@ -278,7 +278,13 @@ func normalizeCreateRequest(input CreateRequest) (CreateRequest, error) {
 		if len(input.Choices) == 0 {
 			input.Choices = DefaultChoices()
 		}
-		if strings.TrimSpace(input.DefaultChoice) != "" && !hasChoiceID(input.Choices, input.DefaultChoice) {
+		choices, err := normalizeChoices(input.Choices, false)
+		if err != nil {
+			return CreateRequest{}, err
+		}
+		input.Choices = choices
+		input.DefaultChoice = strings.TrimSpace(input.DefaultChoice)
+		if input.DefaultChoice != "" && !hasChoiceID(input.Choices, input.DefaultChoice) {
 			return CreateRequest{}, fmt.Errorf("%w: defaultChoice is not in choices", ErrInvalidRequest)
 		}
 	case RequestTypeQuestionnaire:
@@ -296,10 +302,83 @@ func normalizeCreateRequest(input CreateRequest) (CreateRequest, error) {
 			return CreateRequest{}, err
 		}
 		input.Questions = questions
+	case RequestTypeSteer:
+		if len(input.Questions) > 0 {
+			return CreateRequest{}, fmt.Errorf("%w: steer requests do not support questions", ErrInvalidRequest)
+		}
+		if strings.TrimSpace(input.Command) != "" {
+			return CreateRequest{}, fmt.Errorf("%w: steer requests do not support command", ErrInvalidRequest)
+		}
+		if input.AllowFreeformReply {
+			return CreateRequest{}, fmt.Errorf("%w: steer requests do not support allowFreeformReply", ErrInvalidRequest)
+		}
+		if defaultChoice := strings.TrimSpace(input.DefaultChoice); defaultChoice != "" && defaultChoice != SteerNoneChoiceID {
+			return CreateRequest{}, fmt.Errorf("%w: steer defaultChoice must be %q", ErrInvalidRequest, SteerNoneChoiceID)
+		}
+		choices, err := normalizeSteerChoices(input.Choices)
+		if err != nil {
+			return CreateRequest{}, err
+		}
+		input.Choices = choices
+		input.DefaultChoice = SteerNoneChoiceID
+		input.AllowFreeformReply = false
 	default:
 		return CreateRequest{}, fmt.Errorf("%w: unsupported requestType %q", ErrInvalidRequest, input.RequestType)
 	}
 	return input, nil
+}
+
+func normalizeChoices(input []Choice, steerIDs bool) ([]Choice, error) {
+	choices := make([]Choice, 0, len(input))
+	seen := make(map[string]struct{}, len(input))
+	for _, choice := range input {
+		id := strings.TrimSpace(choice.ID)
+		label := strings.TrimSpace(choice.Label)
+		kind := strings.TrimSpace(choice.Kind)
+		if id == "" || label == "" {
+			return nil, fmt.Errorf("%w: choice id and label are required", ErrInvalidRequest)
+		}
+		if _, exists := seen[id]; exists {
+			return nil, fmt.Errorf("%w: duplicate choice id %q", ErrInvalidRequest, id)
+		}
+		if steerIDs && !validSteerChoiceID(id) {
+			return nil, fmt.Errorf("%w: steer choice id %q must match [A-Za-z0-9_-]{1,64}", ErrInvalidRequest, id)
+		}
+		seen[id] = struct{}{}
+		choices = append(choices, Choice{ID: id, Label: label, Kind: kind})
+	}
+	return choices, nil
+}
+
+func normalizeSteerChoices(input []Choice) ([]Choice, error) {
+	if len(input) == 0 {
+		return nil, fmt.Errorf("%w: steer requests need at least one option", ErrInvalidRequest)
+	}
+	choices, err := normalizeChoices(input, true)
+	if err != nil {
+		return nil, err
+	}
+	for i := range choices {
+		if choices[i].ID == SteerNoneChoiceID {
+			return nil, fmt.Errorf("%w: steer option id %q is reserved", ErrInvalidRequest, SteerNoneChoiceID)
+		}
+		choices[i].Kind = RequestTypeSteer
+	}
+	choices = append(choices, Choice{ID: SteerNoneChoiceID, Label: SteerNoneChoiceLabel, Kind: SteerNoneChoiceID})
+	return choices, nil
+}
+
+func validSteerChoiceID(id string) bool {
+	if len(id) == 0 || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func normalizeQuestions(input []Question) ([]Question, error) {
@@ -348,7 +427,11 @@ func normalizeQuestions(input []Question) ([]Question, error) {
 }
 
 func validateResponseForRequest(request ApprovalRequest, response Response) error {
-	switch normalizeRequestType(request.RequestType) {
+	requestType := normalizeRequestType(request.RequestType)
+	if strings.TrimSpace(response.Message) != "" && !request.AllowFreeformReply {
+		return fmt.Errorf("%w: request does not allow freeform replies", ErrInvalidResponse)
+	}
+	switch requestType {
 	case RequestTypeApproval:
 		if strings.TrimSpace(response.ChoiceID) == "" {
 			return fmt.Errorf("%w: choiceId is required", ErrInvalidResponse)
@@ -364,10 +447,24 @@ func validateResponseForRequest(request ApprovalRequest, response Response) erro
 		if strings.TrimSpace(response.ChoiceID) != "" {
 			return fmt.Errorf("%w: questionnaire requests do not accept choiceId", ErrInvalidResponse)
 		}
-		if response.Message != "" {
+		if strings.TrimSpace(response.Message) != "" {
 			return fmt.Errorf("%w: questionnaire requests do not accept message", ErrInvalidResponse)
 		}
 		return validateQuestionnaireAnswers(request.Questions, response.Answers)
+	case RequestTypeSteer:
+		if strings.TrimSpace(response.ChoiceID) == "" {
+			return fmt.Errorf("%w: choiceId is required", ErrInvalidResponse)
+		}
+		if !hasChoice(request, response.ChoiceID) {
+			return ErrInvalidChoice
+		}
+		if len(response.Answers) > 0 {
+			return fmt.Errorf("%w: steer requests do not accept answers", ErrInvalidResponse)
+		}
+		if strings.TrimSpace(response.Message) != "" {
+			return fmt.Errorf("%w: steer requests do not accept message", ErrInvalidResponse)
+		}
+		return nil
 	default:
 		return fmt.Errorf("%w: unsupported requestType %q", ErrInvalidRequest, request.RequestType)
 	}
@@ -436,6 +533,8 @@ func normalizeRequestType(value string) string {
 		return RequestTypeApproval
 	case RequestTypeQuestionnaire:
 		return RequestTypeQuestionnaire
+	case RequestTypeSteer:
+		return RequestTypeSteer
 	default:
 		return strings.TrimSpace(value)
 	}

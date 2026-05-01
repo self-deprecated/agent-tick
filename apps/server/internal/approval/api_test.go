@@ -26,7 +26,7 @@ func TestAPICreateListRespond(t *testing.T) {
 		handler,
 		http.MethodPost,
 		"/v1/approval-requests",
-		CreateRequest{Title: "Run command?"},
+		CreateRequest{Title: "Run command?", AllowFreeformReply: true},
 	)
 	if created.ID == "" {
 		t.Fatal("created request has empty ID")
@@ -52,6 +52,60 @@ func TestAPICreateListRespond(t *testing.T) {
 	)
 	if responded.Response == nil || responded.Response.Message != "not now" {
 		t.Fatalf("response = %#v, want message", responded.Response)
+	}
+}
+
+func TestAPIRejectsResponseMessageWhenFreeformDisabled(t *testing.T) {
+	handler := NewAPI(
+		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
+		"test-token",
+	).Handler()
+
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?"})
+	body, err := json.Marshal(Response{ChoiceID: "approve", Message: "typed reply"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusBadRequest)
+	}
+}
+
+func TestAPISteerRequestOnlyAcceptsChoiceIDs(t *testing.T) {
+	handler := NewAPI(
+		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
+		"test-token",
+	).Handler()
+
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{
+		RequestType: RequestTypeSteer,
+		Title:       "Choose next step",
+		Choices:     []Choice{{ID: "run-tests", Label: "Run tests"}},
+	})
+	if created.DefaultChoice != SteerNoneChoiceID || !hasChoiceID(created.Choices, SteerNoneChoiceID) {
+		t.Fatalf("created choices/default = %#v/%q, want built-in none", created.Choices, created.DefaultChoice)
+	}
+
+	badBody, err := json.Marshal(Response{ChoiceID: "run-tests", Message: "typed reply"})
+	if err != nil {
+		t.Fatalf("Marshal(bad) error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", bytes.NewReader(badBody))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("message status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusBadRequest)
+	}
+
+	responded := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: SteerNoneChoiceID})
+	if responded.Response == nil || responded.Response.ChoiceID != SteerNoneChoiceID {
+		t.Fatalf("response = %#v, want none", responded.Response)
 	}
 }
 
@@ -149,7 +203,7 @@ func TestAPIAbandonAlreadyRespondedRequestReturnsResponse(t *testing.T) {
 		"test-token",
 	).Handler()
 
-	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?"})
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?", AllowFreeformReply: true})
 	responded := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "deny", Message: "no"})
 	abandoned := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests/"+created.ID+"/abandon", nil)
 
