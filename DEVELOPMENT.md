@@ -208,15 +208,33 @@ The phone app:
 - Shows approval history.
 - Can trigger local notifications while polling.
 
-For remote push notification testing, use an EAS development build rather than Expo Go:
+For remote push notification testing and any native-module work, use an EAS development build rather than Expo Go. Build and install it once:
 
 ```sh
-cd apps/mobile
-npx eas init
-npx eas build --profile development --platform ios
+devbox run mobile:dev-build:ios
+# or
+devbox run mobile:dev-build:android
 ```
 
-After `eas init`, replace the placeholder `extra.eas.projectId` in `apps/mobile/app.json` with the generated project id.
+Then iterate against that installed app without rebuilding native code:
+
+```sh
+# Physical phone on the same network:
+devbox run mobile:dev-client:lan
+
+# Simulator/emulator or USB/local tunneling setup:
+devbox run mobile:dev-client
+```
+
+Open the installed development build on the phone and select the local development server from the dev-client launcher. JavaScript and asset changes reload through Metro; a new EAS build is only needed after changing native dependencies, native config, or the Expo SDK/runtime version.
+
+To publish a persistent JavaScript/assets update that the development build can load without your laptop running Metro:
+
+```sh
+devbox run mobile:update:development -- --message "Describe the change"
+```
+
+The development EAS build profile uses the `development` update channel. The app is configured for EAS Update with project id `66c26d86-bff7-4681-a7b8-bc865a5212af`.
 
 ## Publishing CLI Binaries
 

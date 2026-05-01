@@ -54,8 +54,20 @@
       "mobile:lan": [
         "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start -- --host lan --port 8081"
       ],
+      "mobile:dev-client": [
+        "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start:dev-client -- --host localhost --port 8081"
+      ],
+      "mobile:dev-client:lan": [
+        "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start:dev-client:lan -- --port 8081"
+      ],
       "mobile:dev-build:ios": [
         "cd apps/mobile && npx eas build --profile development --platform ios"
+      ],
+      "mobile:dev-build:android": [
+        "cd apps/mobile && npx eas build --profile development --platform android"
+      ],
+      "mobile:update:development": [
+        "cd apps/mobile && npx eas update --channel development"
       ]
     }
   }
