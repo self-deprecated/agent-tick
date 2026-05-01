@@ -173,6 +173,34 @@ func TestSQLiteStoreAbandonPendingAndAnsweredRequests(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreAbandonWithReasonRecordsMetadataAndAudit(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	request, err := store.Create(CreateRequest{Title: "Run command?", Metadata: map[string]string{"clientRequestId": "piapr_abc"}})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	abandoned, changed, err := store.AbandonWithReason(request.ID, "superseded")
+	if err != nil {
+		t.Fatalf("AbandonWithReason() error = %v", err)
+	}
+	if !changed || abandoned.Status != StatusAbandoned {
+		t.Fatalf("AbandonWithReason() = %#v changed %v, want abandoned change", abandoned, changed)
+	}
+	if abandoned.Metadata["clientRequestId"] != "piapr_abc" || abandoned.Metadata["abandonReason"] != "superseded" {
+		t.Fatalf("metadata = %#v, want clientRequestId and abandonReason", abandoned.Metadata)
+	}
+
+	var payload string
+	if err := store.db.QueryRow("SELECT payload_json FROM audit_events WHERE event_type = 'approval_request.abandoned' AND request_id = ?", request.ID).Scan(&payload); err != nil {
+		t.Fatalf("Scan() audit payload error = %v", err)
+	}
+	if payload != `{"reason":"superseded"}` {
+		t.Fatalf("audit payload = %s, want reason", payload)
+	}
+}
+
 func TestSQLiteStoreQuestionnaireResponse(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

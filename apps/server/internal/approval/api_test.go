@@ -746,6 +746,38 @@ func TestAPIAcceptsScopedAgentTokenForApprovalRequests(t *testing.T) {
 	}
 }
 
+func TestAPIRejectsAgentTokenForApprovalResponses(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	credential, err := store.CreateAgentToken("codex", []string{"approval:write", "approval:read"})
+	if err != nil {
+		t.Fatalf("CreateAgentToken() error = %v", err)
+	}
+	handler := NewAPI(store, "test-token").Handler()
+
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?"})
+	body, err := json.Marshal(Response{ChoiceID: "approve"})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", bytes.NewReader(body))
+	req.RemoteAddr = "192.0.2.1:1234"
+	req.Header.Set("Authorization", "Bearer "+credential.Token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
+	}
+	current, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if current.Response != nil || current.Status != StatusPending {
+		t.Fatalf("request = %#v, want still pending without response", current)
+	}
+}
+
 func TestAPIRejectsAgentTokenForAdminEndpoints(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -146,9 +147,11 @@ See also: setup, agent-token`,
 
 func newRequestCmd() *cobra.Command {
 	var server, token, title, body, command, contextFile, requesterName, agentID, defaultChoice string
+	var clientRequestID, correlationToken, metadataJSON string
 	var choiceSpecs []string
 	var allowFreeformReply bool
 	var jsonEvents bool
+	var noTimeout, noExpiry bool
 	var timeout, expiresIn time.Duration
 	cmd := &cobra.Command{
 		Use:   "request",
@@ -171,6 +174,12 @@ See also: guard, adapter, abandon`,
     --timeout 30m --expires-in 15m
   agent-tick request --title "Wait forever" --json-events --timeout 0 --expires-in 0`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if noTimeout {
+				timeout = 0
+			}
+			if noExpiry {
+				expiresIn = 0
+			}
 			if strings.TrimSpace(title) == "" {
 				return fmt.Errorf("--title is required")
 			}
@@ -180,6 +189,10 @@ See also: guard, adapter, abandon`,
 			}
 			if strings.TrimSpace(defaultChoice) != "" && !hasChoiceID(choices, defaultChoice) {
 				return fmt.Errorf("--default-choice %q must match one of the provided --choice IDs", defaultChoice)
+			}
+			metadata, err := requestMetadata(contextFile, metadataJSON, clientRequestID, correlationToken)
+			if err != nil {
+				return err
 			}
 			input := approval.CreateRequest{
 				Requester:          buildRequester(requesterName, agentID),
@@ -191,7 +204,7 @@ See also: guard, adapter, abandon`,
 				AllowFreeformReply: allowFreeformReply,
 				ExpiresAt:          expiresAtPtr(expiresIn),
 				Risk:               classifyRisk(command),
-				Metadata:           requestMetadata(contextFile),
+				Metadata:           metadata,
 			}
 			var current approval.ApprovalRequest
 			if jsonEvents {
@@ -226,13 +239,18 @@ See also: guard, adapter, abandon`,
 	cmd.Flags().BoolVar(&allowFreeformReply, "allow-reply", false, "allow an optional text reply with the selected choice")
 	cmd.Flags().BoolVar(&jsonEvents, "json-events", false, "stream newline-delimited JSON lifecycle events to stdout")
 	cmd.Flags().StringVar(&contextFile, "context-file", "", "path to extra context to attach")
+	cmd.Flags().StringVar(&clientRequestID, "client-request-id", "", "client-side/broker request ID to echo in metadata and JSON events")
+	cmd.Flags().StringVar(&correlationToken, "correlation-token", "", "opaque correlation token to echo in metadata and JSON events")
+	cmd.Flags().StringVar(&metadataJSON, "metadata", "", "JSON object of scalar metadata values to attach to the request")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response; 0 waits indefinitely")
+	cmd.Flags().BoolVar(&noTimeout, "no-timeout", false, "alias for --timeout 0; wait indefinitely")
 	cmd.Flags().DurationVar(&expiresIn, "expires-in", 5*time.Minute, "approval expiry duration; 0 disables expiry")
+	cmd.Flags().BoolVar(&noExpiry, "no-expiry", false, "alias for --expires-in 0; disable request expiry")
 	return cmd
 }
 
 func newAbandonCmd() *cobra.Command {
-	var server, token string
+	var server, token, clientRequestID, reason string
 	var jsonOutput bool
 	cmd := &cobra.Command{
 		Use:   "abandon <request-id>",
@@ -243,15 +261,16 @@ the server returns the existing responded state unchanged.
 
 See also: request`,
 		Example: `  agent-tick abandon req_abc123
-  agent-tick abandon req_abc123 --json`,
+  agent-tick abandon req_abc123 --json
+  agent-tick abandon req_abc123 --client-request-id piapr_abc --reason "tool call superseded" --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			request, err := abandonApproval(server, args[0], token)
+			request, err := abandonApproval(server, args[0], token, clientRequestID, reason)
 			if err != nil {
 				return err
 			}
 			if jsonOutput {
-				return json.NewEncoder(os.Stdout).Encode(request)
+				return json.NewEncoder(os.Stdout).Encode(newAbandonJSONOutput(request, clientRequestID))
 			}
 			fmt.Printf("request %s status: %s\n", request.ID, request.Status)
 			printResponse(request.Response)
@@ -260,6 +279,8 @@ See also: request`,
 	}
 	cmd.Flags().StringVar(&server, "server", defaultServerURL(), "Agent Tick server URL [env: AGENT_TICK_SERVER]")
 	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
+	cmd.Flags().StringVar(&clientRequestID, "client-request-id", "", "verify the target request metadata matches this client/broker request ID")
+	cmd.Flags().StringVar(&reason, "reason", "", "human-readable reason for abandoning the request")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "write the resulting request state as JSON")
 	return cmd
 }
@@ -287,6 +308,10 @@ See also: request, adapter`,
 			if strings.TrimSpace(requestBody) == "" {
 				requestBody = "Approve running this command?"
 			}
+			metadata, err := requestMetadata(contextFile, "", "", "")
+			if err != nil {
+				return err
+			}
 			current, err := requestApproval(server, approval.CreateRequest{
 				Requester: buildRequester(requesterName, agentID),
 				Title:     title,
@@ -294,7 +319,7 @@ See also: request, adapter`,
 				Command:   commandText,
 				ExpiresAt: expiresAtPtr(expiresIn),
 				Risk:      classifyRisk(commandText),
-				Metadata:  requestMetadata(contextFile),
+				Metadata:  metadata,
 			}, timeout, token)
 			if err != nil {
 				return err
@@ -568,11 +593,26 @@ func expiresAtPtr(d time.Duration) *time.Time {
 var approvalPollInterval = 2 * time.Second
 
 type requestJSONEvent struct {
-	Type      string             `json:"type"`
-	RequestID string             `json:"requestId"`
-	Status    string             `json:"status,omitempty"`
-	Response  *approval.Response `json:"response,omitempty"`
-	Error     string             `json:"error,omitempty"`
+	Type             string                    `json:"type"`
+	RequestID        string                    `json:"requestId"`
+	ClientRequestID  string                    `json:"clientRequestId,omitempty"`
+	CorrelationToken string                    `json:"correlationToken,omitempty"`
+	Status           string                    `json:"status,omitempty"`
+	Response         *approval.Response        `json:"response,omitempty"`
+	Request          *approval.ApprovalRequest `json:"request,omitempty"`
+	Error            string                    `json:"error,omitempty"`
+}
+
+type abandonRequest struct {
+	Reason          string `json:"reason,omitempty"`
+	ClientRequestID string `json:"clientRequestId,omitempty"`
+}
+
+type abandonJSONOutput struct {
+	approval.ApprovalRequest
+	RequestID       string `json:"requestId"`
+	ClientRequestID string `json:"clientRequestId,omitempty"`
+	Abandoned       bool   `json:"abandoned"`
 }
 
 func requestApproval(server string, input approval.CreateRequest, timeout time.Duration, token string) (approval.ApprovalRequest, error) {
@@ -589,27 +629,13 @@ func requestApprovalJSONEvents(server string, input approval.CreateRequest, time
 	if err != nil {
 		return approval.ApprovalRequest{}, err
 	}
-	if err := writeRequestJSONEvent(writer, requestJSONEvent{
-		Type:      "request.created",
-		RequestID: request.ID,
-		Status:    request.Status,
-	}); err != nil {
+	if err := writeRequestJSONEvent(writer, newRequestJSONEvent("request.created", request)); err != nil {
 		return approval.ApprovalRequest{}, err
 	}
 
 	current, err := waitForApproval(server, request.ID, timeout, token)
-	if current.ID == "" {
-		current = request
-	}
-	terminalEvent := requestJSONEvent{
-		Type:      "request.terminal",
-		RequestID: current.ID,
-		Status:    current.Status,
-		Response:  current.Response,
-	}
-	if terminalEvent.Status == "" {
-		terminalEvent.Status = approval.StatusPending
-	}
+	current = requestWithEventFallback(current, request)
+	terminalEvent := newRequestJSONEvent("request.terminal", current)
 	if err != nil {
 		terminalEvent.Error = err.Error()
 	}
@@ -671,8 +697,95 @@ func writeRequestJSONEvent(writer io.Writer, event requestJSONEvent) error {
 	return json.NewEncoder(writer).Encode(event)
 }
 
-func abandonApproval(server string, requestID string, token string) (approval.ApprovalRequest, error) {
-	return postJSON[approval.ApprovalRequest](server+"/v1/approval-requests/"+requestID+"/abandon", map[string]string{}, token)
+func newRequestJSONEvent(eventType string, request approval.ApprovalRequest) requestJSONEvent {
+	if request.Status == "" {
+		request.Status = approval.StatusPending
+	}
+	return requestJSONEvent{
+		Type:             eventType,
+		RequestID:        request.ID,
+		ClientRequestID:  clientRequestIDForRequest(request),
+		CorrelationToken: correlationTokenForRequest(request),
+		Status:           request.Status,
+		Response:         request.Response,
+		Request:          &request,
+	}
+}
+
+func requestWithEventFallback(current approval.ApprovalRequest, fallback approval.ApprovalRequest) approval.ApprovalRequest {
+	if current.ID == "" {
+		current.ID = fallback.ID
+	}
+	if current.Status == "" {
+		current.Status = fallback.Status
+	}
+	if current.Status == "" {
+		current.Status = approval.StatusPending
+	}
+	if len(fallback.Metadata) > 0 {
+		if current.Metadata == nil {
+			current.Metadata = map[string]string{}
+		}
+		for key, value := range fallback.Metadata {
+			if _, exists := current.Metadata[key]; !exists {
+				current.Metadata[key] = value
+			}
+		}
+	}
+	return current
+}
+
+func abandonApproval(server string, requestID string, token string, clientRequestID string, reason string) (approval.ApprovalRequest, error) {
+	clientRequestID = strings.TrimSpace(clientRequestID)
+	if clientRequestID != "" {
+		current, err := getJSON[approval.ApprovalRequest](server+"/v1/approval-requests/"+requestID, token)
+		if err != nil {
+			return approval.ApprovalRequest{}, err
+		}
+		if !requestMatchesClientRequestID(current, clientRequestID) {
+			return approval.ApprovalRequest{}, fmt.Errorf("client request ID does not match approval request metadata")
+		}
+	}
+	return postJSON[approval.ApprovalRequest](server+"/v1/approval-requests/"+requestID+"/abandon", abandonRequest{
+		Reason:          strings.TrimSpace(reason),
+		ClientRequestID: clientRequestID,
+	}, token)
+}
+
+func newAbandonJSONOutput(request approval.ApprovalRequest, clientRequestID string) abandonJSONOutput {
+	if strings.TrimSpace(clientRequestID) == "" {
+		clientRequestID = clientRequestIDForRequest(request)
+	}
+	return abandonJSONOutput{
+		ApprovalRequest: request,
+		RequestID:       request.ID,
+		ClientRequestID: strings.TrimSpace(clientRequestID),
+		Abandoned:       request.Status == approval.StatusAbandoned && request.Response == nil,
+	}
+}
+
+func requestMatchesClientRequestID(request approval.ApprovalRequest, clientRequestID string) bool {
+	clientRequestID = strings.TrimSpace(clientRequestID)
+	if clientRequestID == "" {
+		return true
+	}
+	for _, key := range []string{"clientRequestId", "piBrokerRequestId"} {
+		if strings.TrimSpace(request.Metadata[key]) == clientRequestID {
+			return true
+		}
+	}
+	return false
+}
+
+func clientRequestIDForRequest(request approval.ApprovalRequest) string {
+	if value := strings.TrimSpace(request.Metadata["clientRequestId"]); value != "" {
+		return value
+	}
+	return strings.TrimSpace(request.Metadata["piBrokerRequestId"])
+}
+
+func correlationTokenForRequest(request approval.ApprovalRequest) string {
+	return strings.TrimSpace(request.Metadata["correlationToken"])
 }
 
 func printResponse(response *approval.Response) {
@@ -883,18 +996,73 @@ func classifyRisk(command string) string {
 	return "medium"
 }
 
-func requestMetadata(contextFile string) map[string]string {
+func requestMetadata(contextFile string, metadataJSON string, clientRequestID string, correlationToken string) (map[string]string, error) {
 	metadata := map[string]string{}
-	if strings.TrimSpace(contextFile) == "" {
-		return metadata
+	if strings.TrimSpace(contextFile) != "" {
+		data, err := os.ReadFile(contextFile)
+		if err != nil {
+			return nil, err
+		}
+		metadata["context"] = string(data)
+		metadata["contextFile"] = contextFile
 	}
-	data, err := os.ReadFile(contextFile)
+	extra, err := parseMetadataJSON(metadataJSON)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	metadata["context"] = string(data)
-	metadata["contextFile"] = contextFile
-	return metadata
+	for key, value := range extra {
+		metadata[key] = value
+	}
+	if clientRequestID = strings.TrimSpace(clientRequestID); clientRequestID != "" {
+		metadata["clientRequestId"] = clientRequestID
+		metadata["piBrokerRequestId"] = clientRequestID
+	}
+	if correlationToken = strings.TrimSpace(correlationToken); correlationToken != "" {
+		metadata["correlationToken"] = correlationToken
+	}
+	return metadata, nil
+}
+
+func parseMetadataJSON(value string) (map[string]string, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(value))
+	decoder.UseNumber()
+	var parsed any
+	if err := decoder.Decode(&parsed); err != nil {
+		return nil, fmt.Errorf("--metadata must be a JSON object: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("--metadata must contain a single JSON object")
+		}
+		return nil, fmt.Errorf("--metadata must be a JSON object: %w", err)
+	}
+	object, ok := parsed.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("--metadata must be a JSON object")
+	}
+	metadata := make(map[string]string, len(object))
+	for key, raw := range object {
+		if strings.TrimSpace(key) == "" {
+			return nil, fmt.Errorf("--metadata keys must be non-empty strings")
+		}
+		switch value := raw.(type) {
+		case string:
+			metadata[key] = value
+		case json.Number:
+			metadata[key] = value.String()
+		case bool:
+			metadata[key] = strconv.FormatBool(value)
+		case nil:
+			metadata[key] = "null"
+		default:
+			return nil, fmt.Errorf("--metadata value for %q must be a scalar string, number, boolean, or null", key)
+		}
+	}
+	return metadata, nil
 }
 
 func pairingPayload(server string, token string) string {

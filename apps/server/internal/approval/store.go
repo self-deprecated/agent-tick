@@ -37,6 +37,14 @@ type UserScopedStore interface {
 	AbandonForUser(userID string, id string) (ApprovalRequest, bool, error)
 }
 
+type StoreWithAbandonReason interface {
+	AbandonWithReason(id string, reason string) (ApprovalRequest, bool, error)
+}
+
+type UserScopedStoreWithAbandonReason interface {
+	AbandonForUserWithReason(userID string, id string, reason string) (ApprovalRequest, bool, error)
+}
+
 type PairingStore interface {
 	CreatePairingToken(ttl time.Duration) (PairingToken, error)
 	PairDevice(token string, deviceName string) (DeviceCredential, error)
@@ -209,6 +217,10 @@ func (s *FileStore) Respond(id string, response Response) (ApprovalRequest, erro
 }
 
 func (s *FileStore) Abandon(id string) (ApprovalRequest, bool, error) {
+	return s.AbandonWithReason(id, "")
+}
+
+func (s *FileStore) AbandonWithReason(id string, reason string) (ApprovalRequest, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -223,6 +235,12 @@ func (s *FileStore) Abandon(id string) (ApprovalRequest, bool, error) {
 			changed := false
 			if requests[i].Status == StatusPending && requests[i].Response == nil {
 				requests[i].Status = StatusAbandoned
+				if reason = strings.TrimSpace(reason); reason != "" {
+					if requests[i].Metadata == nil {
+						requests[i].Metadata = map[string]string{}
+					}
+					requests[i].Metadata["abandonReason"] = reason
+				}
 				changed = true
 			}
 			return requests[i], changed, s.save(requests)

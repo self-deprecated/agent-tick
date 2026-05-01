@@ -124,9 +124,15 @@ func (a *API) respondForUser(userID string, id string, response Response) (Appro
 	return a.store.Respond(id, response)
 }
 
-func (a *API) abandonForUser(userID string, id string) (ApprovalRequest, bool, error) {
+func (a *API) abandonForUser(userID string, id string, reason string) (ApprovalRequest, bool, error) {
 	if a.scopedStore != nil {
+		if store, ok := a.scopedStore.(UserScopedStoreWithAbandonReason); ok {
+			return store.AbandonForUserWithReason(userID, id, reason)
+		}
 		return a.scopedStore.AbandonForUser(userID, id)
+	}
+	if store, ok := a.store.(StoreWithAbandonReason); ok {
+		return store.AbandonWithReason(id, reason)
 	}
 	return a.store.Abandon(id)
 }
@@ -408,7 +414,19 @@ func (a *API) abandon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, changed, err := a.abandonForUser(auth.UserID, r.PathValue("id"))
+	var input struct {
+		Reason          string `json:"reason,omitempty"`
+		ClientRequestID string `json:"clientRequestId,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid abandon JSON")
+		return
+	}
+	if strings.TrimSpace(input.Reason) != "" {
+		log.Printf("approval request %s abandoned by creator: %s", r.PathValue("id"), strings.TrimSpace(input.Reason))
+	}
+
+	request, changed, err := a.abandonForUser(auth.UserID, r.PathValue("id"), input.Reason)
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "approval request not found")
 		return

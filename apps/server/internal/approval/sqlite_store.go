@@ -387,7 +387,15 @@ func (s *SQLiteStore) Abandon(id string) (ApprovalRequest, bool, error) {
 	return s.AbandonForUser(defaultUserID, id)
 }
 
+func (s *SQLiteStore) AbandonWithReason(id string, reason string) (ApprovalRequest, bool, error) {
+	return s.AbandonForUserWithReason(defaultUserID, id, reason)
+}
+
 func (s *SQLiteStore) AbandonForUser(userID string, id string) (ApprovalRequest, bool, error) {
+	return s.AbandonForUserWithReason(userID, id, "")
+}
+
+func (s *SQLiteStore) AbandonForUserWithReason(userID string, id string, reason string) (ApprovalRequest, bool, error) {
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
@@ -420,7 +428,19 @@ func (s *SQLiteStore) AbandonForUser(userID string, id string) (ApprovalRequest,
 	}
 	changed := abandonedRows > 0
 	if changed {
-		if err := insertAuditForUser(tx, userID, "approval_request.abandoned", id, nil); err != nil {
+		reason = strings.TrimSpace(reason)
+		if reason != "" {
+			if err := updateRequestMetadata(tx, userID, id, func(metadata map[string]string) {
+				metadata["abandonReason"] = reason
+			}); err != nil {
+				return ApprovalRequest{}, false, err
+			}
+		}
+		var payload any
+		if reason != "" {
+			payload = map[string]string{"reason": reason}
+		}
+		if err := insertAuditForUser(tx, userID, "approval_request.abandoned", id, payload); err != nil {
 			return ApprovalRequest{}, false, err
 		}
 	}
@@ -1141,6 +1161,30 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 	}
 
 	return request, nil
+}
+
+func updateRequestMetadata(tx *sql.Tx, userID string, requestID string, update func(map[string]string)) error {
+	var metadataJSON string
+	err := tx.QueryRow("SELECT metadata_json FROM approval_requests WHERE id = ? AND user_id = ?", requestID, userID).Scan(&metadataJSON)
+	if err != nil {
+		return err
+	}
+	metadata := map[string]string{}
+	if strings.TrimSpace(metadataJSON) != "" {
+		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+			return err
+		}
+	}
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+	update(metadata)
+	updatedJSON, err := marshalJSON(metadata)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec("UPDATE approval_requests SET metadata_json = ? WHERE id = ? AND user_id = ?", updatedJSON, requestID, userID)
+	return err
 }
 
 func insertAudit(tx *sql.Tx, eventType string, requestID string, payload any) error {

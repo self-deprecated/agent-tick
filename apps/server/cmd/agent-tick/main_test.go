@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -104,15 +105,17 @@ func TestFlagEnvPrecedence(t *testing.T) {
 
 func TestRequestAutomationFlagsExist(t *testing.T) {
 	cmd := newRequestCmd()
-	for _, name := range []string{"json-events", "timeout", "expires-in"} {
+	for _, name := range []string{"json-events", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("--%s flag not found on request command", name)
 		}
 	}
 
 	abandon := newAbandonCmd()
-	if abandon.Flags().Lookup("json") == nil {
-		t.Fatal("--json flag not found on abandon command")
+	for _, name := range []string{"json", "client-request-id", "reason"} {
+		if abandon.Flags().Lookup(name) == nil {
+			t.Fatalf("--%s flag not found on abandon command", name)
+		}
 	}
 
 	root := newRootCmd()
@@ -127,6 +130,84 @@ func TestExpiresAtPtrZeroDisablesExpiry(t *testing.T) {
 	}
 	if got := expiresAtPtr(time.Second); got == nil {
 		t.Fatal("expiresAtPtr(time.Second) = nil, want timestamp")
+	}
+}
+
+func TestRequestMetadataMergesCorrelationFields(t *testing.T) {
+	metadata, err := requestMetadata("", `{"actionFingerprint":"sha256:abc","attempt":2,"dryRun":true}`, "piapr_abc", "piapr_corr_456")
+	if err != nil {
+		t.Fatalf("requestMetadata() error = %v", err)
+	}
+	want := map[string]string{
+		"actionFingerprint": "sha256:abc",
+		"attempt":           "2",
+		"dryRun":            "true",
+		"clientRequestId":   "piapr_abc",
+		"piBrokerRequestId": "piapr_abc",
+		"correlationToken":  "piapr_corr_456",
+	}
+	for key, value := range want {
+		if metadata[key] != value {
+			t.Fatalf("metadata[%q] = %q, want %q (metadata = %#v)", key, metadata[key], value, metadata)
+		}
+	}
+}
+
+func TestRequestMetadataRejectsNonObjectAndNestedValues(t *testing.T) {
+	for _, raw := range []string{`[]`, `{"nested":{"nope":true}}`} {
+		if _, err := requestMetadata("", raw, "", ""); err == nil {
+			t.Fatalf("requestMetadata(%s) error = nil, want error", raw)
+		}
+	}
+}
+
+func TestRequestNoExpiryAliasDisablesExpiry(t *testing.T) {
+	var createdInput approval.CreateRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			if err := json.NewDecoder(r.Body).Decode(&createdInput); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_no_expiry", Status: approval.StatusPending, Metadata: createdInput.Metadata})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_no_expiry":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_no_expiry", Status: approval.StatusResponded, Metadata: createdInput.Metadata, Response: &approval.Response{ChoiceID: "approve"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	_, err := runRootCommandCapturingStdout(t, "request", "--server", server.URL, "--title", "Run command?", "--json-events", "--expires-in", "1ns", "--no-expiry")
+	if err != nil {
+		t.Fatalf("request command error = %v", err)
+	}
+	if createdInput.ExpiresAt != nil {
+		t.Fatalf("ExpiresAt = %v, want nil from --no-expiry", createdInput.ExpiresAt)
+	}
+}
+
+func TestRequestNoTimeoutAliasWaitsIndefinitely(t *testing.T) {
+	oldPollInterval := approvalPollInterval
+	approvalPollInterval = time.Millisecond
+	defer func() { approvalPollInterval = oldPollInterval }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_no_timeout", Status: approval.StatusPending})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_no_timeout":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_no_timeout", Status: approval.StatusResponded, Response: &approval.Response{ChoiceID: "approve"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	_, err := runRootCommandCapturingStdout(t, "request", "--server", server.URL, "--title", "Run command?", "--json-events", "--timeout", "1ns", "--no-timeout")
+	if err != nil {
+		t.Fatalf("request command error = %v; want --no-timeout to override expired --timeout", err)
 	}
 }
 
@@ -202,6 +283,96 @@ func TestRequestJSONEventsEmitsIDImmediatelyAndTerminalLater(t *testing.T) {
 
 	if err := <-done; err != nil {
 		t.Fatalf("requestApprovalJSONEvents() error = %v", err)
+	}
+}
+
+func TestRequestJSONEventsEchoCorrelationMetadata(t *testing.T) {
+	metadata, err := requestMetadata("", `{"actionFingerprint":"sha256:abc"}`, "piapr_abc", "piapr_corr_456")
+	if err != nil {
+		t.Fatalf("requestMetadata() error = %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			var input approval.CreateRequest
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+				ID:       "req_corr",
+				Title:    input.Title,
+				Status:   approval.StatusPending,
+				Metadata: input.Metadata,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_corr":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+				ID:       "req_corr",
+				Title:    "Run command?",
+				Status:   approval.StatusResponded,
+				Metadata: metadata,
+				Response: &approval.Response{ChoiceID: "approve", Message: "ok"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	_, err = requestApprovalJSONEvents(server.URL, approval.CreateRequest{Title: "Run command?", Metadata: metadata}, time.Minute, "", &output)
+	if err != nil {
+		t.Fatalf("requestApprovalJSONEvents() error = %v", err)
+	}
+	events := decodeRequestJSONEvents(t, output.Bytes())
+	if len(events) != 2 {
+		t.Fatalf("events = %#v, want created and terminal", events)
+	}
+	for _, event := range events {
+		if event.ClientRequestID != "piapr_abc" {
+			t.Fatalf("%s clientRequestId = %q, want piapr_abc", event.Type, event.ClientRequestID)
+		}
+		if event.CorrelationToken != "piapr_corr_456" {
+			t.Fatalf("%s correlationToken = %q, want piapr_corr_456", event.Type, event.CorrelationToken)
+		}
+		if event.Request == nil || event.Request.Metadata["piBrokerRequestId"] != "piapr_abc" || event.Request.Metadata["correlationToken"] != "piapr_corr_456" || event.Request.Metadata["actionFingerprint"] != "sha256:abc" {
+			t.Fatalf("%s request metadata = %#v, want broker metadata", event.Type, event.Request)
+		}
+	}
+	if events[1].Response == nil || events[1].Response.ChoiceID != "approve" {
+		t.Fatalf("terminal response = %#v, want approve", events[1].Response)
+	}
+}
+
+func TestRequestCommandJSONEventsStdoutIsNDJSONOnly(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_stdout", Status: approval.StatusPending})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_stdout":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_stdout", Status: approval.StatusResponded, Response: &approval.Response{ChoiceID: "approve"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout, err := runRootCommandCapturingStdout(t, "request", "--server", server.URL, "--title", "Run command?", "--json-events", "--timeout", "1s")
+	if err != nil {
+		t.Fatalf("request command error = %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(stdout)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("stdout = %q, want exactly two NDJSON lines", string(stdout))
+	}
+	for _, line := range lines {
+		if !json.Valid([]byte(line)) {
+			t.Fatalf("stdout line is not JSON: %q (full stdout %q)", line, string(stdout))
+		}
+	}
+	events := decodeRequestJSONEvents(t, stdout)
+	if events[0].Type != "request.created" || events[1].Type != "request.terminal" {
+		t.Fatalf("events = %#v, want created then terminal", events)
 	}
 }
 
@@ -294,6 +465,110 @@ func TestRequestJSONEventsEmitsTimeoutTerminalEvent(t *testing.T) {
 	}
 }
 
+func TestAbandonPendingRequestReturnsJSONWithClientRequestID(t *testing.T) {
+	postCalled := false
+	metadata := map[string]string{"clientRequestId": "piapr_abc", "piBrokerRequestId": "piapr_abc"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_abandon":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_abandon", Status: approval.StatusPending, Metadata: metadata})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests/req_abandon/abandon":
+			postCalled = true
+			var input abandonRequest
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if input.Reason != "superseded" || input.ClientRequestID != "piapr_abc" {
+				http.Error(w, "missing abandon metadata", http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_abandon", Status: approval.StatusAbandoned, Metadata: metadata})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout, err := runRootCommandCapturingStdout(t, "abandon", "req_abandon", "--server", server.URL, "--client-request-id", "piapr_abc", "--reason", "superseded", "--json")
+	if err != nil {
+		t.Fatalf("abandon command error = %v", err)
+	}
+	if !postCalled {
+		t.Fatal("abandon endpoint was not called")
+	}
+	var output abandonJSONOutput
+	if err := json.Unmarshal(stdout, &output); err != nil {
+		t.Fatalf("Unmarshal(stdout) error = %v; stdout = %s", err, stdout)
+	}
+	if output.RequestID != "req_abandon" || output.ClientRequestID != "piapr_abc" || output.Status != approval.StatusAbandoned || !output.Abandoned {
+		t.Fatalf("abandon output = %#v, want abandoned with client request ID", output)
+	}
+}
+
+func TestAbandonAlreadyRespondedRequestReturnsResponseJSON(t *testing.T) {
+	metadata := map[string]string{"clientRequestId": "piapr_abc"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_responded":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_responded", Status: approval.StatusResponded, Metadata: metadata, Response: &approval.Response{ChoiceID: "deny", Message: "no"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests/req_responded/abandon":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_responded", Status: approval.StatusResponded, Metadata: metadata, Response: &approval.Response{ChoiceID: "deny", Message: "no"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	stdout, err := runRootCommandCapturingStdout(t, "abandon", "req_responded", "--server", server.URL, "--client-request-id", "piapr_abc", "--json")
+	if err != nil {
+		t.Fatalf("abandon command error = %v", err)
+	}
+	var output abandonJSONOutput
+	if err := json.Unmarshal(stdout, &output); err != nil {
+		t.Fatalf("Unmarshal(stdout) error = %v; stdout = %s", err, stdout)
+	}
+	if output.RequestID != "req_responded" || output.ClientRequestID != "piapr_abc" || output.Status != approval.StatusResponded || output.Abandoned {
+		t.Fatalf("abandon output = %#v, want responded with abandoned false", output)
+	}
+	if output.Response == nil || output.Response.ChoiceID != "deny" || output.Response.Message != "no" {
+		t.Fatalf("response = %#v, want deny/no", output.Response)
+	}
+}
+
+func TestAbandonMismatchedClientRequestIDFailsClosed(t *testing.T) {
+	postCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_mismatch":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_mismatch", Status: approval.StatusPending, Metadata: map[string]string{"clientRequestId": "piapr_actual"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests/req_mismatch/abandon":
+			postCalls++
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_mismatch", Status: approval.StatusAbandoned})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	_, err := abandonApproval(server.URL, "req_mismatch", "", "piapr_other", "")
+	if err == nil || !strings.Contains(err.Error(), "client request ID") {
+		t.Fatalf("abandonApproval() error = %v, want client request ID mismatch", err)
+	}
+	if postCalls != 0 {
+		t.Fatalf("postCalls = %d, want 0", postCalls)
+	}
+}
+
+func TestRootHasNoAgentSideApproveOrDenyCommands(t *testing.T) {
+	for _, name := range []string{"approve", "deny"} {
+		found, _, err := newRootCmd().Find([]string{name})
+		if err == nil && found != nil && found.Name() == name {
+			t.Fatalf("unexpected agent-side %q command", name)
+		}
+	}
+}
+
 func decodeRequestJSONEvents(t *testing.T, data []byte) []requestJSONEvent {
 	t.Helper()
 
@@ -310,6 +585,37 @@ func decodeRequestJSONEvents(t *testing.T, data []byte) []requestJSONEvent {
 		}
 		events = append(events, event)
 	}
+}
+
+func runRootCommandCapturingStdout(t *testing.T, args ...string) ([]byte, error) {
+	t.Helper()
+	t.Setenv("AGENT_TICK_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("AGENT_TICK_SERVER", "")
+	t.Setenv("AGENT_TICK_TOKEN", "")
+
+	oldStdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() error = %v", err)
+	}
+	os.Stdout = writer
+
+	outputCh := make(chan []byte, 1)
+	go func() {
+		var output bytes.Buffer
+		_, _ = io.Copy(&output, reader)
+		outputCh <- output.Bytes()
+	}()
+
+	cmd := newRootCmd()
+	cmd.SetArgs(args)
+	err = cmd.Execute()
+
+	_ = writer.Close()
+	os.Stdout = oldStdout
+	output := <-outputCh
+	_ = reader.Close()
+	return output, err
 }
 
 func TestParseChoices(t *testing.T) {

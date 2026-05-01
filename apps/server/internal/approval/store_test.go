@@ -108,6 +108,25 @@ func TestFileStoreAbandonPendingAndAnsweredRequests(t *testing.T) {
 	}
 }
 
+func TestFileStoreAbandonWithReasonRecordsMetadata(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
+
+	request, err := store.Create(CreateRequest{Title: "Run command?", Metadata: map[string]string{"clientRequestId": "piapr_abc"}})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	abandoned, changed, err := store.AbandonWithReason(request.ID, "superseded")
+	if err != nil {
+		t.Fatalf("AbandonWithReason() error = %v", err)
+	}
+	if !changed || abandoned.Status != StatusAbandoned {
+		t.Fatalf("AbandonWithReason() = %#v changed %v, want abandoned change", abandoned, changed)
+	}
+	if abandoned.Metadata["clientRequestId"] != "piapr_abc" || abandoned.Metadata["abandonReason"] != "superseded" {
+		t.Fatalf("metadata = %#v, want clientRequestId and abandonReason", abandoned.Metadata)
+	}
+}
+
 func TestFileStoreQuestionnaireResponse(t *testing.T) {
 	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
 
