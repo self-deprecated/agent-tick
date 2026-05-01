@@ -238,7 +238,7 @@ To pass an explicit update message, run EAS directly from the mobile app directo
 
 ```sh
 cd apps/mobile
-npx eas update --channel development --message "Describe the change"
+npx eas-cli update --channel development --message "Describe the change"
 ```
 
 The development EAS build profile uses the `development` update channel. The app is configured for EAS Update with project id `66c26d86-bff7-4681-a7b8-bc865a5212af`.
