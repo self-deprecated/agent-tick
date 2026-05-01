@@ -332,6 +332,21 @@ func TestAPIRequiresAuthForRemoteRequests(t *testing.T) {
 	}
 }
 
+func TestAPIDashboardRendersDynamicChoiceButtons(t *testing.T) {
+	handler := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token").Handler()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, snippet := range []string{"const choices = Array.isArray(approval.choices)", "choices.map((choice)", "JSON.stringify(choice.id)", "escapeHTML(call)"} {
+		if !strings.Contains(body, snippet) {
+			t.Fatalf("dashboard HTML missing %q: %s", snippet, body)
+		}
+	}
+}
+
 func TestAPIServesDashboardWithoutAuth(t *testing.T) {
 	handler := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token").Handler()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

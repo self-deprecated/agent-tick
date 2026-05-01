@@ -263,6 +263,51 @@ func TestSteerCommandOutputsSelectedIDOnly(t *testing.T) {
 	}
 }
 
+func TestSteerCommandOutputsNoneOnCreateFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests" {
+			http.Error(w, "nope", http.StatusInternalServerError)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	stdout, err := runRootCommandCapturingStdout(t, "steer", "--server", server.URL, "--option", "run-tests:Run tests", "--timeout", "1s")
+	if err != nil {
+		t.Fatalf("steer command error = %v, want fail-closed none", err)
+	}
+	if string(stdout) != approval.SteerNoneChoiceID+"\n" {
+		t.Fatalf("stdout = %q, want none after create failure", string(stdout))
+	}
+}
+
+func TestSteerCommandOutputsNoneOnAbandonedOrExpired(t *testing.T) {
+	for _, status := range []string{approval.StatusAbandoned, approval.StatusExpired} {
+		t.Run(status, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+					_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_steer_" + status, Status: approval.StatusPending, Choices: steerChoicesForTest(nil)})
+				case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_steer_"+status:
+					_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_steer_" + status, Status: status, Choices: steerChoicesForTest(nil)})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			stdout, err := runRootCommandCapturingStdout(t, "steer", "--server", server.URL, "--option", "run-tests:Run tests", "--timeout", "1s")
+			if err != nil {
+				t.Fatalf("steer command error = %v, want fail-closed none", err)
+			}
+			if string(stdout) != approval.SteerNoneChoiceID+"\n" {
+				t.Fatalf("stdout = %q, want none for status %s", string(stdout), status)
+			}
+		})
+	}
+}
+
 func TestSteerCommandDoesNotReturnServerAddedChoice(t *testing.T) {
 	serverChoices := []approval.Choice{
 		{ID: "run-tests", Label: "Run tests", Kind: approval.RequestTypeSteer},
