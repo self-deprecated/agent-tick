@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Agent Tick",
-    "slug": "agent-tick",
+    "slug": "agenttick",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -11,10 +11,17 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ai.selfdeprecated.agenttick"
+      "bundleIdentifier": "ai.selfdeprecated.agenttick",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "ai.selfdeprecated.agenttick"
+      "package": "ai.selfdeprecated.agenttick",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-notifications",
@@ -22,8 +29,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "00000000-0000-0000-0000-000000000000"
+        "projectId": "66c26d86-bff7-4681-a7b8-bc865a5212af"
       }
-    }
+    },
+    "owner": "self-deprecated"
   }
 }
