@@ -105,14 +105,14 @@ func TestFlagEnvPrecedence(t *testing.T) {
 
 func TestRequestAutomationFlagsExist(t *testing.T) {
 	cmd := newRequestCmd()
-	for _, name := range []string{"json-events", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token"} {
+	for _, name := range []string{"json-events", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token", "project", "project-dir"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("--%s flag not found on request command", name)
 		}
 	}
 
 	steer := newSteerCmd()
-	for _, name := range []string{"option", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token"} {
+	for _, name := range []string{"option", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token", "project", "project-dir"} {
 		if steer.Flags().Lookup(name) == nil {
 			t.Fatalf("--%s flag not found on steer command", name)
 		}
@@ -872,6 +872,8 @@ func TestMergeRequesterPreservesExplicitFields(t *testing.T) {
 		AgentID:          "local-agent",
 		Host:             "workstation",
 		WorkingDirectory: "/tmp/project",
+		ProjectName:      "project",
+		ProjectID:        "workstation:/tmp/project",
 	}
 
 	got := mergeRequester(current, defaults)
@@ -887,5 +889,17 @@ func TestMergeRequesterPreservesExplicitFields(t *testing.T) {
 	}
 	if got.WorkingDirectory != "/tmp/project/subdir" {
 		t.Fatalf("WorkingDirectory = %q, want /tmp/project/subdir", got.WorkingDirectory)
+	}
+	if got.ProjectName != "project" || got.ProjectID != "workstation:/tmp/project" {
+		t.Fatalf("project = %q/%q, want defaults", got.ProjectName, got.ProjectID)
+	}
+}
+
+func TestProjectID(t *testing.T) {
+	if got := projectID("workstation", "/tmp/project"); got != "workstation:/tmp/project" {
+		t.Fatalf("projectID() = %q, want host:path", got)
+	}
+	if got := projectID("", "/tmp/project"); got != "/tmp/project" {
+		t.Fatalf("projectID(no host) = %q, want path", got)
 	}
 }

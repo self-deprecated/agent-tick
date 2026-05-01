@@ -16,6 +16,8 @@ type Requester struct {
 	AgentID          string `json:"agentId"`
 	Host             string `json:"host,omitempty"`
 	WorkingDirectory string `json:"workingDirectory,omitempty"`
+	ProjectName      string `json:"projectName,omitempty"`
+	ProjectID        string `json:"projectId,omitempty"`
 }
 
 type Choice struct {

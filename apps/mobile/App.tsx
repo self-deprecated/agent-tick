@@ -25,6 +25,7 @@ import {
 } from "./AppLogic";
 import {
   buildQuestionnaireAnswers,
+  groupRequestsByProject,
   isQuestionnaireRequest,
   normalizeApprovals,
   notificationBody,
@@ -32,6 +33,8 @@ import {
   requestStatusLabel,
   supportsNotificationActions,
   updateQuestionnaireAnswers,
+  requestProjectID,
+  requestProjectLabel,
   type ApprovalRequest,
   type Choice,
 } from "./approvalRequests";
@@ -67,6 +70,7 @@ export default function App() {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
+  const [selectedProjectID, setSelectedProjectID] = useState<string | null>(null);
   const [notificationTargetID, setNotificationTargetID] = useState<string | null>(
     null,
   );
@@ -89,9 +93,14 @@ export default function App() {
   const didPrimeNotifications = useRef(false);
   const pairingInFlight = useRef(false);
 
+  const projectGroups = useMemo(() => groupRequestsByProject(requests), [requests]);
+  const visibleRequests = useMemo(
+    () => filterRequestsByProject(requests, selectedProjectID),
+    [requests, selectedProjectID],
+  );
   const selected = useMemo(
-    () => requests.find((request) => request.id === selectedID) ?? requests[0],
-    [requests, selectedID],
+    () => visibleRequests.find((request) => request.id === selectedID) ?? visibleRequests[0],
+    [selectedID, visibleRequests],
   );
 
   useEffect(() => {
@@ -207,8 +216,17 @@ export default function App() {
       );
       setRequests(pendingRequests);
       setConnectionStatus("connected");
+      const activeProjectID = pendingRequests.some(
+        (request) => selectedProjectID && requestProjectID(request) === selectedProjectID,
+      )
+        ? selectedProjectID
+        : null;
+      if (selectedProjectID && !activeProjectID) {
+        setSelectedProjectID(null);
+      }
+      const selectableRequests = filterRequestsByProject(pendingRequests, activeProjectID);
       setSelectedID((current) =>
-        selectApprovalID(pendingRequests, notificationTargetID, current),
+        selectApprovalID(selectableRequests, notificationTargetID, current),
       );
       if (
         notificationTargetID &&
@@ -224,7 +242,7 @@ export default function App() {
         setLoading(false);
       }
     }
-  }, [api, notificationTargetID]);
+  }, [api, notificationTargetID, selectedProjectID]);
 
   useEffect(() => {
     if (!settingsLoaded) {
@@ -674,9 +692,15 @@ export default function App() {
           onRefresh={() => void load({ visible: true })}
           onRespond={(request, choice) => void respond(request, choice)}
           onSubmitQuestionnaire={(request) => void submitQuestionnaire(request)}
+          projectGroups={projectGroups}
           questionnaireAnswers={questionnaireAnswers}
           reply={reply}
-          requests={requests}
+          requests={visibleRequests}
+          selectedProjectID={selectedProjectID}
+          setProjectID={(projectID) => {
+            setSelectedProjectID(projectID);
+            setSelectedID(filterRequestsByProject(requests, projectID)[0]?.id ?? null);
+          }}
           setQuestionnaireAnswer={(question, option, multiSelect) =>
             setQuestionnaireAnswers((current) =>
               updateQuestionnaireAnswers(current, question, option, multiSelect),
@@ -690,6 +714,16 @@ export default function App() {
       )}
     </SafeAreaView>
   );
+}
+
+function filterRequestsByProject(
+  requests: ApprovalRequest[],
+  projectID: string | null,
+) {
+  if (!projectID) {
+    return requests;
+  }
+  return requests.filter((request) => requestProjectID(request) === projectID);
 }
 
 function selectApprovalID(
@@ -792,9 +826,12 @@ export function ApprovalsScreen({
   onRefresh,
   onRespond,
   onSubmitQuestionnaire,
+  projectGroups,
   questionnaireAnswers,
   reply,
   requests,
+  selectedProjectID,
+  setProjectID,
   setQuestionnaireAnswer,
   selected,
   selectedID,
@@ -806,9 +843,12 @@ export function ApprovalsScreen({
   onRefresh: () => void;
   onRespond: (request: ApprovalRequest, choice: Choice) => void;
   onSubmitQuestionnaire: (request: ApprovalRequest) => void;
+  projectGroups: ReturnType<typeof groupRequestsByProject>;
   questionnaireAnswers: Record<string, string[]>;
   reply: string;
   requests: ApprovalRequest[];
+  selectedProjectID: string | null;
+  setProjectID: (projectID: string | null) => void;
   setQuestionnaireAnswer: (
     question: string,
     option: string,
@@ -834,6 +874,36 @@ export function ApprovalsScreen({
 
   return (
     <View style={styles.approvalsPane}>
+      {projectGroups.length > 1 ? (
+        <View style={styles.requestStrip}>
+          <Pressable
+            onPress={() => setProjectID(null)}
+            style={[
+              styles.requestPill,
+              selectedProjectID === null ? styles.requestPillActive : null,
+            ]}
+          >
+            <Text numberOfLines={1} style={styles.requestPillText}>
+              All ({projectGroups.reduce((sum, group) => sum + group.requests.length, 0)})
+            </Text>
+          </Pressable>
+          {projectGroups.map((group) => (
+            <Pressable
+              key={group.id}
+              onPress={() => setProjectID(group.id)}
+              style={[
+                styles.requestPill,
+                selectedProjectID === group.id ? styles.requestPillActive : null,
+              ]}
+            >
+              <Text numberOfLines={1} style={styles.requestPillText}>
+                {group.label} ({group.requests.length})
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
       {requests.length > 1 ? (
         <View style={styles.requestStrip}>
           {requests.map((request) => (
@@ -862,6 +932,7 @@ export function ApprovalsScreen({
           {selected.requester.name || selected.requester.agentId}
           {selected.requester.host ? ` on ${selected.requester.host}` : ""}
         </Text>
+        <Text style={styles.detailMeta}>Project: {requestProjectLabel(selected)}</Text>
         <View style={styles.detailFacts}>
           {selected.risk ? (
             <Text

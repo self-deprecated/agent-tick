@@ -91,6 +91,16 @@ agent-tick request \
 
 Keep `--body` short enough to scan on a phone. Put verbose logs, diffs, plans, and command output in `--context-file`.
 
+## Project Grouping
+
+Agent Tick groups mobile requests by machine and project directory by default. Use `--project` for a friendlier display name and `--project-dir` when the request should be grouped under a directory other than the current working directory:
+
+```sh
+agent-tick request --project "API Server" --project-dir /repo/apps/server --title "Run migration?"
+```
+
+These flags are also available on `guard`, `steer`, and `adapter`.
+
 ## Timeouts
 
 The CLI waits up to 10 minutes by default. For slower decisions, set a longer timeout:

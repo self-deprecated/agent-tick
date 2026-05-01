@@ -1,10 +1,13 @@
 import {
   buildQuestionnaireAnswers,
+  groupRequestsByProject,
   normalizeApproval,
   questionnaireReady,
   requestStatusLabel,
   supportsNotificationActions,
   updateQuestionnaireAnswers,
+  requestProjectID,
+  requestProjectLabel,
 } from "./approvalRequests";
 import {
   notificationDecision,
@@ -114,6 +117,51 @@ const questionnaireRequest = {
   status: "pending",
   createdAt: "2026-04-19T12:00:00Z",
 };
+
+describe("project grouping helpers", () => {
+  it("groups requests by explicit project id", () => {
+    const requests = [
+      normalizeApproval({
+        id: "req_a",
+        requester: { name: "Agent", agentId: "agent", host: "box", workingDirectory: "/work/a", projectName: "Alpha", projectId: "box:/work/a" },
+        title: "A",
+        choices: [],
+        allowFreeformReply: false,
+        status: "pending",
+        createdAt: "2026-04-19T12:00:00Z",
+      }),
+      normalizeApproval({
+        id: "req_b",
+        requester: { name: "Agent", agentId: "agent", host: "box", workingDirectory: "/work/a", projectName: "Alpha", projectId: "box:/work/a" },
+        title: "B",
+        choices: [],
+        allowFreeformReply: false,
+        status: "pending",
+        createdAt: "2026-04-19T12:00:00Z",
+      }),
+      normalizeApproval({
+        id: "req_c",
+        requester: { name: "Agent", agentId: "agent", host: "box", workingDirectory: "/work/c" },
+        title: "C",
+        choices: [],
+        allowFreeformReply: false,
+        status: "pending",
+        createdAt: "2026-04-19T12:00:00Z",
+      }),
+    ];
+
+    const [first, second, third] = requests;
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(third).toBeDefined();
+    expect(requestProjectID(first!)).toBe("box:/work/a");
+    expect(requestProjectLabel(third!)).toBe("c · box");
+    expect(groupRequestsByProject(requests)).toEqual([
+      { id: "box:/work/a", label: "Alpha · box", requests: [first!, second!] },
+      { id: "box:/work/c", label: "c · box", requests: [third!] },
+    ]);
+  });
+});
 
 describe("request normalization and notification helpers", () => {
   it("preserves steer request type and disables approve/deny notification actions", () => {

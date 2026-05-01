@@ -147,7 +147,7 @@ See also: setup, agent-token`,
 }
 
 func newRequestCmd() *cobra.Command {
-	var server, token, title, body, command, contextFile, requesterName, agentID, defaultChoice string
+	var server, token, title, body, command, contextFile, requesterName, agentID, projectName, projectDir, defaultChoice string
 	var clientRequestID, correlationToken, metadataJSON string
 	var choiceSpecs []string
 	var allowFreeformReply bool
@@ -196,7 +196,7 @@ See also: guard, adapter, abandon`,
 				return err
 			}
 			input := approval.CreateRequest{
-				Requester:          buildRequester(requesterName, agentID),
+				Requester:          buildRequester(requesterName, agentID, projectName, projectDir),
 				Title:              title,
 				Body:               body,
 				Command:            command,
@@ -232,6 +232,8 @@ See also: guard, adapter, abandon`,
 	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
 	cmd.Flags().StringVar(&requesterName, "requester", getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"), "requester name [env: AGENT_TICK_REQUESTER]")
 	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
+	cmd.Flags().StringVar(&projectName, "project", os.Getenv("AGENT_TICK_PROJECT"), "project display name [env: AGENT_TICK_PROJECT]")
+	cmd.Flags().StringVar(&projectDir, "project-dir", os.Getenv("AGENT_TICK_PROJECT_DIR"), "project directory for grouping; defaults to current directory [env: AGENT_TICK_PROJECT_DIR]")
 	cmd.Flags().StringVar(&title, "title", "", "approval title (required)")
 	cmd.Flags().StringVar(&body, "body", "", "approval body")
 	cmd.Flags().StringVar(&command, "command", "", "command being requested")
@@ -251,7 +253,7 @@ See also: guard, adapter, abandon`,
 }
 
 func newSteerCmd() *cobra.Command {
-	var server, token, title, body, contextFile, requesterName, agentID string
+	var server, token, title, body, contextFile, requesterName, agentID, projectName, projectDir string
 	var clientRequestID, correlationToken, metadataJSON string
 	var optionSpecs []string
 	var noTimeout, noExpiry bool
@@ -290,7 +292,7 @@ See also: request, guard`,
 				return err
 			}
 			selected := requestSteer(server, approval.CreateRequest{
-				Requester:     buildRequester(requesterName, agentID),
+				Requester:     buildRequester(requesterName, agentID, projectName, projectDir),
 				RequestType:   approval.RequestTypeSteer,
 				Title:         title,
 				Body:          body,
@@ -307,6 +309,8 @@ See also: request, guard`,
 	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
 	cmd.Flags().StringVar(&requesterName, "requester", getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"), "requester name [env: AGENT_TICK_REQUESTER]")
 	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
+	cmd.Flags().StringVar(&projectName, "project", os.Getenv("AGENT_TICK_PROJECT"), "project display name [env: AGENT_TICK_PROJECT]")
+	cmd.Flags().StringVar(&projectDir, "project-dir", os.Getenv("AGENT_TICK_PROJECT_DIR"), "project directory for grouping; defaults to current directory [env: AGENT_TICK_PROJECT_DIR]")
 	cmd.Flags().StringVar(&title, "title", "", "steering title")
 	cmd.Flags().StringVar(&body, "body", "", "steering body")
 	cmd.Flags().StringArrayVar(&optionSpecs, "option", nil, "steering option in id:label format; repeat to add more")
@@ -358,7 +362,7 @@ See also: request`,
 }
 
 func newGuardCmd() *cobra.Command {
-	var server, token, title, body, contextFile, requesterName, agentID string
+	var server, token, title, body, contextFile, requesterName, agentID, projectName, projectDir string
 	var timeout, expiresIn time.Duration
 	cmd := &cobra.Command{
 		Use:   "guard [-- command...]",
@@ -385,7 +389,7 @@ See also: request, adapter`,
 				return err
 			}
 			current, err := requestApproval(server, approval.CreateRequest{
-				Requester: buildRequester(requesterName, agentID),
+				Requester: buildRequester(requesterName, agentID, projectName, projectDir),
 				Title:     title,
 				Body:      requestBody,
 				Command:   commandText,
@@ -417,6 +421,8 @@ See also: request, adapter`,
 	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
 	cmd.Flags().StringVar(&requesterName, "requester", getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"), "requester name [env: AGENT_TICK_REQUESTER]")
 	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
+	cmd.Flags().StringVar(&projectName, "project", os.Getenv("AGENT_TICK_PROJECT"), "project display name [env: AGENT_TICK_PROJECT]")
+	cmd.Flags().StringVar(&projectDir, "project-dir", os.Getenv("AGENT_TICK_PROJECT_DIR"), "project directory for grouping; defaults to current directory [env: AGENT_TICK_PROJECT_DIR]")
 	cmd.Flags().StringVar(&title, "title", "Run command?", "approval title")
 	cmd.Flags().StringVar(&body, "body", "", "approval body")
 	cmd.Flags().StringVar(&contextFile, "context-file", "", "path to extra context to attach")
@@ -581,7 +587,7 @@ func newAgentTokenRotateCmd() *cobra.Command {
 }
 
 func newAdapterCmd() *cobra.Command {
-	var server, token, requesterName, agentID string
+	var server, token, requesterName, agentID, projectName, projectDir string
 	var timeout time.Duration
 	cmd := &cobra.Command{
 		Use:   "adapter",
@@ -598,7 +604,7 @@ See also: request, guard`,
 			if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
 				return err
 			}
-			input.Requester = mergeRequester(input.Requester, buildRequester(requesterName, agentID))
+			input.Requester = mergeRequester(input.Requester, buildRequester(requesterName, agentID, projectName, projectDir))
 			if input.Title == "" {
 				input.Title = "Approval requested"
 			}
@@ -620,6 +626,8 @@ See also: request, guard`,
 	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
 	cmd.Flags().StringVar(&requesterName, "requester", getenv("AGENT_TICK_REQUESTER", "agent-tick-cli"), "requester name [env: AGENT_TICK_REQUESTER]")
 	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
+	cmd.Flags().StringVar(&projectName, "project", os.Getenv("AGENT_TICK_PROJECT"), "project display name [env: AGENT_TICK_PROJECT]")
+	cmd.Flags().StringVar(&projectDir, "project-dir", os.Getenv("AGENT_TICK_PROJECT_DIR"), "project directory for grouping; defaults to current directory [env: AGENT_TICK_PROJECT_DIR]")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response")
 	return cmd
 }
@@ -629,13 +637,39 @@ func parseBoolEnv(value string) bool {
 	return lower == "1" || lower == "true" || lower == "yes"
 }
 
-func buildRequester(name, agentID string) approval.Requester {
+func buildRequester(name, agentID string, projectName string, projectDir string) approval.Requester {
+	host := hostname()
+	cwd := workingDirectory()
+	projectDir = strings.TrimSpace(projectDir)
+	if projectDir == "" {
+		projectDir = cwd
+	}
+	projectName = strings.TrimSpace(projectName)
+	if projectName == "" {
+		projectName = filepath.Base(projectDir)
+	}
+	if projectName == "." || projectName == string(filepath.Separator) {
+		projectName = projectDir
+	}
 	return approval.Requester{
 		Name:             name,
 		AgentID:          agentID,
-		Host:             hostname(),
-		WorkingDirectory: workingDirectory(),
+		Host:             host,
+		WorkingDirectory: projectDir,
+		ProjectName:      projectName,
+		ProjectID:        projectID(host, projectDir),
 	}
+}
+
+func projectID(host string, projectDir string) string {
+	projectDir = strings.TrimSpace(projectDir)
+	if projectDir == "" {
+		return strings.TrimSpace(host)
+	}
+	if strings.TrimSpace(host) == "" {
+		return projectDir
+	}
+	return strings.TrimSpace(host) + ":" + projectDir
 }
 
 func mergeRequester(current approval.Requester, defaults approval.Requester) approval.Requester {
@@ -650,6 +684,12 @@ func mergeRequester(current approval.Requester, defaults approval.Requester) app
 	}
 	if strings.TrimSpace(current.WorkingDirectory) == "" {
 		current.WorkingDirectory = defaults.WorkingDirectory
+	}
+	if strings.TrimSpace(current.ProjectName) == "" {
+		current.ProjectName = defaults.ProjectName
+	}
+	if strings.TrimSpace(current.ProjectID) == "" {
+		current.ProjectID = defaults.ProjectID
 	}
 	return current
 }

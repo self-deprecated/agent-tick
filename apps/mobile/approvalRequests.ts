@@ -3,6 +3,8 @@ export type Requester = {
   agentId: string;
   host?: string;
   workingDirectory?: string;
+  projectName?: string;
+  projectId?: string;
 };
 
 export type Choice = {
@@ -143,6 +145,51 @@ export function requestStatusLabel(request: ApprovalRequest) {
     return "answered";
   }
   return request.status;
+}
+
+export type ProjectGroup = {
+  id: string;
+  label: string;
+  requests: ApprovalRequest[];
+};
+
+export function requestProjectID(request: ApprovalRequest) {
+  const explicit = request.requester.projectId?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const host = request.requester.host?.trim() || request.requester.name?.trim() || "Agent";
+  const cwd = request.requester.workingDirectory?.trim();
+  return cwd ? `${host}:${cwd}` : host;
+}
+
+export function requestProjectLabel(request: ApprovalRequest) {
+  const explicit = request.requester.projectName?.trim();
+  const host = request.requester.host?.trim();
+  if (explicit) {
+    return host ? `${explicit} · ${host}` : explicit;
+  }
+  const cwd = request.requester.workingDirectory?.trim();
+  if (!cwd) {
+    return request.requester.host || request.requester.name || "Agent";
+  }
+  const parts = cwd.split(/[\\/]+/).filter(Boolean);
+  const name = parts[parts.length - 1] || cwd;
+  return host ? `${name} · ${host}` : name;
+}
+
+export function groupRequestsByProject(requests: ApprovalRequest[]): ProjectGroup[] {
+  const groups = new Map<string, ProjectGroup>();
+  for (const request of requests) {
+    const id = requestProjectID(request);
+    const existing = groups.get(id);
+    if (existing) {
+      existing.requests.push(request);
+      continue;
+    }
+    groups.set(id, { id, label: requestProjectLabel(request), requests: [request] });
+  }
+  return Array.from(groups.values());
 }
 
 export function isQuestionnaireRequest(request: ApprovalRequest) {

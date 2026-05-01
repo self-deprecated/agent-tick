@@ -75,6 +75,8 @@ agent-tick steer \
 
 Your phone shows only the supplied options plus **Do nothing / skip**. The CLI prints only the selected option ID, or `none` on skip, timeout, expiry, or delivery failure.
 
+Requests are grouped in the mobile app by project. The CLI defaults the project to the current machine and working directory; override the display name with `--project` and the grouping directory with `--project-dir`.
+
 ## How It Works
 
 An agent calls `agent-tick request`, `agent-tick guard`, or `agent-tick steer`. The CLI sends the request to the server and polls for a response. The server pushes the request to your paired phone. You approve, deny, or select a constrained steering option. The server returns the decision to the CLI, and the agent continues.
