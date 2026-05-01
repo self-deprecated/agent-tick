@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -55,6 +56,7 @@ UI or mobile app before the action proceeds.`,
 		newSetupCmd(),
 		newServerCmd(),
 		newRequestCmd(),
+		newAbandonCmd(),
 		newGuardCmd(),
 		newPairCmd(),
 		newAgentTokenCmd(),
@@ -146,21 +148,28 @@ func newRequestCmd() *cobra.Command {
 	var server, token, title, body, command, contextFile, requesterName, agentID, defaultChoice string
 	var choiceSpecs []string
 	var allowFreeformReply bool
+	var jsonEvents bool
 	var timeout, expiresIn time.Duration
 	cmd := &cobra.Command{
 		Use:   "request",
 		Short: "Create an approval request and wait for a response",
 		Long: `request submits a human approval request to the server and blocks until the
-request is approved, rejected, or times out. Exit code 0 means approved;
-exit code 1 means denied or timed out. When custom --choice flags are provided,
-the command exits 0 for any valid response and prints the selected choice ID.
+request is approved, rejected, abandoned, expired, or times out. Exit code 0
+means approved; exit code 1 means denied, abandoned, expired, or timed out.
+When custom --choice flags are provided, the command exits 0 for any valid
+response and prints the selected choice ID.
 
-See also: guard, adapter`,
+Use --json-events to stream newline-delimited JSON events to stdout: a created
+entry with the request ID immediately, then a terminal entry when the request
+is answered, abandoned, expired, or times out.
+
+See also: guard, adapter, abandon`,
 		Example: `  agent-tick request --title "Deploy to production?" --command "kubectl apply -f prod.yaml"
   agent-tick request --title "Pick a release channel" \
     --choice stable:Stable --choice beta:Beta --choice nightly:Nightly
   agent-tick request --title "Send customer email" --body "To: alice@example.com" \
-    --timeout 30m --expires-in 15m`,
+    --timeout 30m --expires-in 15m
+  agent-tick request --title "Wait forever" --json-events --timeout 0 --expires-in 0`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(title) == "" {
 				return fmt.Errorf("--title is required")
@@ -172,7 +181,7 @@ See also: guard, adapter`,
 			if strings.TrimSpace(defaultChoice) != "" && !hasChoiceID(choices, defaultChoice) {
 				return fmt.Errorf("--default-choice %q must match one of the provided --choice IDs", defaultChoice)
 			}
-			current, err := requestApproval(server, approval.CreateRequest{
+			input := approval.CreateRequest{
 				Requester:          buildRequester(requesterName, agentID),
 				Title:              title,
 				Body:               body,
@@ -183,11 +192,19 @@ See also: guard, adapter`,
 				ExpiresAt:          expiresAtPtr(expiresIn),
 				Risk:               classifyRisk(command),
 				Metadata:           requestMetadata(contextFile),
-			}, timeout, token)
+			}
+			var current approval.ApprovalRequest
+			if jsonEvents {
+				current, err = requestApprovalJSONEvents(server, input, timeout, token, os.Stdout)
+			} else {
+				current, err = requestApproval(server, input, timeout, token)
+			}
 			if err != nil {
 				return err
 			}
-			printResponse(current.Response)
+			if !jsonEvents {
+				printResponse(current.Response)
+			}
 			if len(choices) > 0 {
 				return nil
 			}
@@ -207,9 +224,43 @@ See also: guard, adapter`,
 	cmd.Flags().StringArrayVar(&choiceSpecs, "choice", nil, "response choice in id:label[:kind] format; repeat to add more")
 	cmd.Flags().StringVar(&defaultChoice, "default-choice", "", "default choice ID for the request")
 	cmd.Flags().BoolVar(&allowFreeformReply, "allow-reply", false, "allow an optional text reply with the selected choice")
+	cmd.Flags().BoolVar(&jsonEvents, "json-events", false, "stream newline-delimited JSON lifecycle events to stdout")
 	cmd.Flags().StringVar(&contextFile, "context-file", "", "path to extra context to attach")
-	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response")
-	cmd.Flags().DurationVar(&expiresIn, "expires-in", 5*time.Minute, "approval expiry duration")
+	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response; 0 waits indefinitely")
+	cmd.Flags().DurationVar(&expiresIn, "expires-in", 5*time.Minute, "approval expiry duration; 0 disables expiry")
+	return cmd
+}
+
+func newAbandonCmd() *cobra.Command {
+	var server, token string
+	var jsonOutput bool
+	cmd := &cobra.Command{
+		Use:   "abandon <request-id>",
+		Short: "Cancel a pending approval request created by an agent",
+		Long: `abandon performs creator-side cancellation of a pending approval request.
+It does not approve or deny the request. If the request was already answered,
+the server returns the existing responded state unchanged.
+
+See also: request`,
+		Example: `  agent-tick abandon req_abc123
+  agent-tick abandon req_abc123 --json`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			request, err := abandonApproval(server, args[0], token)
+			if err != nil {
+				return err
+			}
+			if jsonOutput {
+				return json.NewEncoder(os.Stdout).Encode(request)
+			}
+			fmt.Printf("request %s status: %s\n", request.ID, request.Status)
+			printResponse(request.Response)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&server, "server", defaultServerURL(), "Agent Tick server URL [env: AGENT_TICK_SERVER]")
+	cmd.Flags().StringVar(&token, "token", defaultToken(), "authentication token [env: AGENT_TICK_TOKEN]")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "write the resulting request state as JSON")
 	return cmd
 }
 
@@ -507,32 +558,121 @@ func mergeRequester(current approval.Requester, defaults approval.Requester) app
 }
 
 func expiresAtPtr(d time.Duration) *time.Time {
+	if d == 0 {
+		return nil
+	}
 	t := time.Now().UTC().Add(d)
 	return &t
 }
 
+var approvalPollInterval = 2 * time.Second
+
+type requestJSONEvent struct {
+	Type      string             `json:"type"`
+	RequestID string             `json:"requestId"`
+	Status    string             `json:"status,omitempty"`
+	Response  *approval.Response `json:"response,omitempty"`
+	Error     string             `json:"error,omitempty"`
+}
+
 func requestApproval(server string, input approval.CreateRequest, timeout time.Duration, token string) (approval.ApprovalRequest, error) {
-	request, err := postJSON[approval.ApprovalRequest](server+"/v1/approval-requests", input, token)
+	request, err := createApprovalRequest(server, input, token)
 	if err != nil {
 		return approval.ApprovalRequest{}, err
 	}
 	fmt.Printf("approval request created: %s\n", request.ID)
+	return waitForApproval(server, request.ID, timeout, token)
+}
 
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		current, err := getJSON[approval.ApprovalRequest](server+"/v1/approval-requests/"+request.ID, token)
-		if err != nil {
-			return approval.ApprovalRequest{}, err
+func requestApprovalJSONEvents(server string, input approval.CreateRequest, timeout time.Duration, token string, writer io.Writer) (approval.ApprovalRequest, error) {
+	request, err := createApprovalRequest(server, input, token)
+	if err != nil {
+		return approval.ApprovalRequest{}, err
+	}
+	if err := writeRequestJSONEvent(writer, requestJSONEvent{
+		Type:      "request.created",
+		RequestID: request.ID,
+		Status:    request.Status,
+	}); err != nil {
+		return approval.ApprovalRequest{}, err
+	}
+
+	current, err := waitForApproval(server, request.ID, timeout, token)
+	if current.ID == "" {
+		current = request
+	}
+	terminalEvent := requestJSONEvent{
+		Type:      "request.terminal",
+		RequestID: current.ID,
+		Status:    current.Status,
+		Response:  current.Response,
+	}
+	if terminalEvent.Status == "" {
+		terminalEvent.Status = approval.StatusPending
+	}
+	if err != nil {
+		terminalEvent.Error = err.Error()
+	}
+	if writeErr := writeRequestJSONEvent(writer, terminalEvent); writeErr != nil {
+		return current, writeErr
+	}
+	return current, err
+}
+
+func createApprovalRequest(server string, input approval.CreateRequest, token string) (approval.ApprovalRequest, error) {
+	return postJSON[approval.ApprovalRequest](server+"/v1/approval-requests", input, token)
+}
+
+func waitForApproval(server string, requestID string, timeout time.Duration, token string) (approval.ApprovalRequest, error) {
+	var deadline time.Time
+	if timeout > 0 {
+		deadline = time.Now().Add(timeout)
+	}
+	var current approval.ApprovalRequest
+	for {
+		if timeout > 0 && !time.Now().Before(deadline) {
+			if current.ID == "" {
+				current.ID = requestID
+				current.Status = approval.StatusPending
+			}
+			return current, fmt.Errorf("timed out waiting for approval")
 		}
-		if current.Response != nil {
+
+		var err error
+		current, err = getJSON[approval.ApprovalRequest](server+"/v1/approval-requests/"+requestID, token)
+		if err != nil {
+			return current, err
+		}
+		if current.Response != nil || current.Status == approval.StatusResponded {
 			return current, nil
 		}
-		if current.Status == approval.StatusExpired {
-			return approval.ApprovalRequest{}, fmt.Errorf("approval request expired")
+		switch current.Status {
+		case approval.StatusExpired:
+			return current, fmt.Errorf("approval request expired")
+		case approval.StatusAbandoned:
+			return current, fmt.Errorf("approval request abandoned")
 		}
-		time.Sleep(2 * time.Second)
+
+		sleepFor := approvalPollInterval
+		if timeout > 0 {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				continue
+			}
+			if remaining < sleepFor {
+				sleepFor = remaining
+			}
+		}
+		time.Sleep(sleepFor)
 	}
-	return approval.ApprovalRequest{}, fmt.Errorf("timed out waiting for approval")
+}
+
+func writeRequestJSONEvent(writer io.Writer, event requestJSONEvent) error {
+	return json.NewEncoder(writer).Encode(event)
+}
+
+func abandonApproval(server string, requestID string, token string) (approval.ApprovalRequest, error) {
+	return postJSON[approval.ApprovalRequest](server+"/v1/approval-requests/"+requestID+"/abandon", map[string]string{}, token)
 }
 
 func printResponse(response *approval.Response) {

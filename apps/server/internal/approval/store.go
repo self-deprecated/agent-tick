@@ -19,12 +19,14 @@ var ErrInvalidChoice = errors.New("approval response choice is not allowed")
 var ErrInvalidRequest = errors.New("approval request is invalid")
 var ErrInvalidResponse = errors.New("approval response is invalid")
 var ErrExpired = errors.New("approval request has expired")
+var ErrAbandoned = errors.New("approval request has been abandoned")
 
 type Store interface {
 	Create(CreateRequest) (ApprovalRequest, error)
 	List(status string) ([]ApprovalRequest, error)
 	Get(id string) (ApprovalRequest, error)
 	Respond(id string, response Response) (ApprovalRequest, error)
+	Abandon(id string) (ApprovalRequest, error)
 }
 
 type UserScopedStore interface {
@@ -32,6 +34,7 @@ type UserScopedStore interface {
 	ListForUser(userID string, status string) ([]ApprovalRequest, error)
 	GetForUser(userID string, id string) (ApprovalRequest, error)
 	RespondForUser(userID string, id string, response Response) (ApprovalRequest, error)
+	AbandonForUser(userID string, id string) (ApprovalRequest, error)
 }
 
 type PairingStore interface {
@@ -188,6 +191,9 @@ func (s *FileStore) Respond(id string, response Response) (ApprovalRequest, erro
 			if requests[i].Status == StatusExpired {
 				return ApprovalRequest{}, ErrExpired
 			}
+			if requests[i].Status == StatusAbandoned {
+				return ApprovalRequest{}, ErrAbandoned
+			}
 			if err := validateResponseForRequest(requests[i], response); err != nil {
 				return ApprovalRequest{}, err
 			}
@@ -196,6 +202,27 @@ func (s *FileStore) Respond(id string, response Response) (ApprovalRequest, erro
 			requests[i].Status = StatusResponded
 			requests[i].RespondedAt = &now
 			requests[i].Response = &response
+			return requests[i], s.save(requests)
+		}
+	}
+	return ApprovalRequest{}, ErrNotFound
+}
+
+func (s *FileStore) Abandon(id string) (ApprovalRequest, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	requests, err := s.load()
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	requests = expireRequests(requests)
+
+	for i := range requests {
+		if requests[i].ID == id {
+			if requests[i].Status == StatusPending && requests[i].Response == nil {
+				requests[i].Status = StatusAbandoned
+			}
 			return requests[i], s.save(requests)
 		}
 	}

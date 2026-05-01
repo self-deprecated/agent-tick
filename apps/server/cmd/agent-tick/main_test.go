@@ -1,9 +1,14 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"agent-tick/apps/server/internal/approval"
 )
@@ -94,6 +99,109 @@ func TestFlagEnvPrecedence(t *testing.T) {
 			t.Errorf("--server default = %q, want localhost default", flag.DefValue)
 		}
 	})
+}
+
+func TestRequestAutomationFlagsExist(t *testing.T) {
+	cmd := newRequestCmd()
+	for _, name := range []string{"json-events", "timeout", "expires-in"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Fatalf("--%s flag not found on request command", name)
+		}
+	}
+
+	abandon := newAbandonCmd()
+	if abandon.Flags().Lookup("json") == nil {
+		t.Fatal("--json flag not found on abandon command")
+	}
+
+	root := newRootCmd()
+	if found, _, err := root.Find([]string{"abandon"}); err != nil || found == nil || found.Name() != "abandon" {
+		t.Fatalf("root.Find(abandon) = %v, %v, want abandon command", found, err)
+	}
+}
+
+func TestExpiresAtPtrZeroDisablesExpiry(t *testing.T) {
+	if got := expiresAtPtr(0); got != nil {
+		t.Fatalf("expiresAtPtr(0) = %v, want nil", got)
+	}
+	if got := expiresAtPtr(time.Second); got == nil {
+		t.Fatal("expiresAtPtr(time.Second) = nil, want timestamp")
+	}
+}
+
+func TestRequestJSONEventsEmitsIDImmediatelyAndTerminalLater(t *testing.T) {
+	oldPollInterval := approvalPollInterval
+	approvalPollInterval = 10 * time.Millisecond
+	defer func() { approvalPollInterval = oldPollInterval }()
+
+	responded := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+				ID:        "req_json",
+				Title:     "Run command?",
+				Status:    approval.StatusPending,
+				CreatedAt: time.Now().UTC(),
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_json":
+			request := approval.ApprovalRequest{
+				ID:        "req_json",
+				Title:     "Run command?",
+				Status:    approval.StatusPending,
+				CreatedAt: time.Now().UTC(),
+			}
+			select {
+			case <-responded:
+				request.Status = approval.StatusResponded
+				request.Response = &approval.Response{ChoiceID: "approve"}
+			default:
+			}
+			_ = json.NewEncoder(w).Encode(request)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	reader, writer := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		_, err := requestApprovalJSONEvents(
+			server.URL,
+			approval.CreateRequest{Title: "Run command?"},
+			0,
+			"",
+			writer,
+		)
+		_ = writer.Close()
+		done <- err
+	}()
+
+	decoder := json.NewDecoder(reader)
+	var created requestJSONEvent
+	if err := decoder.Decode(&created); err != nil {
+		t.Fatalf("Decode(created) error = %v", err)
+	}
+	if created.Type != "request.created" || created.RequestID != "req_json" || created.Status != approval.StatusPending {
+		t.Fatalf("created event = %#v, want immediate request ID", created)
+	}
+
+	close(responded)
+	var terminal requestJSONEvent
+	if err := decoder.Decode(&terminal); err != nil {
+		t.Fatalf("Decode(terminal) error = %v", err)
+	}
+	if terminal.Type != "request.terminal" || terminal.RequestID != "req_json" || terminal.Status != approval.StatusResponded {
+		t.Fatalf("terminal event = %#v, want responded terminal", terminal)
+	}
+	if terminal.Response == nil || terminal.Response.ChoiceID != "approve" {
+		t.Fatalf("terminal response = %#v, want approve", terminal.Response)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("requestApprovalJSONEvents() error = %v", err)
+	}
 }
 
 func TestParseChoices(t *testing.T) {

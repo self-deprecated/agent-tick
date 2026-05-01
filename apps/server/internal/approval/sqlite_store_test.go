@@ -132,6 +132,41 @@ func TestSQLiteStoreRejectsInvalidAndDuplicateResponses(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreAbandonPendingAndAnsweredRequests(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	pending, err := store.Create(CreateRequest{Title: "Run command?"})
+	if err != nil {
+		t.Fatalf("Create() pending error = %v", err)
+	}
+	abandoned, err := store.Abandon(pending.ID)
+	if err != nil {
+		t.Fatalf("Abandon() error = %v", err)
+	}
+	if abandoned.Status != StatusAbandoned || abandoned.Response != nil {
+		t.Fatalf("Abandon() = %#v, want abandoned without response", abandoned)
+	}
+	if _, err := store.Respond(pending.ID, Response{ChoiceID: "approve"}); err != ErrAbandoned {
+		t.Fatalf("Respond() after abandon error = %v, want %v", err, ErrAbandoned)
+	}
+
+	answered, err := store.Create(CreateRequest{Title: "Answered"})
+	if err != nil {
+		t.Fatalf("Create() answered error = %v", err)
+	}
+	if _, err := store.Respond(answered.ID, Response{ChoiceID: "deny", Message: "no"}); err != nil {
+		t.Fatalf("Respond() error = %v", err)
+	}
+	current, err := store.Abandon(answered.ID)
+	if err != nil {
+		t.Fatalf("Abandon() answered error = %v", err)
+	}
+	if current.Status != StatusResponded || current.Response == nil || current.Response.ChoiceID != "deny" || current.Response.Message != "no" {
+		t.Fatalf("Abandon() answered = %#v, want existing response", current)
+	}
+}
+
 func TestSQLiteStoreQuestionnaireResponse(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

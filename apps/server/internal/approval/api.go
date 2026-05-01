@@ -71,7 +71,16 @@ const csrfHeaderName = "X-Agent-Tick-CSRF"
 type authContext struct {
 	UserID      string
 	FromSession bool
+	Source      string
 }
+
+const (
+	authSourceAdmin    = "admin"
+	authSourceAgent    = "agent"
+	authSourceDevice   = "device"
+	authSourceSession  = "session"
+	authSourceLoopback = "loopback"
+)
 
 type authContextKey struct{}
 
@@ -113,6 +122,13 @@ func (a *API) respondForUser(userID string, id string, response Response) (Appro
 		return a.scopedStore.RespondForUser(userID, id, response)
 	}
 	return a.store.Respond(id, response)
+}
+
+func (a *API) abandonForUser(userID string, id string) (ApprovalRequest, error) {
+	if a.scopedStore != nil {
+		return a.scopedStore.AbandonForUser(userID, id)
+	}
+	return a.store.Abandon(id)
 }
 
 func (a *API) createPairingTokenForUser(userID string, ttl time.Duration) (PairingToken, error) {
@@ -194,6 +210,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/approval-requests", a.list)
 	mux.HandleFunc("GET /v1/approval-requests/{id}", a.get)
 	mux.HandleFunc("POST /v1/approval-requests/{id}/responses", a.respond)
+	mux.HandleFunc("POST /v1/approval-requests/{id}/abandon", a.abandon)
 	mux.HandleFunc("POST /v1/pairing-tokens", a.createPairingToken)
 	mux.HandleFunc("GET /v1/devices", a.listDevices)
 	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
@@ -372,11 +389,37 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "approval request has expired")
 		return
 	}
+	if errors.Is(err, ErrAbandoned) {
+		writeError(w, http.StatusConflict, "approval request has been abandoned")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	a.events.Publish(Event{Type: "approval.responded", RequestID: request.ID})
+	writeJSON(w, http.StatusOK, request)
+}
+
+func (a *API) abandon(w http.ResponseWriter, r *http.Request) {
+	auth := currentAuth(r)
+	if auth.FromSession || auth.Source == authSourceDevice {
+		writeError(w, http.StatusForbidden, "only the request creator can abandon approval requests")
+		return
+	}
+
+	request, err := a.abandonForUser(auth.UserID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "approval request not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if request.Status == StatusAbandoned {
+		a.events.Publish(Event{Type: "approval.abandoned", RequestID: request.ID})
+	}
 	writeJSON(w, http.StatusOK, request)
 }
 
@@ -539,9 +582,14 @@ func (a *API) sendPush(request ApprovalRequest) {
 		log.Printf("list push tokens for request %s: %v", request.ID, err)
 		return
 	}
-	if err := a.push.SendApprovalRequest(tokens, request); err != nil {
-		log.Printf("send push for request %s: %v", request.ID, err)
+	if len(tokens) == 0 {
+		return
 	}
+	go func() {
+		if err := a.push.SendApprovalRequest(tokens, request); err != nil {
+			log.Printf("send push for request %s: %v", request.ID, err)
+		}
+	}()
 }
 
 func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
@@ -577,18 +625,18 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 					writeError(w, http.StatusForbidden, "missing or invalid CSRF token")
 					return
 				}
-				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID, FromSession: true}))
+				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID, FromSession: true, Source: authSourceSession}))
 				return
 			}
 		}
 		if a.token == "" && isLoopback(r.RemoteAddr) {
-			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
+			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, Source: authSourceLoopback}))
 			return
 		}
 
 		token := bearerToken(r)
 		if a.token != "" && tokenMatches(token, a.token) {
-			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
+			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, Source: authSourceAdmin}))
 			return
 		}
 		if a.userTokens != nil {
@@ -599,7 +647,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 					return
 				}
 				if ok {
-					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID}))
+					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID, Source: authSourceAgent}))
 					return
 				}
 			}
@@ -610,7 +658,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 					return
 				}
 				if ok {
-					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID}))
+					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID, Source: authSourceDevice}))
 					return
 				}
 			}
@@ -622,7 +670,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 			if ok {
-				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
+				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, Source: authSourceAgent}))
 				return
 			}
 		}
@@ -633,7 +681,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 			if ok {
-				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
+				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, Source: authSourceDevice}))
 				return
 			}
 		}
@@ -668,6 +716,9 @@ func requiredScope(r *http.Request) string {
 		return "approval:read"
 	}
 	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/approval-requests/") {
+		return "approval:write"
+	}
+	if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/approval-requests/") && strings.HasSuffix(r.URL.Path, "/abandon") {
 		return "approval:write"
 	}
 	return "admin"

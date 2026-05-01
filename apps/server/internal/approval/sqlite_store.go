@@ -25,6 +25,8 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	store := &SQLiteStore{db: db}
 	if err := store.migrate(); err != nil {
@@ -306,6 +308,12 @@ func (s *SQLiteStore) RespondForUser(userID string, id string, response Response
 	}
 	defer rollback(tx)
 
+	// Acquire the row write lock before reading so a concurrent abandon cannot be
+	// overwritten by a response based on a stale pending snapshot.
+	if _, err := tx.Exec("UPDATE approval_requests SET status = status WHERE id = ? AND user_id = ?", id, userID); err != nil {
+		return ApprovalRequest{}, err
+	}
+
 	row := tx.QueryRow(`
 		SELECT
 			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
@@ -329,6 +337,9 @@ func (s *SQLiteStore) RespondForUser(userID string, id string, response Response
 	}
 	if request.Status == StatusExpired {
 		return ApprovalRequest{}, ErrExpired
+	}
+	if request.Status == StatusAbandoned {
+		return ApprovalRequest{}, ErrAbandoned
 	}
 	if err := validateResponseForRequest(request, response); err != nil {
 		return ApprovalRequest{}, err
@@ -369,6 +380,71 @@ func (s *SQLiteStore) RespondForUser(userID string, id string, response Response
 	request.Status = StatusResponded
 	request.RespondedAt = &now
 	request.Response = &response
+	return request, nil
+}
+
+func (s *SQLiteStore) Abandon(id string) (ApprovalRequest, error) {
+	return s.AbandonForUser(defaultUserID, id)
+}
+
+func (s *SQLiteStore) AbandonForUser(userID string, id string) (ApprovalRequest, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	if err := s.expirePendingRequests(); err != nil {
+		return ApprovalRequest{}, err
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	defer rollback(tx)
+
+	result, err := tx.Exec(`
+		UPDATE approval_requests
+		SET status = ?
+		WHERE id = ?
+			AND user_id = ?
+			AND status = ?
+			AND NOT EXISTS (
+				SELECT 1 FROM approval_responses WHERE request_id = approval_requests.id
+			)
+	`, StatusAbandoned, id, userID, StatusPending)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	abandonedRows, err := result.RowsAffected()
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	if abandonedRows > 0 {
+		if err := insertAuditForUser(tx, userID, "approval_request.abandoned", id, nil); err != nil {
+			return ApprovalRequest{}, err
+		}
+	}
+
+	row := tx.QueryRow(`
+		SELECT
+			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
+			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
+			r.metadata_json, r.status, r.created_at,
+			resp.choice_id, resp.message, resp.answers_json, resp.created_at
+		FROM approval_requests r
+		LEFT JOIN approval_responses resp ON resp.request_id = r.id
+		WHERE r.id = ? AND r.user_id = ?
+	`, id, userID)
+
+	request, err := scanRequest(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ApprovalRequest{}, ErrNotFound
+	}
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ApprovalRequest{}, err
+	}
 	return request, nil
 }
 

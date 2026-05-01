@@ -55,6 +55,87 @@ func TestAPICreateListRespond(t *testing.T) {
 	}
 }
 
+func TestAPIAbandonPendingRequest(t *testing.T) {
+	handler := NewAPI(
+		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
+		"test-token",
+	).Handler()
+
+	created := request[ApprovalRequest](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/approval-requests",
+		CreateRequest{Title: "Run command?"},
+	)
+
+	abandoned := request[ApprovalRequest](
+		t,
+		handler,
+		http.MethodPost,
+		"/v1/approval-requests/"+created.ID+"/abandon",
+		nil,
+	)
+	if abandoned.Status != StatusAbandoned || abandoned.Response != nil {
+		t.Fatalf("abandoned = %#v, want abandoned without response", abandoned)
+	}
+
+	pending := request[[]ApprovalRequest](
+		t,
+		handler,
+		http.MethodGet,
+		"/v1/approval-requests?status=pending",
+		nil,
+	)
+	if len(pending) != 0 {
+		t.Fatalf("pending length = %d, want 0", len(pending))
+	}
+}
+
+func TestAPIRejectsDeviceAbandon(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?"})
+	pairing := request[PairingToken](t, handler, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
+	device := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairing.Token, DeviceName: "Phone"})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/approval-requests/"+created.ID+"/abandon", nil)
+	req.Header.Set("Authorization", "Bearer "+device.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusForbidden)
+	}
+	current, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if current.Status != StatusPending {
+		t.Fatalf("Status = %q, want %q", current.Status, StatusPending)
+	}
+}
+
+func TestAPIAbandonAlreadyRespondedRequestReturnsResponse(t *testing.T) {
+	handler := NewAPI(
+		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
+		"test-token",
+	).Handler()
+
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Run command?"})
+	responded := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "deny", Message: "no"})
+	abandoned := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests/"+created.ID+"/abandon", nil)
+
+	if abandoned.Status != StatusResponded || abandoned.Response == nil || abandoned.Response.ChoiceID != "deny" {
+		t.Fatalf("abandoned = %#v, want existing response", abandoned)
+	}
+	if abandoned.RespondedAt == nil || !abandoned.RespondedAt.Equal(*responded.RespondedAt) {
+		t.Fatalf("RespondedAt = %v, want %v", abandoned.RespondedAt, responded.RespondedAt)
+	}
+}
+
 func TestAPIQuestionnaireRespond(t *testing.T) {
 	handler := NewAPI(
 		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
@@ -523,6 +604,23 @@ func TestAPIAcceptsScopedAgentTokenForApprovalRequests(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("get status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/approval-requests/"+created.ID+"/abandon", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	req.Header.Set("Authorization", "Bearer "+credential.Token)
+	rec = httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("abandon status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+	var abandoned ApprovalRequest
+	if err := json.NewDecoder(rec.Body).Decode(&abandoned); err != nil {
+		t.Fatalf("Decode(abandoned) error = %v", err)
+	}
+	if abandoned.Status != StatusAbandoned {
+		t.Fatalf("abandoned status = %q, want %q", abandoned.Status, StatusAbandoned)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/v1/approval-requests", nil)

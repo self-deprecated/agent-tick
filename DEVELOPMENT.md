@@ -78,7 +78,7 @@ Create an agent token:
 2. Click `Create Agent Token`.
 3. Run the shown `agent-tick setup ...` command once on the machine where the agent runs.
 
-The token is shown once. Agent tokens created by the dashboard default to `approval:write`, which lets the CLI create approval requests and poll its own request by ID. It does not let the agent approve, pair devices, create tokens, or list all approvals.
+The token is shown once. Agent tokens created by the dashboard default to `approval:write`, which lets the CLI create approval requests, poll its own request by ID, and abandon pending requests it no longer needs. It does not let the agent approve, pair devices, create tokens, or list all approvals.
 
 ## CLI Usage
 
@@ -108,6 +108,15 @@ agent-tick request \
   --body "codex wants to run npm install" \
   --command "npm install"
 ```
+
+For agent integrations, stream machine-readable request lifecycle events and wait indefinitely with no request expiry:
+
+```sh
+agent-tick request --json-events --timeout 0 --expires-in 0 --title "Run command?"
+agent-tick abandon <request-id> --json
+```
+
+The first JSON event includes `requestId` immediately; a later terminal event includes the final status/response. `abandon` cancels a pending request from the creator side without approving or denying it.
 
 Guard a command so it only runs after approval:
 

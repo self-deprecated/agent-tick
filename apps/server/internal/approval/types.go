@@ -139,6 +139,7 @@ const (
 	StatusPending   = "pending"
 	StatusResponded = "responded"
 	StatusExpired   = "expired"
+	StatusAbandoned = "abandoned"
 )
 
 func DefaultChoices() []Choice {
