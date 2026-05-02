@@ -8,6 +8,7 @@ import {
   updateQuestionnaireAnswers,
   requestProjectID,
   requestProjectLabel,
+  requestRequesterLabel,
 } from "./approvalRequests";
 import {
   notificationDecision,
@@ -160,6 +161,29 @@ describe("project grouping helpers", () => {
       { id: "box:/work/a", label: "Alpha · box", requests: [first!, second!] },
       { id: "box:/work/c", label: "c · box", requests: [third!] },
     ]);
+  });
+});
+
+describe("approval detail metadata helpers", () => {
+  it("keeps requester and project context separate to avoid duplicate host text", () => {
+    const request = normalizeApproval({
+      id: "req_project",
+      requester: {
+        name: "agent-tick",
+        agentId: "agent",
+        host: "lattice",
+        workingDirectory: "/work/agent-tick",
+        projectName: "agent-tick",
+      },
+      title: "Approve?",
+      choices: [{ id: "approve", label: "Approve", kind: "approve" }],
+      allowFreeformReply: false,
+      status: "pending",
+      createdAt: "2026-04-19T12:00:00Z",
+    });
+
+    expect(requestRequesterLabel(request)).toBe("agent-tick");
+    expect(requestProjectLabel(request)).toBe("agent-tick · lattice");
   });
 });
 

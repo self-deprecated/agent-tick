@@ -1,4 +1,5 @@
 .devbox/
+.pi/
 node_modules/
 .expo/
 dist/

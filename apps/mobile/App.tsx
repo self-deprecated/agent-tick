@@ -35,6 +35,7 @@ import {
   updateQuestionnaireAnswers,
   requestProjectID,
   requestProjectLabel,
+  requestRequesterLabel,
   type ApprovalRequest,
   type Choice,
 } from "./approvalRequests";
@@ -928,10 +929,7 @@ export function ApprovalsScreen({
         style={styles.approvalScroll}
       >
         <Text style={styles.detailTitle}>{selected.title}</Text>
-        <Text style={styles.detailMeta}>
-          {selected.requester.name || selected.requester.agentId}
-          {selected.requester.host ? ` on ${selected.requester.host}` : ""}
-        </Text>
+        <Text style={styles.detailMeta}>{requestRequesterLabel(selected)}</Text>
         <Text style={styles.detailMeta}>Project: {requestProjectLabel(selected)}</Text>
         <View style={styles.detailFacts}>
           {selected.risk ? (

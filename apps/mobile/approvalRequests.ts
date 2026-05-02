@@ -163,6 +163,10 @@ export function requestProjectID(request: ApprovalRequest) {
   return cwd ? `${host}:${cwd}` : host;
 }
 
+export function requestRequesterLabel(request: ApprovalRequest) {
+  return request.requester.name || request.requester.agentId;
+}
+
 export function requestProjectLabel(request: ApprovalRequest) {
   const explicit = request.requester.projectName?.trim();
   const host = request.requester.host?.trim();
