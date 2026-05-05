@@ -12,6 +12,7 @@ import {
 export type ConnectionStatus = "checking" | "connected" | "disconnected";
 export type NotificationStatus = "checking" | "granted" | "denied" | "undetermined";
 export type PushStatus = "idle" | "registered" | "unsupported" | "failed";
+export type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
 export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   const label =
@@ -36,10 +37,12 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
 }
 
 export function SettingsScreen({
+  availability,
   connectionStatus,
   error,
   loading,
   notificationStatus,
+  onAvailabilityChange,
   onCheck,
   onForgetDevice,
   onPairDevice,
@@ -56,10 +59,12 @@ export function SettingsScreen({
   setToken,
   token,
 }: {
+  availability?: AvailabilityState;
   connectionStatus: ConnectionStatus;
   error: string | null;
   loading: boolean;
   notificationStatus: NotificationStatus;
+  onAvailabilityChange?: (state: AvailabilityState) => void;
   onCheck: () => void;
   onForgetDevice: () => void;
   onPairDevice: () => void;
@@ -136,6 +141,33 @@ export function SettingsScreen({
           <Text style={styles.pairingHint}>
             Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve.
           </Text>
+        </View>
+        <View style={styles.settingsSection}>
+          <Text style={styles.sectionHeading}>Availability</Text>
+          <Text style={styles.pairingHint}>
+            Agent Tick shares coarse last-seen and availability with your team so on-call and recently-active policies can route approvals. Use Do Not Disturb or Off-call when you should not be interrupted.
+          </Text>
+          <View style={styles.availabilityGrid}>
+            {(["available", "busy", "do-not-disturb", "off-call"] as AvailabilityState[]).map((state) => (
+              <Pressable
+                key={state}
+                onPress={() => onAvailabilityChange?.(state)}
+                style={[
+                  styles.availabilityButton,
+                  availability === state ? styles.availabilityButtonActive : null,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.availabilityButtonText,
+                    availability === state ? styles.availabilityButtonTextActive : null,
+                  ]}
+                >
+                  {availabilityLabel(state)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
         {notificationsSection}
       </ScrollView>
@@ -224,6 +256,17 @@ export function SettingsScreen({
       {notificationsSection}
     </ScrollView>
   );
+}
+
+function availabilityLabel(state: AvailabilityState) {
+  switch (state) {
+    case "do-not-disturb":
+      return "Do Not Disturb";
+    case "off-call":
+      return "Off-call";
+    default:
+      return state.charAt(0).toUpperCase() + state.slice(1);
+  }
 }
 
 const styles = StyleSheet.create({
@@ -323,6 +366,30 @@ const styles = StyleSheet.create({
   notificationActions: {
     flexDirection: "row",
     gap: 10,
+  },
+  availabilityGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  availabilityButton: {
+    borderColor: "#202124",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  availabilityButtonActive: {
+    backgroundColor: "#202124",
+  },
+  availabilityButtonText: {
+    color: "#202124",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  availabilityButtonTextActive: {
+    color: "#ffffff",
   },
   secondaryActionButton: {
     alignItems: "center",

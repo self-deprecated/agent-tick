@@ -128,8 +128,61 @@ type DeviceRecord struct {
 	DeviceID          string     `json:"deviceId"`
 	Name              string     `json:"name"`
 	PushNotifications bool       `json:"pushNotifications"`
+	LastSeenAt        *time.Time `json:"lastSeenAt,omitempty"`
 	CreatedAt         time.Time  `json:"createdAt"`
 	UnpairedAt        *time.Time `json:"unpairedAt,omitempty"`
+}
+
+const (
+	AvailabilityAvailable    = "available"
+	AvailabilityBusy         = "busy"
+	AvailabilityDoNotDisturb = "do-not-disturb"
+	AvailabilityOffCall      = "off-call"
+)
+
+type HeartbeatRequest struct {
+	DeviceID string `json:"deviceId,omitempty"`
+	Client   string `json:"client,omitempty"`
+}
+
+type AvailabilityRequest struct {
+	State           string     `json:"state"`
+	OverrideUntil   *time.Time `json:"overrideUntil,omitempty"`
+	OverrideSeconds int        `json:"overrideSeconds,omitempty"`
+}
+
+type UserAvailabilityRecord struct {
+	UserID        string     `json:"userId"`
+	State         string     `json:"state"`
+	LastSeenAt    *time.Time `json:"lastSeenAt,omitempty"`
+	OverrideUntil *time.Time `json:"overrideUntil,omitempty"`
+}
+
+type TeamCoverageRecord struct {
+	TeamID             string                   `json:"teamId"`
+	PrimaryUserID      string                   `json:"primaryUserId,omitempty"`
+	SecondaryUserID    string                   `json:"secondaryUserId,omitempty"`
+	SelectedApproverID string                   `json:"selectedApproverId,omitempty"`
+	Summary            string                   `json:"summary"`
+	Members            []UserAvailabilityRecord `json:"members"`
+}
+
+type OnCallScheduleRecord struct {
+	ScheduleID      string     `json:"scheduleId"`
+	TeamID          string     `json:"teamId"`
+	PrimaryUserID   string     `json:"primaryUserId"`
+	SecondaryUserID string     `json:"secondaryUserId,omitempty"`
+	StartsAt        *time.Time `json:"startsAt,omitempty"`
+	EndsAt          *time.Time `json:"endsAt,omitempty"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+}
+
+type UpsertOnCallScheduleRequest struct {
+	PrimaryUserID   string     `json:"primaryUserId"`
+	SecondaryUserID string     `json:"secondaryUserId,omitempty"`
+	StartsAt        *time.Time `json:"startsAt,omitempty"`
+	EndsAt          *time.Time `json:"endsAt,omitempty"`
 }
 
 type LoginRequest struct {

@@ -112,6 +112,8 @@ Policy-backed approval requests now collect auditable votes before writing the f
 
 The mobile app uses that progress data to show project, agent, owner, team, and policy context on the request detail screen. Eligible approvers keep the fast approve/deny buttons; people who already voted or are not eligible see read-only progress copy such as “You approved. Waiting for 1 more approval.” Completed history rows include the final vote trail for auditability.
 
+Presence and coverage features are intentionally coarse. Mobile clients send periodic authenticated heartbeats that update `lastSeenAt`; users can set availability to available, busy, do-not-disturb, or off-call. The dashboard team detail view shows current coverage, member availability, and primary/secondary on-call routing. On-call and recently-active policy templates use this data to choose the current approver, and timeout settings can escalate to a fallback user.
+
 Agent tokens can now carry an owner user, project, optional team, and optional default approval policy. When an agent-token-authenticated request supplies project/team/policy hints, the server validates them against the token and fills missing hints from the token defaults before storing request metadata. Request creation resolves the effective policy from the request hint, agent default, project default, or organization default and stores it in request metadata for the policy engine.
 
 ## CLI Usage

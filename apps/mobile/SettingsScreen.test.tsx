@@ -114,4 +114,13 @@ describe("SettingsScreen — paired state", () => {
     render(<SettingsScreen {...pairedProps} />);
     expect(screen.getByText("Notifications")).toBeTruthy();
   });
+
+  it("offers coarse availability controls with privacy copy", () => {
+    const onAvailabilityChange = jest.fn();
+    render(<SettingsScreen {...pairedProps} availability="available" onAvailabilityChange={onAvailabilityChange} />);
+    expect(screen.getByText("Availability")).toBeTruthy();
+    expect(screen.getByText(/coarse last-seen/)).toBeTruthy();
+    fireEvent.press(screen.getByText("Off-call"));
+    expect(onAvailabilityChange).toHaveBeenCalledWith("off-call");
+  });
 });

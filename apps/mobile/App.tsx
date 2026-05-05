@@ -58,6 +58,8 @@ type DeviceCredential = {
   token: string;
 };
 
+type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
+
 const defaultServer = "http://localhost:8787";
 const serverURLKey = "agent-tick.serverURL";
 const tokenKey = "agent-tick.token";
@@ -99,6 +101,7 @@ export default function App() {
   const [notificationStatus, setNotificationStatus] =
     useState<NotificationStatus>("checking");
   const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
+  const [availability, setAvailability] = useState<AvailabilityState>("available");
   const [error, setError] = useState<string | null>(null);
   const [scannerLocked, setScannerLocked] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -289,6 +292,25 @@ export default function App() {
     if (!settingsLoaded || !token) {
       return;
     }
+    const heartbeat = () => {
+      void fetch(`${serverURL.replace(/\/$/, "")}/v1/heartbeat`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ deviceId: deviceID, client: "mobile" }),
+      }).catch(() => undefined);
+    };
+    heartbeat();
+    const timer = setInterval(heartbeat, 60_000);
+    return () => clearInterval(timer);
+  }, [deviceID, serverURL, settingsLoaded, token]);
+
+  useEffect(() => {
+    if (!settingsLoaded || !token) {
+      return;
+    }
 
     const wsURL = serverURL
       .replace(/^http:\/\//, "ws://")
@@ -461,6 +483,32 @@ export default function App() {
   const checkConnection = async () => {
     setConnectionStatus("checking");
     await load({ visible: true });
+  };
+
+  const updateAvailability = async (state: AvailabilityState) => {
+    setAvailability(state);
+    try {
+      const response = await fetch(`${serverURL.replace(/\/$/, "")}/v1/availability`, {
+        method: "POST",
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ state }),
+      });
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      const record = (await response.json()) as { state?: AvailabilityState };
+      if (record.state) {
+        setAvailability(record.state);
+      }
+    } catch (err) {
+      Alert.alert(
+        "Availability update failed",
+        err instanceof Error ? err.message : "Could not update availability",
+      );
+    }
   };
 
   const requestNotifications = async () => {
@@ -700,10 +748,12 @@ export default function App() {
 
       {screen === "settings" ? (
         <SettingsScreen
+          availability={availability}
           connectionStatus={connectionStatus}
           error={error}
           loading={loading}
           notificationStatus={notificationStatus}
+          onAvailabilityChange={(state) => void updateAvailability(state as AvailabilityState)}
           onCheck={() => void checkConnection()}
           onForgetDevice={() => {
             setDeviceID("");

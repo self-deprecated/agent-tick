@@ -470,6 +470,35 @@ summary strong {
 	margin-bottom: 0.75rem;
 }
 
+.coverage-card {
+	border: 1px solid #e3d7c5;
+	border-radius: 18px;
+	background: #fffaf3;
+	margin-top: 1rem;
+	padding: 1rem;
+}
+
+.compact-heading {
+	align-items: flex-start;
+	margin-bottom: 0.5rem;
+}
+
+.mini-list {
+	display: grid;
+	gap: 0.45rem;
+	margin-top: 0.75rem;
+}
+
+.mini-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 0.75rem;
+	border-radius: 12px;
+	background: #f8efe3;
+	padding: 0.55rem 0.7rem;
+	font-size: 0.9rem;
+}
+
 .setup-output,
 .detail-card {
 	margin: 1rem 0;

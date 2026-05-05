@@ -997,6 +997,40 @@ func TestAPIRequiresSignedCreateRequestsWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestAPIPresenceHeartbeatAvailabilityAndCoverage(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	team := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Support"})
+	auth := loginAuth(t, handler, "support@example.com")
+	userID, _, _ := store.UserIDForSessionToken(auth.session.Value)
+	if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: userID, Role: RoleApprover}); err != nil {
+		t.Fatalf("UpsertTeamMember() error = %v", err)
+	}
+
+	heartbeat := requestWithSession[UserAvailabilityRecord](t, handler, auth, http.MethodPost, "/v1/heartbeat", HeartbeatRequest{Client: "mobile"})
+	if heartbeat.UserID != userID || heartbeat.LastSeenAt == nil {
+		t.Fatalf("heartbeat = %#v, want last seen for current user", heartbeat)
+	}
+	availability := requestWithSession[UserAvailabilityRecord](t, handler, auth, http.MethodPost, "/v1/availability", AvailabilityRequest{State: AvailabilityDoNotDisturb, OverrideSeconds: 60})
+	if availability.State != AvailabilityDoNotDisturb || availability.OverrideUntil == nil {
+		t.Fatalf("availability = %#v, want DND override", availability)
+	}
+	schedule := request[OnCallScheduleRecord](t, handler, http.MethodPost, "/v1/teams/"+team.TeamID+"/on-call", UpsertOnCallScheduleRequest{PrimaryUserID: userID})
+	if schedule.PrimaryUserID != userID {
+		t.Fatalf("schedule = %#v, want current user primary", schedule)
+	}
+	coverage := request[TeamCoverageRecord](t, handler, http.MethodGet, "/v1/teams/"+team.TeamID+"/coverage", nil)
+	if coverage.TeamID != team.TeamID || len(coverage.Members) != 1 {
+		t.Fatalf("coverage = %#v, want team member coverage", coverage)
+	}
+}
+
 func TestAPIPolicyResponsesReturnProgress(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

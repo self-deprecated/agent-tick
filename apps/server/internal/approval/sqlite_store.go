@@ -865,7 +865,7 @@ func (s *SQLiteStore) ListDevicesForUser(userID string) ([]DeviceRecord, error) 
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
-	rows, err := s.db.Query("SELECT id, name, expo_push_token, created_at, unpaired_at FROM devices WHERE user_id = ? ORDER BY created_at DESC", userID)
+	rows, err := s.db.Query("SELECT id, name, expo_push_token, last_seen_at, created_at, unpaired_at FROM devices WHERE user_id = ? ORDER BY created_at DESC", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -875,9 +875,10 @@ func (s *SQLiteStore) ListDevicesForUser(userID string) ([]DeviceRecord, error) 
 	for rows.Next() {
 		var device DeviceRecord
 		var pushToken string
+		var lastSeenAt string
 		var createdAt string
 		var unpairedAt string
-		if err := rows.Scan(&device.DeviceID, &device.Name, &pushToken, &createdAt, &unpairedAt); err != nil {
+		if err := rows.Scan(&device.DeviceID, &device.Name, &pushToken, &lastSeenAt, &createdAt, &unpairedAt); err != nil {
 			return nil, err
 		}
 		parsedCreatedAt, err := time.Parse(time.RFC3339, createdAt)
@@ -885,6 +886,7 @@ func (s *SQLiteStore) ListDevicesForUser(userID string) ([]DeviceRecord, error) 
 			return nil, err
 		}
 		device.CreatedAt = parsedCreatedAt
+		device.LastSeenAt = parseOptionalTime(lastSeenAt)
 		device.PushNotifications = pushToken != "" && unpairedAt == ""
 		device.UnpairedAt = parseOptionalTime(unpairedAt)
 		devices = append(devices, device)
@@ -1539,6 +1541,276 @@ func (s *SQLiteStore) RemoveTeamMember(organizationID string, teamID string, use
 	return tx.Commit()
 }
 
+func (s *SQLiteStore) RecordHeartbeat(userID string, deviceID string, client string) (UserAvailabilityRecord, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	now := time.Now().UTC()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return UserAvailabilityRecord{}, err
+	}
+	defer rollback(tx)
+	if _, err := tx.Exec("UPDATE users SET last_seen_at = ? WHERE id = ?", timeText(&now), userID); err != nil {
+		return UserAvailabilityRecord{}, err
+	}
+	if strings.TrimSpace(deviceID) != "" {
+		if _, err := tx.Exec("UPDATE devices SET last_seen_at = ? WHERE id = ? AND user_id = ? AND unpaired_at = ''", timeText(&now), deviceID, userID); err != nil {
+			return UserAvailabilityRecord{}, err
+		}
+	}
+	if err := insertAuditForUser(tx, userID, "presence.heartbeat", "", map[string]string{"client": strings.TrimSpace(client), "deviceId": strings.TrimSpace(deviceID)}); err != nil {
+		return UserAvailabilityRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return UserAvailabilityRecord{}, err
+	}
+	return s.GetAvailability(userID)
+}
+
+func (s *SQLiteStore) GetAvailability(userID string) (UserAvailabilityRecord, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	return s.availabilityForUser(userID)
+}
+
+func (s *SQLiteStore) SetAvailability(userID string, input AvailabilityRequest) (UserAvailabilityRecord, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	state, err := normalizeAvailability(input.State)
+	if err != nil {
+		return UserAvailabilityRecord{}, err
+	}
+	overrideUntil := input.OverrideUntil
+	if input.OverrideSeconds > 0 {
+		until := time.Now().UTC().Add(time.Duration(input.OverrideSeconds) * time.Second)
+		overrideUntil = &until
+	}
+	_, err = s.db.Exec("UPDATE users SET availability = ?, availability_until = ? WHERE id = ?", state, timeText(overrideUntil), userID)
+	if err != nil {
+		return UserAvailabilityRecord{}, err
+	}
+	return s.GetAvailability(userID)
+}
+
+func (s *SQLiteStore) ListTeamAvailability(organizationID string, teamID string) ([]UserAvailabilityRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	if err := s.ensureTeamExists(organizationID, teamID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`
+		SELECT tm.user_id, COALESCE(u.availability, 'available'), COALESCE(u.availability_until, ''), COALESCE(u.last_seen_at, '')
+		FROM team_members tm
+		LEFT JOIN users u ON u.id = tm.user_id
+		WHERE tm.team_id = ?
+		ORDER BY COALESCE(u.last_seen_at, '') DESC, tm.created_at ASC
+	`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	records := []UserAvailabilityRecord{}
+	for rows.Next() {
+		record, err := scanAvailability(rows)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
+func (s *SQLiteStore) GetTeamCoverage(organizationID string, teamID string) (TeamCoverageRecord, error) {
+	members, err := s.ListTeamAvailability(organizationID, teamID)
+	if err != nil {
+		return TeamCoverageRecord{}, err
+	}
+	schedules, err := s.ListOnCallSchedules(organizationID, teamID)
+	if err != nil {
+		return TeamCoverageRecord{}, err
+	}
+	coverage := TeamCoverageRecord{TeamID: teamID, Members: members, Summary: "No available approver right now."}
+	if len(schedules) > 0 {
+		coverage.PrimaryUserID = schedules[0].PrimaryUserID
+		coverage.SecondaryUserID = schedules[0].SecondaryUserID
+	}
+	coverage.SelectedApproverID = firstAvailableOnCall(members, coverage.PrimaryUserID, coverage.SecondaryUserID)
+	if coverage.SelectedApproverID == "" {
+		coverage.SelectedApproverID = mostRecentlyActiveAvailable(members)
+	}
+	if coverage.SelectedApproverID != "" {
+		coverage.Summary = coverage.SelectedApproverID + " would receive a request right now."
+		if coverage.SecondaryUserID != "" && coverage.SelectedApproverID == coverage.PrimaryUserID {
+			coverage.Summary += " " + coverage.SecondaryUserID + " is fallback."
+		}
+	}
+	return coverage, nil
+}
+
+func (s *SQLiteStore) ListOnCallSchedules(organizationID string, teamID string) ([]OnCallScheduleRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	if err := s.ensureTeamExists(organizationID, teamID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`
+		SELECT id, team_id, primary_user_id, secondary_user_id, starts_at, ends_at, created_at, updated_at
+		FROM team_on_call_schedules
+		WHERE team_id = ? AND (starts_at = '' OR starts_at <= ?) AND (ends_at = '' OR ends_at > ?)
+		ORDER BY starts_at DESC, created_at DESC
+	`, teamID, timeText(ptrTime(time.Now().UTC())), timeText(ptrTime(time.Now().UTC())))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	schedules := []OnCallScheduleRecord{}
+	for rows.Next() {
+		schedule, err := scanOnCallSchedule(rows)
+		if err != nil {
+			return nil, err
+		}
+		schedules = append(schedules, schedule)
+	}
+	return schedules, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertOnCallSchedule(organizationID string, teamID string, input UpsertOnCallScheduleRequest) (OnCallScheduleRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	primaryUserID := strings.TrimSpace(input.PrimaryUserID)
+	secondaryUserID := strings.TrimSpace(input.SecondaryUserID)
+	if primaryUserID == "" {
+		return OnCallScheduleRecord{}, ErrInvalidRequest
+	}
+	now := time.Now().UTC()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return OnCallScheduleRecord{}, err
+	}
+	defer rollback(tx)
+	if err := ensureTeamExistsTx(tx, organizationID, teamID); err != nil {
+		return OnCallScheduleRecord{}, err
+	}
+	scheduleID := "onc_" + newID()
+	_, err = tx.Exec(`
+		INSERT INTO team_on_call_schedules (id, team_id, primary_user_id, secondary_user_id, starts_at, ends_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, scheduleID, teamID, primaryUserID, secondaryUserID, timeText(input.StartsAt), timeText(input.EndsAt), timeText(&now), timeText(&now))
+	if err != nil {
+		return OnCallScheduleRecord{}, err
+	}
+	if err := insertAuditForUser(tx, defaultUserID, "team_on_call.upserted", teamID, map[string]string{"primaryUserId": primaryUserID, "secondaryUserId": secondaryUserID}); err != nil {
+		return OnCallScheduleRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return OnCallScheduleRecord{}, err
+	}
+	return OnCallScheduleRecord{ScheduleID: scheduleID, TeamID: teamID, PrimaryUserID: primaryUserID, SecondaryUserID: secondaryUserID, StartsAt: input.StartsAt, EndsAt: input.EndsAt, CreatedAt: now, UpdatedAt: now}, nil
+}
+
+func (s *SQLiteStore) availabilityForUser(userID string) (UserAvailabilityRecord, error) {
+	record, err := scanAvailability(s.db.QueryRow("SELECT id, availability, availability_until, last_seen_at FROM users WHERE id = ?", userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return UserAvailabilityRecord{}, ErrNotFound
+	}
+	return record, err
+}
+
+func normalizeAvailability(state string) (string, error) {
+	switch strings.TrimSpace(state) {
+	case "", AvailabilityAvailable:
+		return AvailabilityAvailable, nil
+	case AvailabilityBusy:
+		return AvailabilityBusy, nil
+	case AvailabilityDoNotDisturb, "dnd":
+		return AvailabilityDoNotDisturb, nil
+	case AvailabilityOffCall:
+		return AvailabilityOffCall, nil
+	default:
+		return "", ErrInvalidRequest
+	}
+}
+
+func scanAvailability(scanner requestScanner) (UserAvailabilityRecord, error) {
+	var record UserAvailabilityRecord
+	var availabilityUntil string
+	var lastSeenAt string
+	if err := scanner.Scan(&record.UserID, &record.State, &availabilityUntil, &lastSeenAt); err != nil {
+		return UserAvailabilityRecord{}, err
+	}
+	if record.State == "" {
+		record.State = AvailabilityAvailable
+	}
+	record.OverrideUntil = parseOptionalTime(availabilityUntil)
+	record.LastSeenAt = parseOptionalTime(lastSeenAt)
+	if record.OverrideUntil != nil && time.Now().UTC().After(*record.OverrideUntil) {
+		record.State = AvailabilityAvailable
+		record.OverrideUntil = nil
+	}
+	return record, nil
+}
+
+func scanOnCallSchedule(scanner requestScanner) (OnCallScheduleRecord, error) {
+	var schedule OnCallScheduleRecord
+	var startsAt string
+	var endsAt string
+	var createdAt string
+	var updatedAt string
+	if err := scanner.Scan(&schedule.ScheduleID, &schedule.TeamID, &schedule.PrimaryUserID, &schedule.SecondaryUserID, &startsAt, &endsAt, &createdAt, &updatedAt); err != nil {
+		return OnCallScheduleRecord{}, err
+	}
+	schedule.StartsAt = parseOptionalTime(startsAt)
+	schedule.EndsAt = parseOptionalTime(endsAt)
+	parsedCreatedAt, err := parseTime(createdAt)
+	if err != nil {
+		return OnCallScheduleRecord{}, err
+	}
+	schedule.CreatedAt = parsedCreatedAt
+	parsedUpdatedAt, err := parseTime(updatedAt)
+	if err != nil {
+		return OnCallScheduleRecord{}, err
+	}
+	schedule.UpdatedAt = parsedUpdatedAt
+	return schedule, nil
+}
+
+func firstAvailableOnCall(members []UserAvailabilityRecord, primaryUserID string, secondaryUserID string) string {
+	for _, userID := range []string{primaryUserID, secondaryUserID} {
+		if userID != "" && availabilityForMember(members, userID) == AvailabilityAvailable {
+			return userID
+		}
+	}
+	return ""
+}
+
+func mostRecentlyActiveAvailable(members []UserAvailabilityRecord) string {
+	for _, member := range members {
+		if member.State == AvailabilityAvailable {
+			return member.UserID
+		}
+	}
+	return ""
+}
+
+func availabilityForMember(members []UserAvailabilityRecord, userID string) string {
+	for _, member := range members {
+		if member.UserID == userID {
+			return member.State
+		}
+	}
+	return ""
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
+}
+
 func (s *SQLiteStore) ListProjects(organizationID string) ([]ProjectRecord, error) {
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
@@ -1780,11 +2052,25 @@ func (s *SQLiteStore) PreviewApprovalPolicy(organizationID string, policyID stri
 	case PolicyTemplateAnyTeamMember, PolicyTemplateQuorum:
 		preview.Notifies = []string{teamPreviewLabel(policy.TeamID)}
 	case PolicyTemplateOnCall:
-		preview.Notifies = []string{"current on-call person"}
-		preview.Limitations = append(preview.Limitations, "on-call schedules are not connected yet; this uses the configured escalation target")
+		coverage, err := s.GetTeamCoverage(organizationID, policy.TeamID)
+		if err == nil && coverage.SelectedApproverID != "" {
+			preview.Notifies = []string{coverage.Summary}
+		} else {
+			preview.Notifies = []string{"current on-call person"}
+			preview.Limitations = append(preview.Limitations, "no active on-call schedule or available primary was found")
+		}
 	case PolicyTemplateRecentlyActive:
-		preview.Notifies = []string{"most recently active approver"}
-		preview.Limitations = append(preview.Limitations, "presence is not connected yet; this falls back to team members")
+		members, err := s.ListTeamAvailability(organizationID, policy.TeamID)
+		if err == nil {
+			if selected := mostRecentlyActiveAvailable(members); selected != "" {
+				preview.Notifies = []string{selected + " is the most recently active available approver"}
+			} else {
+				preview.Notifies = []string{"most recently active approver"}
+				preview.Limitations = append(preview.Limitations, "no available team member has checked in yet")
+			}
+		} else {
+			preview.Notifies = []string{"most recently active approver"}
+		}
 	case PolicyTemplateSequence, PolicyTemplateRiskBased:
 		for _, step := range policy.Steps {
 			preview.Notifies = append(preview.Notifies, policyStepSummary(step))
@@ -2452,27 +2738,99 @@ func eligibleApproversTx(tx *sql.Tx, request ApprovalRequest, policy ApprovalPol
 		teamID = strings.TrimSpace(policy.TeamID)
 	}
 	if teamID != "" {
-		rows, err := tx.Query("SELECT user_id FROM team_members WHERE team_id = ? ORDER BY created_at ASC", teamID)
+		members, err := teamAvailabilityTx(tx, teamID)
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
-		users := []string{}
-		for rows.Next() {
-			var userID string
-			if err := rows.Scan(&userID); err != nil {
+		users := userIDsForAvailability(members)
+		timedOut := stepTimedOut(request, step)
+		if stepType == PolicyTemplateOnCall {
+			schedule, err := activeOnCallScheduleTx(tx, teamID)
+			if err != nil {
 				return nil, err
 			}
-			users = append(users, userID)
+			if schedule != nil {
+				selected := firstAvailableOnCall(members, schedule.PrimaryUserID, "")
+				if timedOut && schedule.SecondaryUserID != "" {
+					selected = firstAvailableOnCall(members, schedule.SecondaryUserID, schedule.PrimaryUserID)
+				}
+				if selected != "" {
+					return appendEscalationIfNeeded([]string{selected}, step, timedOut), nil
+				}
+			}
 		}
-		if err := rows.Err(); err != nil {
-			return nil, err
+		if stepType == PolicyTemplateRecentlyActive {
+			if selected := mostRecentlyActiveAvailable(members); selected != "" {
+				return appendEscalationIfNeeded([]string{selected}, step, timedOut), nil
+			}
 		}
 		if len(users) > 0 {
-			return users, nil
+			return appendEscalationIfNeeded(users, step, timedOut), nil
 		}
 	}
 	return ownerApproverIDs(request), nil
+}
+
+func teamAvailabilityTx(tx *sql.Tx, teamID string) ([]UserAvailabilityRecord, error) {
+	rows, err := tx.Query(`
+		SELECT tm.user_id, COALESCE(u.availability, 'available'), COALESCE(u.availability_until, ''), COALESCE(u.last_seen_at, '')
+		FROM team_members tm
+		LEFT JOIN users u ON u.id = tm.user_id
+		WHERE tm.team_id = ?
+		ORDER BY COALESCE(u.last_seen_at, '') DESC, tm.created_at ASC
+	`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	members := []UserAvailabilityRecord{}
+	for rows.Next() {
+		record, err := scanAvailability(rows)
+		if err != nil {
+			return nil, err
+		}
+		members = append(members, record)
+	}
+	return members, rows.Err()
+}
+
+func activeOnCallScheduleTx(tx *sql.Tx, teamID string) (*OnCallScheduleRecord, error) {
+	now := time.Now().UTC()
+	row := tx.QueryRow(`
+		SELECT id, team_id, primary_user_id, secondary_user_id, starts_at, ends_at, created_at, updated_at
+		FROM team_on_call_schedules
+		WHERE team_id = ? AND (starts_at = '' OR starts_at <= ?) AND (ends_at = '' OR ends_at > ?)
+		ORDER BY starts_at DESC, created_at DESC
+		LIMIT 1
+	`, teamID, timeText(&now), timeText(&now))
+	schedule, err := scanOnCallSchedule(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &schedule, nil
+}
+
+func userIDsForAvailability(members []UserAvailabilityRecord) []string {
+	users := []string{}
+	for _, member := range members {
+		users = append(users, member.UserID)
+	}
+	return users
+}
+
+func stepTimedOut(request ApprovalRequest, step ApprovalPolicyStep) bool {
+	return step.TimeoutSeconds > 0 && time.Since(request.CreatedAt) >= time.Duration(step.TimeoutSeconds)*time.Second
+}
+
+func appendEscalationIfNeeded(users []string, step ApprovalPolicyStep, timedOut bool) []string {
+	escalationTarget := strings.TrimSpace(step.EscalationTarget)
+	if !timedOut || escalationTarget == "" || slices.Contains(users, escalationTarget) {
+		return users
+	}
+	return append(users, escalationTarget)
 }
 
 func ownerApproverIDs(request ApprovalRequest) []string {
@@ -2747,6 +3105,9 @@ func (s *SQLiteStore) migrate() error {
 			email TEXT NOT NULL DEFAULT '' UNIQUE,
 			name TEXT NOT NULL,
 			password_hash TEXT NOT NULL DEFAULT '',
+			availability TEXT NOT NULL DEFAULT 'available',
+			availability_until TEXT NOT NULL DEFAULT '',
+			last_seen_at TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL
 		);
 
@@ -2791,6 +3152,17 @@ func (s *SQLiteStore) migrate() error {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
 			PRIMARY KEY (team_id, user_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS team_on_call_schedules (
+			id TEXT PRIMARY KEY,
+			team_id TEXT NOT NULL,
+			primary_user_id TEXT NOT NULL,
+			secondary_user_id TEXT NOT NULL DEFAULT '',
+			starts_at TEXT NOT NULL DEFAULT '',
+			ends_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
 		);
 
 		CREATE TABLE IF NOT EXISTS projects (
@@ -2918,6 +3290,7 @@ func (s *SQLiteStore) migrate() error {
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			expo_push_token TEXT NOT NULL DEFAULT '',
+			last_seen_at TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL
 		);
 
@@ -3001,6 +3374,15 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.addColumnIfMissing("approval_requests", "questions_json", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("users", "availability", "TEXT NOT NULL DEFAULT 'available'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("users", "availability_until", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("users", "last_seen_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("users", "password_hash", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -3041,6 +3423,9 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if err := s.addColumnIfMissing("devices", "expo_push_token", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("devices", "last_seen_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfMissing("agent_tokens", "revoked_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -3096,6 +3481,10 @@ func (s *SQLiteStore) migrate() error {
 			ON teams (organization_id, name);
 		CREATE INDEX IF NOT EXISTS team_members_user_idx
 			ON team_members (user_id);
+		CREATE INDEX IF NOT EXISTS team_on_call_schedules_team_idx
+			ON team_on_call_schedules (team_id, starts_at, ends_at);
+		CREATE INDEX IF NOT EXISTS users_availability_seen_idx
+			ON users (availability, last_seen_at);
 		CREATE INDEX IF NOT EXISTS projects_org_name_idx
 			ON projects (organization_id, name);
 		CREATE INDEX IF NOT EXISTS approval_policies_org_name_idx

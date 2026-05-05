@@ -30,6 +30,7 @@ type API struct {
 	organizations    OrganizationStore
 	teamsProjects    TeamProjectStore
 	policies         ApprovalPolicyStore
+	presence         PresenceStore
 	token            string
 	mode             string
 	publicURL        string
@@ -72,6 +73,9 @@ func NewAPI(store Store, token string) *API {
 	}
 	if policies, ok := store.(ApprovalPolicyStore); ok {
 		api.policies = policies
+	}
+	if presence, ok := store.(PresenceStore); ok {
+		api.presence = presence
 	}
 	return api
 }
@@ -302,6 +306,13 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/teams/{id}/members", a.listTeamMembers)
 	mux.HandleFunc("POST /v1/teams/{id}/members", a.upsertTeamMember)
 	mux.HandleFunc("DELETE /v1/teams/{id}/members/{userID}", a.removeTeamMember)
+	mux.HandleFunc("GET /v1/teams/{id}/availability", a.listTeamAvailability)
+	mux.HandleFunc("GET /v1/teams/{id}/coverage", a.getTeamCoverage)
+	mux.HandleFunc("GET /v1/teams/{id}/on-call", a.listOnCallSchedules)
+	mux.HandleFunc("POST /v1/teams/{id}/on-call", a.upsertOnCallSchedule)
+	mux.HandleFunc("POST /v1/heartbeat", a.recordHeartbeat)
+	mux.HandleFunc("GET /v1/availability", a.getAvailability)
+	mux.HandleFunc("POST /v1/availability", a.setAvailability)
 	mux.HandleFunc("GET /v1/projects", a.listProjects)
 	mux.HandleFunc("POST /v1/projects", a.createProject)
 	mux.HandleFunc("GET /v1/projects/{id}", a.getProject)
@@ -886,6 +897,149 @@ func (a *API) removeTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) recordHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if a.presence == nil {
+		writeError(w, http.StatusNotImplemented, "presence is not supported")
+		return
+	}
+	var input HeartbeatRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid heartbeat JSON")
+		return
+	}
+	auth := currentAuth(r)
+	record, err := a.presence.RecordHeartbeat(auth.UserID, input.DeviceID, input.Client)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
+}
+
+func (a *API) getAvailability(w http.ResponseWriter, r *http.Request) {
+	if a.presence == nil {
+		writeError(w, http.StatusNotImplemented, "presence is not supported")
+		return
+	}
+	record, err := a.presence.GetAvailability(currentAuth(r).UserID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
+}
+
+func (a *API) setAvailability(w http.ResponseWriter, r *http.Request) {
+	if a.presence == nil {
+		writeError(w, http.StatusNotImplemented, "presence is not supported")
+		return
+	}
+	var input AvailabilityRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid availability JSON")
+		return
+	}
+	record, err := a.presence.SetAvailability(currentAuth(r).UserID, input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
+}
+
+func (a *API) listTeamAvailability(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	if a.presence == nil {
+		writeError(w, http.StatusNotImplemented, "presence is not supported")
+		return
+	}
+	records, err := a.presence.ListTeamAvailability(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, records)
+}
+
+func (a *API) getTeamCoverage(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	if a.presence == nil {
+		writeError(w, http.StatusNotImplemented, "presence is not supported")
+		return
+	}
+	coverage, err := a.presence.GetTeamCoverage(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, coverage)
+}
+
+func (a *API) listOnCallSchedules(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	if a.presence == nil {
+		writeError(w, http.StatusNotImplemented, "presence is not supported")
+		return
+	}
+	schedules, err := a.presence.ListOnCallSchedules(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, schedules)
+}
+
+func (a *API) upsertOnCallSchedule(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleAdmin) {
+		return
+	}
+	if a.presence == nil {
+		writeError(w, http.StatusNotImplemented, "presence is not supported")
+		return
+	}
+	var input UpsertOnCallScheduleRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid on-call JSON")
+		return
+	}
+	schedule, err := a.presence.UpsertOnCallSchedule(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, schedule)
 }
 
 func (a *API) listProjects(w http.ResponseWriter, r *http.Request) {

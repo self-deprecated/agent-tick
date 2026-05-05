@@ -64,8 +64,45 @@ export interface DeviceRecord {
 	deviceId: string;
 	name: string;
 	pushNotifications: boolean;
+	lastSeenAt?: string;
 	createdAt: string;
 	unpairedAt?: string;
+}
+
+export type AvailabilityState = 'available' | 'busy' | 'do-not-disturb' | 'off-call' | string;
+
+export interface UserAvailabilityRecord {
+	userId: string;
+	state: AvailabilityState;
+	lastSeenAt?: string;
+	overrideUntil?: string;
+}
+
+export interface TeamCoverageRecord {
+	teamId: string;
+	primaryUserId?: string;
+	secondaryUserId?: string;
+	selectedApproverId?: string;
+	summary: string;
+	members: UserAvailabilityRecord[];
+}
+
+export interface OnCallScheduleRecord {
+	scheduleId: string;
+	teamId: string;
+	primaryUserId: string;
+	secondaryUserId?: string;
+	startsAt?: string;
+	endsAt?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface UpsertOnCallScheduleRequest {
+	primaryUserId: string;
+	secondaryUserId?: string;
+	startsAt?: string;
+	endsAt?: string;
 }
 
 export interface LoginRequest {
@@ -347,6 +384,25 @@ export class AdminApiClient {
 
 	listTeamMembers(teamId: string): Promise<TeamMemberRecord[]> {
 		return this.#requestJSON<TeamMemberRecord[]>(`/v1/teams/${encodeURIComponent(teamId)}/members`);
+	}
+
+	listTeamAvailability(teamId: string): Promise<UserAvailabilityRecord[]> {
+		return this.#requestJSON<UserAvailabilityRecord[]>(`/v1/teams/${encodeURIComponent(teamId)}/availability`);
+	}
+
+	getTeamCoverage(teamId: string): Promise<TeamCoverageRecord> {
+		return this.#requestJSON<TeamCoverageRecord>(`/v1/teams/${encodeURIComponent(teamId)}/coverage`);
+	}
+
+	listOnCallSchedules(teamId: string): Promise<OnCallScheduleRecord[]> {
+		return this.#requestJSON<OnCallScheduleRecord[]>(`/v1/teams/${encodeURIComponent(teamId)}/on-call`);
+	}
+
+	upsertOnCallSchedule(teamId: string, input: UpsertOnCallScheduleRequest): Promise<OnCallScheduleRecord> {
+		return this.#requestJSON<OnCallScheduleRecord>(`/v1/teams/${encodeURIComponent(teamId)}/on-call`, {
+			method: 'POST',
+			body: input
+		});
 	}
 
 	upsertTeamMember(teamId: string, input: UpsertTeamMemberRequest): Promise<TeamMemberRecord> {

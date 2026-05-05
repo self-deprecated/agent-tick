@@ -10,12 +10,15 @@
 		type ApprovalRequest,
 		type Choice,
 		type DeviceRecord,
+		type OnCallScheduleRecord,
 		type OrganizationMembershipRecord,
 		type PairingToken,
 		type ProjectRecord,
 		type Requester,
 		type SessionCredential,
-		type TeamRecord
+		type TeamCoverageRecord,
+		type TeamRecord,
+		type UserAvailabilityRecord
 	} from './api';
 	import type { AdminConfig } from './app';
 
@@ -76,6 +79,14 @@
 	let teamDescription = $state('');
 	let creatingTeam = $state(false);
 	let selectedTeamID = $state('');
+	let teamAvailability = $state.raw<UserAvailabilityRecord[]>([]);
+	let teamCoverage = $state<TeamCoverageRecord | null>(null);
+	let onCallSchedules = $state.raw<OnCallScheduleRecord[]>([]);
+	let onCallPrimaryUserID = $state('');
+	let onCallSecondaryUserID = $state('');
+	let teamPresenceStatus = $state<LoadStatus>('idle');
+	let teamPresenceError = $state('');
+	let savingOnCall = $state(false);
 
 	let projects = $state.raw<ProjectRecord[]>([]);
 	let projectsStatus = $state<LoadStatus>('idle');
@@ -253,6 +264,46 @@
 			teams = [];
 			teamsStatus = 'error';
 			teamsError = errorMessage(error);
+		}
+	}
+
+	async function loadTeamPresence(teamID = selectedTeamID) {
+		if (!teamID) return;
+		teamPresenceStatus = 'loading';
+		teamPresenceError = '';
+		try {
+			const [availability, coverage, schedules] = await Promise.all([api.listTeamAvailability(teamID), api.getTeamCoverage(teamID), api.listOnCallSchedules(teamID)]);
+			teamAvailability = availability;
+			teamCoverage = coverage;
+			onCallSchedules = schedules;
+			onCallPrimaryUserID = schedules[0]?.primaryUserId || coverage.primaryUserId || '';
+			onCallSecondaryUserID = schedules[0]?.secondaryUserId || coverage.secondaryUserId || '';
+			teamPresenceStatus = 'ready';
+		} catch (error) {
+			teamAvailability = [];
+			teamCoverage = null;
+			onCallSchedules = [];
+			teamPresenceStatus = 'error';
+			teamPresenceError = errorMessage(error);
+		}
+	}
+
+	async function saveOnCallSchedule(event?: SubmitEvent) {
+		event?.preventDefault();
+		if (!selectedTeamID) return;
+		teamPresenceError = '';
+		if (!onCallPrimaryUserID.trim()) {
+			teamPresenceError = 'Enter a primary approver user ID.';
+			return;
+		}
+		savingOnCall = true;
+		try {
+			await api.upsertOnCallSchedule(selectedTeamID, { primaryUserId: onCallPrimaryUserID.trim(), secondaryUserId: onCallSecondaryUserID.trim() || undefined });
+			await loadTeamPresence(selectedTeamID);
+		} catch (error) {
+			teamPresenceError = errorMessage(error);
+		} finally {
+			savingOnCall = false;
 		}
 	}
 
@@ -497,6 +548,19 @@
 		}
 	}
 
+	function selectTeam(teamID: string) {
+		selectedTeamID = teamID;
+		void loadTeamPresence(teamID);
+	}
+
+	function closeTeam() {
+		selectedTeamID = '';
+		teamAvailability = [];
+		teamCoverage = null;
+		onCallSchedules = [];
+		teamPresenceError = '';
+	}
+
 	function requesterLabel(requester: Requester): string {
 		const base = requester.projectName || requester.host || requester.name || 'Agent';
 		if (requester.workingDirectory && requester.workingDirectory !== base) {
@@ -533,6 +597,12 @@
 
 	function projectCountForTeam(teamID: string): number {
 		return projects.filter((project) => project.teamId === teamID).length;
+	}
+
+	function availabilityLabel(record: UserAvailabilityRecord): string {
+		const seen = record.lastSeenAt ? ` · last seen ${formatDate(record.lastSeenAt)}` : ' · no heartbeat yet';
+		const until = record.overrideUntil ? ` until ${formatDate(record.overrideUntil)}` : '';
+		return `${record.state}${until}${seen}`;
 	}
 
 	function formatDate(value: string | undefined): string {
@@ -923,7 +993,7 @@
 										{/if}
 										<p class="muted">{projectCountForTeam(team.teamId)} projects · Created {formatDate(team.createdAt)}</p>
 									</div>
-									<button class="secondary" onclick={() => (selectedTeamID = team.teamId)}>Details</button>
+									<button class="secondary" onclick={() => selectTeam(team.teamId)}>Details</button>
 								</article>
 							{/each}
 						</div>
@@ -935,12 +1005,49 @@
 									<p class="eyebrow">Team detail</p>
 									<h3>{selectedTeam.name}</h3>
 								</div>
-								<button class="ghost" onclick={() => (selectedTeamID = '')}>Close</button>
+								<button class="ghost" onclick={closeTeam}>Close</button>
 							</div>
 							<p class="muted">{selectedTeam.description || 'No description yet.'}</p>
 							<p><code>{selectedTeam.teamId}</code></p>
 							<p class="muted">Created {formatDate(selectedTeam.createdAt)} · Updated {formatDate(selectedTeam.updatedAt)}</p>
 							<p class="muted">Projects: {projects.filter((project) => project.teamId === selectedTeam.teamId).map((project) => project.name).join(', ') || 'none yet'}</p>
+							<div class="coverage-card">
+								<div class="panel-heading compact-heading">
+									<div>
+										<p class="eyebrow">Coverage</p>
+										<strong>{teamCoverage?.summary || 'No coverage data yet.'}</strong>
+									</div>
+									<button class="secondary" onclick={() => loadTeamPresence(selectedTeam.teamId)} disabled={teamPresenceStatus === 'loading'}>{teamPresenceStatus === 'loading' ? 'Refreshing…' : 'Refresh coverage'}</button>
+								</div>
+								<p class="muted">Preview uses coarse last-seen and manual availability. Mobile users can set Do Not Disturb or Off-call from Settings.</p>
+								{#if teamPresenceError}
+									<p class="error" role="alert">{teamPresenceError}</p>
+								{/if}
+								<form class="agent-form" onsubmit={saveOnCallSchedule}>
+									<label>
+										<span>Primary on-call user ID</span>
+										<input bind:value={onCallPrimaryUserID} type="text" autocomplete="off" placeholder="usr_..." />
+									</label>
+									<label>
+										<span>Secondary fallback user ID</span>
+										<input bind:value={onCallSecondaryUserID} type="text" autocomplete="off" placeholder="usr_..." />
+									</label>
+									<button type="submit" disabled={savingOnCall}>{savingOnCall ? 'Saving…' : 'Save on-call'}</button>
+								</form>
+								{#if onCallSchedules.length}
+									<p class="muted">Current on-call: primary {onCallSchedules[0].primaryUserId}{onCallSchedules[0].secondaryUserId ? ` · secondary ${onCallSchedules[0].secondaryUserId}` : ''}</p>
+								{/if}
+								{#if teamAvailability.length}
+									<div class="mini-list">
+										{#each teamAvailability as member (member.userId)}
+											<div class="mini-row">
+												<code>{member.userId}</code>
+												<span>{availabilityLabel(member)}</span>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
 						</section>
 					{/if}
 				</div>

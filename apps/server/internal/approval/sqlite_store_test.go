@@ -635,6 +635,84 @@ func TestSQLiteStoreApprovalPolicyCRUDValidationAndDefaults(t *testing.T) {
 	}
 }
 
+func TestSQLiteStorePresenceRecentlyActiveAndOnCallRouting(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Coverage"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	sessionA, err := store.LoginOrCreateUser("a@example.com", "secret", "Alice", time.Hour)
+	if err != nil {
+		t.Fatalf("LoginOrCreateUser(a) error = %v", err)
+	}
+	sessionB, err := store.LoginOrCreateUser("b@example.com", "secret", "Bob", time.Hour)
+	if err != nil {
+		t.Fatalf("LoginOrCreateUser(b) error = %v", err)
+	}
+	for _, userID := range []string{sessionA.UserID, sessionB.UserID} {
+		if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: userID, Role: RoleApprover}); err != nil {
+			t.Fatalf("UpsertTeamMember(%s) error = %v", userID, err)
+		}
+	}
+	if _, err := store.SetAvailability(sessionA.UserID, AvailabilityRequest{State: AvailabilityBusy}); err != nil {
+		t.Fatalf("SetAvailability() error = %v", err)
+	}
+	if _, err := store.RecordHeartbeat(sessionA.UserID, "", "mobile"); err != nil {
+		t.Fatalf("RecordHeartbeat(a) error = %v", err)
+	}
+	if _, err := store.RecordHeartbeat(sessionB.UserID, "", "mobile"); err != nil {
+		t.Fatalf("RecordHeartbeat(b) error = %v", err)
+	}
+
+	recentPolicy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Recent", Template: PolicyTemplateRecentlyActive, TeamID: team.TeamID})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy(recent) error = %v", err)
+	}
+	recentRequest, err := store.Create(CreateRequest{Title: "Route recent", Metadata: map[string]string{"effectiveApprovalPolicy": recentPolicy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(recent) error = %v", err)
+	}
+	recentProgress, err := store.PolicyProgressForRequest(recentRequest.ID, sessionB.UserID)
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest(recent) error = %v", err)
+	}
+	if recentProgress == nil || len(recentProgress.EligibleApproverIDs) != 1 || recentProgress.EligibleApproverIDs[0] != sessionB.UserID || !recentProgress.CurrentUserEligible {
+		t.Fatalf("recent progress = %#v, want Bob as the recently active available approver", recentProgress)
+	}
+
+	if _, err := store.UpsertOnCallSchedule(defaultOrganizationID, team.TeamID, UpsertOnCallScheduleRequest{PrimaryUserID: sessionA.UserID, SecondaryUserID: sessionB.UserID}); err != nil {
+		t.Fatalf("UpsertOnCallSchedule() error = %v", err)
+	}
+	onCallPolicy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "On-call", Template: PolicyTemplateOnCall, TeamID: team.TeamID, Settings: map[string]string{"timeoutSeconds": "1", "escalationTarget": sessionB.UserID}})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy(on-call) error = %v", err)
+	}
+	onCallRequest, err := store.Create(CreateRequest{Title: "Route on-call", Metadata: map[string]string{"effectiveApprovalPolicy": onCallPolicy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(on-call) error = %v", err)
+	}
+	past := time.Now().UTC().Add(-2 * time.Minute)
+	if _, err := store.db.Exec("UPDATE approval_requests SET created_at = ? WHERE id = ?", timeText(&past), onCallRequest.ID); err != nil {
+		t.Fatalf("backdate request error = %v", err)
+	}
+	onCallProgress, err := store.PolicyProgressForRequest(onCallRequest.ID, sessionB.UserID)
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest(on-call) error = %v", err)
+	}
+	if onCallProgress == nil || len(onCallProgress.EligibleApproverIDs) != 1 || onCallProgress.EligibleApproverIDs[0] != sessionB.UserID {
+		t.Fatalf("on-call progress = %#v, want secondary after timeout", onCallProgress)
+	}
+	coverage, err := store.GetTeamCoverage(defaultOrganizationID, team.TeamID)
+	if err != nil {
+		t.Fatalf("GetTeamCoverage() error = %v", err)
+	}
+	if coverage.SecondaryUserID != sessionB.UserID || coverage.SelectedApproverID != sessionB.UserID {
+		t.Fatalf("coverage = %#v, want secondary selected because primary is busy", coverage)
+	}
+}
+
 func TestSQLiteStorePolicyQuorumVoteFlow(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

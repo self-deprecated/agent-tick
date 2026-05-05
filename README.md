@@ -77,7 +77,7 @@ Your phone shows only the supplied options plus **Do nothing / skip**. The CLI p
 
 Requests are grouped in the mobile app by project. The CLI defaults the project to the current machine and working directory; override the display name with `--project` and the grouping directory with `--project-dir`. Team-aware servers can also use `--project-id` / `AGENT_TICK_PROJECT_ID`, `--team` / `AGENT_TICK_TEAM`, and `--approval-policy` / `AGENT_TICK_APPROVAL_POLICY` routing hints.
 
-Team-aware servers can attach approval policies to projects or agent tokens. Simple requests still need one response, while policy-backed requests can require an owner, any team member, a quorum, or an ordered multi-step flow. The phone app shows who is responsible, quorum progress, and vote history; the CLI keeps waiting until the policy reaches its final approved or denied decision.
+Team-aware servers can attach approval policies to projects or agent tokens. Simple requests still need one response, while policy-backed requests can require an owner, any team member, a quorum, an on-call approver, the most recently active available teammate, or an ordered multi-step flow. The phone app shows who is responsible, quorum progress, availability controls, and vote history; the CLI keeps waiting until the policy reaches its final approved or denied decision.
 
 ## How It Works
 

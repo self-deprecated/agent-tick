@@ -127,6 +127,16 @@ type OrganizationStore interface {
 	DefaultOrganizationForUser(userID string) (OrganizationMembershipRecord, error)
 }
 
+type PresenceStore interface {
+	RecordHeartbeat(userID string, deviceID string, client string) (UserAvailabilityRecord, error)
+	GetAvailability(userID string) (UserAvailabilityRecord, error)
+	SetAvailability(userID string, input AvailabilityRequest) (UserAvailabilityRecord, error)
+	ListTeamAvailability(organizationID string, teamID string) ([]UserAvailabilityRecord, error)
+	GetTeamCoverage(organizationID string, teamID string) (TeamCoverageRecord, error)
+	ListOnCallSchedules(organizationID string, teamID string) ([]OnCallScheduleRecord, error)
+	UpsertOnCallSchedule(organizationID string, teamID string, input UpsertOnCallScheduleRequest) (OnCallScheduleRecord, error)
+}
+
 type TeamProjectStore interface {
 	ListTeams(organizationID string) ([]TeamRecord, error)
 	CreateTeam(organizationID string, input CreateTeamRequest) (TeamRecord, error)
