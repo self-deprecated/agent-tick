@@ -443,7 +443,80 @@ func normalizeCreateRequest(input CreateRequest) (CreateRequest, error) {
 	default:
 		return CreateRequest{}, fmt.Errorf("%w: unsupported requestType %q", ErrInvalidRequest, input.RequestType)
 	}
+	input.Risk = effectiveCreateRequestRisk(input)
 	return input, nil
+}
+
+func effectiveCreateRequestRisk(input CreateRequest) string {
+	serverRisk := ClassifyCommandRisk(input.Command)
+	clientRisk := normalizeExplicitRisk(input.Risk)
+	if serverRisk == "" {
+		// Low risk is only trusted when the server can independently classify the
+		// command as low risk. Blank risk evaluates as medium in risk-based
+		// policies, so ignoring client-supplied low risk avoids downgrade attacks.
+		if clientRisk == "high" || clientRisk == "medium" {
+			return clientRisk
+		}
+		return ""
+	}
+	if riskRank(clientRisk) > riskRank(serverRisk) {
+		return clientRisk
+	}
+	return serverRisk
+}
+
+func ClassifyCommandRisk(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return ""
+	}
+	lower := strings.ToLower(command)
+	if strings.Contains(lower, "rm -rf") ||
+		strings.Contains(lower, "sudo ") ||
+		strings.Contains(lower, "chmod 777") ||
+		strings.Contains(lower, "git reset --hard") ||
+		strings.Contains(lower, "kubectl delete") {
+		return "high"
+	}
+	if strings.Contains(lower, "npm install") ||
+		strings.Contains(lower, "curl ") ||
+		strings.Contains(lower, "wget ") ||
+		strings.Contains(lower, "go get") ||
+		strings.Contains(lower, "cargo install") {
+		return "medium"
+	}
+	if strings.HasPrefix(lower, "ls") ||
+		strings.HasPrefix(lower, "pwd") ||
+		strings.HasPrefix(lower, "git status") {
+		return "low"
+	}
+	return "medium"
+}
+
+func normalizeExplicitRisk(risk string) string {
+	switch strings.ToLower(strings.TrimSpace(risk)) {
+	case "high":
+		return "high"
+	case "medium":
+		return "medium"
+	case "low":
+		return "low"
+	default:
+		return ""
+	}
+}
+
+func riskRank(risk string) int {
+	switch risk {
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	case "low":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func normalizeChoices(input []Choice, steerIDs bool) ([]Choice, error) {

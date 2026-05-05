@@ -964,7 +964,7 @@ func TestSQLiteStoreRiskBasedPolicyChoosesPathFromRequestRisk(t *testing.T) {
 		t.Fatalf("CreateApprovalPolicy() error = %v", err)
 	}
 
-	low, err := store.Create(CreateRequest{Title: "Low", Risk: "low", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	low, err := store.Create(CreateRequest{Title: "Low", Command: "ls", Risk: "low", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
 	if err != nil {
 		t.Fatalf("Create(low) error = %v", err)
 	}
@@ -976,7 +976,7 @@ func TestSQLiteStoreRiskBasedPolicyChoosesPathFromRequestRisk(t *testing.T) {
 		t.Fatalf("low progress = %#v, want owner-only low-risk path", lowProgress)
 	}
 
-	medium, err := store.Create(CreateRequest{Title: "Medium", Risk: "medium", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	medium, err := store.Create(CreateRequest{Title: "Medium", Command: "npm install", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
 	if err != nil {
 		t.Fatalf("Create(medium) error = %v", err)
 	}
@@ -988,13 +988,16 @@ func TestSQLiteStoreRiskBasedPolicyChoosesPathFromRequestRisk(t *testing.T) {
 		t.Fatalf("medium progress = %#v, want any team member medium-risk path", mediumProgress)
 	}
 
-	high, err := store.Create(CreateRequest{Title: "High", Risk: "high", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	high, err := store.Create(CreateRequest{Title: "High", Command: "rm -rf /tmp/agent-tick", Risk: "low", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
 	if err != nil {
 		t.Fatalf("Create(high) error = %v", err)
 	}
 	highProgress, err := store.PolicyProgressForRequest(high.ID, "usr_a")
 	if err != nil {
 		t.Fatalf("PolicyProgressForRequest(high) error = %v", err)
+	}
+	if high.Risk != "high" {
+		t.Fatalf("high request risk = %q, want server-classified high despite client downgrade", high.Risk)
 	}
 	if highProgress == nil || highProgress.RequiredApprovals != 2 || highProgress.WaitingFor != 2 || len(highProgress.EligibleApproverIDs) != 2 {
 		t.Fatalf("high progress = %#v, want quorum high-risk path", highProgress)
@@ -1012,6 +1015,22 @@ func TestSQLiteStoreRiskBasedPolicyChoosesPathFromRequestRisk(t *testing.T) {
 	}
 	if final.Status != StatusResponded || final.PolicyProgress == nil || final.PolicyProgress.State != "approved" {
 		t.Fatalf("final high-risk response = %#v progress %#v, want approved", final, final.PolicyProgress)
+	}
+
+	ownerFallbackPolicy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Risk owner fallback", Template: PolicyTemplateRiskBased})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy(owner fallback) error = %v", err)
+	}
+	fallback, err := store.Create(CreateRequest{Title: "Fallback", Command: "rm -rf /tmp/agent-tick", Metadata: map[string]string{"effectiveApprovalPolicy": ownerFallbackPolicy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(fallback) error = %v", err)
+	}
+	fallbackProgress, err := store.PolicyProgressForRequest(fallback.ID, defaultUserID)
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest(fallback) error = %v", err)
+	}
+	if fallbackProgress == nil || fallbackProgress.RequiredApprovals != 1 || len(fallbackProgress.EligibleApproverIDs) != 1 || fallbackProgress.EligibleApproverIDs[0] != defaultUserID {
+		t.Fatalf("fallback progress = %#v, want owner-only fallback without team", fallbackProgress)
 	}
 }
 
@@ -1074,10 +1093,12 @@ func TestSQLiteStorePolicyGatesSteerAndQuestionnaireResponders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTeam() error = %v", err)
 	}
-	if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: "usr_eligible", Role: RoleApprover}); err != nil {
-		t.Fatalf("UpsertTeamMember() error = %v", err)
+	for _, userID := range []string{"usr_eligible", "usr_second"} {
+		if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: userID, Role: RoleApprover}); err != nil {
+			t.Fatalf("UpsertTeamMember(%s) error = %v", userID, err)
+		}
 	}
-	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Eligible team", Template: PolicyTemplateAnyTeamMember, TeamID: team.TeamID})
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Eligible team", Template: PolicyTemplateQuorum, TeamID: team.TeamID, Settings: map[string]string{"quorum": "2"}})
 	if err != nil {
 		t.Fatalf("CreateApprovalPolicy() error = %v", err)
 	}
@@ -1093,6 +1114,9 @@ func TestSQLiteStorePolicyGatesSteerAndQuestionnaireResponders(t *testing.T) {
 	if _, err := store.RespondForUserWithAuth(authContext{UserID: "usr_intruder", OrganizationID: defaultOrganizationID, Source: authSourceSession}, steer.ID, Response{ChoiceID: "continue"}); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("intruder steer error = %v, want %v", err, ErrInvalidRequest)
 	}
+	// Steer and questionnaire requests collect one final answer from an eligible
+	// approver. Quorum policies still constrain who can answer, not how many
+	// matching answers are needed for single-answer request types.
 	steered, err := store.RespondForUserWithAuth(authContext{UserID: "usr_eligible", OrganizationID: defaultOrganizationID, Source: authSourceSession}, steer.ID, Response{ChoiceID: "continue"})
 	if err != nil {
 		t.Fatalf("eligible steer response error = %v", err)

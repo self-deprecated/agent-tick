@@ -134,35 +134,29 @@ func (s *SQLiteStore) Create(input CreateRequest) (ApprovalRequest, error) {
 }
 
 func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (ApprovalRequest, error) {
-	if strings.TrimSpace(userID) == "" {
-		userID = defaultUserID
-	}
-	if _, err := normalizeCreateRequest(input); err != nil {
-		return ApprovalRequest{}, err
-	}
-	organizationID, projectID, err := s.defaultOrganizationAndProjectForUser(userID)
-	if err != nil {
-		return ApprovalRequest{}, err
-	}
-	return s.createForUserInOrganization(userID, organizationID, projectID, input)
+	return s.CreateForUserInOrganization(userID, "", "", input)
 }
 
 func (s *SQLiteStore) CreateForUserInOrganization(userID string, organizationID string, projectID string, input CreateRequest) (ApprovalRequest, error) {
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
-	if strings.TrimSpace(organizationID) == "" {
-		return s.CreateForUser(userID, input)
-	}
-	return s.createForUserInOrganization(userID, strings.TrimSpace(organizationID), strings.TrimSpace(projectID), input)
-}
-
-func (s *SQLiteStore) createForUserInOrganization(userID string, organizationID string, projectID string, input CreateRequest) (ApprovalRequest, error) {
 	input, err := normalizeCreateRequest(input)
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
+	organizationID = strings.TrimSpace(organizationID)
+	projectID = strings.TrimSpace(projectID)
+	if organizationID == "" {
+		organizationID, projectID, err = s.defaultOrganizationAndProjectForUser(userID)
+		if err != nil {
+			return ApprovalRequest{}, err
+		}
+	}
+	return s.createForUserInOrganization(userID, organizationID, projectID, input)
+}
 
+func (s *SQLiteStore) createForUserInOrganization(userID string, organizationID string, projectID string, input CreateRequest) (ApprovalRequest, error) {
 	now := time.Now().UTC()
 	request := ApprovalRequest{
 		ID:                 newID(),
@@ -519,6 +513,9 @@ func (s *SQLiteStore) RespondForUserWithAuth(auth authContext, id string, respon
 	}
 	now := time.Now().UTC()
 	if request.RequestType == RequestTypeQuestionnaire || request.RequestType == RequestTypeSteer {
+		// These request types produce one final set of answers/one selected option.
+		// Policies still restrict eligibility, but quorum steps do not collect
+		// multiple potentially-conflicting answers for single-answer requests.
 		if err := finalizeResponseTx(tx, request.ID, auth.UserID, response, now); err != nil {
 			return ApprovalRequest{}, err
 		}

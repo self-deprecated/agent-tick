@@ -801,12 +801,53 @@ func TestAPIDeviceTokenCannotAccessAdminEndpoints(t *testing.T) {
 		t.Fatalf("device approval list status = %d body = %s, want %d", listRec.Code, listRec.Body.String(), http.StatusOK)
 	}
 
-	createAgentRec := statusWithBearer(t, handler, device.Token, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "device-created"})
-	if createAgentRec.Code != http.StatusForbidden {
-		t.Fatalf("device create agent status = %d body = %s, want %d", createAgentRec.Code, createAgentRec.Body.String(), http.StatusForbidden)
+	for _, path := range []string{
+		"/v1/agent-tokens",
+		"/v1/approval-requests/../agent-tokens",
+		"/v1/approval-requests/%2e%2e/agent-tokens",
+		"/v1/approval-requests//../agent-tokens",
+	} {
+		createAgentRec := statusWithBearer(t, handler, device.Token, http.MethodPost, path, CreateAgentTokenRequest{Name: "device-created"})
+		if createAgentRec.Code != http.StatusForbidden {
+			t.Fatalf("device create agent via %s status = %d body = %s, want %d", path, createAgentRec.Code, createAgentRec.Body.String(), http.StatusForbidden)
+		}
 	}
 	if agents := request[[]AgentTokenRecord](t, handler, http.MethodGet, "/v1/agent-tokens", nil); len(agents) != 0 {
 		t.Fatalf("agent tokens = %#v, want none created by device token", agents)
+	}
+}
+
+func TestAPIDeviceTokenCanSelfUnpairOnly(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	pairingOne := request[PairingToken](t, handler, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
+	deviceOne := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairingOne.Token, DeviceName: "Phone 1"})
+	pairingTwo := request[PairingToken](t, handler, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
+	deviceTwo := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairingTwo.Token, DeviceName: "Phone 2"})
+
+	otherRec := statusWithBearer(t, handler, deviceOne.Token, http.MethodPost, "/v1/devices/"+deviceTwo.DeviceID+"/unpair", nil)
+	if otherRec.Code != http.StatusForbidden {
+		t.Fatalf("device unpair other status = %d body = %s, want %d", otherRec.Code, otherRec.Body.String(), http.StatusForbidden)
+	}
+	selfRec := statusWithBearer(t, handler, deviceOne.Token, http.MethodPost, "/v1/devices/"+deviceOne.DeviceID+"/unpair", nil)
+	if selfRec.Code != http.StatusOK {
+		t.Fatalf("device self-unpair status = %d body = %s, want %d", selfRec.Code, selfRec.Body.String(), http.StatusOK)
+	}
+	ok, err := store.VerifyDeviceToken(deviceOne.Token)
+	if err != nil {
+		t.Fatalf("VerifyDeviceToken(self) error = %v", err)
+	}
+	if ok {
+		t.Fatal("self-unpaired device token still verifies")
+	}
+	ok, err = store.VerifyDeviceToken(deviceTwo.Token)
+	if err != nil {
+		t.Fatalf("VerifyDeviceToken(other) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("other device token was unpaired")
 	}
 }
 
@@ -1415,6 +1456,30 @@ func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 	records := request[[]AgentTokenRecord](t, handler, http.MethodGet, "/v1/agent-tokens", nil)
 	if len(records) == 0 || records[0].ProjectID == "" || records[0].LastRequestAt == nil {
 		t.Fatalf("agent records = %#v, want project and last request", records)
+	}
+}
+
+func TestAPICreateRejectsUnknownOrCrossOrganizationProjectID(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	missingRec := statusWithBearer(t, handler, "test-token", http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Missing project", Metadata: map[string]string{"projectId": "prj_missing"}})
+	if missingRec.Code != http.StatusBadRequest || !strings.Contains(missingRec.Body.String(), "organization or project not found") {
+		t.Fatalf("missing project status/body = %d/%s, want bad request project error", missingRec.Code, missingRec.Body.String())
+	}
+
+	otherOrg, err := store.CreateOrganizationForUser("usr_project_other", "Other Project Org")
+	if err != nil {
+		t.Fatalf("CreateOrganizationForUser() error = %v", err)
+	}
+	otherProject, err := store.CreateProject(otherOrg.OrganizationID, CreateProjectRequest{Name: "Other Project"})
+	if err != nil {
+		t.Fatalf("CreateProject(other) error = %v", err)
+	}
+	crossOrgRec := statusWithBearer(t, handler, "test-token", http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Cross org project", Metadata: map[string]string{"projectId": otherProject.ProjectID}})
+	if crossOrgRec.Code != http.StatusBadRequest || !strings.Contains(crossOrgRec.Body.String(), "organization or project not found") {
+		t.Fatalf("cross-org project status/body = %d/%s, want bad request project error", crossOrgRec.Code, crossOrgRec.Body.String())
 	}
 }
 

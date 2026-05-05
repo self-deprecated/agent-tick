@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -1638,8 +1639,13 @@ func (a *API) unpairDevice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
 		return
 	}
+	auth := currentAuth(r)
 	deviceID := r.PathValue("id")
-	if err := a.unpairDeviceForUser(currentAuth(r).UserID, deviceID); errors.Is(err, ErrNotFound) {
+	if auth.Source == authSourceDevice && !a.canManageDevice(r, deviceID) {
+		writeError(w, http.StatusForbidden, "device token cannot unpair this device")
+		return
+	}
+	if err := a.unpairDeviceForUser(auth.UserID, deviceID); errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "device not found")
 		return
 	} else if err != nil {
@@ -1733,25 +1739,36 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 }
 
 func deviceEndpointAllowed(r *http.Request) bool {
-	path := r.URL.Path
+	requestPath := r.URL.Path
+	if requestPath == "" || requestPath[0] != '/' || containsEncodedPathControl(r.URL.EscapedPath()) || path.Clean(requestPath) != requestPath {
+		return false
+	}
+	segments := strings.Split(strings.Trim(requestPath, "/"), "/")
 	switch {
-	case r.Method == http.MethodGet && path == "/v1/approval-requests":
+	case r.Method == http.MethodGet && len(segments) == 2 && segments[0] == "v1" && segments[1] == "approval-requests":
 		return true
-	case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1/approval-requests/"):
+	case r.Method == http.MethodGet && len(segments) == 3 && segments[0] == "v1" && segments[1] == "approval-requests" && segments[2] != "":
 		return true
-	case r.Method == http.MethodPost && strings.HasPrefix(path, "/v1/approval-requests/") && strings.HasSuffix(path, "/responses"):
+	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "approval-requests" && segments[2] != "" && segments[3] == "responses":
 		return true
-	case r.Method == http.MethodPost && path == "/v1/heartbeat":
+	case r.Method == http.MethodPost && len(segments) == 2 && segments[0] == "v1" && segments[1] == "heartbeat":
 		return true
-	case (r.Method == http.MethodGet || r.Method == http.MethodPost) && path == "/v1/availability":
+	case (r.Method == http.MethodGet || r.Method == http.MethodPost) && len(segments) == 2 && segments[0] == "v1" && segments[1] == "availability":
 		return true
-	case r.Method == http.MethodPost && strings.HasPrefix(path, "/v1/devices/") && strings.HasSuffix(path, "/push-token"):
+	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "devices" && segments[2] != "" && segments[3] == "push-token":
 		return true
-	case r.Method == http.MethodGet && path == "/v1/events":
+	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "devices" && segments[2] != "" && segments[3] == "unpair":
+		return true
+	case r.Method == http.MethodGet && len(segments) == 2 && segments[0] == "v1" && segments[1] == "events":
 		return true
 	default:
 		return false
 	}
+}
+
+func containsEncodedPathControl(escapedPath string) bool {
+	lower := strings.ToLower(escapedPath)
+	return strings.Contains(lower, "%2e") || strings.Contains(lower, "%2f") || strings.Contains(lower, "%5c")
 }
 
 func (a *API) withAuth(next http.Handler) http.Handler {
