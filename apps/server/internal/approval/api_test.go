@@ -984,12 +984,13 @@ func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 	otherTeam := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Other"})
 	project := request[ProjectRecord](t, handler, http.MethodPost, "/v1/projects", CreateProjectRequest{Name: "Platform Project", TeamID: team.TeamID})
 	otherProject := request[ProjectRecord](t, handler, http.MethodPost, "/v1/projects", CreateProjectRequest{Name: "Other Project", TeamID: otherTeam.TeamID})
+	policy := request[ApprovalPolicyRecord](t, handler, http.MethodPost, "/v1/policies", CreateApprovalPolicyRequest{Name: "Team quorum", Template: PolicyTemplateQuorum, TeamID: team.TeamID})
 	credential := request[AgentCredential](t, handler, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{
 		Name:                  "platform-agent",
 		Scopes:                []string{"approval:write"},
 		ProjectID:             project.ProjectID,
 		TeamID:                team.TeamID,
-		DefaultApprovalPolicy: "team-quorum",
+		DefaultApprovalPolicy: policy.PolicyID,
 	})
 
 	badProjectRec := statusWithBearer(t, handler, credential.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{
@@ -1017,7 +1018,7 @@ func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 	}
 
 	created := requestWithBearer[ApprovalRequest](t, handler, credential.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Allowed"})
-	if created.Metadata["projectId"] != project.ProjectID || created.Metadata["ownerUserId"] != defaultUserID || created.Metadata["teamId"] != team.TeamID || created.Metadata["approvalPolicy"] != "team-quorum" {
+	if created.Metadata["projectId"] != project.ProjectID || created.Metadata["ownerUserId"] != defaultUserID || created.Metadata["teamId"] != team.TeamID || created.Metadata["approvalPolicy"] != policy.PolicyID || created.Metadata["effectiveApprovalPolicy"] != policy.PolicyID {
 		t.Fatalf("metadata = %#v, want token routing defaults", created.Metadata)
 	}
 

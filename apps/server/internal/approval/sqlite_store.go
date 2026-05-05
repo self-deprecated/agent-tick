@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -743,6 +744,12 @@ func (s *SQLiteStore) CreateAgentTokenForUserWithOptions(userID string, input Cr
 			return AgentCredential{}, err
 		}
 	}
+	defaultPolicy := strings.TrimSpace(input.DefaultApprovalPolicy)
+	if defaultPolicy != "" {
+		if err := s.ensurePolicyExists(organizationID, defaultPolicy); err != nil {
+			return AgentCredential{}, err
+		}
+	}
 	ownerUserID := strings.TrimSpace(input.OwnerUserID)
 	if ownerUserID == "" {
 		ownerUserID = userID
@@ -767,7 +774,6 @@ func (s *SQLiteStore) CreateAgentTokenForUserWithOptions(userID string, input Cr
 	if err != nil {
 		return AgentCredential{}, err
 	}
-	defaultPolicy := strings.TrimSpace(input.DefaultApprovalPolicy)
 
 	_, err = s.db.Exec(
 		`INSERT INTO agent_tokens (
@@ -1358,7 +1364,7 @@ func (s *SQLiteStore) ListProjects(organizationID string) ([]ProjectRecord, erro
 		organizationID = defaultOrganizationID
 	}
 	rows, err := s.db.Query(`
-		SELECT id, organization_id, team_id, name, slug, description, created_at, updated_at
+		SELECT id, organization_id, team_id, name, slug, description, default_policy_id, created_at, updated_at
 		FROM projects
 		WHERE organization_id = ?
 		ORDER BY name COLLATE NOCASE ASC
@@ -1380,7 +1386,7 @@ func (s *SQLiteStore) ListProjects(organizationID string) ([]ProjectRecord, erro
 }
 
 func (s *SQLiteStore) CreateProject(organizationID string, input CreateProjectRequest) (ProjectRecord, error) {
-	return s.createOrUpdateProject("", organizationID, input.Name, input.TeamID, input.Description)
+	return s.createOrUpdateProject("", organizationID, input.Name, input.TeamID, input.Description, input.DefaultPolicyID)
 }
 
 func (s *SQLiteStore) GetProject(organizationID string, projectID string) (ProjectRecord, error) {
@@ -1388,7 +1394,7 @@ func (s *SQLiteStore) GetProject(organizationID string, projectID string) (Proje
 		organizationID = defaultOrganizationID
 	}
 	row := s.db.QueryRow(`
-		SELECT id, organization_id, team_id, name, slug, description, created_at, updated_at
+		SELECT id, organization_id, team_id, name, slug, description, default_policy_id, created_at, updated_at
 		FROM projects
 		WHERE organization_id = ? AND id = ?
 	`, organizationID, projectID)
@@ -1400,15 +1406,16 @@ func (s *SQLiteStore) GetProject(organizationID string, projectID string) (Proje
 }
 
 func (s *SQLiteStore) UpdateProject(organizationID string, projectID string, input UpdateProjectRequest) (ProjectRecord, error) {
-	return s.createOrUpdateProject(projectID, organizationID, input.Name, input.TeamID, input.Description)
+	return s.createOrUpdateProject(projectID, organizationID, input.Name, input.TeamID, input.Description, input.DefaultPolicyID)
 }
 
-func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID string, name string, teamID string, description string) (ProjectRecord, error) {
+func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID string, name string, teamID string, description string, defaultPolicyID string) (ProjectRecord, error) {
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
 	name = strings.TrimSpace(name)
 	teamID = strings.TrimSpace(teamID)
+	defaultPolicyID = strings.TrimSpace(defaultPolicyID)
 	if name == "" {
 		return ProjectRecord{}, ErrInvalidRequest
 	}
@@ -1418,14 +1425,15 @@ func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID str
 		projectID = "prj_" + newID()
 	}
 	project := ProjectRecord{
-		ProjectID:      projectID,
-		OrganizationID: organizationID,
-		TeamID:         teamID,
-		Name:           name,
-		Slug:           slugify(name),
-		Description:    strings.TrimSpace(description),
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ProjectID:       projectID,
+		OrganizationID:  organizationID,
+		TeamID:          teamID,
+		Name:            name,
+		Slug:            slugify(name),
+		Description:     strings.TrimSpace(description),
+		DefaultPolicyID: defaultPolicyID,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1440,15 +1448,21 @@ func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID str
 			return ProjectRecord{}, err
 		}
 	}
+	if defaultPolicyID != "" {
+		if err := ensurePolicyExistsTx(tx, organizationID, defaultPolicyID); err != nil {
+			return ProjectRecord{}, err
+		}
+	}
 	if creating {
 		_, err = tx.Exec(
-			"INSERT INTO projects (id, organization_id, team_id, name, slug, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			"INSERT INTO projects (id, organization_id, team_id, name, slug, description, default_policy_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			project.ProjectID,
 			project.OrganizationID,
 			project.TeamID,
 			project.Name,
 			project.Slug,
 			project.Description,
+			project.DefaultPolicyID,
 			timeText(&project.CreatedAt),
 			timeText(&project.UpdatedAt),
 		)
@@ -1461,11 +1475,12 @@ func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID str
 		return project, tx.Commit()
 	}
 	result, err := tx.Exec(
-		"UPDATE projects SET team_id = ?, name = ?, slug = ?, description = ?, updated_at = ? WHERE organization_id = ? AND id = ?",
+		"UPDATE projects SET team_id = ?, name = ?, slug = ?, description = ?, default_policy_id = ?, updated_at = ? WHERE organization_id = ? AND id = ?",
 		project.TeamID,
 		project.Name,
 		project.Slug,
 		project.Description,
+		project.DefaultPolicyID,
 		timeText(&now),
 		organizationID,
 		projectID,
@@ -1484,7 +1499,7 @@ func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID str
 		return ProjectRecord{}, err
 	}
 	project, err = scanProject(tx.QueryRow(`
-		SELECT id, organization_id, team_id, name, slug, description, created_at, updated_at
+		SELECT id, organization_id, team_id, name, slug, description, default_policy_id, created_at, updated_at
 		FROM projects
 		WHERE organization_id = ? AND id = ?
 	`, organizationID, projectID))
@@ -1492,6 +1507,288 @@ func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID str
 		return ProjectRecord{}, err
 	}
 	return project, tx.Commit()
+}
+
+func (s *SQLiteStore) ListApprovalPolicies(organizationID string) ([]ApprovalPolicyRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	rows, err := s.db.Query(`
+		SELECT id, organization_id, project_id, team_id, name, template, summary, settings_json, created_at, updated_at
+		FROM approval_policies
+		WHERE organization_id = ? AND deleted_at = ''
+		ORDER BY name COLLATE NOCASE ASC
+	`, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	policies := []ApprovalPolicyRecord{}
+	for rows.Next() {
+		policy, err := scanPolicy(rows)
+		if err != nil {
+			return nil, err
+		}
+		policy.Steps, err = s.loadPolicySteps(policy.PolicyID)
+		if err != nil {
+			return nil, err
+		}
+		policies = append(policies, policy)
+	}
+	return policies, rows.Err()
+}
+
+func (s *SQLiteStore) CreateApprovalPolicy(organizationID string, input CreateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
+	return s.createOrUpdatePolicy("", organizationID, UpdateApprovalPolicyRequest(input))
+}
+
+func (s *SQLiteStore) GetApprovalPolicy(organizationID string, policyID string) (ApprovalPolicyRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	policy, err := scanPolicy(s.db.QueryRow(`
+		SELECT id, organization_id, project_id, team_id, name, template, summary, settings_json, created_at, updated_at
+		FROM approval_policies
+		WHERE organization_id = ? AND id = ? AND deleted_at = ''
+	`, organizationID, policyID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ApprovalPolicyRecord{}, ErrNotFound
+	}
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	policy.Steps, err = s.loadPolicySteps(policy.PolicyID)
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	return policy, nil
+}
+
+func (s *SQLiteStore) UpdateApprovalPolicy(organizationID string, policyID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
+	return s.createOrUpdatePolicy(policyID, organizationID, input)
+}
+
+func (s *SQLiteStore) DeleteApprovalPolicy(organizationID string, policyID string) error {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	now := time.Now().UTC()
+	result, err := s.db.Exec("UPDATE approval_policies SET deleted_at = ?, updated_at = ? WHERE organization_id = ? AND id = ? AND deleted_at = ''", timeText(&now), timeText(&now), organizationID, policyID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteStore) PreviewApprovalPolicy(organizationID string, policyID string) (ApprovalPolicyPreview, error) {
+	policy, err := s.GetApprovalPolicy(organizationID, policyID)
+	if err != nil {
+		return ApprovalPolicyPreview{}, err
+	}
+	preview := ApprovalPolicyPreview{PolicyID: policy.PolicyID, Summary: policy.Summary}
+	switch policy.Template {
+	case PolicyTemplateOwnerOnly:
+		preview.Notifies = []string{"owner user"}
+	case PolicyTemplateAnyTeamMember, PolicyTemplateQuorum:
+		preview.Notifies = []string{teamPreviewLabel(policy.TeamID)}
+	case PolicyTemplateOnCall:
+		preview.Notifies = []string{"current on-call person"}
+		preview.Limitations = append(preview.Limitations, "on-call schedules are not connected yet; this uses the configured escalation target")
+	case PolicyTemplateRecentlyActive:
+		preview.Notifies = []string{"most recently active approver"}
+		preview.Limitations = append(preview.Limitations, "presence is not connected yet; this falls back to team members")
+	case PolicyTemplateSequence, PolicyTemplateRiskBased:
+		for _, step := range policy.Steps {
+			preview.Notifies = append(preview.Notifies, policyStepSummary(step))
+		}
+	default:
+		preview.Notifies = []string{"configured approvers"}
+	}
+	if len(preview.Notifies) == 0 {
+		preview.Notifies = []string{"configured approvers"}
+	}
+	return preview, nil
+}
+
+func (s *SQLiteStore) ResolveApprovalPolicy(organizationID string, projectID string, hint string) (string, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	hint = strings.TrimSpace(hint)
+	if hint != "" {
+		if err := s.ensurePolicyExists(organizationID, hint); err != nil {
+			return "", err
+		}
+		return hint, nil
+	}
+	projectID = strings.TrimSpace(projectID)
+	if projectID != "" {
+		var policyID string
+		err := s.db.QueryRow("SELECT default_policy_id FROM projects WHERE organization_id = ? AND id = ?", organizationID, projectID).Scan(&policyID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		if strings.TrimSpace(policyID) != "" {
+			return policyID, nil
+		}
+	}
+	var policyID string
+	err := s.db.QueryRow("SELECT default_policy_id FROM organizations WHERE id = ?", organizationID).Scan(&policyID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	return strings.TrimSpace(policyID), nil
+}
+
+func (s *SQLiteStore) createOrUpdatePolicy(policyID string, organizationID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	creating := strings.TrimSpace(policyID) == ""
+	if creating {
+		policyID = "pol_" + newID()
+	}
+	policy, err := s.policyFromInput(policyID, organizationID, input)
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	now := time.Now().UTC()
+	policy.CreatedAt = now
+	policy.UpdatedAt = now
+	settingsJSON, err := marshalJSON(policy.Settings)
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	defer rollback(tx)
+	if err := ensureOrganizationExistsTx(tx, organizationID); err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	if policy.ProjectID != "" {
+		if err := ensureProjectExistsTx(tx, organizationID, policy.ProjectID); err != nil {
+			return ApprovalPolicyRecord{}, err
+		}
+	}
+	if policy.TeamID != "" {
+		if err := ensureTeamExistsTx(tx, organizationID, policy.TeamID); err != nil {
+			return ApprovalPolicyRecord{}, err
+		}
+	}
+	if creating {
+		_, err = tx.Exec(`
+			INSERT INTO approval_policies (id, organization_id, project_id, team_id, name, template, summary, settings_json, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, policy.PolicyID, policy.OrganizationID, policy.ProjectID, policy.TeamID, policy.Name, policy.Template, policy.Summary, settingsJSON, timeText(&now), timeText(&now))
+	} else {
+		_, err = tx.Exec(`
+			UPDATE approval_policies
+			SET project_id = ?, team_id = ?, name = ?, template = ?, summary = ?, settings_json = ?, updated_at = ?
+			WHERE organization_id = ? AND id = ? AND deleted_at = ''
+		`, policy.ProjectID, policy.TeamID, policy.Name, policy.Template, policy.Summary, settingsJSON, timeText(&now), organizationID, policyID)
+	}
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	if !creating {
+		if err := ensurePolicyExistsTx(tx, organizationID, policyID); err != nil {
+			return ApprovalPolicyRecord{}, err
+		}
+		if _, err := tx.Exec("DELETE FROM approval_policy_steps WHERE policy_id = ?", policyID); err != nil {
+			return ApprovalPolicyRecord{}, err
+		}
+	}
+	for i := range policy.Steps {
+		step := policy.Steps[i]
+		if strings.TrimSpace(step.StepID) == "" {
+			step.StepID = "step_" + newID()
+			policy.Steps[i].StepID = step.StepID
+		}
+		if step.Position == 0 {
+			step.Position = i + 1
+			policy.Steps[i].Position = step.Position
+		}
+		_, err = tx.Exec(`
+			INSERT INTO approval_policy_steps (id, policy_id, position, step_type, team_id, quorum, timeout_seconds, escalation_target, deny_veto, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, step.StepID, policy.PolicyID, step.Position, step.StepType, step.TeamID, step.Quorum, step.TimeoutSeconds, step.EscalationTarget, step.DenyVeto, timeText(&now), timeText(&now))
+		if err != nil {
+			return ApprovalPolicyRecord{}, err
+		}
+	}
+	if err := insertAuditForUser(tx, defaultUserID, map[bool]string{true: "approval_policy.created", false: "approval_policy.updated"}[creating], policy.PolicyID, policy); err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	return policy, nil
+}
+
+func (s *SQLiteStore) policyFromInput(policyID string, organizationID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return ApprovalPolicyRecord{}, ErrInvalidRequest
+	}
+	template, err := normalizePolicyTemplate(input.Template)
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	settings := input.Settings
+	if settings == nil {
+		settings = map[string]string{}
+	}
+	policy := ApprovalPolicyRecord{
+		PolicyID:       policyID,
+		OrganizationID: organizationID,
+		ProjectID:      strings.TrimSpace(input.ProjectID),
+		TeamID:         strings.TrimSpace(input.TeamID),
+		Name:           name,
+		Template:       template,
+		Settings:       settings,
+		Steps:          normalizedPolicySteps(template, strings.TrimSpace(input.TeamID), input.Steps, settings),
+	}
+	if err := validatePolicy(policy); err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	policy.Summary = summarizePolicy(policy)
+	return policy, nil
+}
+
+func (s *SQLiteStore) loadPolicySteps(policyID string) ([]ApprovalPolicyStep, error) {
+	rows, err := s.db.Query(`
+		SELECT id, position, step_type, team_id, quorum, timeout_seconds, escalation_target, deny_veto
+		FROM approval_policy_steps
+		WHERE policy_id = ?
+		ORDER BY position ASC
+	`, policyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	steps := []ApprovalPolicyStep{}
+	for rows.Next() {
+		step, err := scanPolicyStep(rows)
+		if err != nil {
+			return nil, err
+		}
+		steps = append(steps, step)
+	}
+	return steps, rows.Err()
+}
+
+func (s *SQLiteStore) ensurePolicyExists(organizationID string, policyID string) error {
+	return ensurePolicyExistsDB(s.db, organizationID, policyID)
 }
 
 func (s *SQLiteStore) RecordAgentRequest(agentID string, at time.Time) error {
@@ -1582,7 +1879,7 @@ func createOrganizationForUserTx(tx *sql.Tx, userID string, name string, organiz
 		userID = defaultUserID
 	}
 	_, err := tx.Exec(
-		"INSERT INTO organizations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
+		"INSERT INTO organizations (id, name, default_policy_id, created_at, updated_at) VALUES (?, ?, '', ?, ?)",
 		organization.OrganizationID,
 		organization.Name,
 		timeText(&now),
@@ -1595,7 +1892,7 @@ func createOrganizationForUserTx(tx *sql.Tx, userID string, name string, organiz
 		return OrganizationRecord{}, err
 	}
 	_, err = tx.Exec(
-		"INSERT INTO projects (id, organization_id, team_id, name, slug, description, created_at, updated_at) VALUES (?, ?, '', ?, ?, '', ?, ?)",
+		"INSERT INTO projects (id, organization_id, team_id, name, slug, description, default_policy_id, created_at, updated_at) VALUES (?, ?, '', ?, ?, '', '', ?, ?)",
 		projectID,
 		organization.OrganizationID,
 		"Default Project",
@@ -1649,6 +1946,10 @@ func ensureTeamExistsDB(db rowQuerier, organizationID string, teamID string) err
 		return ErrNotFound
 	}
 	return err
+}
+
+func ensureProjectExistsTx(tx *sql.Tx, organizationID string, projectID string) error {
+	return ensureProjectExistsDB(tx, organizationID, projectID)
 }
 
 func ensureProjectExistsDB(db rowQuerier, organizationID string, projectID string) error {
@@ -1731,7 +2032,17 @@ func scanProject(scanner requestScanner) (ProjectRecord, error) {
 	var project ProjectRecord
 	var createdAt string
 	var updatedAt string
-	err := scanner.Scan(&project.ProjectID, &project.OrganizationID, &project.TeamID, &project.Name, &project.Slug, &project.Description, &createdAt, &updatedAt)
+	err := scanner.Scan(
+		&project.ProjectID,
+		&project.OrganizationID,
+		&project.TeamID,
+		&project.Name,
+		&project.Slug,
+		&project.Description,
+		&project.DefaultPolicyID,
+		&createdAt,
+		&updatedAt,
+	)
 	if err != nil {
 		return ProjectRecord{}, err
 	}
@@ -1785,6 +2096,207 @@ func slugify(value string) string {
 	return slug
 }
 
+func ensurePolicyExistsTx(tx *sql.Tx, organizationID string, policyID string) error {
+	return ensurePolicyExistsDB(tx, organizationID, policyID)
+}
+
+func ensurePolicyExistsDB(db rowQuerier, organizationID string, policyID string) error {
+	if strings.TrimSpace(policyID) == "" {
+		return ErrNotFound
+	}
+	var id string
+	err := db.QueryRow("SELECT id FROM approval_policies WHERE organization_id = ? AND id = ? AND deleted_at = ''", organizationID, policyID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func scanPolicy(scanner requestScanner) (ApprovalPolicyRecord, error) {
+	var policy ApprovalPolicyRecord
+	var settingsJSON string
+	var createdAt string
+	var updatedAt string
+	err := scanner.Scan(
+		&policy.PolicyID,
+		&policy.OrganizationID,
+		&policy.ProjectID,
+		&policy.TeamID,
+		&policy.Name,
+		&policy.Template,
+		&policy.Summary,
+		&settingsJSON,
+		&createdAt,
+		&updatedAt,
+	)
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	if strings.TrimSpace(settingsJSON) == "" {
+		settingsJSON = "{}"
+	}
+	if err := json.Unmarshal([]byte(settingsJSON), &policy.Settings); err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	if policy.Settings == nil {
+		policy.Settings = map[string]string{}
+	}
+	parsedCreatedAt, err := parseTime(createdAt)
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	parsedUpdatedAt, err := parseTime(updatedAt)
+	if err != nil {
+		return ApprovalPolicyRecord{}, err
+	}
+	policy.CreatedAt = parsedCreatedAt
+	policy.UpdatedAt = parsedUpdatedAt
+	return policy, nil
+}
+
+func scanPolicyStep(scanner requestScanner) (ApprovalPolicyStep, error) {
+	var step ApprovalPolicyStep
+	err := scanner.Scan(
+		&step.StepID,
+		&step.Position,
+		&step.StepType,
+		&step.TeamID,
+		&step.Quorum,
+		&step.TimeoutSeconds,
+		&step.EscalationTarget,
+		&step.DenyVeto,
+	)
+	return step, err
+}
+
+func normalizePolicyTemplate(template string) (string, error) {
+	switch strings.TrimSpace(template) {
+	case PolicyTemplateOwnerOnly, "just-me", "":
+		return PolicyTemplateOwnerOnly, nil
+	case PolicyTemplateAnyTeamMember:
+		return PolicyTemplateAnyTeamMember, nil
+	case PolicyTemplateOnCall:
+		return PolicyTemplateOnCall, nil
+	case PolicyTemplateRecentlyActive:
+		return PolicyTemplateRecentlyActive, nil
+	case PolicyTemplateQuorum:
+		return PolicyTemplateQuorum, nil
+	case PolicyTemplateSequence:
+		return PolicyTemplateSequence, nil
+	case PolicyTemplateRiskBased:
+		return PolicyTemplateRiskBased, nil
+	default:
+		return "", ErrInvalidRequest
+	}
+}
+
+func normalizedPolicySteps(template string, teamID string, steps []ApprovalPolicyStep, settings map[string]string) []ApprovalPolicyStep {
+	if len(steps) > 0 {
+		for i := range steps {
+			if steps[i].Position == 0 {
+				steps[i].Position = i + 1
+			}
+			if strings.TrimSpace(steps[i].StepType) == "" {
+				steps[i].StepType = template
+			}
+			if steps[i].TeamID == "" {
+				steps[i].TeamID = teamID
+			}
+		}
+		return steps
+	}
+	quorum := atoiDefault(settings["quorum"], 0)
+	if quorum == 0 && template == PolicyTemplateQuorum {
+		quorum = 2
+	}
+	return []ApprovalPolicyStep{{
+		Position:         1,
+		StepType:         template,
+		TeamID:           teamID,
+		Quorum:           quorum,
+		TimeoutSeconds:   atoiDefault(settings["timeoutSeconds"], 3600),
+		EscalationTarget: strings.TrimSpace(settings["escalationTarget"]),
+		DenyVeto:         settings["denyVeto"] != "false",
+	}}
+}
+
+func validatePolicy(policy ApprovalPolicyRecord) error {
+	switch policy.Template {
+	case PolicyTemplateAnyTeamMember, PolicyTemplateQuorum, PolicyTemplateRecentlyActive:
+		if strings.TrimSpace(policy.TeamID) == "" {
+			return ErrInvalidRequest
+		}
+	}
+	for _, step := range policy.Steps {
+		if policy.Template == PolicyTemplateOnCall && strings.TrimSpace(step.EscalationTarget) == "" {
+			return ErrInvalidRequest
+		}
+		if step.Quorum < 0 {
+			return ErrInvalidRequest
+		}
+		if policy.Template == PolicyTemplateQuorum && step.Quorum < 2 {
+			return ErrInvalidRequest
+		}
+		if step.TimeoutSeconds < 0 {
+			return ErrInvalidRequest
+		}
+		if strings.TrimSpace(step.TeamID) == "" && (step.StepType == PolicyTemplateAnyTeamMember || step.StepType == PolicyTemplateQuorum || step.StepType == PolicyTemplateRecentlyActive) {
+			return ErrInvalidRequest
+		}
+	}
+	return nil
+}
+
+func summarizePolicy(policy ApprovalPolicyRecord) string {
+	switch policy.Template {
+	case PolicyTemplateOwnerOnly:
+		return "Requires approval from the owner user."
+	case PolicyTemplateAnyTeamMember:
+		return "Requires one approval from the selected team."
+	case PolicyTemplateOnCall:
+		return "Notifies the on-call approver, with best-effort escalation."
+	case PolicyTemplateRecentlyActive:
+		return "Notifies the most recently active approver for the selected team."
+	case PolicyTemplateQuorum:
+		quorum := 2
+		if len(policy.Steps) > 0 && policy.Steps[0].Quorum > 0 {
+			quorum = policy.Steps[0].Quorum
+		}
+		return fmt.Sprintf("Requires %d approvals from the selected team; any denial blocks the command.", quorum)
+	case PolicyTemplateSequence:
+		return fmt.Sprintf("Runs %d approval steps in order; any denial blocks the command.", len(policy.Steps))
+	case PolicyTemplateRiskBased:
+		return "Chooses an approval path based on request risk."
+	default:
+		return "Uses the configured approval policy."
+	}
+}
+
+func policyStepSummary(step ApprovalPolicyStep) string {
+	if step.TeamID != "" {
+		return teamPreviewLabel(step.TeamID)
+	}
+	return step.StepType
+}
+
+func teamPreviewLabel(teamID string) string {
+	if strings.TrimSpace(teamID) == "" {
+		return "configured approvers"
+	}
+	return "members of " + teamID
+}
+
+func atoiDefault(value string, fallback int) int {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
 func (s *SQLiteStore) migrate() error {
 	_, err := s.db.Exec(`
 		PRAGMA journal_mode = WAL;
@@ -1809,6 +2321,7 @@ func (s *SQLiteStore) migrate() error {
 		CREATE TABLE IF NOT EXISTS organizations (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
+			default_policy_id TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);
@@ -1847,6 +2360,35 @@ func (s *SQLiteStore) migrate() error {
 			name TEXT NOT NULL,
 			slug TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
+			default_policy_id TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS approval_policies (
+			id TEXT PRIMARY KEY,
+			organization_id TEXT NOT NULL,
+			project_id TEXT NOT NULL DEFAULT '',
+			team_id TEXT NOT NULL DEFAULT '',
+			name TEXT NOT NULL,
+			template TEXT NOT NULL,
+			summary TEXT NOT NULL,
+			settings_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			deleted_at TEXT NOT NULL DEFAULT ''
+		);
+
+		CREATE TABLE IF NOT EXISTS approval_policy_steps (
+			id TEXT PRIMARY KEY,
+			policy_id TEXT NOT NULL,
+			position INTEGER NOT NULL,
+			step_type TEXT NOT NULL,
+			team_id TEXT NOT NULL DEFAULT '',
+			quorum INTEGER NOT NULL DEFAULT 0,
+			timeout_seconds INTEGER NOT NULL DEFAULT 0,
+			escalation_target TEXT NOT NULL DEFAULT '',
+			deny_veto INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);
@@ -1955,7 +2497,7 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if _, err := s.db.Exec(
-		"INSERT OR IGNORE INTO organizations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
+		"INSERT OR IGNORE INTO organizations (id, name, default_policy_id, created_at, updated_at) VALUES (?, ?, '', ?, ?)",
 		defaultOrganizationID,
 		"Default Organization",
 		timeText(&now),
@@ -1974,7 +2516,7 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if _, err := s.db.Exec(
-		"INSERT OR IGNORE INTO projects (id, organization_id, team_id, name, slug, description, created_at, updated_at) VALUES (?, ?, '', ?, ?, '', ?, ?)",
+		"INSERT OR IGNORE INTO projects (id, organization_id, team_id, name, slug, description, default_policy_id, created_at, updated_at) VALUES (?, ?, '', ?, ?, '', '', ?, ?)",
 		defaultProjectID,
 		defaultOrganizationID,
 		"Default Project",
@@ -1982,6 +2524,12 @@ func (s *SQLiteStore) migrate() error {
 		timeText(&now),
 		timeText(&now),
 	); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("organizations", "default_policy_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("projects", "default_policy_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfMissing("approval_requests", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
@@ -2084,6 +2632,10 @@ func (s *SQLiteStore) migrate() error {
 			ON team_members (user_id);
 		CREATE INDEX IF NOT EXISTS projects_org_name_idx
 			ON projects (organization_id, name);
+		CREATE INDEX IF NOT EXISTS approval_policies_org_name_idx
+			ON approval_policies (organization_id, name);
+		CREATE INDEX IF NOT EXISTS approval_policy_steps_policy_position_idx
+			ON approval_policy_steps (policy_id, position);
 		CREATE INDEX IF NOT EXISTS organization_invites_org_email_idx
 			ON organization_invites (organization_id, email);
 	`)

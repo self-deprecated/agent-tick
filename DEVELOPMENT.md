@@ -80,6 +80,7 @@ The dashboard supports:
 - Organization-aware first-run defaults: single-user installs get a default organization and default project automatically, while user-mode sign-in creates a personal organization.
 - Basic organization creation plus team and project listing/creation from the dashboard.
 - Phone pairing with short-lived QR codes and device revocation.
+- Approval policy builder with human-readable templates, previews, project defaults, and agent default-policy selection.
 - Agent registration wizard with project/team/owner/default-policy metadata, config-file setup commands, environment-variable setup commands, token listing, and revocation.
 - Approval list with approve/deny or constrained choice responses for pending requests.
 
@@ -105,7 +106,9 @@ Agent Tick stores organizations, memberships, teams, team members, projects, and
 
 Organization roles are `owner`, `admin`, `approver`, and `viewer`. Owners can manage team membership; owners and admins can create or update teams and projects; viewers can list team and project context. Current approval, device, and agent-token endpoints remain user-scoped for compatibility while storing organization/project columns for hosted/team features.
 
-Agent tokens can now carry an owner user, project, optional team, and optional default approval policy. When an agent-token-authenticated request supplies project/team/policy hints, the server validates them against the token and fills missing hints from the token defaults before storing request metadata.
+Approval policies are stored as organization-scoped templates plus ordered policy steps. Supported templates are owner-only, any-team-member, on-call, recently-active, quorum, sequence, and risk-based. The dashboard exposes friendly labels like "Just me", "Anyone on a team", "On-call person", "Most recently active", "Require multiple approvals", and "Multi-step flow" instead of raw workflow JSON.
+
+Agent tokens can now carry an owner user, project, optional team, and optional default approval policy. When an agent-token-authenticated request supplies project/team/policy hints, the server validates them against the token and fills missing hints from the token defaults before storing request metadata. Request creation resolves the effective policy from the request hint, agent default, project default, or organization default and stores it in request metadata for later policy-engine tasks.
 
 ## CLI Usage
 

@@ -574,6 +574,65 @@ func TestSQLiteStoreManagesTeamsProjectsMembersAndAudit(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreApprovalPolicyCRUDValidationAndDefaults(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	if _, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Bad quorum", Template: PolicyTemplateQuorum}); err != ErrInvalidRequest {
+		t.Fatalf("CreateApprovalPolicy() error = %v, want %v", err, ErrInvalidRequest)
+	}
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Backend"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{
+		Name:     "Backend quorum",
+		Template: PolicyTemplateQuorum,
+		TeamID:   team.TeamID,
+		Settings: map[string]string{"quorum": "2", "denyVeto": "true"},
+	})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy() error = %v", err)
+	}
+	if policy.PolicyID == "" || policy.Summary == "" || len(policy.Steps) != 1 {
+		t.Fatalf("policy = %#v, want id summary and one step", policy)
+	}
+	preview, err := store.PreviewApprovalPolicy(defaultOrganizationID, policy.PolicyID)
+	if err != nil {
+		t.Fatalf("PreviewApprovalPolicy() error = %v", err)
+	}
+	if len(preview.Notifies) == 0 || preview.Summary == "" {
+		t.Fatalf("preview = %#v, want summary and notify targets", preview)
+	}
+
+	updated, err := store.UpdateApprovalPolicy(defaultOrganizationID, policy.PolicyID, UpdateApprovalPolicyRequest{Name: "Backend one", Template: PolicyTemplateAnyTeamMember, TeamID: team.TeamID})
+	if err != nil {
+		t.Fatalf("UpdateApprovalPolicy() error = %v", err)
+	}
+	if updated.Template != PolicyTemplateAnyTeamMember {
+		t.Fatalf("updated template = %q, want any-team-member", updated.Template)
+	}
+
+	project, err := store.CreateProject(defaultOrganizationID, CreateProjectRequest{Name: "API", DefaultPolicyID: policy.PolicyID})
+	if err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+	resolved, err := store.ResolveApprovalPolicy(defaultOrganizationID, project.ProjectID, "")
+	if err != nil {
+		t.Fatalf("ResolveApprovalPolicy() error = %v", err)
+	}
+	if resolved != policy.PolicyID {
+		t.Fatalf("resolved = %q, want %q", resolved, policy.PolicyID)
+	}
+
+	if err := store.DeleteApprovalPolicy(defaultOrganizationID, policy.PolicyID); err != nil {
+		t.Fatalf("DeleteApprovalPolicy() error = %v", err)
+	}
+	if _, err := store.GetApprovalPolicy(defaultOrganizationID, policy.PolicyID); err != ErrNotFound {
+		t.Fatalf("GetApprovalPolicy() after delete error = %v, want %v", err, ErrNotFound)
+	}
+}
+
 func newTestSQLiteStore(t *testing.T) *SQLiteStore {
 	t.Helper()
 

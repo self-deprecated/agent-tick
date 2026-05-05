@@ -125,6 +125,16 @@ type TeamProjectStore interface {
 	UpdateProject(organizationID string, projectID string, input UpdateProjectRequest) (ProjectRecord, error)
 }
 
+type ApprovalPolicyStore interface {
+	ListApprovalPolicies(organizationID string) ([]ApprovalPolicyRecord, error)
+	CreateApprovalPolicy(organizationID string, input CreateApprovalPolicyRequest) (ApprovalPolicyRecord, error)
+	GetApprovalPolicy(organizationID string, policyID string) (ApprovalPolicyRecord, error)
+	UpdateApprovalPolicy(organizationID string, policyID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error)
+	DeleteApprovalPolicy(organizationID string, policyID string) error
+	PreviewApprovalPolicy(organizationID string, policyID string) (ApprovalPolicyPreview, error)
+	ResolveApprovalPolicy(organizationID string, projectID string, hint string) (string, error)
+}
+
 type FileStore struct {
 	path string
 	mu   sync.Mutex

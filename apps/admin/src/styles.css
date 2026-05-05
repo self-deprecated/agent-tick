@@ -102,6 +102,16 @@ label {
 	color: #5b5347;
 }
 
+.checkbox-label {
+	display: flex;
+	align-items: center;
+	gap: 0.55rem;
+}
+
+.checkbox-label input {
+	width: auto;
+}
+
 pre,
 code {
 	font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;

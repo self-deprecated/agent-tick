@@ -29,6 +29,7 @@ type API struct {
 	accounts         UserAccountStore
 	organizations    OrganizationStore
 	teamsProjects    TeamProjectStore
+	policies         ApprovalPolicyStore
 	token            string
 	mode             string
 	publicURL        string
@@ -68,6 +69,9 @@ func NewAPI(store Store, token string) *API {
 	}
 	if teamsProjects, ok := store.(TeamProjectStore); ok {
 		api.teamsProjects = teamsProjects
+	}
+	if policies, ok := store.(ApprovalPolicyStore); ok {
+		api.policies = policies
 	}
 	return api
 }
@@ -299,6 +303,12 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/projects", a.createProject)
 	mux.HandleFunc("GET /v1/projects/{id}", a.getProject)
 	mux.HandleFunc("POST /v1/projects/{id}", a.updateProject)
+	mux.HandleFunc("GET /v1/policies", a.listPolicies)
+	mux.HandleFunc("POST /v1/policies", a.createPolicy)
+	mux.HandleFunc("GET /v1/policies/{id}", a.getPolicy)
+	mux.HandleFunc("POST /v1/policies/{id}", a.updatePolicy)
+	mux.HandleFunc("DELETE /v1/policies/{id}", a.deletePolicy)
+	mux.HandleFunc("GET /v1/policies/{id}/preview", a.previewPolicy)
 	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/push-token", a.setDevicePushToken)
 	mux.HandleFunc("POST /v1/devices/{id}/unpair", a.unpairDevice)
@@ -378,6 +388,31 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	})
 	session.Token = ""
 	writeJSON(w, http.StatusOK, session)
+}
+
+func (a *API) resolveRequestPolicy(auth authContext, input *CreateRequest) error {
+	if a.policies == nil {
+		return nil
+	}
+	if input.Metadata == nil {
+		input.Metadata = map[string]string{}
+	}
+	projectID := strings.TrimSpace(input.Metadata["projectId"])
+	if projectID == "" && strings.HasPrefix(strings.TrimSpace(input.Requester.ProjectID), "prj_") {
+		projectID = strings.TrimSpace(input.Requester.ProjectID)
+	}
+	hint := strings.TrimSpace(input.Metadata["approvalPolicy"])
+	policyID, err := a.policies.ResolveApprovalPolicy(auth.OrganizationID, projectID, hint)
+	if err != nil {
+		return err
+	}
+	if policyID != "" {
+		input.Metadata["effectiveApprovalPolicy"] = policyID
+		if hint == "" {
+			input.Metadata["approvalPolicy"] = policyID
+		}
+	}
+	return nil
 }
 
 func applyAgentRouting(input *CreateRequest, auth authContext) error {
@@ -463,6 +498,14 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 	auth := currentAuth(r)
 	if err := applyAgentRouting(&input, auth); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := a.resolveRequestPolicy(auth, &input); err != nil {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalidRequest) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -863,9 +906,131 @@ func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, project)
 }
 
+func (a *API) listPolicies(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizePolicy(w, r, RoleViewer) {
+		return
+	}
+	policies, err := a.policies.ListApprovalPolicies(currentAuth(r).OrganizationID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, policies)
+}
+
+func (a *API) createPolicy(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizePolicy(w, r, RoleAdmin) {
+		return
+	}
+	var input CreateApprovalPolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid policy JSON")
+		return
+	}
+	policy, err := a.policies.CreateApprovalPolicy(currentAuth(r).OrganizationID, input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project or team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, policy)
+}
+
+func (a *API) getPolicy(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizePolicy(w, r, RoleViewer) {
+		return
+	}
+	policy, err := a.policies.GetApprovalPolicy(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, policy)
+}
+
+func (a *API) updatePolicy(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizePolicy(w, r, RoleAdmin) {
+		return
+	}
+	var input UpdateApprovalPolicyRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid policy JSON")
+		return
+	}
+	policy, err := a.policies.UpdateApprovalPolicy(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, policy)
+}
+
+func (a *API) deletePolicy(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizePolicy(w, r, RoleAdmin) {
+		return
+	}
+	err := a.policies.DeleteApprovalPolicy(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) previewPolicy(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizePolicy(w, r, RoleViewer) {
+		return
+	}
+	preview, err := a.policies.PreviewApprovalPolicy(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
+}
+
 func (a *API) authorizeOrg(w http.ResponseWriter, r *http.Request, requiredRole string) bool {
 	if a.teamsProjects == nil {
 		writeError(w, http.StatusNotImplemented, "teams and projects are not supported by this store")
+		return false
+	}
+	if !roleAllows(currentAuth(r).Role, requiredRole) {
+		writeError(w, http.StatusForbidden, "insufficient organization role")
+		return false
+	}
+	return true
+}
+
+func (a *API) authorizePolicy(w http.ResponseWriter, r *http.Request, requiredRole string) bool {
+	if a.policies == nil {
+		writeError(w, http.StatusNotImplemented, "approval policies are not supported by this store")
 		return false
 	}
 	if !roleAllows(currentAuth(r).Role, requiredRole) {

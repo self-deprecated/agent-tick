@@ -186,9 +186,10 @@ const (
 )
 
 type OrganizationRecord struct {
-	OrganizationID string    `json:"organizationId"`
-	Name           string    `json:"name"`
-	CreatedAt      time.Time `json:"createdAt"`
+	OrganizationID  string    `json:"organizationId"`
+	Name            string    `json:"name"`
+	DefaultPolicyID string    `json:"defaultPolicyId,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
 type OrganizationMembershipRecord struct {
@@ -235,26 +236,29 @@ type UpsertTeamMemberRequest struct {
 }
 
 type ProjectRecord struct {
-	ProjectID      string    `json:"projectId"`
-	OrganizationID string    `json:"organizationId"`
-	TeamID         string    `json:"teamId,omitempty"`
-	Name           string    `json:"name"`
-	Slug           string    `json:"slug"`
-	Description    string    `json:"description,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ProjectID       string    `json:"projectId"`
+	OrganizationID  string    `json:"organizationId"`
+	TeamID          string    `json:"teamId,omitempty"`
+	Name            string    `json:"name"`
+	Slug            string    `json:"slug"`
+	Description     string    `json:"description,omitempty"`
+	DefaultPolicyID string    `json:"defaultPolicyId,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 type CreateProjectRequest struct {
-	Name        string `json:"name"`
-	TeamID      string `json:"teamId,omitempty"`
-	Description string `json:"description,omitempty"`
+	Name            string `json:"name"`
+	TeamID          string `json:"teamId,omitempty"`
+	Description     string `json:"description,omitempty"`
+	DefaultPolicyID string `json:"defaultPolicyId,omitempty"`
 }
 
 type UpdateProjectRequest struct {
-	Name        string `json:"name"`
-	TeamID      string `json:"teamId,omitempty"`
-	Description string `json:"description,omitempty"`
+	Name            string `json:"name"`
+	TeamID          string `json:"teamId,omitempty"`
+	Description     string `json:"description,omitempty"`
+	DefaultPolicyID string `json:"defaultPolicyId,omitempty"`
 }
 
 type InviteRecord struct {
@@ -266,6 +270,66 @@ type InviteRecord struct {
 	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
 	AcceptedAt     *time.Time `json:"acceptedAt,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
+}
+
+const (
+	PolicyTemplateOwnerOnly      = "owner-only"
+	PolicyTemplateAnyTeamMember  = "any-team-member"
+	PolicyTemplateOnCall         = "on-call"
+	PolicyTemplateRecentlyActive = "recently-active"
+	PolicyTemplateQuorum         = "quorum"
+	PolicyTemplateSequence       = "sequence"
+	PolicyTemplateRiskBased      = "risk-based"
+)
+
+type ApprovalPolicyRecord struct {
+	PolicyID       string               `json:"policyId"`
+	OrganizationID string               `json:"organizationId"`
+	ProjectID      string               `json:"projectId,omitempty"`
+	TeamID         string               `json:"teamId,omitempty"`
+	Name           string               `json:"name"`
+	Template       string               `json:"template"`
+	Summary        string               `json:"summary"`
+	Settings       map[string]string    `json:"settings"`
+	Steps          []ApprovalPolicyStep `json:"steps"`
+	CreatedAt      time.Time            `json:"createdAt"`
+	UpdatedAt      time.Time            `json:"updatedAt"`
+}
+
+type ApprovalPolicyStep struct {
+	StepID           string `json:"stepId,omitempty"`
+	Position         int    `json:"position"`
+	StepType         string `json:"stepType"`
+	TeamID           string `json:"teamId,omitempty"`
+	Quorum           int    `json:"quorum,omitempty"`
+	TimeoutSeconds   int    `json:"timeoutSeconds,omitempty"`
+	EscalationTarget string `json:"escalationTarget,omitempty"`
+	DenyVeto         bool   `json:"denyVeto"`
+}
+
+type CreateApprovalPolicyRequest struct {
+	Name      string               `json:"name"`
+	Template  string               `json:"template"`
+	ProjectID string               `json:"projectId,omitempty"`
+	TeamID    string               `json:"teamId,omitempty"`
+	Settings  map[string]string    `json:"settings,omitempty"`
+	Steps     []ApprovalPolicyStep `json:"steps,omitempty"`
+}
+
+type UpdateApprovalPolicyRequest struct {
+	Name      string               `json:"name"`
+	Template  string               `json:"template"`
+	ProjectID string               `json:"projectId,omitempty"`
+	TeamID    string               `json:"teamId,omitempty"`
+	Settings  map[string]string    `json:"settings,omitempty"`
+	Steps     []ApprovalPolicyStep `json:"steps,omitempty"`
+}
+
+type ApprovalPolicyPreview struct {
+	PolicyID    string   `json:"policyId"`
+	Summary     string   `json:"summary"`
+	Notifies    []string `json:"notifies"`
+	Limitations []string `json:"limitations,omitempty"`
 }
 
 func DefaultChoices() []Choice {

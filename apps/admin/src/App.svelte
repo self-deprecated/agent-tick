@@ -5,6 +5,8 @@
 		csrfTokenFromCookie,
 		type AgentCredential,
 		type AgentTokenRecord,
+		type ApprovalPolicyPreview,
+		type ApprovalPolicyRecord,
 		type ApprovalRequest,
 		type Choice,
 		type DeviceRecord,
@@ -82,8 +84,25 @@
 	let projectName = $state('');
 	let projectDescription = $state('');
 	let projectTeamID = $state('');
+	let projectDefaultPolicyID = $state('');
 	let creatingProject = $state(false);
 	let selectedProjectID = $state('');
+
+	let policies = $state.raw<ApprovalPolicyRecord[]>([]);
+	let policiesStatus = $state<LoadStatus>('idle');
+	let policiesError = $state('');
+	let policyActionError = $state('');
+	let policyName = $state('');
+	let policyTemplate = $state('owner-only');
+	let policyTeamID = $state('');
+	let policyQuorum = $state('2');
+	let policyTimeout = $state('3600');
+	let policyEscalationTarget = $state('');
+	let policyDenyVeto = $state(true);
+	let creatingPolicy = $state(false);
+	let selectedPolicyID = $state('');
+	let policyPreview = $state<ApprovalPolicyPreview | null>(null);
+	let policyPreviewError = $state('');
 
 	const api = new AdminApiClient({
 		bearerToken: () => bearerToken,
@@ -95,10 +114,11 @@
 	let signedInLabel = $derived(session?.email || session?.name || session?.userId || 'Signed in');
 	let organizationLabel = $derived(organizations[0]?.name || 'Default organization');
 	let anyDashboardLoading = $derived(
-		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading'
+		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading'
 	);
 	let selectedTeam = $derived(teams.find((team) => team.teamId === selectedTeamID));
 	let selectedProject = $derived(projects.find((project) => project.projectId === selectedProjectID));
+	let selectedPolicy = $derived(policies.find((policy) => policy.policyId === selectedPolicyID));
 	let setupCommand = $derived(
 		newAgentCredential
 			? `agent-tick setup --server ${shellQuote(publicURL)} --token ${shellQuote(newAgentCredential.token)}`
@@ -168,7 +188,7 @@
 
 	async function refreshDashboard() {
 		if (!canShowDashboard) return;
-		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations(), loadTeams(), loadProjects()]);
+		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations(), loadTeams(), loadProjects(), loadPolicies()]);
 	}
 
 	async function loadApprovals() {
@@ -249,6 +269,19 @@
 		}
 	}
 
+	async function loadPolicies() {
+		policiesStatus = 'loading';
+		policiesError = '';
+		try {
+			policies = await api.listPolicies();
+			policiesStatus = 'ready';
+		} catch (error) {
+			policies = [];
+			policiesStatus = 'error';
+			policiesError = errorMessage(error);
+		}
+	}
+
 	async function createOrganization(event?: SubmitEvent) {
 		event?.preventDefault();
 		organizationActionError = '';
@@ -298,15 +331,59 @@
 		}
 		creatingProject = true;
 		try {
-			await api.createProject({ name: projectName.trim(), description: projectDescription.trim(), teamId: projectTeamID || undefined });
+			await api.createProject({ name: projectName.trim(), description: projectDescription.trim(), teamId: projectTeamID || undefined, defaultPolicyId: projectDefaultPolicyID || undefined });
 			projectName = '';
 			projectDescription = '';
 			projectTeamID = '';
+			projectDefaultPolicyID = '';
 			await loadProjects();
 		} catch (error) {
 			projectActionError = errorMessage(error);
 		} finally {
 			creatingProject = false;
+		}
+	}
+
+	async function createPolicy(event?: SubmitEvent) {
+		event?.preventDefault();
+		policyActionError = '';
+		if (!policyName.trim()) {
+			policyActionError = 'Enter a policy name.';
+			return;
+		}
+		creatingPolicy = true;
+		try {
+			const policy = await api.createPolicy({
+				name: policyName.trim(),
+				template: policyTemplate,
+				teamId: policyTeamID || undefined,
+				settings: {
+					quorum: policyQuorum,
+					timeoutSeconds: policyTimeout,
+					escalationTarget: policyEscalationTarget,
+					denyVeto: String(policyDenyVeto)
+				}
+			});
+			policyName = '';
+			policyEscalationTarget = '';
+			selectedPolicyID = policy.policyId;
+			await loadPolicies();
+			await previewPolicy(policy.policyId);
+		} catch (error) {
+			policyActionError = errorMessage(error);
+		} finally {
+			creatingPolicy = false;
+		}
+	}
+
+	async function previewPolicy(policyID: string) {
+		selectedPolicyID = policyID;
+		policyPreview = null;
+		policyPreviewError = '';
+		try {
+			policyPreview = await api.previewPolicy(policyID);
+		} catch (error) {
+			policyPreviewError = errorMessage(error);
 		}
 	}
 
@@ -448,7 +525,7 @@
 
 	function policyLabel(policy: string | undefined): string {
 		if (!policy) return 'No default policy';
-		return policy
+		return policies.find((record) => record.policyId === policy)?.name || policy
 			.split('-')
 			.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 			.join(' ');
@@ -547,6 +624,7 @@
 			<a href="#devices">Devices</a>
 			<a href="#agents">Agents</a>
 			<a href="#teams">Teams</a>
+			<a href="#policies">Policies</a>
 			<a href="#projects">Projects</a>
 		</nav>
 
@@ -728,12 +806,12 @@
 							</select>
 						</label>
 						<label>
-							<span>5. Default approval behavior</span>
+							<span>5. Default approval policy</span>
 							<select bind:value={agentDefaultPolicy}>
-								<option value="">Manual approval</option>
-								<option value="owner-only">Owner only</option>
-								<option value="team-quorum">Team quorum</option>
-								<option value="any-approver">Any approver</option>
+								<option value="">Use project or organization default</option>
+								{#each policies as policy (policy.policyId)}
+									<option value={policy.policyId}>{policy.name}</option>
+								{/each}
 							</select>
 						</label>
 						<button type="submit" disabled={creatingAgent}>{creatingAgent ? 'Creating…' : 'Create Agent Token'}</button>
@@ -868,6 +946,113 @@
 				</div>
 			</details>
 
+			<details id="policies" class="panel" open>
+				<summary>
+					<span>
+						<span class="eyebrow">Policies</span>
+						<strong>Approval templates</strong>
+					</span>
+					<span class="summary-count">{policies.length}</span>
+				</summary>
+				<div class="panel-body">
+					<form class="wizard-form" onsubmit={createPolicy}>
+						<div>
+							<p class="eyebrow">Policy builder</p>
+							<h3>Start with a human-readable template.</h3>
+						</div>
+						<label>
+							<span>Policy name</span>
+							<input bind:value={policyName} type="text" autocomplete="off" placeholder="Backend team quorum" />
+						</label>
+						<label>
+							<span>Template</span>
+							<select bind:value={policyTemplate}>
+								<option value="owner-only">Just me</option>
+								<option value="any-team-member">Anyone on a team</option>
+								<option value="on-call">On-call person</option>
+								<option value="recently-active">Most recently active</option>
+								<option value="quorum">Require multiple approvals</option>
+								<option value="sequence">Multi-step flow</option>
+								<option value="risk-based">Risk-based flow</option>
+							</select>
+						</label>
+						<label>
+							<span>Team</span>
+							<select bind:value={policyTeamID}>
+								<option value="">No team</option>
+								{#each teams as team (team.teamId)}
+									<option value={team.teamId}>{team.name}</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>Quorum size</span>
+							<input bind:value={policyQuorum} type="number" min="1" inputmode="numeric" />
+						</label>
+						<label>
+							<span>Timeout seconds</span>
+							<input bind:value={policyTimeout} type="number" min="0" inputmode="numeric" />
+						</label>
+						<label>
+							<span>Escalation target</span>
+							<input bind:value={policyEscalationTarget} type="text" autocomplete="off" placeholder="on-call-backup@example.com" />
+						</label>
+						<label class="checkbox-label">
+							<input bind:checked={policyDenyVeto} type="checkbox" />
+							<span>Any denial blocks the command</span>
+						</label>
+						<button type="submit" disabled={creatingPolicy}>{creatingPolicy ? 'Creating…' : 'Create Policy'}</button>
+					</form>
+					{#if policyActionError}
+						<p class="error" role="alert">{policyActionError}</p>
+					{/if}
+					{#if policiesError}
+						<div class="inline-error" role="alert"><strong>Error</strong><span>{policiesError}</span></div>
+					{/if}
+					{#if policiesStatus === 'idle'}
+						<div class="empty-state">Connect to load approval policies.</div>
+					{:else if policiesStatus === 'loading'}
+						<div class="empty-state">Loading policies…</div>
+					{:else if policies.length === 0 && !policiesError}
+						<div class="empty-state">No policies yet. Create one from a template, then attach it to projects or agents.</div>
+					{:else}
+						<div class="item-list">
+							{#each policies as policy (policy.policyId)}
+								<article class="item-card">
+									<div>
+										<strong>{policy.name}</strong>
+										<code>{policy.policyId}</code>
+										<p class="muted">{policy.summary}</p>
+										<p class="muted">Template: {policyLabel(policy.template)} · Team: {teamNameForID(policy.teamId)}</p>
+									</div>
+									<button class="secondary" onclick={() => previewPolicy(policy.policyId)}>Preview</button>
+								</article>
+							{/each}
+						</div>
+					{/if}
+					{#if selectedPolicy || policyPreviewError}
+						<section class="detail-card" aria-label="Policy preview">
+							<div class="panel-heading">
+								<div>
+									<p class="eyebrow">Policy preview</p>
+									<h3>{selectedPolicy?.name || 'Preview unavailable'}</h3>
+								</div>
+								<button class="ghost" onclick={() => { selectedPolicyID = ''; policyPreview = null; policyPreviewError = ''; }}>Close</button>
+							</div>
+							{#if policyPreview}
+								<p>{policyPreview.summary}</p>
+								<p class="muted">Would notify: {policyPreview.notifies.join(', ')}</p>
+								{#if policyPreview.limitations?.length}
+									<p class="muted">Limitations: {policyPreview.limitations.join('; ')}</p>
+								{/if}
+							{:else if policyPreviewError}
+								<p class="error" role="alert">{policyPreviewError}</p>
+							{/if}
+						</section>
+					{/if}
+				</div>
+			</details>
+
 			<details id="projects" class="panel" open>
 				<summary>
 					<span>
@@ -895,6 +1080,15 @@
 							<span>Description</span>
 							<input bind:value={projectDescription} type="text" autocomplete="off" placeholder="Optional context" />
 						</label>
+						<label>
+							<span>Default policy</span>
+							<select bind:value={projectDefaultPolicyID}>
+								<option value="">No project default</option>
+								{#each policies as policy (policy.policyId)}
+									<option value={policy.policyId}>{policy.name}</option>
+								{/each}
+							</select>
+						</label>
 						<button type="submit" disabled={creatingProject}>{creatingProject ? 'Creating…' : 'Create Project'}</button>
 					</form>
 					{#if projectActionError}
@@ -916,7 +1110,7 @@
 									<div>
 										<strong>{project.name}</strong>
 										<code>{project.slug}</code>
-										<p class="muted">{teamNameForID(project.teamId)} · {project.projectId}</p>
+										<p class="muted">{teamNameForID(project.teamId)} · Policy: {policyLabel(project.defaultPolicyId)} · {project.projectId}</p>
 										{#if project.description}
 											<p>{project.description}</p>
 										{/if}
@@ -938,7 +1132,7 @@
 							</div>
 							<p class="muted">{selectedProject.description || 'No description yet.'}</p>
 							<p><code>{selectedProject.projectId}</code> <code>{selectedProject.slug}</code></p>
-							<p class="muted">Team: {teamNameForID(selectedProject.teamId)}</p>
+							<p class="muted">Team: {teamNameForID(selectedProject.teamId)} · Default policy: {policyLabel(selectedProject.defaultPolicyId)}</p>
 							<p class="muted">Created {formatDate(selectedProject.createdAt)} · Updated {formatDate(selectedProject.updatedAt)}</p>
 						</section>
 					{/if}

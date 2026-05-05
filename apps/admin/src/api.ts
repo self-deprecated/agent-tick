@@ -121,6 +121,7 @@ export type OrganizationRole = 'owner' | 'admin' | 'approver' | 'viewer' | strin
 export interface OrganizationRecord {
 	organizationId: string;
 	name: string;
+	defaultPolicyId?: string;
 	createdAt: string;
 }
 
@@ -169,6 +170,7 @@ export interface ProjectRecord {
 	name: string;
 	slug: string;
 	description?: string;
+	defaultPolicyId?: string;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -177,6 +179,58 @@ export interface CreateProjectRequest {
 	name: string;
 	teamId?: string;
 	description?: string;
+	defaultPolicyId?: string;
+}
+
+export type ApprovalPolicyTemplate =
+	| 'owner-only'
+	| 'any-team-member'
+	| 'on-call'
+	| 'recently-active'
+	| 'quorum'
+	| 'sequence'
+	| 'risk-based'
+	| string;
+
+export interface ApprovalPolicyStep {
+	stepId?: string;
+	position: number;
+	stepType: string;
+	teamId?: string;
+	quorum?: number;
+	timeoutSeconds?: number;
+	escalationTarget?: string;
+	denyVeto: boolean;
+}
+
+export interface ApprovalPolicyRecord {
+	policyId: string;
+	organizationId: string;
+	projectId?: string;
+	teamId?: string;
+	name: string;
+	template: ApprovalPolicyTemplate;
+	summary: string;
+	settings: Record<string, string>;
+	steps: ApprovalPolicyStep[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CreateApprovalPolicyRequest {
+	name: string;
+	template: ApprovalPolicyTemplate;
+	projectId?: string;
+	teamId?: string;
+	settings?: Record<string, string>;
+	steps?: ApprovalPolicyStep[];
+}
+
+export interface ApprovalPolicyPreview {
+	policyId: string;
+	summary: string;
+	notifies: string[];
+	limitations?: string[];
 }
 
 export interface AdminAuthProvider {
@@ -311,6 +365,21 @@ export class AdminApiClient {
 			method: 'POST',
 			body: input
 		});
+	}
+
+	listPolicies(): Promise<ApprovalPolicyRecord[]> {
+		return this.#requestJSON<ApprovalPolicyRecord[]>('/v1/policies');
+	}
+
+	createPolicy(input: CreateApprovalPolicyRequest): Promise<ApprovalPolicyRecord> {
+		return this.#requestJSON<ApprovalPolicyRecord>('/v1/policies', {
+			method: 'POST',
+			body: input
+		});
+	}
+
+	previewPolicy(id: string): Promise<ApprovalPolicyPreview> {
+		return this.#requestJSON<ApprovalPolicyPreview>(`/v1/policies/${encodeURIComponent(id)}/preview`);
 	}
 
 	async #requestJSON<T>(path: string, init: JSONRequestInit = {}): Promise<T> {
