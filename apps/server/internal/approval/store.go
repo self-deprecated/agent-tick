@@ -88,6 +88,27 @@ type UserAccountStore interface {
 	UserIDForSessionToken(token string) (string, bool, error)
 }
 
+type OrganizationStore interface {
+	ListOrganizationsForUser(userID string) ([]OrganizationMembershipRecord, error)
+	CreateOrganizationForUser(userID string, name string) (OrganizationRecord, error)
+	OrganizationRoleForUser(userID string, organizationID string) (string, bool, error)
+	DefaultOrganizationForUser(userID string) (OrganizationMembershipRecord, error)
+}
+
+type TeamProjectStore interface {
+	ListTeams(organizationID string) ([]TeamRecord, error)
+	CreateTeam(organizationID string, input CreateTeamRequest) (TeamRecord, error)
+	GetTeam(organizationID string, teamID string) (TeamRecord, error)
+	UpdateTeam(organizationID string, teamID string, input UpdateTeamRequest) (TeamRecord, error)
+	ListTeamMembers(organizationID string, teamID string) ([]TeamMemberRecord, error)
+	UpsertTeamMember(organizationID string, teamID string, input UpsertTeamMemberRequest) (TeamMemberRecord, error)
+	RemoveTeamMember(organizationID string, teamID string, userID string) error
+	ListProjects(organizationID string) ([]ProjectRecord, error)
+	CreateProject(organizationID string, input CreateProjectRequest) (ProjectRecord, error)
+	GetProject(organizationID string, projectID string) (ProjectRecord, error)
+	UpdateProject(organizationID string, projectID string, input UpdateProjectRequest) (ProjectRecord, error)
+}
+
 type FileStore struct {
 	path string
 	mu   sync.Mutex

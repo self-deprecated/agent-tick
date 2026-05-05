@@ -428,6 +428,152 @@ func TestSQLiteStoreManagesAgentTokens(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreCreatesDefaultOrganizationProjectAndMembership(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	membership, err := store.DefaultOrganizationForUser(defaultUserID)
+	if err != nil {
+		t.Fatalf("DefaultOrganizationForUser() error = %v", err)
+	}
+	if membership.OrganizationID != defaultOrganizationID || membership.Role != RoleOwner {
+		t.Fatalf("membership = %#v, want default owner", membership)
+	}
+
+	projects, err := store.ListProjects(defaultOrganizationID)
+	if err != nil {
+		t.Fatalf("ListProjects() error = %v", err)
+	}
+	if len(projects) != 1 || projects[0].ProjectID != defaultProjectID {
+		t.Fatalf("projects = %#v, want default project", projects)
+	}
+
+	request, err := store.Create(CreateRequest{Title: "Scoped request"})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	var organizationID string
+	var projectID string
+	if err := store.db.QueryRow("SELECT organization_id, project_id FROM approval_requests WHERE id = ?", request.ID).Scan(&organizationID, &projectID); err != nil {
+		t.Fatalf("Scan() approval org/project error = %v", err)
+	}
+	if organizationID != defaultOrganizationID || projectID != defaultProjectID {
+		t.Fatalf("approval org/project = %q/%q, want defaults", organizationID, projectID)
+	}
+}
+
+func TestSQLiteStoreBackfillsExistingSingleUserRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent-tick.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	now := time.Now().UTC()
+	_, err = db.Exec(`
+		CREATE TABLE users (
+			id TEXT PRIMARY KEY,
+			email TEXT NOT NULL DEFAULT '' UNIQUE,
+			name TEXT NOT NULL,
+			password_hash TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL
+		);
+		CREATE TABLE approval_requests (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL DEFAULT 'usr_default',
+			requester_json TEXT NOT NULL,
+			request_type TEXT NOT NULL DEFAULT 'approval',
+			title TEXT NOT NULL,
+			body TEXT NOT NULL DEFAULT '',
+			command TEXT NOT NULL DEFAULT '',
+			choices_json TEXT NOT NULL,
+			questions_json TEXT NOT NULL DEFAULT '[]',
+			default_choice TEXT NOT NULL DEFAULT '',
+			allow_freeform_reply INTEGER NOT NULL DEFAULT 0,
+			expires_at TEXT NOT NULL DEFAULT '',
+			risk TEXT NOT NULL DEFAULT '',
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			status TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			responded_at TEXT NOT NULL DEFAULT ''
+		);
+		INSERT INTO users (id, email, name, created_at) VALUES ('usr_default', '', 'Single User', ?);
+		INSERT INTO approval_requests (id, user_id, requester_json, title, choices_json, status, created_at)
+		VALUES ('req_existing', 'usr_default', '{}', 'Existing', '[]', 'pending', ?);
+	`, timeText(&now), timeText(&now))
+	if err != nil {
+		t.Fatalf("seed old schema error = %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("seed db Close() error = %v", err)
+	}
+
+	store, err := NewSQLiteStore(path)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore() migration error = %v", err)
+	}
+	defer store.Close()
+
+	var organizationID string
+	var projectID string
+	if err := store.db.QueryRow("SELECT organization_id, project_id FROM approval_requests WHERE id = 'req_existing'").Scan(&organizationID, &projectID); err != nil {
+		t.Fatalf("Scan() migrated approval error = %v", err)
+	}
+	if organizationID != defaultOrganizationID || projectID != defaultProjectID {
+		t.Fatalf("migrated approval org/project = %q/%q, want defaults", organizationID, projectID)
+	}
+	if _, err := store.DefaultOrganizationForUser(defaultUserID); err != nil {
+		t.Fatalf("DefaultOrganizationForUser() after migration error = %v", err)
+	}
+}
+
+func TestSQLiteStoreManagesTeamsProjectsMembersAndAudit(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Platform", Description: "Core agents"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	member, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: "usr_reviewer", Role: RoleApprover})
+	if err != nil {
+		t.Fatalf("UpsertTeamMember() error = %v", err)
+	}
+	if member.Role != RoleApprover {
+		t.Fatalf("member role = %q, want %q", member.Role, RoleApprover)
+	}
+	role, ok, err := store.OrganizationRoleForUser("usr_reviewer", defaultOrganizationID)
+	if err != nil {
+		t.Fatalf("OrganizationRoleForUser() error = %v", err)
+	}
+	if !ok || role != RoleApprover {
+		t.Fatalf("role/ok = %q/%v, want approver true", role, ok)
+	}
+
+	project, err := store.CreateProject(defaultOrganizationID, CreateProjectRequest{Name: "Website", TeamID: team.TeamID, Description: "Marketing"})
+	if err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+	if project.Slug != "website" || project.TeamID != team.TeamID {
+		t.Fatalf("project = %#v, want website on team", project)
+	}
+
+	updated, err := store.UpdateProject(defaultOrganizationID, project.ProjectID, UpdateProjectRequest{Name: "Docs Site"})
+	if err != nil {
+		t.Fatalf("UpdateProject() error = %v", err)
+	}
+	if updated.Slug != "docs-site" || updated.TeamID != "" {
+		t.Fatalf("updated project = %#v, want docs-site without team", updated)
+	}
+
+	var auditCount int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM audit_events WHERE event_type IN ('team.created', 'team_member.upserted', 'project.created', 'project.updated')").Scan(&auditCount); err != nil {
+		t.Fatalf("Scan() audit count error = %v", err)
+	}
+	if auditCount != 4 {
+		t.Fatalf("audit count = %d, want 4", auditCount)
+	}
+}
+
 func newTestSQLiteStore(t *testing.T) *SQLiteStore {
 	t.Helper()
 

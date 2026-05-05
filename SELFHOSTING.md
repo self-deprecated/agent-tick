@@ -41,7 +41,7 @@ Start it:
 docker compose up -d
 ```
 
-Open the dashboard at your public URL. Sign in, open **Devices** to pair your phone, then open **Agents** to create a request-only agent token.
+Open the dashboard at your public URL. Sign in, open **Devices** to pair your phone, then open **Agents** to create a request-only agent token. Agent Tick creates a default organization and project automatically; use **Teams** and **Projects** later if you want team grouping.
 
 ## Single-User Mode
 
@@ -105,5 +105,5 @@ Dashboard sessions in user mode use HttpOnly session cookies plus a readable CSR
 - Dashboard-created agent tokens can create approval requests but cannot approve requests, pair devices, or create more tokens.
 - SQLite data is stored in the `agent_tick_data` Docker volume. Back it up.
 - Single mode maps all records to one implicit user.
-- User mode scopes approvals, devices, pairing tokens, agent tokens, and audit events by user.
+- User mode scopes approvals, devices, pairing tokens, agent tokens, and audit events by user. Organization, team, and project records provide grouping for hosted/team setups without changing the single-user flow.
 - Dashboard sessions use HttpOnly cookies plus a CSRF token cookie for browser writes. When the server sees HTTPS directly, `X-Forwarded-Proto: https`, or an HTTPS `AGENT_TICK_PUBLIC_URL`, these cookies are marked secure.

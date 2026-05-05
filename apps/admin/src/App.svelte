@@ -8,9 +8,12 @@
 		type ApprovalRequest,
 		type Choice,
 		type DeviceRecord,
+		type OrganizationMembershipRecord,
 		type PairingToken,
+		type ProjectRecord,
 		type Requester,
-		type SessionCredential
+		type SessionCredential,
+		type TeamRecord
 	} from './api';
 	import type { AdminConfig } from './app';
 
@@ -51,6 +54,32 @@
 	let busyAgent = $state('');
 	let newAgentCredential = $state<AgentCredential | null>(null);
 
+	let organizations = $state.raw<OrganizationMembershipRecord[]>([]);
+	let organizationsStatus = $state<LoadStatus>('idle');
+	let organizationsError = $state('');
+	let organizationName = $state('');
+	let organizationActionError = $state('');
+	let creatingOrganization = $state(false);
+
+	let teams = $state.raw<TeamRecord[]>([]);
+	let teamsStatus = $state<LoadStatus>('idle');
+	let teamsError = $state('');
+	let teamActionError = $state('');
+	let teamName = $state('');
+	let teamDescription = $state('');
+	let creatingTeam = $state(false);
+	let selectedTeamID = $state('');
+
+	let projects = $state.raw<ProjectRecord[]>([]);
+	let projectsStatus = $state<LoadStatus>('idle');
+	let projectsError = $state('');
+	let projectActionError = $state('');
+	let projectName = $state('');
+	let projectDescription = $state('');
+	let projectTeamID = $state('');
+	let creatingProject = $state(false);
+	let selectedProjectID = $state('');
+
 	const api = new AdminApiClient({
 		bearerToken: () => bearerToken,
 		csrfToken: csrfTokenFromCookie
@@ -59,6 +88,12 @@
 	let isUserMode = $derived(mode === 'user');
 	let canShowDashboard = $derived(!isUserMode || session !== null);
 	let signedInLabel = $derived(session?.email || session?.name || session?.userId || 'Signed in');
+	let organizationLabel = $derived(organizations[0]?.name || 'Default organization');
+	let anyDashboardLoading = $derived(
+		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading'
+	);
+	let selectedTeam = $derived(teams.find((team) => team.teamId === selectedTeamID));
+	let selectedProject = $derived(projects.find((project) => project.projectId === selectedProjectID));
 	let setupCommand = $derived(
 		newAgentCredential
 			? `agent-tick setup --server ${shellQuote(publicURL)} --token ${shellQuote(newAgentCredential.token)}`
@@ -117,7 +152,7 @@
 
 	async function refreshDashboard() {
 		if (!canShowDashboard) return;
-		await Promise.all([loadApprovals(), loadDevices(), loadAgents()]);
+		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations(), loadTeams(), loadProjects()]);
 	}
 
 	async function loadApprovals() {
@@ -156,6 +191,106 @@
 			agents = [];
 			agentsStatus = 'error';
 			agentsError = errorMessage(error);
+		}
+	}
+
+	async function loadOrganizations() {
+		organizationsStatus = 'loading';
+		organizationsError = '';
+		try {
+			organizations = await api.listOrganizations();
+			organizationsStatus = 'ready';
+		} catch (error) {
+			organizations = [];
+			organizationsStatus = 'error';
+			organizationsError = errorMessage(error);
+		}
+	}
+
+	async function loadTeams() {
+		teamsStatus = 'loading';
+		teamsError = '';
+		try {
+			teams = await api.listTeams();
+			teamsStatus = 'ready';
+		} catch (error) {
+			teams = [];
+			teamsStatus = 'error';
+			teamsError = errorMessage(error);
+		}
+	}
+
+	async function loadProjects() {
+		projectsStatus = 'loading';
+		projectsError = '';
+		try {
+			projects = await api.listProjects();
+			projectsStatus = 'ready';
+		} catch (error) {
+			projects = [];
+			projectsStatus = 'error';
+			projectsError = errorMessage(error);
+		}
+	}
+
+	async function createOrganization(event?: SubmitEvent) {
+		event?.preventDefault();
+		organizationActionError = '';
+		if (!organizationName.trim()) {
+			organizationActionError = 'Enter an organization name.';
+			return;
+		}
+		creatingOrganization = true;
+		try {
+			await api.createOrganization({ name: organizationName.trim() });
+			organizationName = '';
+			await loadOrganizations();
+			await Promise.all([loadTeams(), loadProjects()]);
+		} catch (error) {
+			organizationActionError = errorMessage(error);
+		} finally {
+			creatingOrganization = false;
+		}
+	}
+
+	async function createTeam(event?: SubmitEvent) {
+		event?.preventDefault();
+		teamActionError = '';
+		if (!teamName.trim()) {
+			teamActionError = 'Enter a team name.';
+			return;
+		}
+		creatingTeam = true;
+		try {
+			await api.createTeam({ name: teamName.trim(), description: teamDescription.trim() });
+			teamName = '';
+			teamDescription = '';
+			await loadTeams();
+		} catch (error) {
+			teamActionError = errorMessage(error);
+		} finally {
+			creatingTeam = false;
+		}
+	}
+
+	async function createProject(event?: SubmitEvent) {
+		event?.preventDefault();
+		projectActionError = '';
+		if (!projectName.trim()) {
+			projectActionError = 'Enter a project name.';
+			return;
+		}
+		creatingProject = true;
+		try {
+			await api.createProject({ name: projectName.trim(), description: projectDescription.trim(), teamId: projectTeamID || undefined });
+			projectName = '';
+			projectDescription = '';
+			projectTeamID = '';
+			await loadProjects();
+		} catch (error) {
+			projectActionError = errorMessage(error);
+		} finally {
+			creatingProject = false;
 		}
 	}
 
@@ -273,6 +408,15 @@
 		return approval.status === 'pending' && approval.requestType !== 'questionnaire' && approval.choices.length > 0;
 	}
 
+	function teamNameForID(teamID: string | undefined): string {
+		if (!teamID) return 'No team';
+		return teams.find((team) => team.teamId === teamID)?.name || teamID;
+	}
+
+	function projectCountForTeam(teamID: string): number {
+		return projects.filter((project) => project.teamId === teamID).length;
+	}
+
 	function formatDate(value: string | undefined): string {
 		if (!value) return 'Unknown time';
 		const date = new Date(value);
@@ -340,7 +484,7 @@
 				<div>
 					<p class="eyebrow">Session</p>
 					<h2>{signedInLabel}</h2>
-					<p class="muted">Session cookies and CSRF protection are active for dashboard actions.</p>
+					<p class="muted">{organizationLabel} · Session cookies and CSRF protection are active for dashboard actions.</p>
 				</div>
 			{:else}
 				<form class="connect-form" onsubmit={connectDashboard}>
@@ -348,10 +492,10 @@
 						<span>Admin bearer token</span>
 						<input bind:value={bearerToken} type="password" autocomplete="off" placeholder="Paste token and press Enter" />
 					</label>
-					<button type="submit" disabled={approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading'}>Connect</button>
+					<button type="submit" disabled={anyDashboardLoading}>Connect</button>
 				</form>
 			{/if}
-			<button class="secondary" onclick={refreshDashboard} disabled={approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading'}>Refresh all</button>
+			<button class="secondary" onclick={refreshDashboard} disabled={anyDashboardLoading}>Refresh all</button>
 			{#if authError}
 				<p class="error" role="alert">{authError}</p>
 			{/if}
@@ -361,6 +505,8 @@
 			<a href="#approvals">Approvals</a>
 			<a href="#devices">Devices</a>
 			<a href="#agents">Agents</a>
+			<a href="#teams">Teams</a>
+			<a href="#projects">Projects</a>
 		</nav>
 
 		<main class="dashboard-grid">
@@ -551,6 +697,165 @@
 								</article>
 							{/each}
 						</div>
+					{/if}
+				</div>
+			</details>
+
+			<details id="teams" class="panel" open>
+				<summary>
+					<span>
+						<span class="eyebrow">Teams</span>
+						<strong>Team workspace</strong>
+					</span>
+					<span class="summary-count">{teams.length}</span>
+				</summary>
+				<div class="panel-body">
+					{#if organizationsError}
+						<div class="inline-error" role="alert"><strong>Organization</strong><span>{organizationsError}</span></div>
+					{:else if organizationsStatus === 'ready'}
+						<p class="muted">Managing <strong>{organizationLabel}</strong> as {organizations[0]?.role || 'owner'}.</p>
+					{/if}
+					<form class="agent-form" onsubmit={createOrganization}>
+						<label>
+							<span>Organization name</span>
+							<input bind:value={organizationName} type="text" autocomplete="organization" placeholder="Acme AI" />
+						</label>
+						<button type="submit" class="secondary" disabled={creatingOrganization}>{creatingOrganization ? 'Creating…' : 'Create Organization'}</button>
+					</form>
+					{#if organizationActionError}
+						<p class="error" role="alert">{organizationActionError}</p>
+					{/if}
+					<form class="agent-form" onsubmit={createTeam}>
+						<label>
+							<span>Team name</span>
+							<input bind:value={teamName} type="text" autocomplete="off" placeholder="Platform" />
+						</label>
+						<label>
+							<span>Description</span>
+							<input bind:value={teamDescription} type="text" autocomplete="off" placeholder="Optional context" />
+						</label>
+						<button type="submit" disabled={creatingTeam}>{creatingTeam ? 'Creating…' : 'Create Team'}</button>
+					</form>
+					{#if teamActionError}
+						<p class="error" role="alert">{teamActionError}</p>
+					{/if}
+					{#if teamsError}
+						<div class="inline-error" role="alert"><strong>Error</strong><span>{teamsError}</span></div>
+					{/if}
+					{#if teamsStatus === 'idle'}
+						<div class="empty-state">Connect to load teams.</div>
+					{:else if teamsStatus === 'loading'}
+						<div class="empty-state">Loading teams…</div>
+					{:else if teams.length === 0 && !teamsError}
+						<div class="empty-state">No teams yet. Small installs can keep using the default organization without creating one.</div>
+					{:else}
+						<div class="item-list">
+							{#each teams as team (team.teamId)}
+								<article class="item-card">
+									<div>
+										<strong>{team.name}</strong>
+										<code>{team.teamId}</code>
+										{#if team.description}
+											<p>{team.description}</p>
+										{/if}
+										<p class="muted">{projectCountForTeam(team.teamId)} projects · Created {formatDate(team.createdAt)}</p>
+									</div>
+									<button class="secondary" onclick={() => (selectedTeamID = team.teamId)}>Details</button>
+								</article>
+							{/each}
+						</div>
+					{/if}
+					{#if selectedTeam}
+						<section class="detail-card" aria-label="Team details">
+							<div class="panel-heading">
+								<div>
+									<p class="eyebrow">Team detail</p>
+									<h3>{selectedTeam.name}</h3>
+								</div>
+								<button class="ghost" onclick={() => (selectedTeamID = '')}>Close</button>
+							</div>
+							<p class="muted">{selectedTeam.description || 'No description yet.'}</p>
+							<p><code>{selectedTeam.teamId}</code></p>
+							<p class="muted">Created {formatDate(selectedTeam.createdAt)} · Updated {formatDate(selectedTeam.updatedAt)}</p>
+							<p class="muted">Projects: {projects.filter((project) => project.teamId === selectedTeam.teamId).map((project) => project.name).join(', ') || 'none yet'}</p>
+						</section>
+					{/if}
+				</div>
+			</details>
+
+			<details id="projects" class="panel" open>
+				<summary>
+					<span>
+						<span class="eyebrow">Projects</span>
+						<strong>Project grouping</strong>
+					</span>
+					<span class="summary-count">{projects.length}</span>
+				</summary>
+				<div class="panel-body">
+					<form class="agent-form" onsubmit={createProject}>
+						<label>
+							<span>Project name</span>
+							<input bind:value={projectName} type="text" autocomplete="off" placeholder="Website" />
+						</label>
+						<label>
+							<span>Team</span>
+							<select bind:value={projectTeamID}>
+								<option value="">No team</option>
+								{#each teams as team (team.teamId)}
+									<option value={team.teamId}>{team.name}</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>Description</span>
+							<input bind:value={projectDescription} type="text" autocomplete="off" placeholder="Optional context" />
+						</label>
+						<button type="submit" disabled={creatingProject}>{creatingProject ? 'Creating…' : 'Create Project'}</button>
+					</form>
+					{#if projectActionError}
+						<p class="error" role="alert">{projectActionError}</p>
+					{/if}
+					{#if projectsError}
+						<div class="inline-error" role="alert"><strong>Error</strong><span>{projectsError}</span></div>
+					{/if}
+					{#if projectsStatus === 'idle'}
+						<div class="empty-state">Connect to load projects.</div>
+					{:else if projectsStatus === 'loading'}
+						<div class="empty-state">Loading projects…</div>
+					{:else if projects.length === 0 && !projectsError}
+						<div class="empty-state">No projects yet. Agent Tick creates a default project automatically for first-run simplicity.</div>
+					{:else}
+						<div class="item-list">
+							{#each projects as project (project.projectId)}
+								<article class="item-card">
+									<div>
+										<strong>{project.name}</strong>
+										<code>{project.slug}</code>
+										<p class="muted">{teamNameForID(project.teamId)} · {project.projectId}</p>
+										{#if project.description}
+											<p>{project.description}</p>
+										{/if}
+										<p class="muted">Created {formatDate(project.createdAt)}</p>
+									</div>
+									<button class="secondary" onclick={() => (selectedProjectID = project.projectId)}>Details</button>
+								</article>
+							{/each}
+						</div>
+					{/if}
+					{#if selectedProject}
+						<section class="detail-card" aria-label="Project details">
+							<div class="panel-heading">
+								<div>
+									<p class="eyebrow">Project detail</p>
+									<h3>{selectedProject.name}</h3>
+								</div>
+								<button class="ghost" onclick={() => (selectedProjectID = '')}>Close</button>
+							</div>
+							<p class="muted">{selectedProject.description || 'No description yet.'}</p>
+							<p><code>{selectedProject.projectId}</code> <code>{selectedProject.slug}</code></p>
+							<p class="muted">Team: {teamNameForID(selectedProject.teamId)}</p>
+							<p class="muted">Created {formatDate(selectedProject.createdAt)} · Updated {formatDate(selectedProject.updatedAt)}</p>
+						</section>
 					{/if}
 				</div>
 			</details>

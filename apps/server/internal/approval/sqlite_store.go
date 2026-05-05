@@ -85,6 +85,9 @@ func (s *SQLiteStore) LoginOrCreateUser(email string, password string, name stri
 	} else if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
 		return SessionCredential{}, ErrNotFound
 	}
+	if err := ensurePersonalOrganizationForUserTx(tx, userID, storedName); err != nil {
+		return SessionCredential{}, err
+	}
 
 	sessionToken := "session_" + newID()
 	expiresAt := now.Add(ttl)
@@ -174,6 +177,10 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
+	organizationID, projectID, err := s.defaultOrganizationAndProjectForUser(userID)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -183,13 +190,15 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 
 	_, err = tx.Exec(`
 		INSERT INTO approval_requests (
-			id, user_id, requester_json, request_type, title, body, command, choices_json, questions_json,
+			id, user_id, organization_id, project_id, requester_json, request_type, title, body, command, choices_json, questions_json,
 			default_choice, allow_freeform_reply, expires_at, risk,
 			metadata_json, status, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		request.ID,
 		userID,
+		organizationID,
+		projectID,
 		requesterJSON,
 		request.RequestType,
 		request.Title,
@@ -488,13 +497,18 @@ func (s *SQLiteStore) CreatePairingTokenForUser(userID string, ttl time.Duration
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
+	organizationID, _, err := s.defaultOrganizationAndProjectForUser(userID)
+	if err != nil {
+		return PairingToken{}, err
+	}
 	token := "pair_" + newID()
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl)
 
-	_, err := s.db.Exec(
-		"INSERT INTO pairing_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+	_, err = s.db.Exec(
+		"INSERT INTO pairing_tokens (user_id, organization_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
 		userID,
+		organizationID,
 		tokenHash(token),
 		timeText(&expiresAt),
 		timeText(&now),
@@ -523,11 +537,12 @@ func (s *SQLiteStore) PairDevice(token string, deviceName string) (DeviceCredent
 
 	var tokenID int64
 	var userID string
+	var organizationID string
 	err = tx.QueryRow(`
-		SELECT id, user_id
+		SELECT id, user_id, organization_id
 		FROM pairing_tokens
 		WHERE token_hash = ? AND used_at = '' AND expires_at > ?
-	`, tokenHash(token), timeText(&now)).Scan(&tokenID, &userID)
+	`, tokenHash(token), timeText(&now)).Scan(&tokenID, &userID, &organizationID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return DeviceCredential{}, ErrNotFound
 	}
@@ -538,9 +553,10 @@ func (s *SQLiteStore) PairDevice(token string, deviceName string) (DeviceCredent
 	deviceID := "dev_" + newID()
 	deviceToken := "device_" + newID()
 	_, err = tx.Exec(
-		"INSERT INTO devices (id, user_id, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+		"INSERT INTO devices (id, user_id, organization_id, name, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 		deviceID,
 		userID,
+		organizationID,
 		deviceName,
 		tokenHash(deviceToken),
 		timeText(&now),
@@ -703,6 +719,10 @@ func (s *SQLiteStore) CreateAgentTokenForUser(userID string, name string, scopes
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
+	organizationID, projectID, err := s.defaultOrganizationAndProjectForUser(userID)
+	if err != nil {
+		return AgentCredential{}, err
+	}
 	if strings.TrimSpace(name) == "" {
 		name = "agent"
 	}
@@ -718,9 +738,11 @@ func (s *SQLiteStore) CreateAgentTokenForUser(userID string, name string, scopes
 	}
 
 	_, err = s.db.Exec(
-		"INSERT INTO agent_tokens (id, user_id, name, token_hash, scopes_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		"INSERT INTO agent_tokens (id, user_id, organization_id, project_id, name, token_hash, scopes_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		agentID,
 		userID,
+		organizationID,
+		projectID,
 		name,
 		tokenHash(token),
 		scopesJSON,
@@ -898,6 +920,741 @@ func (s *SQLiteStore) RotateAgentToken(agentID string) (AgentCredential, error) 
 	return AgentCredential{AgentID: agentID, Name: name, Token: token, Scopes: scopes}, nil
 }
 
+func (s *SQLiteStore) ListOrganizationsForUser(userID string) ([]OrganizationMembershipRecord, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	rows, err := s.db.Query(`
+		SELECT m.organization_id, o.name, m.user_id, m.role, m.created_at
+		FROM organization_memberships m
+		JOIN organizations o ON o.id = m.organization_id
+		WHERE m.user_id = ?
+		ORDER BY m.created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	memberships := []OrganizationMembershipRecord{}
+	for rows.Next() {
+		membership, err := scanOrganizationMembership(rows)
+		if err != nil {
+			return nil, err
+		}
+		memberships = append(memberships, membership)
+	}
+	return memberships, rows.Err()
+}
+
+func (s *SQLiteStore) DefaultOrganizationForUser(userID string) (OrganizationMembershipRecord, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	row := s.db.QueryRow(`
+		SELECT m.organization_id, o.name, m.user_id, m.role, m.created_at
+		FROM organization_memberships m
+		JOIN organizations o ON o.id = m.organization_id
+		WHERE m.user_id = ?
+		ORDER BY m.created_at DESC
+		LIMIT 1
+	`, userID)
+	membership, err := scanOrganizationMembership(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return OrganizationMembershipRecord{}, ErrNotFound
+	}
+	return membership, err
+}
+
+func (s *SQLiteStore) OrganizationRoleForUser(userID string, organizationID string) (string, bool, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	var role string
+	err := s.db.QueryRow(
+		"SELECT role FROM organization_memberships WHERE user_id = ? AND organization_id = ? LIMIT 1",
+		userID,
+		organizationID,
+	).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return role, true, nil
+}
+
+func (s *SQLiteStore) CreateOrganizationForUser(userID string, name string) (OrganizationRecord, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return OrganizationRecord{}, ErrInvalidRequest
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return OrganizationRecord{}, err
+	}
+	defer rollback(tx)
+
+	organization, err := createOrganizationForUserTx(tx, userID, name, "org_"+newID(), "prj_"+newID())
+	if err != nil {
+		return OrganizationRecord{}, err
+	}
+	if err := insertAuditForUser(tx, userID, "organization.created", organization.OrganizationID, map[string]string{"name": organization.Name}); err != nil {
+		return OrganizationRecord{}, err
+	}
+	if err := insertAuditForUser(tx, userID, "organization_membership.upserted", organization.OrganizationID, map[string]string{"userId": userID, "role": RoleOwner}); err != nil {
+		return OrganizationRecord{}, err
+	}
+	projectID, err := defaultProjectForOrganizationTx(tx, organization.OrganizationID)
+	if err != nil {
+		return OrganizationRecord{}, err
+	}
+	if err := insertAuditForUser(tx, userID, "project.created", projectID, map[string]string{"organizationId": organization.OrganizationID, "name": "Default Project"}); err != nil {
+		return OrganizationRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return OrganizationRecord{}, err
+	}
+	return organization, nil
+}
+
+func (s *SQLiteStore) ListTeams(organizationID string) ([]TeamRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	rows, err := s.db.Query(`
+		SELECT id, organization_id, name, description, created_at, updated_at
+		FROM teams
+		WHERE organization_id = ?
+		ORDER BY name COLLATE NOCASE ASC
+	`, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	teams := []TeamRecord{}
+	for rows.Next() {
+		team, err := scanTeam(rows)
+		if err != nil {
+			return nil, err
+		}
+		teams = append(teams, team)
+	}
+	return teams, rows.Err()
+}
+
+func (s *SQLiteStore) CreateTeam(organizationID string, input CreateTeamRequest) (TeamRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return TeamRecord{}, ErrInvalidRequest
+	}
+	now := time.Now().UTC()
+	team := TeamRecord{
+		TeamID:         "team_" + newID(),
+		OrganizationID: organizationID,
+		Name:           name,
+		Description:    strings.TrimSpace(input.Description),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	defer rollback(tx)
+	if err := ensureOrganizationExistsTx(tx, organizationID); err != nil {
+		return TeamRecord{}, err
+	}
+	_, err = tx.Exec(
+		"INSERT INTO teams (id, organization_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+		team.TeamID,
+		team.OrganizationID,
+		team.Name,
+		team.Description,
+		timeText(&team.CreatedAt),
+		timeText(&team.UpdatedAt),
+	)
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	if err := insertAuditForUser(tx, defaultUserID, "team.created", team.TeamID, team); err != nil {
+		return TeamRecord{}, err
+	}
+	return team, tx.Commit()
+}
+
+func (s *SQLiteStore) GetTeam(organizationID string, teamID string) (TeamRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	row := s.db.QueryRow(`
+		SELECT id, organization_id, name, description, created_at, updated_at
+		FROM teams
+		WHERE organization_id = ? AND id = ?
+	`, organizationID, teamID)
+	team, err := scanTeam(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return TeamRecord{}, ErrNotFound
+	}
+	return team, err
+}
+
+func (s *SQLiteStore) UpdateTeam(organizationID string, teamID string, input UpdateTeamRequest) (TeamRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return TeamRecord{}, ErrInvalidRequest
+	}
+	now := time.Now().UTC()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	defer rollback(tx)
+	result, err := tx.Exec(
+		"UPDATE teams SET name = ?, description = ?, updated_at = ? WHERE organization_id = ? AND id = ?",
+		name,
+		strings.TrimSpace(input.Description),
+		timeText(&now),
+		organizationID,
+		teamID,
+	)
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	if rows == 0 {
+		return TeamRecord{}, ErrNotFound
+	}
+	if err := insertAuditForUser(tx, defaultUserID, "team.updated", teamID, input); err != nil {
+		return TeamRecord{}, err
+	}
+	team, err := scanTeam(tx.QueryRow(`
+		SELECT id, organization_id, name, description, created_at, updated_at
+		FROM teams
+		WHERE organization_id = ? AND id = ?
+	`, organizationID, teamID))
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	return team, tx.Commit()
+}
+
+func (s *SQLiteStore) ListTeamMembers(organizationID string, teamID string) ([]TeamMemberRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	if err := s.ensureTeamExists(organizationID, teamID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`
+		SELECT team_id, user_id, role, created_at
+		FROM team_members
+		WHERE team_id = ?
+		ORDER BY created_at ASC
+	`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	members := []TeamMemberRecord{}
+	for rows.Next() {
+		member, err := scanTeamMember(rows)
+		if err != nil {
+			return nil, err
+		}
+		members = append(members, member)
+	}
+	return members, rows.Err()
+}
+
+func (s *SQLiteStore) UpsertTeamMember(organizationID string, teamID string, input UpsertTeamMemberRequest) (TeamMemberRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	userID := strings.TrimSpace(input.UserID)
+	role, err := normalizeRole(input.Role)
+	if err != nil || userID == "" {
+		return TeamMemberRecord{}, ErrInvalidRequest
+	}
+	now := time.Now().UTC()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return TeamMemberRecord{}, err
+	}
+	defer rollback(tx)
+	if err := ensureTeamExistsTx(tx, organizationID, teamID); err != nil {
+		return TeamMemberRecord{}, err
+	}
+	if err := upsertOrganizationMembershipTx(tx, organizationID, userID, role, now); err != nil {
+		return TeamMemberRecord{}, err
+	}
+	_, err = tx.Exec(`
+		INSERT INTO team_members (team_id, user_id, role, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at
+	`, teamID, userID, role, timeText(&now), timeText(&now))
+	if err != nil {
+		return TeamMemberRecord{}, err
+	}
+	if err := insertAuditForUser(tx, defaultUserID, "organization_membership.upserted", organizationID, map[string]string{"userId": userID, "role": role}); err != nil {
+		return TeamMemberRecord{}, err
+	}
+	if err := insertAuditForUser(tx, defaultUserID, "team_member.upserted", teamID, map[string]string{"userId": userID, "role": role}); err != nil {
+		return TeamMemberRecord{}, err
+	}
+	member := TeamMemberRecord{TeamID: teamID, UserID: userID, Role: role, CreatedAt: now}
+	if err := tx.Commit(); err != nil {
+		return TeamMemberRecord{}, err
+	}
+	return member, nil
+}
+
+func (s *SQLiteStore) RemoveTeamMember(organizationID string, teamID string, userID string) error {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	if err := ensureTeamExistsTx(tx, organizationID, teamID); err != nil {
+		return err
+	}
+	result, err := tx.Exec("DELETE FROM team_members WHERE team_id = ? AND user_id = ?", teamID, strings.TrimSpace(userID))
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	if err := insertAuditForUser(tx, defaultUserID, "team_member.removed", teamID, map[string]string{"userId": strings.TrimSpace(userID)}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *SQLiteStore) ListProjects(organizationID string) ([]ProjectRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	rows, err := s.db.Query(`
+		SELECT id, organization_id, team_id, name, slug, description, created_at, updated_at
+		FROM projects
+		WHERE organization_id = ?
+		ORDER BY name COLLATE NOCASE ASC
+	`, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	projects := []ProjectRecord{}
+	for rows.Next() {
+		project, err := scanProject(rows)
+		if err != nil {
+			return nil, err
+		}
+		projects = append(projects, project)
+	}
+	return projects, rows.Err()
+}
+
+func (s *SQLiteStore) CreateProject(organizationID string, input CreateProjectRequest) (ProjectRecord, error) {
+	return s.createOrUpdateProject("", organizationID, input.Name, input.TeamID, input.Description)
+}
+
+func (s *SQLiteStore) GetProject(organizationID string, projectID string) (ProjectRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	row := s.db.QueryRow(`
+		SELECT id, organization_id, team_id, name, slug, description, created_at, updated_at
+		FROM projects
+		WHERE organization_id = ? AND id = ?
+	`, organizationID, projectID)
+	project, err := scanProject(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ProjectRecord{}, ErrNotFound
+	}
+	return project, err
+}
+
+func (s *SQLiteStore) UpdateProject(organizationID string, projectID string, input UpdateProjectRequest) (ProjectRecord, error) {
+	return s.createOrUpdateProject(projectID, organizationID, input.Name, input.TeamID, input.Description)
+}
+
+func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID string, name string, teamID string, description string) (ProjectRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	name = strings.TrimSpace(name)
+	teamID = strings.TrimSpace(teamID)
+	if name == "" {
+		return ProjectRecord{}, ErrInvalidRequest
+	}
+	now := time.Now().UTC()
+	creating := strings.TrimSpace(projectID) == ""
+	if creating {
+		projectID = "prj_" + newID()
+	}
+	project := ProjectRecord{
+		ProjectID:      projectID,
+		OrganizationID: organizationID,
+		TeamID:         teamID,
+		Name:           name,
+		Slug:           slugify(name),
+		Description:    strings.TrimSpace(description),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return ProjectRecord{}, err
+	}
+	defer rollback(tx)
+	if err := ensureOrganizationExistsTx(tx, organizationID); err != nil {
+		return ProjectRecord{}, err
+	}
+	if teamID != "" {
+		if err := ensureTeamExistsTx(tx, organizationID, teamID); err != nil {
+			return ProjectRecord{}, err
+		}
+	}
+	if creating {
+		_, err = tx.Exec(
+			"INSERT INTO projects (id, organization_id, team_id, name, slug, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			project.ProjectID,
+			project.OrganizationID,
+			project.TeamID,
+			project.Name,
+			project.Slug,
+			project.Description,
+			timeText(&project.CreatedAt),
+			timeText(&project.UpdatedAt),
+		)
+		if err != nil {
+			return ProjectRecord{}, err
+		}
+		if err := insertAuditForUser(tx, defaultUserID, "project.created", project.ProjectID, project); err != nil {
+			return ProjectRecord{}, err
+		}
+		return project, tx.Commit()
+	}
+	result, err := tx.Exec(
+		"UPDATE projects SET team_id = ?, name = ?, slug = ?, description = ?, updated_at = ? WHERE organization_id = ? AND id = ?",
+		project.TeamID,
+		project.Name,
+		project.Slug,
+		project.Description,
+		timeText(&now),
+		organizationID,
+		projectID,
+	)
+	if err != nil {
+		return ProjectRecord{}, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return ProjectRecord{}, err
+	}
+	if rows == 0 {
+		return ProjectRecord{}, ErrNotFound
+	}
+	if err := insertAuditForUser(tx, defaultUserID, "project.updated", projectID, project); err != nil {
+		return ProjectRecord{}, err
+	}
+	project, err = scanProject(tx.QueryRow(`
+		SELECT id, organization_id, team_id, name, slug, description, created_at, updated_at
+		FROM projects
+		WHERE organization_id = ? AND id = ?
+	`, organizationID, projectID))
+	if err != nil {
+		return ProjectRecord{}, err
+	}
+	return project, tx.Commit()
+}
+
+func (s *SQLiteStore) ensureTeamExists(organizationID string, teamID string) error {
+	return ensureTeamExistsDB(s.db, organizationID, teamID)
+}
+
+func (s *SQLiteStore) defaultOrganizationAndProjectForUser(userID string) (string, string, error) {
+	membership, err := s.DefaultOrganizationForUser(userID)
+	if errors.Is(err, ErrNotFound) {
+		tx, txErr := s.db.Begin()
+		if txErr != nil {
+			return "", "", txErr
+		}
+		defer rollback(tx)
+		name := "Personal Organization"
+		if strings.TrimSpace(userID) == defaultUserID {
+			name = "Default Organization"
+		}
+		organization, createErr := createOrganizationForUserTx(tx, userID, name, "org_"+newID(), "prj_"+newID())
+		if createErr != nil {
+			return "", "", createErr
+		}
+		projectID, projectErr := defaultProjectForOrganizationTx(tx, organization.OrganizationID)
+		if projectErr != nil {
+			return "", "", projectErr
+		}
+		if commitErr := tx.Commit(); commitErr != nil {
+			return "", "", commitErr
+		}
+		return organization.OrganizationID, projectID, nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	projectID, err := defaultProjectForOrganizationDB(s.db, membership.OrganizationID)
+	if err != nil {
+		return "", "", err
+	}
+	return membership.OrganizationID, projectID, nil
+}
+
+func ensurePersonalOrganizationForUserTx(tx *sql.Tx, userID string, name string) error {
+	var count int
+	err := tx.QueryRow("SELECT COUNT(*) FROM organization_memberships WHERE user_id = ?", userID).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	organizationName := strings.TrimSpace(name)
+	if organizationName == "" {
+		organizationName = "Personal Organization"
+	}
+	_, err = createOrganizationForUserTx(tx, userID, organizationName, "org_"+newID(), "prj_"+newID())
+	return err
+}
+
+func createOrganizationForUserTx(tx *sql.Tx, userID string, name string, organizationID string, projectID string) (OrganizationRecord, error) {
+	now := time.Now().UTC()
+	organization := OrganizationRecord{OrganizationID: organizationID, Name: strings.TrimSpace(name), CreatedAt: now}
+	if organization.Name == "" {
+		return OrganizationRecord{}, ErrInvalidRequest
+	}
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	_, err := tx.Exec(
+		"INSERT INTO organizations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
+		organization.OrganizationID,
+		organization.Name,
+		timeText(&now),
+		timeText(&now),
+	)
+	if err != nil {
+		return OrganizationRecord{}, err
+	}
+	if err := upsertOrganizationMembershipTx(tx, organization.OrganizationID, userID, RoleOwner, now); err != nil {
+		return OrganizationRecord{}, err
+	}
+	_, err = tx.Exec(
+		"INSERT INTO projects (id, organization_id, team_id, name, slug, description, created_at, updated_at) VALUES (?, ?, '', ?, ?, '', ?, ?)",
+		projectID,
+		organization.OrganizationID,
+		"Default Project",
+		"default-project",
+		timeText(&now),
+		timeText(&now),
+	)
+	if err != nil {
+		return OrganizationRecord{}, err
+	}
+	return organization, nil
+}
+
+func upsertOrganizationMembershipTx(tx *sql.Tx, organizationID string, userID string, role string, now time.Time) error {
+	role, err := normalizeRole(role)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`
+		INSERT INTO organization_memberships (organization_id, user_id, role, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(organization_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at
+	`, organizationID, userID, role, timeText(&now), timeText(&now))
+	return err
+}
+
+func ensureOrganizationExistsTx(tx *sql.Tx, organizationID string) error {
+	var id string
+	err := tx.QueryRow("SELECT id FROM organizations WHERE id = ?", organizationID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func ensureTeamExistsTx(tx *sql.Tx, organizationID string, teamID string) error {
+	return ensureTeamExistsDB(tx, organizationID, teamID)
+}
+
+type rowQuerier interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func ensureTeamExistsDB(db rowQuerier, organizationID string, teamID string) error {
+	if strings.TrimSpace(teamID) == "" {
+		return ErrNotFound
+	}
+	var id string
+	err := db.QueryRow("SELECT id FROM teams WHERE organization_id = ? AND id = ?", organizationID, teamID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func defaultProjectForOrganizationDB(db rowQuerier, organizationID string) (string, error) {
+	var projectID string
+	err := db.QueryRow("SELECT id FROM projects WHERE organization_id = ? ORDER BY created_at ASC LIMIT 1", organizationID).Scan(&projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return projectID, err
+}
+
+func defaultProjectForOrganizationTx(tx *sql.Tx, organizationID string) (string, error) {
+	return defaultProjectForOrganizationDB(tx, organizationID)
+}
+
+func scanOrganizationMembership(scanner requestScanner) (OrganizationMembershipRecord, error) {
+	var membership OrganizationMembershipRecord
+	var createdAt string
+	err := scanner.Scan(&membership.OrganizationID, &membership.Name, &membership.UserID, &membership.Role, &createdAt)
+	if err != nil {
+		return OrganizationMembershipRecord{}, err
+	}
+	parsedCreatedAt, err := parseTime(createdAt)
+	if err != nil {
+		return OrganizationMembershipRecord{}, err
+	}
+	membership.CreatedAt = parsedCreatedAt
+	return membership, nil
+}
+
+func scanTeam(scanner requestScanner) (TeamRecord, error) {
+	var team TeamRecord
+	var createdAt string
+	var updatedAt string
+	err := scanner.Scan(&team.TeamID, &team.OrganizationID, &team.Name, &team.Description, &createdAt, &updatedAt)
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	parsedCreatedAt, err := parseTime(createdAt)
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	parsedUpdatedAt, err := parseTime(updatedAt)
+	if err != nil {
+		return TeamRecord{}, err
+	}
+	team.CreatedAt = parsedCreatedAt
+	team.UpdatedAt = parsedUpdatedAt
+	return team, nil
+}
+
+func scanTeamMember(scanner requestScanner) (TeamMemberRecord, error) {
+	var member TeamMemberRecord
+	var createdAt string
+	err := scanner.Scan(&member.TeamID, &member.UserID, &member.Role, &createdAt)
+	if err != nil {
+		return TeamMemberRecord{}, err
+	}
+	parsedCreatedAt, err := parseTime(createdAt)
+	if err != nil {
+		return TeamMemberRecord{}, err
+	}
+	member.CreatedAt = parsedCreatedAt
+	return member, nil
+}
+
+func scanProject(scanner requestScanner) (ProjectRecord, error) {
+	var project ProjectRecord
+	var createdAt string
+	var updatedAt string
+	err := scanner.Scan(&project.ProjectID, &project.OrganizationID, &project.TeamID, &project.Name, &project.Slug, &project.Description, &createdAt, &updatedAt)
+	if err != nil {
+		return ProjectRecord{}, err
+	}
+	parsedCreatedAt, err := parseTime(createdAt)
+	if err != nil {
+		return ProjectRecord{}, err
+	}
+	parsedUpdatedAt, err := parseTime(updatedAt)
+	if err != nil {
+		return ProjectRecord{}, err
+	}
+	project.CreatedAt = parsedCreatedAt
+	project.UpdatedAt = parsedUpdatedAt
+	return project, nil
+}
+
+func normalizeRole(role string) (string, error) {
+	switch strings.TrimSpace(role) {
+	case RoleOwner:
+		return RoleOwner, nil
+	case RoleAdmin:
+		return RoleAdmin, nil
+	case RoleApprover:
+		return RoleApprover, nil
+	case RoleViewer, "":
+		return RoleViewer, nil
+	default:
+		return "", ErrInvalidRequest
+	}
+}
+
+func slugify(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && builder.Len() > 0 {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+	slug := strings.Trim(builder.String(), "-")
+	if slug == "" {
+		return "project"
+	}
+	return slug
+}
+
 func (s *SQLiteStore) migrate() error {
 	_, err := s.db.Exec(`
 		PRAGMA journal_mode = WAL;
@@ -919,9 +1676,68 @@ func (s *SQLiteStore) migrate() error {
 			created_at TEXT NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS organizations (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS organization_memberships (
+			organization_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (organization_id, user_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS teams (
+			id TEXT PRIMARY KEY,
+			organization_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS team_members (
+			team_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (team_id, user_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS projects (
+			id TEXT PRIMARY KEY,
+			organization_id TEXT NOT NULL,
+			team_id TEXT NOT NULL DEFAULT '',
+			name TEXT NOT NULL,
+			slug TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS organization_invites (
+			id TEXT PRIMARY KEY,
+			organization_id TEXT NOT NULL,
+			email TEXT NOT NULL,
+			role TEXT NOT NULL,
+			team_id TEXT NOT NULL DEFAULT '',
+			token_hash TEXT NOT NULL DEFAULT '',
+			expires_at TEXT NOT NULL DEFAULT '',
+			accepted_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS approval_requests (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
+			organization_id TEXT NOT NULL DEFAULT 'org_default',
+			project_id TEXT NOT NULL DEFAULT 'prj_default',
 			requester_json TEXT NOT NULL,
 			request_type TEXT NOT NULL DEFAULT 'approval',
 			title TEXT NOT NULL,
@@ -962,6 +1778,7 @@ func (s *SQLiteStore) migrate() error {
 		CREATE TABLE IF NOT EXISTS pairing_tokens (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
+			organization_id TEXT NOT NULL DEFAULT 'org_default',
 			token_hash TEXT NOT NULL UNIQUE,
 			expires_at TEXT NOT NULL,
 			created_at TEXT NOT NULL,
@@ -971,6 +1788,7 @@ func (s *SQLiteStore) migrate() error {
 		CREATE TABLE IF NOT EXISTS devices (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
+			organization_id TEXT NOT NULL DEFAULT 'org_default',
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			expo_push_token TEXT NOT NULL DEFAULT '',
@@ -980,6 +1798,8 @@ func (s *SQLiteStore) migrate() error {
 		CREATE TABLE IF NOT EXISTS agent_tokens (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
+			organization_id TEXT NOT NULL DEFAULT 'org_default',
+			project_id TEXT NOT NULL DEFAULT 'prj_default',
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			scopes_json TEXT NOT NULL,
@@ -1000,7 +1820,43 @@ func (s *SQLiteStore) migrate() error {
 	); err != nil {
 		return err
 	}
+	if _, err := s.db.Exec(
+		"INSERT OR IGNORE INTO organizations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
+		defaultOrganizationID,
+		"Default Organization",
+		timeText(&now),
+		timeText(&now),
+	); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(
+		"INSERT OR IGNORE INTO organization_memberships (organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		defaultOrganizationID,
+		defaultUserID,
+		RoleOwner,
+		timeText(&now),
+		timeText(&now),
+	); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(
+		"INSERT OR IGNORE INTO projects (id, organization_id, team_id, name, slug, description, created_at, updated_at) VALUES (?, ?, '', ?, ?, '', ?, ?)",
+		defaultProjectID,
+		defaultOrganizationID,
+		"Default Project",
+		"default-project",
+		timeText(&now),
+		timeText(&now),
+	); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("approval_requests", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("approval_requests", "organization_id", "TEXT NOT NULL DEFAULT 'org_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("approval_requests", "project_id", "TEXT NOT NULL DEFAULT 'prj_default'"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfMissing("approval_requests", "request_type", "TEXT NOT NULL DEFAULT 'approval'"); err != nil {
@@ -1018,10 +1874,22 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.addColumnIfMissing("pairing_tokens", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("pairing_tokens", "organization_id", "TEXT NOT NULL DEFAULT 'org_default'"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("devices", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("devices", "organization_id", "TEXT NOT NULL DEFAULT 'org_default'"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("agent_tokens", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("agent_tokens", "organization_id", "TEXT NOT NULL DEFAULT 'org_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("agent_tokens", "project_id", "TEXT NOT NULL DEFAULT 'prj_default'"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfMissing("devices", "expo_push_token", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -1037,13 +1905,40 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 
+	if _, err := s.db.Exec(`
+		UPDATE approval_requests SET organization_id = 'org_default' WHERE organization_id = '';
+		UPDATE approval_requests SET project_id = 'prj_default' WHERE project_id = '';
+		UPDATE pairing_tokens SET organization_id = 'org_default' WHERE organization_id = '';
+		UPDATE devices SET organization_id = 'org_default' WHERE organization_id = '';
+		UPDATE agent_tokens SET organization_id = 'org_default' WHERE organization_id = '';
+		UPDATE agent_tokens SET project_id = 'prj_default' WHERE project_id = '';
+	`); err != nil {
+		return err
+	}
+
 	_, err = s.db.Exec(`
 		CREATE INDEX IF NOT EXISTS approval_requests_user_status_created_at_idx
 			ON approval_requests (user_id, status, created_at);
+		CREATE INDEX IF NOT EXISTS approval_requests_org_project_created_at_idx
+			ON approval_requests (organization_id, project_id, created_at);
 		CREATE INDEX IF NOT EXISTS devices_user_created_at_idx
 			ON devices (user_id, created_at);
+		CREATE INDEX IF NOT EXISTS devices_org_created_at_idx
+			ON devices (organization_id, created_at);
 		CREATE INDEX IF NOT EXISTS agent_tokens_user_created_at_idx
 			ON agent_tokens (user_id, created_at);
+		CREATE INDEX IF NOT EXISTS agent_tokens_org_project_created_at_idx
+			ON agent_tokens (organization_id, project_id, created_at);
+		CREATE INDEX IF NOT EXISTS organization_memberships_user_idx
+			ON organization_memberships (user_id, created_at);
+		CREATE INDEX IF NOT EXISTS teams_org_name_idx
+			ON teams (organization_id, name);
+		CREATE INDEX IF NOT EXISTS team_members_user_idx
+			ON team_members (user_id);
+		CREATE INDEX IF NOT EXISTS projects_org_name_idx
+			ON projects (organization_id, name);
+		CREATE INDEX IF NOT EXISTS organization_invites_org_email_idx
+			ON organization_invites (organization_id, email);
 	`)
 	return err
 }

@@ -27,6 +27,8 @@ type API struct {
 	events           eventBus
 	userTokens       UserTokenStore
 	accounts         UserAccountStore
+	organizations    OrganizationStore
+	teamsProjects    TeamProjectStore
 	token            string
 	mode             string
 	publicURL        string
@@ -61,6 +63,12 @@ func NewAPI(store Store, token string) *API {
 	if accounts, ok := store.(UserAccountStore); ok {
 		api.accounts = accounts
 	}
+	if organizations, ok := store.(OrganizationStore); ok {
+		api.organizations = organizations
+	}
+	if teamsProjects, ok := store.(TeamProjectStore); ok {
+		api.teamsProjects = teamsProjects
+	}
 	return api
 }
 
@@ -69,9 +77,11 @@ const csrfCookieName = "agent_tick_csrf"
 const csrfHeaderName = "X-Agent-Tick-CSRF"
 
 type authContext struct {
-	UserID      string
-	FromSession bool
-	Source      string
+	UserID         string
+	OrganizationID string
+	Role           string
+	FromSession    bool
+	Source         string
 }
 
 const (
@@ -91,9 +101,54 @@ func withAuthContext(r *http.Request, auth authContext) *http.Request {
 func currentAuth(r *http.Request) authContext {
 	auth, ok := r.Context().Value(authContextKey{}).(authContext)
 	if !ok || auth.UserID == "" {
-		return authContext{UserID: defaultUserID}
+		return authContext{UserID: defaultUserID, OrganizationID: defaultOrganizationID, Role: RoleOwner}
+	}
+	if strings.TrimSpace(auth.OrganizationID) == "" {
+		auth.OrganizationID = defaultOrganizationID
+	}
+	if strings.TrimSpace(auth.Role) == "" {
+		auth.Role = RoleOwner
 	}
 	return auth
+}
+
+func (a *API) authContextForUser(userID string, source string, fromSession bool) (authContext, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	auth := authContext{UserID: userID, OrganizationID: defaultOrganizationID, Role: RoleOwner, FromSession: fromSession, Source: source}
+	if a.organizations == nil {
+		return auth, nil
+	}
+	membership, err := a.organizations.DefaultOrganizationForUser(userID)
+	if errors.Is(err, ErrNotFound) {
+		return auth, nil
+	}
+	if err != nil {
+		return authContext{}, err
+	}
+	auth.OrganizationID = membership.OrganizationID
+	auth.Role = membership.Role
+	return auth, nil
+}
+
+func roleAllows(role string, required string) bool {
+	return roleRank(role) >= roleRank(required)
+}
+
+func roleRank(role string) int {
+	switch strings.TrimSpace(role) {
+	case RoleOwner:
+		return 4
+	case RoleAdmin:
+		return 3
+	case RoleApprover:
+		return 2
+	case RoleViewer:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (a *API) createForUser(userID string, input CreateRequest) (ApprovalRequest, error) {
@@ -220,6 +275,19 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/approval-requests/{id}/abandon", a.abandon)
 	mux.HandleFunc("POST /v1/pairing-tokens", a.createPairingToken)
 	mux.HandleFunc("GET /v1/devices", a.listDevices)
+	mux.HandleFunc("GET /v1/organizations", a.listOrganizations)
+	mux.HandleFunc("POST /v1/organizations", a.createOrganization)
+	mux.HandleFunc("GET /v1/teams", a.listTeams)
+	mux.HandleFunc("POST /v1/teams", a.createTeam)
+	mux.HandleFunc("GET /v1/teams/{id}", a.getTeam)
+	mux.HandleFunc("POST /v1/teams/{id}", a.updateTeam)
+	mux.HandleFunc("GET /v1/teams/{id}/members", a.listTeamMembers)
+	mux.HandleFunc("POST /v1/teams/{id}/members", a.upsertTeamMember)
+	mux.HandleFunc("DELETE /v1/teams/{id}/members/{userID}", a.removeTeamMember)
+	mux.HandleFunc("GET /v1/projects", a.listProjects)
+	mux.HandleFunc("POST /v1/projects", a.createProject)
+	mux.HandleFunc("GET /v1/projects/{id}", a.getProject)
+	mux.HandleFunc("POST /v1/projects/{id}", a.updateProject)
 	mux.HandleFunc("POST /v1/devices/pair", a.pairDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/push-token", a.setDevicePushToken)
 	mux.HandleFunc("POST /v1/devices/{id}/unpair", a.unpairDevice)
@@ -470,6 +538,262 @@ func (a *API) listDevices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, devices)
 }
 
+func (a *API) listOrganizations(w http.ResponseWriter, r *http.Request) {
+	if a.organizations == nil {
+		writeError(w, http.StatusNotImplemented, "organizations are not supported by this store")
+		return
+	}
+	memberships, err := a.organizations.ListOrganizationsForUser(currentAuth(r).UserID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, memberships)
+}
+
+func (a *API) createOrganization(w http.ResponseWriter, r *http.Request) {
+	if a.organizations == nil {
+		writeError(w, http.StatusNotImplemented, "organizations are not supported by this store")
+		return
+	}
+	var input CreateOrganizationRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid organization JSON")
+		return
+	}
+	organization, err := a.organizations.CreateOrganizationForUser(currentAuth(r).UserID, input.Name)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, organization)
+}
+
+func (a *API) listTeams(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	teams, err := a.teamsProjects.ListTeams(currentAuth(r).OrganizationID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, teams)
+}
+
+func (a *API) createTeam(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleAdmin) {
+		return
+	}
+	var input CreateTeamRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid team JSON")
+		return
+	}
+	team, err := a.teamsProjects.CreateTeam(currentAuth(r).OrganizationID, input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, team)
+}
+
+func (a *API) getTeam(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	team, err := a.teamsProjects.GetTeam(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, team)
+}
+
+func (a *API) updateTeam(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleAdmin) {
+		return
+	}
+	var input UpdateTeamRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid team JSON")
+		return
+	}
+	team, err := a.teamsProjects.UpdateTeam(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, team)
+}
+
+func (a *API) listTeamMembers(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	members, err := a.teamsProjects.ListTeamMembers(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, members)
+}
+
+func (a *API) upsertTeamMember(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleOwner) {
+		return
+	}
+	var input UpsertTeamMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid team member JSON")
+		return
+	}
+	member, err := a.teamsProjects.UpsertTeamMember(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, member)
+}
+
+func (a *API) removeTeamMember(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleOwner) {
+		return
+	}
+	err := a.teamsProjects.RemoveTeamMember(currentAuth(r).OrganizationID, r.PathValue("id"), r.PathValue("userID"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team member not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) listProjects(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	projects, err := a.teamsProjects.ListProjects(currentAuth(r).OrganizationID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, projects)
+}
+
+func (a *API) createProject(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleAdmin) {
+		return
+	}
+	var input CreateProjectRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project JSON")
+		return
+	}
+	project, err := a.teamsProjects.CreateProject(currentAuth(r).OrganizationID, input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, project)
+}
+
+func (a *API) getProject(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	project, err := a.teamsProjects.GetProject(currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, project)
+}
+
+func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleAdmin) {
+		return
+	}
+	var input UpdateProjectRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project JSON")
+		return
+	}
+	project, err := a.teamsProjects.UpdateProject(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, project)
+}
+
+func (a *API) authorizeOrg(w http.ResponseWriter, r *http.Request, requiredRole string) bool {
+	if a.teamsProjects == nil {
+		writeError(w, http.StatusNotImplemented, "teams and projects are not supported by this store")
+		return false
+	}
+	if !roleAllows(currentAuth(r).Role, requiredRole) {
+		writeError(w, http.StatusForbidden, "insufficient organization role")
+		return false
+	}
+	return true
+}
+
 func (a *API) pairDevice(w http.ResponseWriter, r *http.Request) {
 	if a.pairings == nil {
 		writeError(w, http.StatusNotImplemented, "pairing is not supported by this store")
@@ -632,7 +956,7 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 func (a *API) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || (r.Method == http.MethodGet && (r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/"))) {
-			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
+			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, OrganizationID: defaultOrganizationID, Role: RoleOwner}))
 			return
 		}
 		if a.mode == ModeUser && a.accounts != nil {
@@ -646,18 +970,33 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 					writeError(w, http.StatusForbidden, "missing or invalid CSRF token")
 					return
 				}
-				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID, FromSession: true, Source: authSourceSession}))
+				auth, err := a.authContextForUser(userID, authSourceSession, true)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				next.ServeHTTP(w, withAuthContext(r, auth))
 				return
 			}
 		}
 		if a.token == "" && isLoopback(r.RemoteAddr) {
-			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, Source: authSourceLoopback}))
+			auth, err := a.authContextForUser(defaultUserID, authSourceLoopback, false)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			next.ServeHTTP(w, withAuthContext(r, auth))
 			return
 		}
 
 		token := bearerToken(r)
 		if a.token != "" && tokenMatches(token, a.token) {
-			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, Source: authSourceAdmin}))
+			auth, err := a.authContextForUser(defaultUserID, authSourceAdmin, false)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			next.ServeHTTP(w, withAuthContext(r, auth))
 			return
 		}
 		if a.userTokens != nil {
@@ -668,7 +1007,12 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 					return
 				}
 				if ok {
-					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID, Source: authSourceAgent}))
+					auth, err := a.authContextForUser(userID, authSourceAgent, false)
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+					next.ServeHTTP(w, withAuthContext(r, auth))
 					return
 				}
 			}
@@ -679,7 +1023,12 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 					return
 				}
 				if ok {
-					next.ServeHTTP(w, withAuthContext(r, authContext{UserID: userID, Source: authSourceDevice}))
+					auth, err := a.authContextForUser(userID, authSourceDevice, false)
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+					next.ServeHTTP(w, withAuthContext(r, auth))
 					return
 				}
 			}
@@ -691,7 +1040,12 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 			if ok {
-				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, Source: authSourceAgent}))
+				auth, err := a.authContextForUser(defaultUserID, authSourceAgent, false)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				next.ServeHTTP(w, withAuthContext(r, auth))
 				return
 			}
 		}
@@ -702,7 +1056,12 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 			if ok {
-				next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, Source: authSourceDevice}))
+				auth, err := a.authContextForUser(defaultUserID, authSourceDevice, false)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				next.ServeHTTP(w, withAuthContext(r, auth))
 				return
 			}
 		}
@@ -811,7 +1170,7 @@ func (a *API) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, "+csrfHeaderName)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

@@ -76,7 +76,9 @@ The dashboard supports:
 
 - User sign-in and session resume in `AGENT_TICK_MODE=user`.
 - Single-user bearer-token auth in default mode.
-- Responsive Approvals, Devices, and Agents sections with loading, empty, and error states.
+- Responsive Approvals, Devices, Agents, Teams, and Projects sections with loading, empty, and error states.
+- Organization-aware first-run defaults: single-user installs get a default organization and default project automatically, while user-mode sign-in creates a personal organization.
+- Basic organization creation plus team and project listing/creation from the dashboard.
 - Phone pairing with short-lived QR codes and device revocation.
 - Agent token listing, creation setup commands, and revocation.
 - Approval list with approve/deny or constrained choice responses for pending requests.
@@ -95,6 +97,12 @@ Create an agent token:
 3. Run the shown `agent-tick setup ...` command once on the machine where the agent runs.
 
 The token is shown once. Agent tokens created by the dashboard default to `approval:write`, which lets the CLI create approval requests, poll its own request by ID, and abandon pending requests it no longer needs. It does not let the agent approve, pair devices, create tokens, or list all approvals.
+
+## Teams and Projects
+
+Agent Tick stores organizations, memberships, teams, team members, projects, and invite-ready records in SQLite. Existing single-user records are backfilled into `org_default` and `prj_default`, so self-hosted users can continue pairing phones and creating agent tokens without thinking about organizations.
+
+Organization roles are `owner`, `admin`, `approver`, and `viewer`. Owners can manage team membership; owners and admins can create or update teams and projects; viewers can list team and project context. Current approval, device, and agent-token endpoints remain user-scoped for compatibility while storing organization/project columns for hosted/team features.
 
 ## CLI Usage
 

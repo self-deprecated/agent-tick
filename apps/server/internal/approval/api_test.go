@@ -975,6 +975,56 @@ func TestAPIRequiresSignedCreateRequestsWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestAPITeamProjectEndpointsAuthorizeByOrganizationRole(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	team := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Platform"})
+	project := request[ProjectRecord](t, handler, http.MethodPost, "/v1/projects", CreateProjectRequest{Name: "Control Plane", TeamID: team.TeamID})
+	if project.TeamID != team.TeamID {
+		t.Fatalf("project.TeamID = %q, want %q", project.TeamID, team.TeamID)
+	}
+
+	viewer := loginAuth(t, handler, "viewer@example.com")
+	viewerUserID, ok, err := store.UserIDForSessionToken(viewer.session.Value)
+	if err != nil || !ok {
+		t.Fatalf("UserIDForSessionToken() = %q/%v/%v, want viewer", viewerUserID, ok, err)
+	}
+	joinedAt := time.Now().UTC().Add(time.Second)
+	_, err = store.db.Exec(
+		`INSERT INTO organization_memberships (organization_id, user_id, role, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(organization_id, user_id) DO UPDATE SET role = excluded.role, created_at = excluded.created_at, updated_at = excluded.updated_at`,
+		defaultOrganizationID,
+		viewerUserID,
+		RoleViewer,
+		timeText(&joinedAt),
+		timeText(&joinedAt),
+	)
+	if err != nil {
+		t.Fatalf("insert viewer membership error = %v", err)
+	}
+
+	listRec := statusWithSession(t, handler, viewer, http.MethodGet, "/v1/teams", nil, "")
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("viewer list teams status = %d body = %s, want %d", listRec.Code, listRec.Body.String(), http.StatusOK)
+	}
+	createRec := statusWithSession(t, handler, viewer, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Restricted"}, viewer.csrf.Value)
+	if createRec.Code != http.StatusForbidden {
+		t.Fatalf("viewer create team status = %d body = %s, want %d", createRec.Code, createRec.Body.String(), http.StatusForbidden)
+	}
+
+	member := request[TeamMemberRecord](t, handler, http.MethodPost, "/v1/teams/"+team.TeamID+"/members", UpsertTeamMemberRequest{UserID: viewerUserID, Role: RoleApprover})
+	if member.Role != RoleApprover {
+		t.Fatalf("member role = %q, want %q", member.Role, RoleApprover)
+	}
+}
+
 func request[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
 	t.Helper()
 

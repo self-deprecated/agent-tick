@@ -148,6 +148,101 @@ const (
 	StatusAbandoned = "abandoned"
 )
 
+const (
+	RoleOwner    = "owner"
+	RoleAdmin    = "admin"
+	RoleApprover = "approver"
+	RoleViewer   = "viewer"
+)
+
+const (
+	defaultOrganizationID = "org_default"
+	defaultProjectID      = "prj_default"
+)
+
+type OrganizationRecord struct {
+	OrganizationID string    `json:"organizationId"`
+	Name           string    `json:"name"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+type OrganizationMembershipRecord struct {
+	OrganizationID string    `json:"organizationId"`
+	Name           string    `json:"name"`
+	UserID         string    `json:"userId"`
+	Role           string    `json:"role"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+type CreateOrganizationRequest struct {
+	Name string `json:"name"`
+}
+
+type TeamRecord struct {
+	TeamID         string    `json:"teamId"`
+	OrganizationID string    `json:"organizationId"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+type CreateTeamRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+type UpdateTeamRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+type TeamMemberRecord struct {
+	TeamID    string    `json:"teamId"`
+	UserID    string    `json:"userId"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type UpsertTeamMemberRequest struct {
+	UserID string `json:"userId"`
+	Role   string `json:"role"`
+}
+
+type ProjectRecord struct {
+	ProjectID      string    `json:"projectId"`
+	OrganizationID string    `json:"organizationId"`
+	TeamID         string    `json:"teamId,omitempty"`
+	Name           string    `json:"name"`
+	Slug           string    `json:"slug"`
+	Description    string    `json:"description,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+type CreateProjectRequest struct {
+	Name        string `json:"name"`
+	TeamID      string `json:"teamId,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type UpdateProjectRequest struct {
+	Name        string `json:"name"`
+	TeamID      string `json:"teamId,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type InviteRecord struct {
+	InviteID       string     `json:"inviteId"`
+	OrganizationID string     `json:"organizationId"`
+	Email          string     `json:"email"`
+	Role           string     `json:"role"`
+	TeamID         string     `json:"teamId,omitempty"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	AcceptedAt     *time.Time `json:"acceptedAt,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+}
+
 func DefaultChoices() []Choice {
 	return []Choice{
 		{ID: "approve", Label: "Approve", Kind: "approve"},

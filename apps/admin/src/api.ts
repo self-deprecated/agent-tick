@@ -101,6 +101,69 @@ export interface AgentTokenRecord {
 	revokedAt?: string;
 }
 
+export type OrganizationRole = 'owner' | 'admin' | 'approver' | 'viewer' | string;
+
+export interface OrganizationRecord {
+	organizationId: string;
+	name: string;
+	createdAt: string;
+}
+
+export interface OrganizationMembershipRecord {
+	organizationId: string;
+	name: string;
+	userId: string;
+	role: OrganizationRole;
+	createdAt: string;
+}
+
+export interface CreateOrganizationRequest {
+	name: string;
+}
+
+export interface TeamRecord {
+	teamId: string;
+	organizationId: string;
+	name: string;
+	description?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CreateTeamRequest {
+	name: string;
+	description?: string;
+}
+
+export interface TeamMemberRecord {
+	teamId: string;
+	userId: string;
+	role: OrganizationRole;
+	createdAt: string;
+}
+
+export interface UpsertTeamMemberRequest {
+	userId: string;
+	role: OrganizationRole;
+}
+
+export interface ProjectRecord {
+	projectId: string;
+	organizationId: string;
+	teamId?: string;
+	name: string;
+	slug: string;
+	description?: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CreateProjectRequest {
+	name: string;
+	teamId?: string;
+	description?: string;
+}
+
 export interface AdminAuthProvider {
 	bearerToken?: () => string | undefined;
 	csrfToken?: () => string | undefined;
@@ -188,6 +251,50 @@ export class AdminApiClient {
 		return this.#requestJSON<{ status: string }>(`/v1/agent-tokens/${encodeURIComponent(id)}/revoke`, {
 			method: 'POST',
 			body: {}
+		});
+	}
+
+	listOrganizations(): Promise<OrganizationMembershipRecord[]> {
+		return this.#requestJSON<OrganizationMembershipRecord[]>('/v1/organizations');
+	}
+
+	createOrganization(input: CreateOrganizationRequest): Promise<OrganizationRecord> {
+		return this.#requestJSON<OrganizationRecord>('/v1/organizations', {
+			method: 'POST',
+			body: input
+		});
+	}
+
+	listTeams(): Promise<TeamRecord[]> {
+		return this.#requestJSON<TeamRecord[]>('/v1/teams');
+	}
+
+	createTeam(input: CreateTeamRequest): Promise<TeamRecord> {
+		return this.#requestJSON<TeamRecord>('/v1/teams', {
+			method: 'POST',
+			body: input
+		});
+	}
+
+	listTeamMembers(teamId: string): Promise<TeamMemberRecord[]> {
+		return this.#requestJSON<TeamMemberRecord[]>(`/v1/teams/${encodeURIComponent(teamId)}/members`);
+	}
+
+	upsertTeamMember(teamId: string, input: UpsertTeamMemberRequest): Promise<TeamMemberRecord> {
+		return this.#requestJSON<TeamMemberRecord>(`/v1/teams/${encodeURIComponent(teamId)}/members`, {
+			method: 'POST',
+			body: input
+		});
+	}
+
+	listProjects(): Promise<ProjectRecord[]> {
+		return this.#requestJSON<ProjectRecord[]>('/v1/projects');
+	}
+
+	createProject(input: CreateProjectRequest): Promise<ProjectRecord> {
+		return this.#requestJSON<ProjectRecord>('/v1/projects', {
+			method: 'POST',
+			body: input
 		});
 	}
 
