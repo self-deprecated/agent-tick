@@ -1271,6 +1271,82 @@ func TestAPITeamProjectEndpointsAuthorizeByOrganizationRole(t *testing.T) {
 	}
 }
 
+func TestAPIMissingMembershipGetsPersonalOrganizationNotDefaultOwner(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+	_ = request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Default team"})
+
+	auth := loginAuth(t, handler, "orphan@example.com")
+	userID, ok, err := store.UserIDForSessionToken(auth.session.Value)
+	if err != nil || !ok {
+		t.Fatalf("UserIDForSessionToken() = %q/%v/%v, want orphan", userID, ok, err)
+	}
+	if _, err := store.db.Exec("DELETE FROM organization_memberships WHERE user_id = ?", userID); err != nil {
+		t.Fatalf("delete memberships error = %v", err)
+	}
+
+	teams := requestWithSession[[]TeamRecord](t, handler, auth, http.MethodGet, "/v1/teams", nil)
+	if len(teams) != 0 {
+		t.Fatalf("orphan teams = %#v, want no access to default org teams", teams)
+	}
+	membership, err := store.DefaultOrganizationForUser(userID)
+	if err != nil {
+		t.Fatalf("DefaultOrganizationForUser(orphan) error = %v", err)
+	}
+	if membership.OrganizationID == defaultOrganizationID || membership.Role != RoleOwner {
+		t.Fatalf("membership = %#v, want owner of a personal non-default organization", membership)
+	}
+}
+
+func TestAPITeamProjectAuditUsesActingUser(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+	auth := loginAuth(t, handler, "admin@example.com")
+	adminUserID, ok, err := store.UserIDForSessionToken(auth.session.Value)
+	if err != nil || !ok {
+		t.Fatalf("UserIDForSessionToken() = %q/%v/%v, want admin", adminUserID, ok, err)
+	}
+	joinedAt := time.Now().UTC().Add(-time.Hour)
+	_, err = store.db.Exec(
+		`INSERT INTO organization_memberships (organization_id, user_id, role, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(organization_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at`,
+		defaultOrganizationID,
+		adminUserID,
+		RoleAdmin,
+		timeText(&joinedAt),
+		timeText(&joinedAt),
+	)
+	if err != nil {
+		t.Fatalf("upsert admin membership error = %v", err)
+	}
+
+	team := requestWithSession[TeamRecord](t, handler, auth, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Audited"})
+	project := requestWithSession[ProjectRecord](t, handler, auth, http.MethodPost, "/v1/projects", CreateProjectRequest{Name: "Audited Project", TeamID: team.TeamID})
+	if project.TeamID != team.TeamID {
+		t.Fatalf("project.TeamID = %q, want %q", project.TeamID, team.TeamID)
+	}
+	for _, eventType := range []string{"team.created", "project.created"} {
+		var actor string
+		if err := store.db.QueryRow("SELECT user_id FROM audit_events WHERE event_type = ? ORDER BY id DESC LIMIT 1", eventType).Scan(&actor); err != nil {
+			t.Fatalf("query audit %s error = %v", eventType, err)
+		}
+		if actor != adminUserID {
+			t.Fatalf("audit %s user_id = %q, want acting user %q", eventType, actor, adminUserID)
+		}
+	}
+}
+
 func request[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
 	t.Helper()
 	return requestWithBearer[T](t, handler, "test-token", method, path, input)

@@ -1337,6 +1337,13 @@ func (s *SQLiteStore) ListTeams(organizationID string) ([]TeamRecord, error) {
 }
 
 func (s *SQLiteStore) CreateTeam(organizationID string, input CreateTeamRequest) (TeamRecord, error) {
+	return s.CreateTeamForUser(defaultUserID, organizationID, input)
+}
+
+func (s *SQLiteStore) CreateTeamForUser(actorUserID string, organizationID string, input CreateTeamRequest) (TeamRecord, error) {
+	if strings.TrimSpace(actorUserID) == "" {
+		actorUserID = defaultUserID
+	}
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
@@ -1373,7 +1380,7 @@ func (s *SQLiteStore) CreateTeam(organizationID string, input CreateTeamRequest)
 	if err != nil {
 		return TeamRecord{}, err
 	}
-	if err := insertAuditForUser(tx, defaultUserID, "team.created", team.TeamID, team); err != nil {
+	if err := insertAuditForUser(tx, actorUserID, "team.created", team.TeamID, team); err != nil {
 		return TeamRecord{}, err
 	}
 	return team, tx.Commit()
@@ -1396,6 +1403,13 @@ func (s *SQLiteStore) GetTeam(organizationID string, teamID string) (TeamRecord,
 }
 
 func (s *SQLiteStore) UpdateTeam(organizationID string, teamID string, input UpdateTeamRequest) (TeamRecord, error) {
+	return s.UpdateTeamForUser(defaultUserID, organizationID, teamID, input)
+}
+
+func (s *SQLiteStore) UpdateTeamForUser(actorUserID string, organizationID string, teamID string, input UpdateTeamRequest) (TeamRecord, error) {
+	if strings.TrimSpace(actorUserID) == "" {
+		actorUserID = defaultUserID
+	}
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
@@ -1427,7 +1441,7 @@ func (s *SQLiteStore) UpdateTeam(organizationID string, teamID string, input Upd
 	if rows == 0 {
 		return TeamRecord{}, ErrNotFound
 	}
-	if err := insertAuditForUser(tx, defaultUserID, "team.updated", teamID, input); err != nil {
+	if err := insertAuditForUser(tx, actorUserID, "team.updated", teamID, input); err != nil {
 		return TeamRecord{}, err
 	}
 	team, err := scanTeam(tx.QueryRow(`
@@ -1471,6 +1485,13 @@ func (s *SQLiteStore) ListTeamMembers(organizationID string, teamID string) ([]T
 }
 
 func (s *SQLiteStore) UpsertTeamMember(organizationID string, teamID string, input UpsertTeamMemberRequest) (TeamMemberRecord, error) {
+	return s.UpsertTeamMemberForUser(defaultUserID, organizationID, teamID, input)
+}
+
+func (s *SQLiteStore) UpsertTeamMemberForUser(actorUserID string, organizationID string, teamID string, input UpsertTeamMemberRequest) (TeamMemberRecord, error) {
+	if strings.TrimSpace(actorUserID) == "" {
+		actorUserID = defaultUserID
+	}
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
@@ -1499,10 +1520,10 @@ func (s *SQLiteStore) UpsertTeamMember(organizationID string, teamID string, inp
 	if err != nil {
 		return TeamMemberRecord{}, err
 	}
-	if err := insertAuditForUser(tx, defaultUserID, "organization_membership.upserted", organizationID, map[string]string{"userId": userID, "role": role}); err != nil {
+	if err := insertAuditForUser(tx, actorUserID, "organization_membership.upserted", organizationID, map[string]string{"userId": userID, "role": role}); err != nil {
 		return TeamMemberRecord{}, err
 	}
-	if err := insertAuditForUser(tx, defaultUserID, "team_member.upserted", teamID, map[string]string{"userId": userID, "role": role}); err != nil {
+	if err := insertAuditForUser(tx, actorUserID, "team_member.upserted", teamID, map[string]string{"userId": userID, "role": role}); err != nil {
 		return TeamMemberRecord{}, err
 	}
 	member := TeamMemberRecord{TeamID: teamID, UserID: userID, Role: role, CreatedAt: now}
@@ -1513,6 +1534,13 @@ func (s *SQLiteStore) UpsertTeamMember(organizationID string, teamID string, inp
 }
 
 func (s *SQLiteStore) RemoveTeamMember(organizationID string, teamID string, userID string) error {
+	return s.RemoveTeamMemberForUser(defaultUserID, organizationID, teamID, userID)
+}
+
+func (s *SQLiteStore) RemoveTeamMemberForUser(actorUserID string, organizationID string, teamID string, userID string) error {
+	if strings.TrimSpace(actorUserID) == "" {
+		actorUserID = defaultUserID
+	}
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
@@ -1535,7 +1563,7 @@ func (s *SQLiteStore) RemoveTeamMember(organizationID string, teamID string, use
 	if rows == 0 {
 		return ErrNotFound
 	}
-	if err := insertAuditForUser(tx, defaultUserID, "team_member.removed", teamID, map[string]string{"userId": strings.TrimSpace(userID)}); err != nil {
+	if err := insertAuditForUser(tx, actorUserID, "team_member.removed", teamID, map[string]string{"userId": strings.TrimSpace(userID)}); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1838,7 +1866,11 @@ func (s *SQLiteStore) ListProjects(organizationID string) ([]ProjectRecord, erro
 }
 
 func (s *SQLiteStore) CreateProject(organizationID string, input CreateProjectRequest) (ProjectRecord, error) {
-	return s.createOrUpdateProject("", organizationID, input.Name, input.TeamID, input.Description, input.DefaultPolicyID)
+	return s.CreateProjectForUser(defaultUserID, organizationID, input)
+}
+
+func (s *SQLiteStore) CreateProjectForUser(actorUserID string, organizationID string, input CreateProjectRequest) (ProjectRecord, error) {
+	return s.createOrUpdateProject(actorUserID, "", organizationID, input.Name, input.TeamID, input.Description, input.DefaultPolicyID)
 }
 
 func (s *SQLiteStore) GetProject(organizationID string, projectID string) (ProjectRecord, error) {
@@ -1858,10 +1890,17 @@ func (s *SQLiteStore) GetProject(organizationID string, projectID string) (Proje
 }
 
 func (s *SQLiteStore) UpdateProject(organizationID string, projectID string, input UpdateProjectRequest) (ProjectRecord, error) {
-	return s.createOrUpdateProject(projectID, organizationID, input.Name, input.TeamID, input.Description, input.DefaultPolicyID)
+	return s.UpdateProjectForUser(defaultUserID, organizationID, projectID, input)
 }
 
-func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID string, name string, teamID string, description string, defaultPolicyID string) (ProjectRecord, error) {
+func (s *SQLiteStore) UpdateProjectForUser(actorUserID string, organizationID string, projectID string, input UpdateProjectRequest) (ProjectRecord, error) {
+	return s.createOrUpdateProject(actorUserID, projectID, organizationID, input.Name, input.TeamID, input.Description, input.DefaultPolicyID)
+}
+
+func (s *SQLiteStore) createOrUpdateProject(actorUserID string, projectID string, organizationID string, name string, teamID string, description string, defaultPolicyID string) (ProjectRecord, error) {
+	if strings.TrimSpace(actorUserID) == "" {
+		actorUserID = defaultUserID
+	}
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
@@ -1921,7 +1960,7 @@ func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID str
 		if err != nil {
 			return ProjectRecord{}, err
 		}
-		if err := insertAuditForUser(tx, defaultUserID, "project.created", project.ProjectID, project); err != nil {
+		if err := insertAuditForUser(tx, actorUserID, "project.created", project.ProjectID, project); err != nil {
 			return ProjectRecord{}, err
 		}
 		return project, tx.Commit()
@@ -1947,7 +1986,7 @@ func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID str
 	if rows == 0 {
 		return ProjectRecord{}, ErrNotFound
 	}
-	if err := insertAuditForUser(tx, defaultUserID, "project.updated", projectID, project); err != nil {
+	if err := insertAuditForUser(tx, actorUserID, "project.updated", projectID, project); err != nil {
 		return ProjectRecord{}, err
 	}
 	project, err = scanProject(tx.QueryRow(`

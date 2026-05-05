@@ -151,6 +151,15 @@ type TeamProjectStore interface {
 	UpdateProject(organizationID string, projectID string, input UpdateProjectRequest) (ProjectRecord, error)
 }
 
+type TeamProjectActorStore interface {
+	CreateTeamForUser(actorUserID string, organizationID string, input CreateTeamRequest) (TeamRecord, error)
+	UpdateTeamForUser(actorUserID string, organizationID string, teamID string, input UpdateTeamRequest) (TeamRecord, error)
+	UpsertTeamMemberForUser(actorUserID string, organizationID string, teamID string, input UpsertTeamMemberRequest) (TeamMemberRecord, error)
+	RemoveTeamMemberForUser(actorUserID string, organizationID string, teamID string, userID string) error
+	CreateProjectForUser(actorUserID string, organizationID string, input CreateProjectRequest) (ProjectRecord, error)
+	UpdateProjectForUser(actorUserID string, organizationID string, projectID string, input UpdateProjectRequest) (ProjectRecord, error)
+}
+
 type ApprovalPolicyStore interface {
 	ListApprovalPolicies(organizationID string) ([]ApprovalPolicyRecord, error)
 	CreateApprovalPolicy(organizationID string, input CreateApprovalPolicyRequest) (ApprovalPolicyRecord, error)

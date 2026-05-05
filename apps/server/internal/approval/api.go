@@ -120,7 +120,7 @@ func currentAuth(r *http.Request) authContext {
 		auth.OrganizationID = defaultOrganizationID
 	}
 	if strings.TrimSpace(auth.Role) == "" {
-		auth.Role = RoleOwner
+		auth.Role = RoleViewer
 	}
 	return auth
 }
@@ -135,6 +135,12 @@ func (a *API) authContextForUser(userID string, source string, fromSession bool)
 	}
 	membership, err := a.organizations.DefaultOrganizationForUser(userID)
 	if errors.Is(err, ErrNotFound) {
+		organization, createErr := a.organizations.CreateOrganizationForUser(userID, "Personal Organization")
+		if createErr != nil {
+			return authContext{}, createErr
+		}
+		auth.OrganizationID = organization.OrganizationID
+		auth.Role = RoleOwner
 		return auth, nil
 	}
 	if err != nil {
@@ -789,7 +795,14 @@ func (a *API) createTeam(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid team JSON")
 		return
 	}
-	team, err := a.teamsProjects.CreateTeam(currentAuth(r).OrganizationID, input)
+	auth := currentAuth(r)
+	var team TeamRecord
+	var err error
+	if store, ok := a.teamsProjects.(TeamProjectActorStore); ok {
+		team, err = store.CreateTeamForUser(auth.UserID, auth.OrganizationID, input)
+	} else {
+		team, err = a.teamsProjects.CreateTeam(auth.OrganizationID, input)
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -826,7 +839,14 @@ func (a *API) updateTeam(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid team JSON")
 		return
 	}
-	team, err := a.teamsProjects.UpdateTeam(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	auth := currentAuth(r)
+	var team TeamRecord
+	var err error
+	if store, ok := a.teamsProjects.(TeamProjectActorStore); ok {
+		team, err = store.UpdateTeamForUser(auth.UserID, auth.OrganizationID, r.PathValue("id"), input)
+	} else {
+		team, err = a.teamsProjects.UpdateTeam(auth.OrganizationID, r.PathValue("id"), input)
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -867,7 +887,14 @@ func (a *API) upsertTeamMember(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid team member JSON")
 		return
 	}
-	member, err := a.teamsProjects.UpsertTeamMember(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	auth := currentAuth(r)
+	var member TeamMemberRecord
+	var err error
+	if store, ok := a.teamsProjects.(TeamProjectActorStore); ok {
+		member, err = store.UpsertTeamMemberForUser(auth.UserID, auth.OrganizationID, r.PathValue("id"), input)
+	} else {
+		member, err = a.teamsProjects.UpsertTeamMember(auth.OrganizationID, r.PathValue("id"), input)
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -887,7 +914,13 @@ func (a *API) removeTeamMember(w http.ResponseWriter, r *http.Request) {
 	if !a.authorizeOrg(w, r, RoleOwner) {
 		return
 	}
-	err := a.teamsProjects.RemoveTeamMember(currentAuth(r).OrganizationID, r.PathValue("id"), r.PathValue("userID"))
+	auth := currentAuth(r)
+	var err error
+	if store, ok := a.teamsProjects.(TeamProjectActorStore); ok {
+		err = store.RemoveTeamMemberForUser(auth.UserID, auth.OrganizationID, r.PathValue("id"), r.PathValue("userID"))
+	} else {
+		err = a.teamsProjects.RemoveTeamMember(auth.OrganizationID, r.PathValue("id"), r.PathValue("userID"))
+	}
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "team member not found")
 		return
@@ -1063,7 +1096,14 @@ func (a *API) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid project JSON")
 		return
 	}
-	project, err := a.teamsProjects.CreateProject(currentAuth(r).OrganizationID, input)
+	auth := currentAuth(r)
+	var project ProjectRecord
+	var err error
+	if store, ok := a.teamsProjects.(TeamProjectActorStore); ok {
+		project, err = store.CreateProjectForUser(auth.UserID, auth.OrganizationID, input)
+	} else {
+		project, err = a.teamsProjects.CreateProject(auth.OrganizationID, input)
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1104,7 +1144,14 @@ func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid project JSON")
 		return
 	}
-	project, err := a.teamsProjects.UpdateProject(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	auth := currentAuth(r)
+	var project ProjectRecord
+	var err error
+	if store, ok := a.teamsProjects.(TeamProjectActorStore); ok {
+		project, err = store.UpdateProjectForUser(auth.UserID, auth.OrganizationID, r.PathValue("id"), input)
+	} else {
+		project, err = a.teamsProjects.UpdateProject(auth.OrganizationID, r.PathValue("id"), input)
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
