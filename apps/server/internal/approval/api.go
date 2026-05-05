@@ -580,6 +580,9 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) withPolicyProgress(request ApprovalRequest, currentUserID string) ApprovalRequest {
+	if request.PolicyProgress != nil {
+		return request
+	}
 	request.PolicyProgress = a.policyProgressForRequest(request.ID, currentUserID)
 	return request
 }

@@ -498,7 +498,7 @@ func (s *SQLiteStore) RespondForUserWithAuth(auth authContext, id string, respon
 		}
 		return ApprovalRequest{}, err
 	}
-	if err := insertAuditForUser(tx, auth.UserID, "approval_vote.recorded", request.ID, map[string]any{"policyId": policy.PolicyID, "step": progress.CurrentStep, "choiceId": response.ChoiceID}); err != nil {
+	if err := insertAuditForUser(tx, auth.UserID, "approval_vote.recorded", request.ID, map[string]string{"policyId": policy.PolicyID, "step": strconv.Itoa(progress.CurrentStep), "choiceId": response.ChoiceID}); err != nil {
 		return ApprovalRequest{}, err
 	}
 
@@ -511,7 +511,7 @@ func (s *SQLiteStore) RespondForUserWithAuth(auth authContext, id string, respon
 	}
 	if progress.State == "approved" || progress.State == "denied" {
 		final := response
-		if progress.State == "approved" && strings.TrimSpace(final.ChoiceID) == "" {
+		if progress.State == "approved" {
 			final.ChoiceID = "approve"
 		}
 		if progress.State == "denied" {
@@ -531,7 +531,10 @@ func (s *SQLiteStore) RespondForUserWithAuth(auth authContext, id string, respon
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
-	current.PolicyProgress, _ = s.PolicyProgressForRequest(current.ID, auth.UserID)
+	current.PolicyProgress, err = s.PolicyProgressForRequest(current.ID, auth.UserID)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
 	return current, nil
 }
 
@@ -3691,8 +3694,13 @@ func scanRequestWithOrganization(scanner requestScanner, organizationID *string)
 }
 
 func (s *SQLiteStore) PolicyProgressForRequest(requestID string, currentUserID string) (*ApprovalPolicyProgress, error) {
-	request, err := s.getRequestByID(requestID)
-	if errors.Is(err, ErrNotFound) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer rollback(tx)
+	request, requestOrganizationID, err := selectRequestByIDWithOrg(tx, requestID)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -3700,14 +3708,9 @@ func (s *SQLiteStore) PolicyProgressForRequest(requestID string, currentUserID s
 	}
 	policyID := effectivePolicyID(request)
 	if policyID == "" {
-		return nil, nil
+		return nil, tx.Commit()
 	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer rollback(tx)
-	policy, err := selectPolicyTx(tx, "", policyID)
+	policy, err := selectPolicyTx(tx, requestOrganizationID, policyID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -3723,24 +3726,6 @@ func (s *SQLiteStore) PolicyProgressForRequest(requestID string, currentUserID s
 		return nil, err
 	}
 	return progress, tx.Commit()
-}
-
-func (s *SQLiteStore) getRequestByID(requestID string) (ApprovalRequest, error) {
-	row := s.db.QueryRow(`
-		SELECT
-			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
-			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
-			r.metadata_json, r.status, r.created_at,
-			resp.choice_id, resp.message, resp.answers_json, resp.created_at
-		FROM approval_requests r
-		LEFT JOIN approval_responses resp ON resp.request_id = r.id
-		WHERE r.id = ?
-	`, requestID)
-	request, err := scanRequest(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ApprovalRequest{}, ErrNotFound
-	}
-	return request, err
 }
 
 func (s *SQLiteStore) policyRequestVisibleToUser(request ApprovalRequest, userID string) bool {
