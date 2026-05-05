@@ -845,6 +845,21 @@
 								{#if approval.command}
 									<pre>{approval.command}</pre>
 								{/if}
+								{#if approval.questions?.length}
+									<div class="question-list">
+										{#each approval.questions as question, index (`${approval.id}-${index}`)}
+											<div>
+												<strong>{question.header || question.question}</strong>
+												{#if question.header && question.question}
+													<p>{question.question}</p>
+												{/if}
+												{#if question.options.length}
+													<p class="muted">Options: {question.options.map((option) => option.label).join(', ')}</p>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								{/if}
 								{#if approval.response}
 									<p class="muted">Response: {approval.response.choiceId || 'answered'}{approval.respondedAt ? ` · ${formatDate(approval.respondedAt)}` : ''}</p>
 								{/if}
@@ -854,6 +869,8 @@
 											<button onclick={() => respond(approval.id, choice)} disabled={busyApproval !== ''} class={choice.kind === 'deny' || choice.id === 'deny' ? 'danger' : ''}>{busyApproval === `${approval.id}:${choice.id}` ? 'Sending…' : choiceLabel(choice)}</button>
 										{/each}
 									</div>
+								{:else if approval.status === 'pending' && approval.requestType === 'questionnaire'}
+									<p class="muted">Respond in the phone app for questionnaire requests.</p>
 								{/if}
 							</article>
 						{/each}
