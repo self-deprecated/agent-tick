@@ -539,6 +539,9 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if writePlanLimitExceeded(w, err) {
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -835,6 +838,9 @@ func (a *API) createTeam(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if writePlanLimitExceeded(w, err) {
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -929,6 +935,9 @@ func (a *API) upsertTeamMember(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "team not found")
+		return
+	}
+	if writePlanLimitExceeded(w, err) {
 		return
 	}
 	if err != nil {
@@ -1420,6 +1429,9 @@ func (a *API) createAgentToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "project, team, or owner not found")
 		return
 	}
+	if writePlanLimitExceeded(w, err) {
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1757,6 +1769,14 @@ func isLoopback(remoteAddr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func writePlanLimitExceeded(w http.ResponseWriter, err error) bool {
+	if !errors.Is(err, ErrPlanLimitExceeded) {
+		return false
+	}
+	writeError(w, http.StatusPaymentRequired, err.Error())
+	return true
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

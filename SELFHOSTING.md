@@ -99,7 +99,7 @@ Dashboard sessions in user mode use HttpOnly session cookies plus a readable CSR
 
 ## Plan and Billing Defaults
 
-Self-hosted organizations use the `self-hosted` plan by default. Seat, team, active-agent, and 30-day approval-request limits are stored as `-1`, which means unlimited. Audit and approval retention settings are stored per organization and currently default to 365 days so operators can plan cleanup/backup policies explicitly. The dashboard/API billing status endpoint is safe to expose to organization viewers and reports only the current organization's plan, limits, and usage counters.
+Self-hosted organizations use the `self-hosted` plan by default. Seat, team, active-agent, and 30-day approval-request limits are stored as `-1`, which means unlimited. If an operator sets any of those limits to a non-negative value, the server enforces them when teams, new organization seats, active agent tokens, or rolling 30-day approval requests are created and returns HTTP 402 with a plan-limit message. Audit and approval retention settings are stored per organization and currently default to 365 days so operators can plan cleanup/backup policies explicitly. The dashboard/API billing status endpoint is safe to expose to organization viewers and reports only the current organization's plan, limits, and usage counters.
 
 Hosted deployments can later replace the placeholder upgrade/contact links with a billing provider portal or invoice URL without changing the core approval flow.
 

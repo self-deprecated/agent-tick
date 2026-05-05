@@ -1310,6 +1310,35 @@ func TestAPIBillingStatusShowsPlanUsageAndLinks(t *testing.T) {
 	}
 }
 
+func TestAPIPlanLimitErrorsUsePaymentRequired(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+	_, err := store.db.Exec(`
+		UPDATE organizations
+		SET team_limit = 0, agent_limit = 0, request_limit = 0
+		WHERE id = ?
+	`, defaultOrganizationID)
+	if err != nil {
+		t.Fatalf("update limits error = %v", err)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		path  string
+		input any
+	}{
+		{name: "team", path: "/v1/teams", input: CreateTeamRequest{Name: "Blocked"}},
+		{name: "agent", path: "/v1/agent-tokens", input: CreateAgentTokenRequest{Name: "blocked"}},
+		{name: "request", path: "/v1/approval-requests", input: CreateRequest{Title: "Blocked"}},
+	} {
+		rec := statusWithBearer(t, handler, "test-token", http.MethodPost, tc.path, tc.input)
+		if rec.Code != http.StatusPaymentRequired || !strings.Contains(rec.Body.String(), "limit") {
+			t.Fatalf("%s status/body = %d/%s, want payment required plan-limit error", tc.name, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestAPITeamProjectEndpointsAuthorizeByOrganizationRole(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

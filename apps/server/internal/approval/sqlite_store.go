@@ -189,6 +189,11 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 	}
 	defer rollback(tx)
 
+	requestSince := now.AddDate(0, 0, -30)
+	if err := enforceOrganizationPlanLimitTx(tx, organizationID, "requests", "30-day approval request", "SELECT COUNT(*) FROM approval_requests WHERE organization_id = ? AND created_at >= ?", organizationID, timeText(&requestSince)); err != nil {
+		return ApprovalRequest{}, err
+	}
+
 	_, err = tx.Exec(`
 		INSERT INTO approval_requests (
 			id, user_id, organization_id, project_id, requester_json, request_type, title, body, command, choices_json, questions_json,
@@ -960,7 +965,15 @@ func (s *SQLiteStore) CreateAgentTokenForUserWithOptions(userID string, input Cr
 		return AgentCredential{}, err
 	}
 
-	_, err = s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return AgentCredential{}, err
+	}
+	defer rollback(tx)
+	if err := enforceOrganizationPlanLimitTx(tx, organizationID, "agents", "active agent", "SELECT COUNT(*) FROM agent_tokens WHERE organization_id = ? AND revoked_at = ''", organizationID); err != nil {
+		return AgentCredential{}, err
+	}
+	_, err = tx.Exec(
 		`INSERT INTO agent_tokens (
 			id, user_id, organization_id, project_id, owner_user_id, team_id, default_approval_policy,
 			name, token_hash, scopes_json, created_at
@@ -978,6 +991,9 @@ func (s *SQLiteStore) CreateAgentTokenForUserWithOptions(userID string, input Cr
 		timeText(&now),
 	)
 	if err != nil {
+		return AgentCredential{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return AgentCredential{}, err
 	}
 
@@ -1367,7 +1383,7 @@ func (s *SQLiteStore) organizationUsage(organizationID string, auditRetentionDay
 		{&usage.ActiveAgents, "SELECT COUNT(*) FROM agent_tokens WHERE organization_id = ? AND revoked_at = ''", []any{organizationID}},
 		{&usage.ApprovalRequests30d, "SELECT COUNT(*) FROM approval_requests WHERE organization_id = ? AND created_at >= ?", []any{organizationID, timeText(&requestSince)}},
 		{&usage.PushNotifications30d, "SELECT COUNT(*) FROM devices WHERE organization_id = ? AND expo_push_token != '' AND unpaired_at = ''", []any{organizationID}},
-		{&usage.AuditEventsRetained, "SELECT COUNT(*) FROM audit_events WHERE created_at >= ?", []any{timeText(&auditSince)}},
+		{&usage.AuditEventsRetained, "SELECT COUNT(*) FROM audit_events WHERE organization_id = ? AND created_at >= ?", []any{organizationID, timeText(&auditSince)}},
 	}
 	for _, item := range queries {
 		if err := s.db.QueryRow(item.query, item.args...).Scan(item.target); err != nil {
@@ -1375,6 +1391,54 @@ func (s *SQLiteStore) organizationUsage(organizationID string, auditRetentionDay
 		}
 	}
 	return usage, nil
+}
+
+func enforceOrganizationPlanLimitTx(db rowQuerier, organizationID string, limitKind string, label string, countQuery string, args ...any) error {
+	limit, err := organizationLimitValue(db, organizationID, limitKind)
+	if err != nil {
+		return err
+	}
+	if limit < 0 {
+		return nil
+	}
+	var current int
+	if err := db.QueryRow(countQuery, args...).Scan(&current); err != nil {
+		return err
+	}
+	if current >= limit {
+		return fmt.Errorf("%w: %s limit reached", ErrPlanLimitExceeded, label)
+	}
+	return nil
+}
+
+func organizationLimitValue(db rowQuerier, organizationID string, limitKind string) (int, error) {
+	var column string
+	switch limitKind {
+	case "seats":
+		column = "seat_limit"
+	case "teams":
+		column = "team_limit"
+	case "agents":
+		column = "agent_limit"
+	case "requests":
+		column = "request_limit"
+	default:
+		return 0, ErrInvalidRequest
+	}
+	var limit int
+	err := db.QueryRow("SELECT "+column+" FROM organizations WHERE id = ?", organizationID).Scan(&limit)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return limit, err
+}
+
+func organizationMembershipExistsTx(db rowQuerier, organizationID string, userID string) (bool, error) {
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ? AND user_id = ?", organizationID, userID).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (s *SQLiteStore) ListTeams(organizationID string) ([]TeamRecord, error) {
@@ -1433,6 +1497,9 @@ func (s *SQLiteStore) CreateTeamForUser(actorUserID string, organizationID strin
 	}
 	defer rollback(tx)
 	if err := ensureOrganizationExistsTx(tx, organizationID); err != nil {
+		return TeamRecord{}, err
+	}
+	if err := enforceOrganizationPlanLimitTx(tx, organizationID, "teams", "team", "SELECT COUNT(*) FROM teams WHERE organization_id = ?", organizationID); err != nil {
 		return TeamRecord{}, err
 	}
 	_, err = tx.Exec(
@@ -1575,6 +1642,15 @@ func (s *SQLiteStore) UpsertTeamMemberForUser(actorUserID string, organizationID
 	defer rollback(tx)
 	if err := ensureTeamExistsTx(tx, organizationID, teamID); err != nil {
 		return TeamMemberRecord{}, err
+	}
+	exists, err := organizationMembershipExistsTx(tx, organizationID, userID)
+	if err != nil {
+		return TeamMemberRecord{}, err
+	}
+	if !exists {
+		if err := enforceOrganizationPlanLimitTx(tx, organizationID, "seats", "seat", "SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ?", organizationID); err != nil {
+			return TeamMemberRecord{}, err
+		}
 	}
 	if err := upsertOrganizationMembershipTx(tx, organizationID, userID, role, now); err != nil {
 		return TeamMemberRecord{}, err
@@ -3398,6 +3474,7 @@ func (s *SQLiteStore) migrate() error {
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
+			organization_id TEXT NOT NULL DEFAULT 'org_default',
 			event_type TEXT NOT NULL,
 			request_id TEXT NOT NULL,
 			payload_json TEXT NOT NULL DEFAULT '{}',
@@ -3541,6 +3618,9 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.addColumnIfMissing("audit_events", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("audit_events", "organization_id", "TEXT NOT NULL DEFAULT 'org_default'"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("pairing_tokens", "user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
 		return err
 	}
@@ -3623,6 +3703,8 @@ func (s *SQLiteStore) migrate() error {
 			ON devices (user_id, created_at);
 		CREATE INDEX IF NOT EXISTS devices_org_created_at_idx
 			ON devices (organization_id, created_at);
+		CREATE INDEX IF NOT EXISTS audit_events_org_created_at_idx
+			ON audit_events (organization_id, created_at);
 		CREATE INDEX IF NOT EXISTS agent_tokens_user_created_at_idx
 			ON agent_tokens (user_id, created_at);
 		CREATE INDEX IF NOT EXISTS agent_tokens_org_project_created_at_idx
@@ -3995,20 +4077,54 @@ func insertAuditForUser(tx *sql.Tx, userID string, eventType string, requestID s
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
+	organizationID, err := auditOrganizationForTargetTx(tx, userID, requestID)
+	if err != nil {
+		return err
+	}
 	payloadJSON, err := marshalJSON(payload)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
 	_, err = tx.Exec(
-		"INSERT INTO audit_events (user_id, event_type, request_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+		"INSERT INTO audit_events (user_id, organization_id, event_type, request_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 		userID,
+		organizationID,
 		eventType,
 		requestID,
 		payloadJSON,
 		timeText(&now),
 	)
 	return err
+}
+
+func auditOrganizationForTargetTx(tx *sql.Tx, userID string, targetID string) (string, error) {
+	targetID = strings.TrimSpace(targetID)
+	if strings.HasPrefix(targetID, "org_") {
+		return targetID, nil
+	}
+	for _, query := range []string{
+		"SELECT organization_id FROM approval_requests WHERE id = ?",
+		"SELECT organization_id FROM teams WHERE id = ?",
+		"SELECT organization_id FROM projects WHERE id = ?",
+		"SELECT organization_id FROM approval_policies WHERE id = ?",
+		"SELECT organization_id FROM agent_tokens WHERE id = ?",
+	} {
+		var organizationID string
+		err := tx.QueryRow(query, targetID).Scan(&organizationID)
+		if err == nil && strings.TrimSpace(organizationID) != "" {
+			return organizationID, nil
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+	}
+	var organizationID string
+	err := tx.QueryRow("SELECT organization_id FROM organization_memberships WHERE user_id = ? ORDER BY created_at ASC LIMIT 1", userID).Scan(&organizationID)
+	if errors.Is(err, sql.ErrNoRows) || strings.TrimSpace(organizationID) == "" {
+		return defaultOrganizationID, nil
+	}
+	return organizationID, err
 }
 
 func marshalJSON(value any) (string, error) {

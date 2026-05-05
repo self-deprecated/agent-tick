@@ -621,8 +621,70 @@ func TestSQLiteStoreBillingStatusTracksPlanAndUsage(t *testing.T) {
 	if status.UpgradeURL == "" {
 		t.Fatalf("UpgradeURL = empty, want hosted-service upgrade contact")
 	}
+	retainedDefaultEvents := status.Usage.AuditEventsRetained
+	otherOrg, err := store.CreateOrganizationForUser("usr_other_owner", "Other Billing Org")
+	if err != nil {
+		t.Fatalf("CreateOrganizationForUser(other) error = %v", err)
+	}
+	statusAfterOtherOrg, err := store.BillingStatus(defaultOrganizationID)
+	if err != nil {
+		t.Fatalf("BillingStatus(default after other org) error = %v", err)
+	}
+	if statusAfterOtherOrg.Usage.AuditEventsRetained != retainedDefaultEvents {
+		t.Fatalf("default retained audit events = %d after other org events, want %d", statusAfterOtherOrg.Usage.AuditEventsRetained, retainedDefaultEvents)
+	}
+	otherStatus, err := store.BillingStatus(otherOrg.OrganizationID)
+	if err != nil {
+		t.Fatalf("BillingStatus(other) error = %v", err)
+	}
+	if otherStatus.Usage.AuditEventsRetained == 0 {
+		t.Fatalf("other retained audit events = 0, want scoped organization audit events")
+	}
 	if _, err := store.BillingStatus("org_missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("BillingStatus(missing) error = %v, want %v", err, ErrNotFound)
+	}
+}
+
+func TestSQLiteStoreEnforcesOrganizationPlanLimits(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	_, err := store.db.Exec(`
+		UPDATE organizations
+		SET seat_limit = 1, team_limit = 1, agent_limit = 1, request_limit = 1
+		WHERE id = ?
+	`, defaultOrganizationID)
+	if err != nil {
+		t.Fatalf("update limits error = %v", err)
+	}
+
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Allowed"})
+	if err != nil {
+		t.Fatalf("CreateTeam(first) error = %v", err)
+	}
+	if _, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Blocked"}); !errors.Is(err, ErrPlanLimitExceeded) {
+		t.Fatalf("CreateTeam(second) error = %v, want %v", err, ErrPlanLimitExceeded)
+	}
+
+	if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: defaultUserID, Role: RoleOwner}); err != nil {
+		t.Fatalf("UpsertTeamMember(existing org member) error = %v", err)
+	}
+	if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: "usr_new", Role: RoleViewer}); !errors.Is(err, ErrPlanLimitExceeded) {
+		t.Fatalf("UpsertTeamMember(new seat) error = %v, want %v", err, ErrPlanLimitExceeded)
+	}
+
+	if _, err := store.CreateAgentTokenWithOptions(CreateAgentTokenRequest{Name: "allowed"}); err != nil {
+		t.Fatalf("CreateAgentToken(first) error = %v", err)
+	}
+	if _, err := store.CreateAgentTokenWithOptions(CreateAgentTokenRequest{Name: "blocked"}); !errors.Is(err, ErrPlanLimitExceeded) {
+		t.Fatalf("CreateAgentToken(second) error = %v, want %v", err, ErrPlanLimitExceeded)
+	}
+
+	if _, err := store.Create(CreateRequest{Title: "Allowed request"}); err != nil {
+		t.Fatalf("Create(first) error = %v", err)
+	}
+	if _, err := store.Create(CreateRequest{Title: "Blocked request"}); !errors.Is(err, ErrPlanLimitExceeded) {
+		t.Fatalf("Create(second) error = %v, want %v", err, ErrPlanLimitExceeded)
 	}
 }
 
