@@ -18,6 +18,12 @@
       "typecheck": [
         "cd apps/mobile && npm run typecheck"
       ],
+      "admin:dev": [
+        "cd apps/admin && npm run dev"
+      ],
+      "admin:check": [
+        "cd apps/admin && npm run check && npm run build"
+      ],
       "mobile:validate-config": [
         "python scripts/validate-mobile-eas-config.py"
       ],
@@ -28,7 +34,7 @@
         "python /home/jmo/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/agent-tick"
       ],
       "check": [
-        "cd apps/server && go test ./... && go vet ./... && cd ../.. && python scripts/validate-mobile-eas-config.py && cd apps/mobile && npm run typecheck && npm test -- --runInBand"
+        "cd apps/admin && npm run check && npm run build && cd ../server && go test ./... && go vet ./... && cd ../.. && python scripts/validate-mobile-eas-config.py && cd apps/mobile && npm run typecheck && npm test -- --runInBand"
       ],
       "server": [
         "cd apps/server && go run ./cmd/agent-tick server"
@@ -49,7 +55,7 @@
         "sh scripts/build-server-release.sh"
       ],
       "build:local": [
-        "mkdir -p \"$HOME/.local/bin\" && cd apps/server && go build -trimpath -o \"$HOME/.local/bin/agent-tick\" ./cmd/agent-tick && chmod 755 \"$HOME/.local/bin/agent-tick\""
+        "mkdir -p \"$HOME/.local/bin\" && cd apps/admin && npm run build && cd ../server && go build -trimpath -o \"$HOME/.local/bin/agent-tick\" ./cmd/agent-tick && chmod 755 \"$HOME/.local/bin/agent-tick\""
       ],
       "mobile": [
         "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start -- --host localhost --port 8081"

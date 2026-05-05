@@ -15,6 +15,62 @@ import (
 	"time"
 )
 
+func TestAdminServesEmbeddedSvelteApp(t *testing.T) {
+	api := NewAPI(
+		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
+		"test-token",
+	)
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	api.SetPublicURL("https://tick.example")
+	handler := api.Handler()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "192.0.2.10:1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "__MODE__") || !strings.Contains(body, `mode: "user"`) {
+		t.Fatalf("admin mode config not rendered in body: %s", body)
+	}
+	if strings.Contains(body, "__PUBLIC_URL__") || !strings.Contains(body, `publicURL: "https://tick.example"`) {
+		t.Fatalf("admin public URL config not rendered in body: %s", body)
+	}
+
+	assetPath, ok := embeddedAdminAssetPath(body)
+	if !ok {
+		t.Fatalf("admin asset path not found in body: %s", body)
+	}
+	assetReq := httptest.NewRequest(http.MethodGet, assetPath, nil)
+	assetReq.RemoteAddr = "192.0.2.10:1234"
+	assetRec := httptest.NewRecorder()
+	handler.ServeHTTP(assetRec, assetReq)
+	if assetRec.Code != http.StatusOK {
+		t.Fatalf("admin asset status = %d body = %s, want %d", assetRec.Code, assetRec.Body.String(), http.StatusOK)
+	}
+	if assetRec.Body.Len() == 0 {
+		t.Fatal("admin asset response is empty")
+	}
+}
+
+func embeddedAdminAssetPath(body string) (string, bool) {
+	marker := `src="/assets/`
+	start := strings.Index(body, marker)
+	if start == -1 {
+		return "", false
+	}
+	start += len(`src="`)
+	end := strings.Index(body[start:], `"`)
+	if end == -1 {
+		return "", false
+	}
+	return body[start : start+end], true
+}
+
 func TestAPICreateListRespond(t *testing.T) {
 	handler := NewAPI(
 		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
@@ -332,17 +388,28 @@ func TestAPIRequiresAuthForRemoteRequests(t *testing.T) {
 	}
 }
 
-func TestAPIDashboardRendersDynamicChoiceButtons(t *testing.T) {
+func TestAPIDashboardBundleHandlesDynamicChoiceButtons(t *testing.T) {
 	handler := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token").Handler()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
 
-	body := rec.Body.String()
-	for _, snippet := range []string{"const choices = Array.isArray(approval.choices)", "choices.map((choice)", "JSON.stringify(choice.id)", "escapeHTML(call)"} {
-		if !strings.Contains(body, snippet) {
-			t.Fatalf("dashboard HTML missing %q: %s", snippet, body)
+	assetPath, ok := embeddedAdminAssetPath(rec.Body.String())
+	if !ok {
+		t.Fatalf("admin asset path not found in body: %s", rec.Body.String())
+	}
+	assetReq := httptest.NewRequest(http.MethodGet, assetPath, nil)
+	assetRec := httptest.NewRecorder()
+	handler.ServeHTTP(assetRec, assetReq)
+	if assetRec.Code != http.StatusOK {
+		t.Fatalf("admin asset status = %d body = %s, want %d", assetRec.Code, assetRec.Body.String(), http.StatusOK)
+	}
+
+	bundle := assetRec.Body.String()
+	for _, snippet := range []string{"choices", "choiceId", "responses"} {
+		if !strings.Contains(bundle, snippet) {
+			t.Fatalf("dashboard bundle missing %q", snippet)
 		}
 	}
 }
@@ -369,7 +436,7 @@ func TestAPIDashboardUsesPublicURL(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	if !strings.Contains(rec.Body.String(), `const serverPublicURL = "http://192.0.2.10:8787"`) {
+	if !strings.Contains(rec.Body.String(), `publicURL: "http://192.0.2.10:8787"`) {
 		t.Fatalf("dashboard did not render public URL: %s", rec.Body.String())
 	}
 }

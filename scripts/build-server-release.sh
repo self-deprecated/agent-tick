@@ -9,6 +9,11 @@ version="${AGENT_TICK_VERSION:-dev}"
 rm -rf "$dist"
 mkdir -p "$dist"
 
+(
+  cd "$root/apps/admin"
+  npm run build
+)
+
 build_one() {
   goos="$1"
   goarch="$2"

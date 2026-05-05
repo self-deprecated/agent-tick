@@ -209,6 +209,7 @@ func (a *API) RequireSignatures(required bool) {
 func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", a.admin)
+	mux.HandleFunc("GET /assets/", a.adminAsset)
 	mux.HandleFunc("GET /healthz", a.health)
 	mux.HandleFunc("GET /v1/session", a.session)
 	mux.HandleFunc("POST /v1/session", a.login)
@@ -630,7 +631,7 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 
 func (a *API) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || (r.Method == http.MethodGet && r.URL.Path == "/") {
+		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || (r.Method == http.MethodGet && (r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/"))) {
 			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID}))
 			return
 		}
@@ -809,7 +810,7 @@ func tokenMatches(got string, want string) bool {
 func (a *API) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, "+csrfHeaderName)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

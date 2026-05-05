@@ -11,6 +11,7 @@ devbox run check
 ## Project Shape
 
 - `apps/server`: Go server and CLI in one binary.
+- `apps/admin`: Svelte 5 + TypeScript dashboard built with Vite and embedded into the Go server.
 - `apps/mobile`: Expo React Native phone app.
 - `devbox.json`: local development tasks and dependency management.
 - `.github/workflows/server-image.yml`: GitHub Actions workflow for the server container image.
@@ -57,13 +58,28 @@ devbox run server
 
 ## Dashboard
 
+The dashboard is a Svelte 5 + TypeScript app in `apps/admin`. Build and validate it with:
+
+```sh
+devbox run admin:check
+```
+
+For dashboard-only iteration against a local server, run:
+
+```sh
+devbox run admin:dev
+```
+
+Production dashboard assets are written to `apps/server/internal/approval/admin_static` and embedded in the Go binary. Run `npm run build` in `apps/admin` (or any build/check task above) after dashboard source changes so the embedded assets stay current.
+
 The dashboard supports:
 
-- User sign-in in `AGENT_TICK_MODE=user`.
+- User sign-in and session resume in `AGENT_TICK_MODE=user`.
 - Single-user bearer-token auth in default mode.
-- Collapsed `Devices` panel with existing paired devices and QR pairing.
-- Collapsed `Agents` panel with per-user agent token creation.
-- Approval list with approve/deny for pending requests.
+- Responsive Approvals, Devices, and Agents sections with loading, empty, and error states.
+- Phone pairing with short-lived QR codes and device revocation.
+- Agent token listing, creation setup commands, and revocation.
+- Approval list with approve/deny or constrained choice responses for pending requests.
 
 Pair a phone:
 
