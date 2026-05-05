@@ -715,17 +715,48 @@ func (s *SQLiteStore) CreateAgentToken(name string, scopes []string) (AgentCrede
 	return s.CreateAgentTokenForUser(defaultUserID, name, scopes)
 }
 
+func (s *SQLiteStore) CreateAgentTokenWithOptions(input CreateAgentTokenRequest) (AgentCredential, error) {
+	return s.CreateAgentTokenForUserWithOptions(defaultUserID, input)
+}
+
 func (s *SQLiteStore) CreateAgentTokenForUser(userID string, name string, scopes []string) (AgentCredential, error) {
+	return s.CreateAgentTokenForUserWithOptions(userID, CreateAgentTokenRequest{Name: name, Scopes: scopes})
+}
+
+func (s *SQLiteStore) CreateAgentTokenForUserWithOptions(userID string, input CreateAgentTokenRequest) (AgentCredential, error) {
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
-	organizationID, projectID, err := s.defaultOrganizationAndProjectForUser(userID)
+	organizationID, defaultProjectID, err := s.defaultOrganizationAndProjectForUser(userID)
 	if err != nil {
 		return AgentCredential{}, err
 	}
-	if strings.TrimSpace(name) == "" {
+	projectID := strings.TrimSpace(input.ProjectID)
+	if projectID == "" {
+		projectID = defaultProjectID
+	} else if err := s.ensureProjectExists(organizationID, projectID); err != nil {
+		return AgentCredential{}, err
+	}
+	teamID := strings.TrimSpace(input.TeamID)
+	if teamID != "" {
+		if err := s.ensureTeamExists(organizationID, teamID); err != nil {
+			return AgentCredential{}, err
+		}
+	}
+	ownerUserID := strings.TrimSpace(input.OwnerUserID)
+	if ownerUserID == "" {
+		ownerUserID = userID
+	}
+	if _, ok, err := s.OrganizationRoleForUser(ownerUserID, organizationID); err != nil {
+		return AgentCredential{}, err
+	} else if !ok {
+		return AgentCredential{}, ErrNotFound
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
 		name = "agent"
 	}
+	scopes := input.Scopes
 	if len(scopes) == 0 {
 		scopes = []string{"approval:write", "approval:read"}
 	}
@@ -736,13 +767,20 @@ func (s *SQLiteStore) CreateAgentTokenForUser(userID string, name string, scopes
 	if err != nil {
 		return AgentCredential{}, err
 	}
+	defaultPolicy := strings.TrimSpace(input.DefaultApprovalPolicy)
 
 	_, err = s.db.Exec(
-		"INSERT INTO agent_tokens (id, user_id, organization_id, project_id, name, token_hash, scopes_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		`INSERT INTO agent_tokens (
+			id, user_id, organization_id, project_id, owner_user_id, team_id, default_approval_policy,
+			name, token_hash, scopes_json, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		agentID,
 		userID,
 		organizationID,
 		projectID,
+		ownerUserID,
+		teamID,
+		defaultPolicy,
 		name,
 		tokenHash(token),
 		scopesJSON,
@@ -752,7 +790,17 @@ func (s *SQLiteStore) CreateAgentTokenForUser(userID string, name string, scopes
 		return AgentCredential{}, err
 	}
 
-	return AgentCredential{AgentID: agentID, Name: name, Token: token, Scopes: scopes}, nil
+	return AgentCredential{
+		AgentID:               agentID,
+		Name:                  name,
+		Token:                 token,
+		Scopes:                scopes,
+		OrganizationID:        organizationID,
+		ProjectID:             projectID,
+		OwnerUserID:           ownerUserID,
+		TeamID:                teamID,
+		DefaultApprovalPolicy: defaultPolicy,
+	}, nil
 }
 
 func (s *SQLiteStore) VerifyAgentToken(token string, scope string) (bool, error) {
@@ -761,29 +809,45 @@ func (s *SQLiteStore) VerifyAgentToken(token string, scope string) (bool, error)
 }
 
 func (s *SQLiteStore) UserIDForAgentToken(token string, scope string) (string, bool, error) {
+	auth, ok, err := s.AgentAuthForToken(token, scope)
+	return auth.UserID, ok, err
+}
+
+func (s *SQLiteStore) AgentAuthForToken(token string, scope string) (AgentTokenAuth, bool, error) {
 	if strings.TrimSpace(token) == "" {
-		return "", false, nil
+		return AgentTokenAuth{}, false, nil
 	}
 
-	var userID string
+	var auth AgentTokenAuth
 	var scopesJSON string
-	err := s.db.QueryRow(
-		"SELECT user_id, scopes_json FROM agent_tokens WHERE token_hash = ? AND revoked_at = '' LIMIT 1",
-		tokenHash(token),
-	).Scan(&userID, &scopesJSON)
+	err := s.db.QueryRow(`
+		SELECT id, user_id, organization_id, project_id, owner_user_id, team_id, default_approval_policy, scopes_json
+		FROM agent_tokens
+		WHERE token_hash = ? AND revoked_at = ''
+		LIMIT 1
+	`, tokenHash(token)).Scan(
+		&auth.AgentID,
+		&auth.UserID,
+		&auth.OrganizationID,
+		&auth.ProjectID,
+		&auth.OwnerUserID,
+		&auth.TeamID,
+		&auth.DefaultApprovalPolicy,
+		&scopesJSON,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
+		return AgentTokenAuth{}, false, nil
 	}
 	if err != nil {
-		return "", false, err
+		return AgentTokenAuth{}, false, err
 	}
 
 	var scopes []string
 	if err := json.Unmarshal([]byte(scopesJSON), &scopes); err != nil {
-		return "", false, err
+		return AgentTokenAuth{}, false, err
 	}
 	ok := slices.Contains(scopes, scope) || slices.Contains(scopes, "*")
-	return userID, ok, nil
+	return auth, ok, nil
 }
 
 func (s *SQLiteStore) ListAgentTokens() ([]AgentTokenRecord, error) {
@@ -794,7 +858,13 @@ func (s *SQLiteStore) ListAgentTokensForUser(userID string) ([]AgentTokenRecord,
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
-	rows, err := s.db.Query("SELECT id, name, scopes_json, created_at, revoked_at FROM agent_tokens WHERE user_id = ? ORDER BY created_at DESC", userID)
+	rows, err := s.db.Query(`
+		SELECT id, name, scopes_json, organization_id, project_id, owner_user_id, team_id,
+			default_approval_policy, last_request_at, created_at, revoked_at
+		FROM agent_tokens
+		WHERE user_id = ?
+		ORDER BY created_at DESC
+	`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -806,7 +876,20 @@ func (s *SQLiteStore) ListAgentTokensForUser(userID string) ([]AgentTokenRecord,
 		var scopesJSON string
 		var createdAt string
 		var revokedAt string
-		if err := rows.Scan(&record.AgentID, &record.Name, &scopesJSON, &createdAt, &revokedAt); err != nil {
+		var lastRequestAt string
+		if err := rows.Scan(
+			&record.AgentID,
+			&record.Name,
+			&scopesJSON,
+			&record.OrganizationID,
+			&record.ProjectID,
+			&record.OwnerUserID,
+			&record.TeamID,
+			&record.DefaultApprovalPolicy,
+			&lastRequestAt,
+			&createdAt,
+			&revokedAt,
+		); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(scopesJSON), &record.Scopes); err != nil {
@@ -817,6 +900,7 @@ func (s *SQLiteStore) ListAgentTokensForUser(userID string) ([]AgentTokenRecord,
 			return nil, err
 		}
 		record.CreatedAt = parsedCreatedAt
+		record.LastRequestAt = parseOptionalTime(lastRequestAt)
 		record.RevokedAt = parseOptionalTime(revokedAt)
 		records = append(records, record)
 	}
@@ -886,12 +970,22 @@ func (s *SQLiteStore) RotateAgentToken(agentID string) (AgentCredential, error) 
 	}
 	defer rollback(tx)
 
-	var name string
+	var credential AgentCredential
 	var scopesJSON string
-	err = tx.QueryRow(
-		"SELECT name, scopes_json FROM agent_tokens WHERE id = ? AND revoked_at = ''",
-		agentID,
-	).Scan(&name, &scopesJSON)
+	err = tx.QueryRow(`
+		SELECT id, name, scopes_json, organization_id, project_id, owner_user_id, team_id, default_approval_policy
+		FROM agent_tokens
+		WHERE id = ? AND revoked_at = ''
+	`, agentID).Scan(
+		&credential.AgentID,
+		&credential.Name,
+		&scopesJSON,
+		&credential.OrganizationID,
+		&credential.ProjectID,
+		&credential.OwnerUserID,
+		&credential.TeamID,
+		&credential.DefaultApprovalPolicy,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return AgentCredential{}, ErrNotFound
 	}
@@ -917,7 +1011,9 @@ func (s *SQLiteStore) RotateAgentToken(agentID string) (AgentCredential, error) 
 		return AgentCredential{}, err
 	}
 
-	return AgentCredential{AgentID: agentID, Name: name, Token: token, Scopes: scopes}, nil
+	credential.Token = token
+	credential.Scopes = scopes
+	return credential, nil
 }
 
 func (s *SQLiteStore) ListOrganizationsForUser(userID string) ([]OrganizationMembershipRecord, error) {
@@ -1398,8 +1494,30 @@ func (s *SQLiteStore) createOrUpdateProject(projectID string, organizationID str
 	return project, tx.Commit()
 }
 
+func (s *SQLiteStore) RecordAgentRequest(agentID string, at time.Time) error {
+	if strings.TrimSpace(agentID) == "" {
+		return ErrNotFound
+	}
+	result, err := s.db.Exec("UPDATE agent_tokens SET last_request_at = ? WHERE id = ?", timeText(&at), agentID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *SQLiteStore) ensureTeamExists(organizationID string, teamID string) error {
 	return ensureTeamExistsDB(s.db, organizationID, teamID)
+}
+
+func (s *SQLiteStore) ensureProjectExists(organizationID string, projectID string) error {
+	return ensureProjectExistsDB(s.db, organizationID, projectID)
 }
 
 func (s *SQLiteStore) defaultOrganizationAndProjectForUser(userID string) (string, string, error) {
@@ -1527,6 +1645,18 @@ func ensureTeamExistsDB(db rowQuerier, organizationID string, teamID string) err
 	}
 	var id string
 	err := db.QueryRow("SELECT id FROM teams WHERE organization_id = ? AND id = ?", organizationID, teamID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func ensureProjectExistsDB(db rowQuerier, organizationID string, projectID string) error {
+	if strings.TrimSpace(projectID) == "" {
+		return ErrNotFound
+	}
+	var id string
+	err := db.QueryRow("SELECT id FROM projects WHERE organization_id = ? AND id = ?", organizationID, projectID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -1800,6 +1930,10 @@ func (s *SQLiteStore) migrate() error {
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
 			organization_id TEXT NOT NULL DEFAULT 'org_default',
 			project_id TEXT NOT NULL DEFAULT 'prj_default',
+			owner_user_id TEXT NOT NULL DEFAULT 'usr_default',
+			team_id TEXT NOT NULL DEFAULT '',
+			default_approval_policy TEXT NOT NULL DEFAULT '',
+			last_request_at TEXT NOT NULL DEFAULT '',
 			name TEXT NOT NULL,
 			token_hash TEXT NOT NULL UNIQUE,
 			scopes_json TEXT NOT NULL,
@@ -1892,6 +2026,18 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.addColumnIfMissing("agent_tokens", "project_id", "TEXT NOT NULL DEFAULT 'prj_default'"); err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("agent_tokens", "owner_user_id", "TEXT NOT NULL DEFAULT 'usr_default'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("agent_tokens", "team_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("agent_tokens", "default_approval_policy", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("agent_tokens", "last_request_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("devices", "expo_push_token", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -1912,6 +2058,7 @@ func (s *SQLiteStore) migrate() error {
 		UPDATE devices SET organization_id = 'org_default' WHERE organization_id = '';
 		UPDATE agent_tokens SET organization_id = 'org_default' WHERE organization_id = '';
 		UPDATE agent_tokens SET project_id = 'prj_default' WHERE project_id = '';
+		UPDATE agent_tokens SET owner_user_id = user_id WHERE owner_user_id = '' OR (owner_user_id = 'usr_default' AND user_id != 'usr_default');
 	`); err != nil {
 		return err
 	}

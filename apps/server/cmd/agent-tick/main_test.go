@@ -105,14 +105,14 @@ func TestFlagEnvPrecedence(t *testing.T) {
 
 func TestRequestAutomationFlagsExist(t *testing.T) {
 	cmd := newRequestCmd()
-	for _, name := range []string{"json-events", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token", "project", "project-dir"} {
+	for _, name := range []string{"json-events", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token", "project", "project-dir", "project-id", "team", "approval-policy"} {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("--%s flag not found on request command", name)
 		}
 	}
 
 	steer := newSteerCmd()
-	for _, name := range []string{"option", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token", "project", "project-dir"} {
+	for _, name := range []string{"option", "timeout", "no-timeout", "expires-in", "no-expiry", "metadata", "client-request-id", "correlation-token", "project", "project-dir", "project-id", "team", "approval-policy"} {
 		if steer.Flags().Lookup(name) == nil {
 			t.Fatalf("--%s flag not found on steer command", name)
 		}

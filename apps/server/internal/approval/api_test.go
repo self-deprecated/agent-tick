@@ -975,6 +975,50 @@ func TestAPIRequiresSignedCreateRequestsWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	team := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Platform"})
+	otherTeam := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Other"})
+	project := request[ProjectRecord](t, handler, http.MethodPost, "/v1/projects", CreateProjectRequest{Name: "Platform Project", TeamID: team.TeamID})
+	otherProject := request[ProjectRecord](t, handler, http.MethodPost, "/v1/projects", CreateProjectRequest{Name: "Other Project", TeamID: otherTeam.TeamID})
+	credential := request[AgentCredential](t, handler, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{
+		Name:                  "platform-agent",
+		Scopes:                []string{"approval:write"},
+		ProjectID:             project.ProjectID,
+		TeamID:                team.TeamID,
+		DefaultApprovalPolicy: "team-quorum",
+	})
+
+	badProjectRec := statusWithBearer(t, handler, credential.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{
+		Title:    "Wrong project",
+		Metadata: map[string]string{"projectId": otherProject.ProjectID},
+	})
+	if badProjectRec.Code != http.StatusBadRequest {
+		t.Fatalf("bad project status = %d body = %s, want %d", badProjectRec.Code, badProjectRec.Body.String(), http.StatusBadRequest)
+	}
+
+	badTeamRec := statusWithBearer(t, handler, credential.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{
+		Title:    "Wrong team",
+		Metadata: map[string]string{"teamId": otherTeam.TeamID},
+	})
+	if badTeamRec.Code != http.StatusBadRequest {
+		t.Fatalf("bad team status = %d body = %s, want %d", badTeamRec.Code, badTeamRec.Body.String(), http.StatusBadRequest)
+	}
+
+	created := requestWithBearer[ApprovalRequest](t, handler, credential.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Allowed"})
+	if created.Metadata["projectId"] != project.ProjectID || created.Metadata["teamId"] != team.TeamID || created.Metadata["approvalPolicy"] != "team-quorum" {
+		t.Fatalf("metadata = %#v, want token routing defaults", created.Metadata)
+	}
+
+	records := request[[]AgentTokenRecord](t, handler, http.MethodGet, "/v1/agent-tokens", nil)
+	if len(records) == 0 || records[0].ProjectID == "" || records[0].LastRequestAt == nil {
+		t.Fatalf("agent records = %#v, want project and last request", records)
+	}
+}
+
 func TestAPITeamProjectEndpointsAuthorizeByOrganizationRole(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
@@ -1027,19 +1071,13 @@ func TestAPITeamProjectEndpointsAuthorizeByOrganizationRole(t *testing.T) {
 
 func request[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
 	t.Helper()
+	return requestWithBearer[T](t, handler, "test-token", method, path, input)
+}
 
-	var body bytes.Buffer
-	if input != nil {
-		if err := json.NewEncoder(&body).Encode(input); err != nil {
-			t.Fatalf("Encode() error = %v", err)
-		}
-	}
+func requestWithBearer[T any](t *testing.T, handler http.Handler, token string, method string, path string, input any) T {
+	t.Helper()
 
-	req := httptest.NewRequest(method, path, &body)
-	req.Header.Set("Authorization", "Bearer test-token")
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
+	rec := statusWithBearer(t, handler, token, method, path, input)
 	if rec.Code < 200 || rec.Code >= 300 {
 		t.Fatalf("%s %s status = %d body = %s", method, path, rec.Code, rec.Body.String())
 	}
@@ -1049,6 +1087,23 @@ func request[T any](t *testing.T, handler http.Handler, method string, path stri
 		t.Fatalf("Decode() error = %v", err)
 	}
 	return output
+}
+
+func statusWithBearer(t *testing.T, handler http.Handler, token string, method string, path string, input any) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var body bytes.Buffer
+	if input != nil {
+		if err := json.NewEncoder(&body).Encode(input); err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(method, path, &body)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
 }
 
 func TestAPIUnpairsDevice(t *testing.T) {

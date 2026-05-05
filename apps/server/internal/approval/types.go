@@ -122,23 +122,48 @@ type PushTokenRequest struct {
 }
 
 type AgentCredential struct {
-	AgentID string   `json:"agentId"`
-	Name    string   `json:"name"`
-	Token   string   `json:"token"`
-	Scopes  []string `json:"scopes"`
+	AgentID               string   `json:"agentId"`
+	Name                  string   `json:"name"`
+	Token                 string   `json:"token"`
+	Scopes                []string `json:"scopes"`
+	OrganizationID        string   `json:"organizationId,omitempty"`
+	ProjectID             string   `json:"projectId,omitempty"`
+	OwnerUserID           string   `json:"ownerUserId,omitempty"`
+	TeamID                string   `json:"teamId,omitempty"`
+	DefaultApprovalPolicy string   `json:"defaultApprovalPolicy,omitempty"`
 }
 
 type CreateAgentTokenRequest struct {
-	Name   string   `json:"name"`
-	Scopes []string `json:"scopes,omitempty"`
+	Name                  string   `json:"name"`
+	Scopes                []string `json:"scopes,omitempty"`
+	ProjectID             string   `json:"projectId,omitempty"`
+	OwnerUserID           string   `json:"ownerUserId,omitempty"`
+	TeamID                string   `json:"teamId,omitempty"`
+	DefaultApprovalPolicy string   `json:"defaultApprovalPolicy,omitempty"`
 }
 
 type AgentTokenRecord struct {
-	AgentID   string     `json:"agentId"`
-	Name      string     `json:"name"`
-	Scopes    []string   `json:"scopes"`
-	CreatedAt time.Time  `json:"createdAt"`
-	RevokedAt *time.Time `json:"revokedAt,omitempty"`
+	AgentID               string     `json:"agentId"`
+	Name                  string     `json:"name"`
+	Scopes                []string   `json:"scopes"`
+	OrganizationID        string     `json:"organizationId,omitempty"`
+	ProjectID             string     `json:"projectId,omitempty"`
+	OwnerUserID           string     `json:"ownerUserId,omitempty"`
+	TeamID                string     `json:"teamId,omitempty"`
+	DefaultApprovalPolicy string     `json:"defaultApprovalPolicy,omitempty"`
+	LastRequestAt         *time.Time `json:"lastRequestAt,omitempty"`
+	CreatedAt             time.Time  `json:"createdAt"`
+	RevokedAt             *time.Time `json:"revokedAt,omitempty"`
+}
+
+type AgentTokenAuth struct {
+	UserID                string
+	AgentID               string
+	OrganizationID        string
+	ProjectID             string
+	OwnerUserID           string
+	TeamID                string
+	DefaultApprovalPolicy string
 }
 
 const (

@@ -148,6 +148,7 @@ See also: setup, agent-token`,
 
 func newRequestCmd() *cobra.Command {
 	var server, token, title, body, command, contextFile, requesterName, agentID, projectName, projectDir, defaultChoice string
+	var projectIDHint, teamHint, approvalPolicy string
 	var clientRequestID, correlationToken, metadataJSON string
 	var choiceSpecs []string
 	var allowFreeformReply bool
@@ -195,8 +196,10 @@ See also: guard, adapter, abandon`,
 			if err != nil {
 				return err
 			}
+			requester := buildRequester(requesterName, agentID, projectName, projectDir)
+			applyRoutingHints(metadata, &requester, projectIDHint, teamHint, approvalPolicy)
 			input := approval.CreateRequest{
-				Requester:          buildRequester(requesterName, agentID, projectName, projectDir),
+				Requester:          requester,
 				Title:              title,
 				Body:               body,
 				Command:            command,
@@ -234,6 +237,9 @@ See also: guard, adapter, abandon`,
 	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
 	cmd.Flags().StringVar(&projectName, "project", os.Getenv("AGENT_TICK_PROJECT"), "project display name [env: AGENT_TICK_PROJECT]")
 	cmd.Flags().StringVar(&projectDir, "project-dir", os.Getenv("AGENT_TICK_PROJECT_DIR"), "project directory for grouping; defaults to current directory [env: AGENT_TICK_PROJECT_DIR]")
+	cmd.Flags().StringVar(&projectIDHint, "project-id", os.Getenv("AGENT_TICK_PROJECT_ID"), "project ID routing hint [env: AGENT_TICK_PROJECT_ID]")
+	cmd.Flags().StringVar(&teamHint, "team", os.Getenv("AGENT_TICK_TEAM"), "team ID routing hint [env: AGENT_TICK_TEAM]")
+	cmd.Flags().StringVar(&approvalPolicy, "approval-policy", os.Getenv("AGENT_TICK_APPROVAL_POLICY"), "approval policy routing hint [env: AGENT_TICK_APPROVAL_POLICY]")
 	cmd.Flags().StringVar(&title, "title", "", "approval title (required)")
 	cmd.Flags().StringVar(&body, "body", "", "approval body")
 	cmd.Flags().StringVar(&command, "command", "", "command being requested")
@@ -254,6 +260,7 @@ See also: guard, adapter, abandon`,
 
 func newSteerCmd() *cobra.Command {
 	var server, token, title, body, contextFile, requesterName, agentID, projectName, projectDir string
+	var projectIDHint, teamHint, approvalPolicy string
 	var clientRequestID, correlationToken, metadataJSON string
 	var optionSpecs []string
 	var noTimeout, noExpiry bool
@@ -291,8 +298,10 @@ See also: request, guard`,
 			if err != nil {
 				return err
 			}
+			requester := buildRequester(requesterName, agentID, projectName, projectDir)
+			applyRoutingHints(metadata, &requester, projectIDHint, teamHint, approvalPolicy)
 			selected := requestSteer(server, approval.CreateRequest{
-				Requester:     buildRequester(requesterName, agentID, projectName, projectDir),
+				Requester:     requester,
 				RequestType:   approval.RequestTypeSteer,
 				Title:         title,
 				Body:          body,
@@ -311,6 +320,9 @@ See also: request, guard`,
 	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
 	cmd.Flags().StringVar(&projectName, "project", os.Getenv("AGENT_TICK_PROJECT"), "project display name [env: AGENT_TICK_PROJECT]")
 	cmd.Flags().StringVar(&projectDir, "project-dir", os.Getenv("AGENT_TICK_PROJECT_DIR"), "project directory for grouping; defaults to current directory [env: AGENT_TICK_PROJECT_DIR]")
+	cmd.Flags().StringVar(&projectIDHint, "project-id", os.Getenv("AGENT_TICK_PROJECT_ID"), "project ID routing hint [env: AGENT_TICK_PROJECT_ID]")
+	cmd.Flags().StringVar(&teamHint, "team", os.Getenv("AGENT_TICK_TEAM"), "team ID routing hint [env: AGENT_TICK_TEAM]")
+	cmd.Flags().StringVar(&approvalPolicy, "approval-policy", os.Getenv("AGENT_TICK_APPROVAL_POLICY"), "approval policy routing hint [env: AGENT_TICK_APPROVAL_POLICY]")
 	cmd.Flags().StringVar(&title, "title", "", "steering title")
 	cmd.Flags().StringVar(&body, "body", "", "steering body")
 	cmd.Flags().StringArrayVar(&optionSpecs, "option", nil, "steering option in id:label format; repeat to add more")
@@ -363,6 +375,7 @@ See also: request`,
 
 func newGuardCmd() *cobra.Command {
 	var server, token, title, body, contextFile, requesterName, agentID, projectName, projectDir string
+	var projectIDHint, teamHint, approvalPolicy string
 	var timeout, expiresIn time.Duration
 	cmd := &cobra.Command{
 		Use:   "guard [-- command...]",
@@ -388,8 +401,10 @@ See also: request, adapter`,
 			if err != nil {
 				return err
 			}
+			requester := buildRequester(requesterName, agentID, projectName, projectDir)
+			applyRoutingHints(metadata, &requester, projectIDHint, teamHint, approvalPolicy)
 			current, err := requestApproval(server, approval.CreateRequest{
-				Requester: buildRequester(requesterName, agentID, projectName, projectDir),
+				Requester: requester,
 				Title:     title,
 				Body:      requestBody,
 				Command:   commandText,
@@ -423,6 +438,9 @@ See also: request, adapter`,
 	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
 	cmd.Flags().StringVar(&projectName, "project", os.Getenv("AGENT_TICK_PROJECT"), "project display name [env: AGENT_TICK_PROJECT]")
 	cmd.Flags().StringVar(&projectDir, "project-dir", os.Getenv("AGENT_TICK_PROJECT_DIR"), "project directory for grouping; defaults to current directory [env: AGENT_TICK_PROJECT_DIR]")
+	cmd.Flags().StringVar(&projectIDHint, "project-id", os.Getenv("AGENT_TICK_PROJECT_ID"), "project ID routing hint [env: AGENT_TICK_PROJECT_ID]")
+	cmd.Flags().StringVar(&teamHint, "team", os.Getenv("AGENT_TICK_TEAM"), "team ID routing hint [env: AGENT_TICK_TEAM]")
+	cmd.Flags().StringVar(&approvalPolicy, "approval-policy", os.Getenv("AGENT_TICK_APPROVAL_POLICY"), "approval policy routing hint [env: AGENT_TICK_APPROVAL_POLICY]")
 	cmd.Flags().StringVar(&title, "title", "Run command?", "approval title")
 	cmd.Flags().StringVar(&body, "body", "", "approval body")
 	cmd.Flags().StringVar(&contextFile, "context-file", "", "path to extra context to attach")
@@ -588,6 +606,7 @@ func newAgentTokenRotateCmd() *cobra.Command {
 
 func newAdapterCmd() *cobra.Command {
 	var server, token, requesterName, agentID, projectName, projectDir string
+	var projectIDHint, teamHint, approvalPolicy string
 	var timeout time.Duration
 	cmd := &cobra.Command{
 		Use:   "adapter",
@@ -604,7 +623,11 @@ See also: request, guard`,
 			if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
 				return err
 			}
+			if input.Metadata == nil {
+				input.Metadata = map[string]string{}
+			}
 			input.Requester = mergeRequester(input.Requester, buildRequester(requesterName, agentID, projectName, projectDir))
+			applyRoutingHints(input.Metadata, &input.Requester, projectIDHint, teamHint, approvalPolicy)
 			if input.Title == "" {
 				input.Title = "Approval requested"
 			}
@@ -628,6 +651,9 @@ See also: request, guard`,
 	cmd.Flags().StringVar(&agentID, "agent-id", getenv("AGENT_TICK_AGENT_ID", "local-agent"), "agent ID [env: AGENT_TICK_AGENT_ID]")
 	cmd.Flags().StringVar(&projectName, "project", os.Getenv("AGENT_TICK_PROJECT"), "project display name [env: AGENT_TICK_PROJECT]")
 	cmd.Flags().StringVar(&projectDir, "project-dir", os.Getenv("AGENT_TICK_PROJECT_DIR"), "project directory for grouping; defaults to current directory [env: AGENT_TICK_PROJECT_DIR]")
+	cmd.Flags().StringVar(&projectIDHint, "project-id", os.Getenv("AGENT_TICK_PROJECT_ID"), "project ID routing hint [env: AGENT_TICK_PROJECT_ID]")
+	cmd.Flags().StringVar(&teamHint, "team", os.Getenv("AGENT_TICK_TEAM"), "team ID routing hint [env: AGENT_TICK_TEAM]")
+	cmd.Flags().StringVar(&approvalPolicy, "approval-policy", os.Getenv("AGENT_TICK_APPROVAL_POLICY"), "approval policy routing hint [env: AGENT_TICK_APPROVAL_POLICY]")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "time to wait for a response")
 	return cmd
 }
@@ -1173,6 +1199,22 @@ func classifyRisk(command string) string {
 		return "low"
 	}
 	return "medium"
+}
+
+func applyRoutingHints(metadata map[string]string, requester *approval.Requester, projectID string, team string, approvalPolicy string) {
+	if metadata == nil {
+		return
+	}
+	if projectID = strings.TrimSpace(projectID); projectID != "" {
+		metadata["projectId"] = projectID
+		requester.ProjectID = projectID
+	}
+	if team = strings.TrimSpace(team); team != "" {
+		metadata["teamId"] = team
+	}
+	if approvalPolicy = strings.TrimSpace(approvalPolicy); approvalPolicy != "" {
+		metadata["approvalPolicy"] = approvalPolicy
+	}
 }
 
 func requestMetadata(contextFile string, metadataJSON string, clientRequestID string, correlationToken string) (map[string]string, error) {

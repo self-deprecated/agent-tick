@@ -75,7 +75,7 @@ agent-tick steer \
 
 Your phone shows only the supplied options plus **Do nothing / skip**. The CLI prints only the selected option ID, or `none` on skip, timeout, expiry, or delivery failure.
 
-Requests are grouped in the mobile app by project. The CLI defaults the project to the current machine and working directory; override the display name with `--project` and the grouping directory with `--project-dir`.
+Requests are grouped in the mobile app by project. The CLI defaults the project to the current machine and working directory; override the display name with `--project` and the grouping directory with `--project-dir`. Team-aware servers can also use `--project-id` / `AGENT_TICK_PROJECT_ID`, `--team` / `AGENT_TICK_TEAM`, and `--approval-policy` / `AGENT_TICK_APPROVAL_POLICY` routing hints.
 
 ## How It Works
 

@@ -77,11 +77,15 @@ const csrfCookieName = "agent_tick_csrf"
 const csrfHeaderName = "X-Agent-Tick-CSRF"
 
 type authContext struct {
-	UserID         string
-	OrganizationID string
-	Role           string
-	FromSession    bool
-	Source         string
+	UserID                string
+	OrganizationID        string
+	Role                  string
+	AgentID               string
+	ProjectID             string
+	TeamID                string
+	DefaultApprovalPolicy string
+	FromSession           bool
+	Source                string
 }
 
 const (
@@ -220,11 +224,17 @@ func (a *API) unpairDeviceForUser(userID string, deviceID string) error {
 	return a.pairings.UnpairDevice(deviceID)
 }
 
-func (a *API) createAgentTokenForUser(userID string, name string, scopes []string) (AgentCredential, error) {
-	if a.scopedAgents != nil {
-		return a.scopedAgents.CreateAgentTokenForUser(userID, name, scopes)
+func (a *API) createAgentTokenForUser(userID string, input CreateAgentTokenRequest) (AgentCredential, error) {
+	if options, ok := a.scopedAgents.(UserScopedAgentTokenOptionsStore); ok {
+		return options.CreateAgentTokenForUserWithOptions(userID, input)
 	}
-	return a.agents.CreateAgentToken(name, scopes)
+	if a.scopedAgents != nil {
+		return a.scopedAgents.CreateAgentTokenForUser(userID, input.Name, input.Scopes)
+	}
+	if options, ok := a.agents.(AgentTokenOptionsStore); ok {
+		return options.CreateAgentTokenWithOptions(input)
+	}
+	return a.agents.CreateAgentToken(input.Name, input.Scopes)
 }
 
 func (a *API) listAgentTokensForUser(userID string) ([]AgentTokenRecord, error) {
@@ -369,6 +379,53 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, session)
 }
 
+func applyAgentRouting(input *CreateRequest, auth authContext) error {
+	if auth.Source != authSourceAgent || strings.TrimSpace(auth.AgentID) == "" {
+		return nil
+	}
+	if input.Metadata == nil {
+		input.Metadata = map[string]string{}
+	}
+	if auth.ProjectID != "" {
+		requestedProjectID := strings.TrimSpace(input.Metadata["projectId"])
+		if requestedProjectID == "" && strings.HasPrefix(strings.TrimSpace(input.Requester.ProjectID), "prj_") {
+			requestedProjectID = strings.TrimSpace(input.Requester.ProjectID)
+		}
+		if requestedProjectID != "" && requestedProjectID != auth.ProjectID {
+			return errors.New("agent token cannot route approvals to this project")
+		}
+		if input.Requester.ProjectID != "" && input.Requester.ProjectID != auth.ProjectID {
+			input.Metadata["clientProjectId"] = input.Requester.ProjectID
+		}
+		input.Requester.ProjectID = auth.ProjectID
+		input.Metadata["projectId"] = auth.ProjectID
+	}
+
+	requestedTeamID := strings.TrimSpace(input.Metadata["teamId"])
+	if requestedTeamID == "" {
+		requestedTeamID = strings.TrimSpace(input.Metadata["team"])
+	}
+	if auth.TeamID != "" {
+		if requestedTeamID != "" && requestedTeamID != auth.TeamID {
+			return errors.New("agent token cannot route approvals to this team")
+		}
+		input.Metadata["teamId"] = auth.TeamID
+	} else if requestedTeamID != "" {
+		return errors.New("agent token cannot route approvals to a team")
+	}
+
+	requestedPolicy := strings.TrimSpace(input.Metadata["approvalPolicy"])
+	if auth.DefaultApprovalPolicy != "" {
+		if requestedPolicy != "" && requestedPolicy != auth.DefaultApprovalPolicy {
+			return errors.New("agent token cannot use this approval policy")
+		}
+		input.Metadata["approvalPolicy"] = auth.DefaultApprovalPolicy
+	} else if requestedPolicy != "" {
+		return errors.New("agent token cannot use an approval policy")
+	}
+	return nil
+}
+
 func (a *API) create(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -392,7 +449,13 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, err := a.createForUser(currentAuth(r).UserID, input)
+	auth := currentAuth(r)
+	if err := applyAgentRouting(&input, auth); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	request, err := a.createForUser(auth.UserID, input)
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -402,6 +465,13 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.sendPush(request)
+	if auth.AgentID != "" {
+		if recorder, ok := a.agents.(AgentRequestRecorder); ok {
+			if err := recorder.RecordAgentRequest(auth.AgentID, request.CreatedAt); err != nil {
+				log.Printf("record agent request for %s: %v", auth.AgentID, err)
+			}
+		}
+	}
 	a.events.Publish(Event{Type: "approval.created", RequestID: request.ID})
 	writeJSON(w, http.StatusCreated, request)
 }
@@ -876,7 +946,15 @@ func (a *API) createAgentToken(w http.ResponseWriter, r *http.Request) {
 	if len(input.Scopes) == 0 {
 		input.Scopes = []string{"approval:write"}
 	}
-	credential, err := a.createAgentTokenForUser(currentAuth(r).UserID, input.Name, input.Scopes)
+	credential, err := a.createAgentTokenForUser(currentAuth(r).UserID, input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project, team, or owner not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1001,6 +1079,27 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		}
 		if a.userTokens != nil {
 			if a.agents != nil {
+				if authStore, ok := a.userTokens.(AgentTokenAuthStore); ok {
+					agentAuth, ok, err := authStore.AgentAuthForToken(token, requiredScope(r))
+					if err != nil {
+						writeError(w, http.StatusInternalServerError, err.Error())
+						return
+					}
+					if ok {
+						auth := authContext{
+							UserID:                agentAuth.UserID,
+							OrganizationID:        agentAuth.OrganizationID,
+							Role:                  RoleViewer,
+							AgentID:               agentAuth.AgentID,
+							ProjectID:             agentAuth.ProjectID,
+							TeamID:                agentAuth.TeamID,
+							DefaultApprovalPolicy: agentAuth.DefaultApprovalPolicy,
+							Source:                authSourceAgent,
+						}
+						next.ServeHTTP(w, withAuthContext(r, auth))
+						return
+					}
+				}
 				userID, ok, err := a.userTokens.UserIDForAgentToken(token, requiredScope(r))
 				if err != nil {
 					writeError(w, http.StatusInternalServerError, err.Error())

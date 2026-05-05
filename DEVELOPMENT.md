@@ -104,6 +104,8 @@ Agent Tick stores organizations, memberships, teams, team members, projects, and
 
 Organization roles are `owner`, `admin`, `approver`, and `viewer`. Owners can manage team membership; owners and admins can create or update teams and projects; viewers can list team and project context. Current approval, device, and agent-token endpoints remain user-scoped for compatibility while storing organization/project columns for hosted/team features.
 
+Agent tokens can now carry an owner user, project, optional team, and optional default approval policy. When an agent-token-authenticated request supplies project/team/policy hints, the server validates them against the token and fills missing hints from the token defaults before storing request metadata.
+
 ## CLI Usage
 
 Configure the installed CLI once:

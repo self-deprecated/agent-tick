@@ -77,6 +77,22 @@ type UserScopedAgentStore interface {
 	RevokeAgentTokenForUser(userID string, agentID string) error
 }
 
+type AgentTokenOptionsStore interface {
+	CreateAgentTokenWithOptions(input CreateAgentTokenRequest) (AgentCredential, error)
+}
+
+type UserScopedAgentTokenOptionsStore interface {
+	CreateAgentTokenForUserWithOptions(userID string, input CreateAgentTokenRequest) (AgentCredential, error)
+}
+
+type AgentTokenAuthStore interface {
+	AgentAuthForToken(token string, scope string) (AgentTokenAuth, bool, error)
+}
+
+type AgentRequestRecorder interface {
+	RecordAgentRequest(agentID string, at time.Time) error
+}
+
 type UserTokenStore interface {
 	UserIDForAgentToken(token string, scope string) (string, bool, error)
 	UserIDForDeviceToken(token string) (string, bool, error)
