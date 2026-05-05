@@ -645,6 +645,43 @@ func TestSQLiteStoreBillingStatusTracksPlanAndUsage(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreListsAuditEventsByOrganization(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	defaultTeam, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Default Audit"})
+	if err != nil {
+		t.Fatalf("CreateTeam(default) error = %v", err)
+	}
+	otherOrg, err := store.CreateOrganizationForUser("usr_audit_other", "Other Audit")
+	if err != nil {
+		t.Fatalf("CreateOrganizationForUser(other) error = %v", err)
+	}
+	if _, err := store.CreateTeam(otherOrg.OrganizationID, CreateTeamRequest{Name: "Other Audit"}); err != nil {
+		t.Fatalf("CreateTeam(other) error = %v", err)
+	}
+
+	events, err := store.ListAuditEvents(defaultOrganizationID, ListAuditEventsRequest{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListAuditEvents(default) error = %v", err)
+	}
+	if len(events) == 0 {
+		t.Fatal("default audit events empty, want team.created event")
+	}
+	for _, event := range events {
+		if event.OrganizationID != defaultOrganizationID {
+			t.Fatalf("event org = %q, want %q in event %#v", event.OrganizationID, defaultOrganizationID, event)
+		}
+	}
+	filtered, err := store.ListAuditEvents(defaultOrganizationID, ListAuditEventsRequest{EventType: "team.created", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListAuditEvents(filtered) error = %v", err)
+	}
+	if len(filtered) == 0 || filtered[0].TargetID != defaultTeam.TeamID {
+		t.Fatalf("filtered events = %#v, want default team.created target", filtered)
+	}
+}
+
 func TestSQLiteStoreEnforcesOrganizationPlanLimits(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

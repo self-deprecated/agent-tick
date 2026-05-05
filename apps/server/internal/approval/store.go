@@ -132,6 +132,10 @@ type BillingStore interface {
 	BillingStatus(organizationID string) (BillingStatus, error)
 }
 
+type AuditLogStore interface {
+	ListAuditEvents(organizationID string, input ListAuditEventsRequest) ([]AuditEventRecord, error)
+}
+
 type BillingProvider interface {
 	PortalURL(organizationID string) string
 	HandleWebhook(payload []byte, signature string) error

@@ -1310,6 +1310,41 @@ func TestAPIBillingStatusShowsPlanUsageAndLinks(t *testing.T) {
 	}
 }
 
+func TestAPIAuditEventsListAndExportAreOrganizationScoped(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	defaultTeam := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Default Audit"})
+	otherOrg, err := store.CreateOrganizationForUser("usr_audit_other", "Other Audit Org")
+	if err != nil {
+		t.Fatalf("CreateOrganizationForUser(other) error = %v", err)
+	}
+	if _, err := store.CreateTeam(otherOrg.OrganizationID, CreateTeamRequest{Name: "Other Audit"}); err != nil {
+		t.Fatalf("CreateTeam(other) error = %v", err)
+	}
+
+	events := request[[]AuditEventRecord](t, handler, http.MethodGet, "/v1/audit-events?limit=50", nil)
+	if len(events) == 0 {
+		t.Fatal("audit events empty, want default organization events")
+	}
+	seenDefaultTeam := false
+	for _, event := range events {
+		if event.OrganizationID != defaultOrganizationID {
+			t.Fatalf("event org = %q, want %q in event %#v", event.OrganizationID, defaultOrganizationID, event)
+		}
+		seenDefaultTeam = seenDefaultTeam || event.TargetID == defaultTeam.TeamID
+	}
+	if !seenDefaultTeam {
+		t.Fatalf("events = %#v, want default team target", events)
+	}
+
+	rec := statusWithBearer(t, handler, "test-token", http.MethodGet, "/v1/audit-events/export?limit=50", nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "team.created") || strings.Contains(rec.Body.String(), otherOrg.OrganizationID) {
+		t.Fatalf("audit export status/body = %d/%s, want scoped CSV", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAPIPlanLimitErrorsUsePaymentRequired(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

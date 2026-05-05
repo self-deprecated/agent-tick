@@ -1393,6 +1393,51 @@ func (s *SQLiteStore) organizationUsage(organizationID string, auditRetentionDay
 	return usage, nil
 }
 
+func (s *SQLiteStore) ListAuditEvents(organizationID string, input ListAuditEventsRequest) ([]AuditEventRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	query := `
+		SELECT id, organization_id, user_id, event_type, request_id, payload_json, created_at
+		FROM audit_events
+		WHERE organization_id = ?
+	`
+	args := []any{organizationID}
+	if strings.TrimSpace(input.EventType) != "" {
+		query += " AND event_type = ?"
+		args = append(args, strings.TrimSpace(input.EventType))
+	}
+	if input.Since != nil {
+		query += " AND created_at >= ?"
+		args = append(args, timeText(input.Since))
+	}
+	query += " ORDER BY id DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	events := []AuditEventRecord{}
+	for rows.Next() {
+		event, err := scanAuditEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
 func enforceOrganizationPlanLimitTx(db rowQuerier, organizationID string, limitKind string, label string, countQuery string, args ...any) error {
 	limit, err := organizationLimitValue(db, organizationID, limitKind)
 	if err != nil {
@@ -2658,6 +2703,30 @@ func scanOrganizationMembership(scanner requestScanner) (OrganizationMembershipR
 	return membership, nil
 }
 
+func scanAuditEvent(scanner requestScanner) (AuditEventRecord, error) {
+	var event AuditEventRecord
+	var payloadJSON string
+	var createdAt string
+	err := scanner.Scan(&event.EventID, &event.OrganizationID, &event.UserID, &event.EventType, &event.TargetID, &payloadJSON, &createdAt)
+	if err != nil {
+		return AuditEventRecord{}, err
+	}
+	if strings.TrimSpace(payloadJSON) != "" {
+		if err := json.Unmarshal([]byte(payloadJSON), &event.Payload); err != nil {
+			return AuditEventRecord{}, err
+		}
+	}
+	if event.Payload == nil {
+		event.Payload = map[string]any{}
+	}
+	parsedCreatedAt, err := parseTime(createdAt)
+	if err != nil {
+		return AuditEventRecord{}, err
+	}
+	event.CreatedAt = parsedCreatedAt
+	return event, nil
+}
+
 func scanTeam(scanner requestScanner) (TeamRecord, error) {
 	var team TeamRecord
 	var createdAt string
@@ -3690,6 +3759,11 @@ func (s *SQLiteStore) migrate() error {
 		UPDATE agent_tokens SET organization_id = 'org_default' WHERE organization_id = '';
 		UPDATE agent_tokens SET project_id = 'prj_default' WHERE project_id = '';
 		UPDATE agent_tokens SET owner_user_id = user_id WHERE owner_user_id = '' OR (owner_user_id = 'usr_default' AND user_id != 'usr_default');
+		UPDATE audit_events SET organization_id = (SELECT organization_id FROM approval_requests WHERE approval_requests.id = audit_events.request_id) WHERE request_id IN (SELECT id FROM approval_requests);
+		UPDATE audit_events SET organization_id = (SELECT organization_id FROM teams WHERE teams.id = audit_events.request_id) WHERE request_id IN (SELECT id FROM teams);
+		UPDATE audit_events SET organization_id = (SELECT organization_id FROM projects WHERE projects.id = audit_events.request_id) WHERE request_id IN (SELECT id FROM projects);
+		UPDATE audit_events SET organization_id = (SELECT organization_id FROM approval_policies WHERE approval_policies.id = audit_events.request_id) WHERE request_id IN (SELECT id FROM approval_policies);
+		UPDATE audit_events SET organization_id = (SELECT organization_id FROM agent_tokens WHERE agent_tokens.id = audit_events.request_id) WHERE request_id IN (SELECT id FROM agent_tokens);
 	`); err != nil {
 		return err
 	}
@@ -4120,7 +4194,7 @@ func auditOrganizationForTargetTx(tx *sql.Tx, userID string, targetID string) (s
 		}
 	}
 	var organizationID string
-	err := tx.QueryRow("SELECT organization_id FROM organization_memberships WHERE user_id = ? ORDER BY created_at ASC LIMIT 1", userID).Scan(&organizationID)
+	err := tx.QueryRow("SELECT organization_id FROM organization_memberships WHERE user_id = ? ORDER BY created_at DESC LIMIT 1", userID).Scan(&organizationID)
 	if errors.Is(err, sql.ErrNoRows) || strings.TrimSpace(organizationID) == "" {
 		return defaultOrganizationID, nil
 	}

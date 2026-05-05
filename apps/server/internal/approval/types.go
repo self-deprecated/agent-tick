@@ -309,6 +309,22 @@ type BillingStatus struct {
 	UpgradeURL     string        `json:"upgradeUrl,omitempty"`
 }
 
+type AuditEventRecord struct {
+	EventID        int64          `json:"eventId"`
+	OrganizationID string         `json:"organizationId"`
+	UserID         string         `json:"userId"`
+	EventType      string         `json:"eventType"`
+	TargetID       string         `json:"targetId"`
+	Payload        map[string]any `json:"payload"`
+	CreatedAt      time.Time      `json:"createdAt"`
+}
+
+type ListAuditEventsRequest struct {
+	EventType string
+	Since     *time.Time
+	Limit     int
+}
+
 type OrganizationMembershipRecord struct {
 	OrganizationID string    `json:"organizationId"`
 	Name           string    `json:"name"`

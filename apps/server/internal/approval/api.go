@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +34,7 @@ type API struct {
 	policies         ApprovalPolicyStore
 	presence         PresenceStore
 	billing          BillingStore
+	audit            AuditLogStore
 	token            string
 	mode             string
 	publicURL        string
@@ -80,6 +83,9 @@ func NewAPI(store Store, token string) *API {
 	}
 	if billing, ok := store.(BillingStore); ok {
 		api.billing = billing
+	}
+	if audit, ok := store.(AuditLogStore); ok {
+		api.audit = audit
 	}
 	return api
 }
@@ -310,6 +316,8 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/organizations", a.listOrganizations)
 	mux.HandleFunc("POST /v1/organizations", a.createOrganization)
 	mux.HandleFunc("GET /v1/billing", a.getBilling)
+	mux.HandleFunc("GET /v1/audit-events", a.listAuditEvents)
+	mux.HandleFunc("GET /v1/audit-events/export", a.exportAuditEvents)
 	mux.HandleFunc("GET /v1/teams", a.listTeams)
 	mux.HandleFunc("POST /v1/teams", a.createTeam)
 	mux.HandleFunc("GET /v1/teams/{id}", a.getTeam)
@@ -803,6 +811,83 @@ func (a *API) getBilling(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+func (a *API) listAuditEvents(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeAudit(w, r) {
+		return
+	}
+	input, err := auditEventsRequestFromQuery(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	events, err := a.audit.ListAuditEvents(currentAuth(r).OrganizationID, input)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, events)
+}
+
+func (a *API) exportAuditEvents(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeAudit(w, r) {
+		return
+	}
+	input, err := auditEventsRequestFromQuery(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if input.Limit == 0 || input.Limit > 1000 {
+		input.Limit = 1000
+	}
+	events, err := a.audit.ListAuditEvents(currentAuth(r).OrganizationID, input)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=agent-tick-audit-events.csv")
+	w.WriteHeader(http.StatusOK)
+	writer := csv.NewWriter(w)
+	_ = writer.Write([]string{"eventId", "createdAt", "organizationId", "userId", "eventType", "targetId", "payload"})
+	for _, event := range events {
+		payloadJSON, err := json.Marshal(event.Payload)
+		if err != nil {
+			payloadJSON = []byte("{}")
+		}
+		_ = writer.Write([]string{
+			strconv.FormatInt(event.EventID, 10),
+			event.CreatedAt.Format(time.RFC3339Nano),
+			event.OrganizationID,
+			event.UserID,
+			event.EventType,
+			event.TargetID,
+			string(payloadJSON),
+		})
+	}
+	writer.Flush()
+}
+
+func auditEventsRequestFromQuery(r *http.Request) (ListAuditEventsRequest, error) {
+	query := r.URL.Query()
+	input := ListAuditEventsRequest{EventType: strings.TrimSpace(query.Get("eventType"))}
+	if limitText := strings.TrimSpace(query.Get("limit")); limitText != "" {
+		limit, err := strconv.Atoi(limitText)
+		if err != nil || limit < 0 {
+			return ListAuditEventsRequest{}, ErrInvalidRequest
+		}
+		input.Limit = limit
+	}
+	if sinceText := strings.TrimSpace(query.Get("since")); sinceText != "" {
+		since, err := time.Parse(time.RFC3339, sinceText)
+		if err != nil {
+			return ListAuditEventsRequest{}, ErrInvalidRequest
+		}
+		input.Since = &since
+	}
+	return input, nil
 }
 
 func (a *API) listTeams(w http.ResponseWriter, r *http.Request) {
@@ -1332,6 +1417,18 @@ func (a *API) authorizePolicy(w http.ResponseWriter, r *http.Request, requiredRo
 		return false
 	}
 	if !roleAllows(currentAuth(r).Role, requiredRole) {
+		writeError(w, http.StatusForbidden, "insufficient organization role")
+		return false
+	}
+	return true
+}
+
+func (a *API) authorizeAudit(w http.ResponseWriter, r *http.Request) bool {
+	if a.audit == nil {
+		writeError(w, http.StatusNotImplemented, "audit logs are not supported by this store")
+		return false
+	}
+	if !roleAllows(currentAuth(r).Role, RoleAdmin) {
 		writeError(w, http.StatusForbidden, "insufficient organization role")
 		return false
 	}
