@@ -8,6 +8,7 @@
 		type ApprovalPolicyPreview,
 		type ApprovalPolicyRecord,
 		type ApprovalRequest,
+		type BillingStatus,
 		type Choice,
 		type DeviceRecord,
 		type OnCallScheduleRecord,
@@ -115,6 +116,10 @@
 	let policyPreview = $state<ApprovalPolicyPreview | null>(null);
 	let policyPreviewError = $state('');
 
+	let billing = $state<BillingStatus | null>(null);
+	let billingStatus = $state<LoadStatus>('idle');
+	let billingError = $state('');
+
 	const api = new AdminApiClient({
 		bearerToken: () => bearerToken,
 		csrfToken: csrfTokenFromCookie
@@ -125,7 +130,7 @@
 	let signedInLabel = $derived(session?.email || session?.name || session?.userId || 'Signed in');
 	let organizationLabel = $derived(organizations[0]?.name || 'Default organization');
 	let anyDashboardLoading = $derived(
-		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading'
+		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading' || billingStatus === 'loading'
 	);
 	let selectedTeam = $derived(teams.find((team) => team.teamId === selectedTeamID));
 	let selectedProject = $derived(projects.find((project) => project.projectId === selectedProjectID));
@@ -149,6 +154,17 @@
 	let testCommand = $derived(
 		"agent-tick request --title 'Run command?' --body 'Agent Tick test approval from the CLI' --command 'npm install'"
 	);
+	let billingUsageRows = $derived.by(() => {
+		if (!billing) return [];
+		return [
+			{ label: 'Seats', used: billing.usage.activeUsers, limit: billing.limits.seats, help: 'Organization members with access.' },
+			{ label: 'Teams', used: billing.usage.teams, limit: billing.limits.teams, help: 'Team workspaces for routing and on-call coverage.' },
+			{ label: 'Active agents', used: billing.usage.activeAgents, limit: billing.limits.agents, help: 'Non-revoked agent tokens.' },
+			{ label: 'Approval requests', used: billing.usage.approvalRequests30d, limit: billing.limits.requests, help: 'Requests created in the last 30 days.' },
+			{ label: 'Push notifications', used: billing.usage.pushNotifications30d, limit: -1, help: 'Push-enabled paired devices counted for hosted capacity.' },
+			{ label: 'Audit events', used: billing.usage.auditEventsRetained, limit: -1, help: `${formatLimit(billing.limits.auditRetentionDays, 'days')} audit retention.` }
+		];
+	});
 
 	onMount(() => {
 		if (isUserMode) {
@@ -199,7 +215,20 @@
 
 	async function refreshDashboard() {
 		if (!canShowDashboard) return;
-		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations(), loadTeams(), loadProjects(), loadPolicies()]);
+		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations(), loadTeams(), loadProjects(), loadPolicies(), loadBilling()]);
+	}
+
+	async function loadBilling() {
+		billingStatus = 'loading';
+		billingError = '';
+		try {
+			billing = await api.getBillingStatus();
+			billingStatus = 'ready';
+		} catch (error) {
+			billing = null;
+			billingStatus = 'error';
+			billingError = errorMessage(error);
+		}
 	}
 
 	async function loadApprovals() {
@@ -611,6 +640,16 @@
 		return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 	}
 
+	function formatLimit(value: number, unit = ''): string {
+		if (value < 0) return 'Unlimited';
+		return `${value.toLocaleString()}${unit ? ` ${unit}` : ''}`;
+	}
+
+	function usagePercent(used: number, limit: number): number {
+		if (limit <= 0) return 0;
+		return Math.min(100, Math.round((used / limit) * 100));
+	}
+
 	function statusText(status: LoadStatus, loading: string): string {
 		return status === 'loading' ? loading : '';
 	}
@@ -691,6 +730,7 @@
 
 		<nav class="quick-actions" aria-label="Dashboard sections">
 			<a href="#approvals">Approvals</a>
+			<a href="#billing">Billing</a>
 			<a href="#devices">Devices</a>
 			<a href="#agents">Agents</a>
 			<a href="#teams">Teams</a>
@@ -699,6 +739,76 @@
 		</nav>
 
 		<main class="dashboard-grid">
+			<details id="billing" class="panel" open>
+				<summary>
+					<span>
+						<span class="eyebrow">Billing</span>
+						<strong>Plan and settings</strong>
+					</span>
+					<span class="summary-count">{billing?.plan || '—'}</span>
+				</summary>
+				<div class="panel-body">
+					{#if billingError}
+						<div class="inline-error" role="alert"><strong>Error</strong><span>{billingError}</span></div>
+					{/if}
+					{#if billingStatus === 'idle'}
+						<div class="empty-state">Connect to load billing settings.</div>
+					{:else if billingStatus === 'loading'}
+						<div class="empty-state">Loading billing settings…</div>
+					{:else if billing}
+						<div class="billing-summary">
+							<div>
+								<p class="eyebrow">Current plan</p>
+								<h3>{billing.plan}</h3>
+								<p class="muted">Organization <code>{billing.organizationId}</code></p>
+							</div>
+							<div>
+								<p class="eyebrow">Retention</p>
+								<p><strong>{formatLimit(billing.limits.auditRetentionDays, 'days')}</strong> audit</p>
+								<p><strong>{formatLimit(billing.limits.approvalRetentionDays, 'days')}</strong> approvals</p>
+							</div>
+						</div>
+						<div class="usage-grid">
+							{#each billingUsageRows as row (row.label)}
+								<article class="usage-card">
+									<div class="request-meta-row">
+										<strong>{row.label}</strong>
+										<span>{row.used.toLocaleString()} / {formatLimit(row.limit)}</span>
+									</div>
+									<div class="usage-meter" aria-hidden="true"><span style:width={`${usagePercent(row.used, row.limit)}%`}></span></div>
+									<p class="muted">{row.help}</p>
+								</article>
+							{/each}
+						</div>
+						<div class="billing-actions">
+							<div class="link-card">
+								<strong>Billing portal</strong>
+								{#if billing.portalUrl}
+									<a class="button-link" href={billing.portalUrl}>Open portal</a>
+								{:else}
+									<p class="muted">Portal link is not configured for this self-hosted plan yet.</p>
+								{/if}
+							</div>
+							<div class="link-card">
+								<strong>Invoices</strong>
+								{#if billing.invoicesUrl}
+									<a class="button-link" href={billing.invoicesUrl}>View invoices</a>
+								{:else}
+									<p class="muted">Invoice links appear here when a hosted billing provider is connected.</p>
+								{/if}
+							</div>
+							<div class="link-card highlight">
+								<strong>Need more seats or agents?</strong>
+								<p class="muted">Limits are shown before you hit them. Self-hosted installs stay unlimited by default.</p>
+								{#if billing.upgradeUrl}
+									<a class="button-link" href={billing.upgradeUrl}>Contact / upgrade</a>
+								{/if}
+							</div>
+						</div>
+					{/if}
+				</div>
+			</details>
+
 			<section id="approvals" class="panel approvals-panel" aria-labelledby="approvals-title">
 				<div class="panel-heading">
 					<div>

@@ -270,6 +270,34 @@ export interface ApprovalPolicyPreview {
 	limitations?: string[];
 }
 
+export interface BillingLimits {
+	seats: number;
+	teams: number;
+	agents: number;
+	requests: number;
+	auditRetentionDays: number;
+	approvalRetentionDays: number;
+}
+
+export interface BillingUsage {
+	activeUsers: number;
+	teams: number;
+	activeAgents: number;
+	approvalRequests30d: number;
+	pushNotifications30d: number;
+	auditEventsRetained: number;
+}
+
+export interface BillingStatus {
+	organizationId: string;
+	plan: string;
+	limits: BillingLimits;
+	usage: BillingUsage;
+	portalUrl?: string;
+	invoicesUrl?: string;
+	upgradeUrl?: string;
+}
+
 export interface AdminAuthProvider {
 	bearerToken?: () => string | undefined;
 	csrfToken?: () => string | undefined;
@@ -436,6 +464,10 @@ export class AdminApiClient {
 
 	previewPolicy(id: string): Promise<ApprovalPolicyPreview> {
 		return this.#requestJSON<ApprovalPolicyPreview>(`/v1/policies/${encodeURIComponent(id)}/preview`);
+	}
+
+	getBillingStatus(): Promise<BillingStatus> {
+		return this.#requestJSON<BillingStatus>('/v1/billing');
 	}
 
 	async #requestJSON<T>(path: string, init: JSONRequestInit = {}): Promise<T> {
