@@ -48,6 +48,46 @@ func TestFileStoreCreateListRespond(t *testing.T) {
 	}
 }
 
+func TestClassifyCommandRiskUsesCommandBoundaries(t *testing.T) {
+	cases := []struct {
+		command string
+		want    string
+	}{
+		{command: "ls", want: "low"},
+		{command: "ls -la", want: "low"},
+		{command: "lsystemctl reboot", want: "medium"},
+		{command: "pwd", want: "low"},
+		{command: "pwd -P", want: "low"},
+		{command: "pwdelete everything", want: "medium"},
+		{command: "git status --short", want: "low"},
+		{command: "git statusfoo", want: "medium"},
+		{command: "rm -rf /tmp/agent-tick", want: "high"},
+	}
+	for _, tc := range cases {
+		if got := ClassifyCommandRisk(tc.command); got != tc.want {
+			t.Fatalf("ClassifyCommandRisk(%q) = %q, want %q", tc.command, got, tc.want)
+		}
+	}
+}
+
+func TestEffectiveCreateRequestRiskPreventsDowngradesAndAllowsEscalation(t *testing.T) {
+	cases := []struct {
+		name  string
+		input CreateRequest
+		want  string
+	}{
+		{name: "server low without client risk", input: CreateRequest{Command: "ls"}, want: "low"},
+		{name: "untrusted client low without command", input: CreateRequest{Risk: "low"}, want: ""},
+		{name: "client escalation wins", input: CreateRequest{Command: "ls", Risk: "medium"}, want: "medium"},
+		{name: "server high blocks client low", input: CreateRequest{Command: "sudo reboot", Risk: "low"}, want: "high"},
+	}
+	for _, tc := range cases {
+		if got := effectiveCreateRequestRisk(tc.input); got != tc.want {
+			t.Fatalf("%s: effectiveCreateRequestRisk(%#v) = %q, want %q", tc.name, tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestFileStoreRejectsInvalidAndDuplicateResponses(t *testing.T) {
 	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
 

@@ -25,6 +25,19 @@ func TestEventHubPublishOmitsRequestIDFromBroadcast(t *testing.T) {
 		t.Fatalf("websocket Dial() error = %v", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
+	deadline := time.Now().Add(time.Second)
+	for {
+		hub.mu.Lock()
+		clients := len(hub.clients)
+		hub.mu.Unlock()
+		if clients > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("websocket client was not registered")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	hub.Publish(Event{Type: "approval.created", RequestID: "req_secret"})
 	_, data, err := conn.Read(ctx)

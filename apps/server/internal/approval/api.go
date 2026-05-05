@@ -1739,25 +1739,24 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 }
 
 func deviceEndpointAllowed(r *http.Request) bool {
-	requestPath := r.URL.Path
-	if requestPath == "" || requestPath[0] != '/' || containsEncodedPathControl(r.URL.EscapedPath()) || path.Clean(requestPath) != requestPath {
+	segments, ok := canonicalDevicePathSegments(r)
+	if !ok {
 		return false
 	}
-	segments := strings.Split(strings.Trim(requestPath, "/"), "/")
 	switch {
 	case r.Method == http.MethodGet && len(segments) == 2 && segments[0] == "v1" && segments[1] == "approval-requests":
 		return true
-	case r.Method == http.MethodGet && len(segments) == 3 && segments[0] == "v1" && segments[1] == "approval-requests" && segments[2] != "":
+	case r.Method == http.MethodGet && len(segments) == 3 && segments[0] == "v1" && segments[1] == "approval-requests" && validOpaqueIDSegment(segments[2]):
 		return true
-	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "approval-requests" && segments[2] != "" && segments[3] == "responses":
+	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "approval-requests" && validOpaqueIDSegment(segments[2]) && segments[3] == "responses":
 		return true
 	case r.Method == http.MethodPost && len(segments) == 2 && segments[0] == "v1" && segments[1] == "heartbeat":
 		return true
 	case (r.Method == http.MethodGet || r.Method == http.MethodPost) && len(segments) == 2 && segments[0] == "v1" && segments[1] == "availability":
 		return true
-	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "devices" && segments[2] != "" && segments[3] == "push-token":
+	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "devices" && validPrefixedHexIDSegment(segments[2], "dev_") && segments[3] == "push-token":
 		return true
-	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "devices" && segments[2] != "" && segments[3] == "unpair":
+	case r.Method == http.MethodPost && len(segments) == 4 && segments[0] == "v1" && segments[1] == "devices" && validPrefixedHexIDSegment(segments[2], "dev_") && segments[3] == "unpair":
 		return true
 	case r.Method == http.MethodGet && len(segments) == 2 && segments[0] == "v1" && segments[1] == "events":
 		return true
@@ -1766,9 +1765,50 @@ func deviceEndpointAllowed(r *http.Request) bool {
 	}
 }
 
-func containsEncodedPathControl(escapedPath string) bool {
-	lower := strings.ToLower(escapedPath)
-	return strings.Contains(lower, "%2e") || strings.Contains(lower, "%2f") || strings.Contains(lower, "%5c")
+func canonicalDevicePathSegments(r *http.Request) ([]string, bool) {
+	escapedPath := r.URL.EscapedPath()
+	if escapedPath == "" || escapedPath[0] != '/' || escapedPath != path.Clean(escapedPath) {
+		return nil, false
+	}
+	rawSegments := strings.Split(strings.TrimPrefix(escapedPath, "/"), "/")
+	segments := make([]string, 0, len(rawSegments))
+	for _, raw := range rawSegments {
+		if raw == "" {
+			return nil, false
+		}
+		segment, err := url.PathUnescape(raw)
+		if err != nil || segment == "." || segment == ".." || strings.ContainsAny(segment, `/\\`) {
+			return nil, false
+		}
+		segments = append(segments, segment)
+	}
+	return segments, true
+}
+
+func validOpaqueIDSegment(segment string) bool {
+	if segment == "" {
+		return false
+	}
+	for _, r := range segment {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validPrefixedHexIDSegment(segment string, prefix string) bool {
+	if !strings.HasPrefix(segment, prefix) || len(segment) == len(prefix) {
+		return false
+	}
+	for _, r := range segment[len(prefix):] {
+		if (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F') || (r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (a *API) withAuth(next http.Handler) http.Handler {

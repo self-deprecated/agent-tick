@@ -485,12 +485,27 @@ func ClassifyCommandRisk(command string) string {
 		strings.Contains(lower, "cargo install") {
 		return "medium"
 	}
-	if strings.HasPrefix(lower, "ls") ||
-		strings.HasPrefix(lower, "pwd") ||
-		strings.HasPrefix(lower, "git status") {
+	if hasCommandWordPrefix(lower, "ls") ||
+		hasCommandWordPrefix(lower, "pwd") ||
+		hasCommandWordPrefix(lower, "git status") {
 		return "low"
 	}
 	return "medium"
+}
+
+func hasCommandWordPrefix(command string, prefix string) bool {
+	if command == prefix {
+		return true
+	}
+	if !strings.HasPrefix(command, prefix) || len(command) <= len(prefix) {
+		return false
+	}
+	switch command[len(prefix)] {
+	case ' ', '\t', '\n', '\r':
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeExplicitRisk(risk string) string {

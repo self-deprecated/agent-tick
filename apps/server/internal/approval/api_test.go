@@ -793,12 +793,29 @@ func TestAPIDeviceTokenCannotAccessAdminEndpoints(t *testing.T) {
 	defer store.Close()
 	handler := NewAPI(store, "test-token").Handler()
 
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Device visible"})
 	pairing := request[PairingToken](t, handler, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
 	device := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairing.Token, DeviceName: "Phone"})
 
+	getEscapedRec := statusWithBearer(t, handler, device.Token, http.MethodGet, "/v1/approval-requests/"+escapeFirstIDByte(created.ID), nil)
+	if getEscapedRec.Code != http.StatusOK {
+		t.Fatalf("device escaped approval get status = %d body = %s, want %d", getEscapedRec.Code, getEscapedRec.Body.String(), http.StatusOK)
+	}
 	listRec := statusWithBearer(t, handler, device.Token, http.MethodGet, "/v1/approval-requests?status=pending", nil)
 	if listRec.Code != http.StatusOK {
 		t.Fatalf("device approval list status = %d body = %s, want %d", listRec.Code, listRec.Body.String(), http.StatusOK)
+	}
+	trailingSlashRec := statusWithBearer(t, handler, device.Token, http.MethodGet, "/v1/approval-requests/", nil)
+	if trailingSlashRec.Code != http.StatusForbidden {
+		t.Fatalf("device trailing slash status = %d body = %s, want %d", trailingSlashRec.Code, trailingSlashRec.Body.String(), http.StatusForbidden)
+	}
+	headRec := statusWithBearer(t, handler, device.Token, http.MethodHead, "/v1/approval-requests", nil)
+	if headRec.Code != http.StatusForbidden {
+		t.Fatalf("device HEAD status = %d body = %s, want %d", headRec.Code, headRec.Body.String(), http.StatusForbidden)
+	}
+	optionsRec := statusWithBearer(t, handler, device.Token, http.MethodOptions, "/v1/agent-tokens", nil)
+	if optionsRec.Code != http.StatusNoContent {
+		t.Fatalf("device OPTIONS status = %d body = %s, want %d", optionsRec.Code, optionsRec.Body.String(), http.StatusNoContent)
 	}
 
 	for _, path := range []string{
@@ -1002,7 +1019,7 @@ func TestAPIRegistersDevicePushToken(t *testing.T) {
 	}
 	req := httptest.NewRequest(
 		http.MethodPost,
-		"/v1/devices/"+credential.DeviceID+"/push-token",
+		"/v1/devices/"+escapeFirstIDByte(credential.DeviceID)+"/push-token",
 		bytes.NewReader(reqBody),
 	)
 	req.Header.Set("Authorization", "Bearer "+credential.Token)
@@ -1815,6 +1832,13 @@ func TestAPITeamProjectAuditUsesActingUser(t *testing.T) {
 			t.Fatalf("audit %s user_id = %q, want acting user %q", eventType, actor, adminUserID)
 		}
 	}
+}
+
+func escapeFirstIDByte(id string) string {
+	if id == "" {
+		return id
+	}
+	return "%" + strings.ToUpper(strconv.FormatInt(int64(id[0]), 16)) + id[1:]
 }
 
 func request[T any](t *testing.T, handler http.Handler, method string, path string, input any) T {
