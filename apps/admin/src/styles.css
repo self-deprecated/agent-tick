@@ -462,6 +462,14 @@ summary strong {
 	margin-bottom: 0.35rem;
 }
 
+.audit-card {
+	align-items: start;
+}
+
+.audit-card > code {
+	white-space: nowrap;
+}
+
 .item-card.is-muted {
 	opacity: 0.62;
 }

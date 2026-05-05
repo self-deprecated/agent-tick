@@ -8,6 +8,7 @@
 		type ApprovalPolicyPreview,
 		type ApprovalPolicyRecord,
 		type ApprovalRequest,
+		type AuditEventRecord,
 		type BillingStatus,
 		type Choice,
 		type DeviceRecord,
@@ -120,6 +121,12 @@
 	let billingStatus = $state<LoadStatus>('idle');
 	let billingError = $state('');
 
+	let auditEvents = $state.raw<AuditEventRecord[]>([]);
+	let auditStatus = $state<LoadStatus>('idle');
+	let auditError = $state('');
+	let auditEventType = $state('');
+	let auditExporting = $state(false);
+
 	const api = new AdminApiClient({
 		bearerToken: () => bearerToken,
 		csrfToken: csrfTokenFromCookie
@@ -130,7 +137,7 @@
 	let signedInLabel = $derived(session?.email || session?.name || session?.userId || 'Signed in');
 	let organizationLabel = $derived(organizations[0]?.name || 'Default organization');
 	let anyDashboardLoading = $derived(
-		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading' || billingStatus === 'loading'
+		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading' || billingStatus === 'loading' || auditStatus === 'loading'
 	);
 	let selectedTeam = $derived(teams.find((team) => team.teamId === selectedTeamID));
 	let selectedProject = $derived(projects.find((project) => project.projectId === selectedProjectID));
@@ -215,7 +222,7 @@
 
 	async function refreshDashboard() {
 		if (!canShowDashboard) return;
-		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations(), loadTeams(), loadProjects(), loadPolicies(), loadBilling()]);
+		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations(), loadTeams(), loadProjects(), loadPolicies(), loadBilling(), loadAuditEvents()]);
 	}
 
 	async function loadBilling() {
@@ -228,6 +235,37 @@
 			billing = null;
 			billingStatus = 'error';
 			billingError = errorMessage(error);
+		}
+	}
+
+	async function loadAuditEvents() {
+		auditStatus = 'loading';
+		auditError = '';
+		try {
+			auditEvents = await api.listAuditEvents(auditEventType, 100);
+			auditStatus = 'ready';
+		} catch (error) {
+			auditEvents = [];
+			auditStatus = 'error';
+			auditError = errorMessage(error);
+		}
+	}
+
+	async function exportAuditEvents() {
+		auditExporting = true;
+		auditError = '';
+		try {
+			const csv = await api.exportAuditEventsCSV(auditEventType, 1000);
+			const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+			const link = document.createElement('a');
+			link.href = url;
+			link.download = `agent-tick-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+			link.click();
+			URL.revokeObjectURL(url);
+		} catch (error) {
+			auditError = errorMessage(error);
+		} finally {
+			auditExporting = false;
 		}
 	}
 
@@ -650,6 +688,12 @@
 		return Math.min(100, Math.round((used / limit) * 100));
 	}
 
+	function payloadLabel(payload: Record<string, unknown>): string {
+		const entries = Object.entries(payload ?? {}).slice(0, 4);
+		if (entries.length === 0) return 'No payload';
+		return entries.map(([key, value]) => `${key}: ${String(value)}`).join(' · ');
+	}
+
 	function statusText(status: LoadStatus, loading: string): string {
 		return status === 'loading' ? loading : '';
 	}
@@ -731,6 +775,7 @@
 		<nav class="quick-actions" aria-label="Dashboard sections">
 			<a href="#approvals">Approvals</a>
 			<a href="#billing">Billing</a>
+			<a href="#audit">Audit</a>
 			<a href="#devices">Devices</a>
 			<a href="#agents">Agents</a>
 			<a href="#teams">Teams</a>
@@ -804,6 +849,51 @@
 									<a class="button-link" href={billing.upgradeUrl}>Contact / upgrade</a>
 								{/if}
 							</div>
+						</div>
+					{/if}
+				</div>
+			</details>
+
+			<details id="audit" class="panel" open>
+				<summary>
+					<span>
+						<span class="eyebrow">Audit</span>
+						<strong>Security events</strong>
+					</span>
+					<span class="summary-count">{auditEvents.length}</span>
+				</summary>
+				<div class="panel-body">
+					<form class="agent-form" onsubmit={(event) => { event.preventDefault(); void loadAuditEvents(); }}>
+						<label>
+							<span>Event type filter</span>
+							<input bind:value={auditEventType} type="text" autocomplete="off" placeholder="team.created" />
+						</label>
+						<button type="submit" disabled={auditStatus === 'loading'}>{auditStatus === 'loading' ? 'Loading…' : 'Filter'}</button>
+						<button type="button" class="secondary" onclick={exportAuditEvents} disabled={auditExporting || auditStatus === 'loading'}>{auditExporting ? 'Exporting…' : 'Export CSV'}</button>
+					</form>
+					<p class="muted">Admins see only the authenticated organization. Exports include event id, actor user id, target id, timestamp, and JSON payload.</p>
+					{#if auditError}
+						<div class="inline-error" role="alert"><strong>Error</strong><span>{auditError}</span></div>
+					{/if}
+					{#if auditStatus === 'idle'}
+						<div class="empty-state">Connect to load audit events.</div>
+					{:else if auditStatus === 'loading'}
+						<div class="empty-state">Loading audit events…</div>
+					{:else if auditEvents.length === 0 && !auditError}
+						<div class="empty-state">No audit events match this filter yet.</div>
+					{:else}
+						<div class="item-list audit-list">
+							{#each auditEvents as event (event.eventId)}
+								<article class="item-card audit-card">
+									<div>
+										<strong>{event.eventType}</strong>
+										<p class="muted">{formatDate(event.createdAt)} · actor <code>{event.userId}</code></p>
+										<p class="muted">Target: <code>{event.targetId || event.organizationId}</code></p>
+										<p>{payloadLabel(event.payload)}</p>
+									</div>
+									<code>#{event.eventId}</code>
+								</article>
+							{/each}
 						</div>
 					{/if}
 				</div>

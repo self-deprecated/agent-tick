@@ -298,6 +298,16 @@ export interface BillingStatus {
 	upgradeUrl?: string;
 }
 
+export interface AuditEventRecord {
+	eventId: number;
+	organizationId: string;
+	userId: string;
+	eventType: string;
+	targetId: string;
+	payload: Record<string, unknown>;
+	createdAt: string;
+}
+
 export interface AdminAuthProvider {
 	bearerToken?: () => string | undefined;
 	csrfToken?: () => string | undefined;
@@ -470,6 +480,18 @@ export class AdminApiClient {
 		return this.#requestJSON<BillingStatus>('/v1/billing');
 	}
 
+	listAuditEvents(eventType = '', limit = 100): Promise<AuditEventRecord[]> {
+		const params = new URLSearchParams({ limit: String(limit) });
+		if (eventType.trim()) params.set('eventType', eventType.trim());
+		return this.#requestJSON<AuditEventRecord[]>(`/v1/audit-events?${params.toString()}`);
+	}
+
+	exportAuditEventsCSV(eventType = '', limit = 1000): Promise<string> {
+		const params = new URLSearchParams({ limit: String(limit) });
+		if (eventType.trim()) params.set('eventType', eventType.trim());
+		return this.#requestText(`/v1/audit-events/export?${params.toString()}`);
+	}
+
 	async #requestJSON<T>(path: string, init: JSONRequestInit = {}): Promise<T> {
 		const { body, ...requestOptions } = init;
 		const headers = new Headers(init.headers);
@@ -501,6 +523,24 @@ export class AdminApiClient {
 			throw new ApiError(errorBody?.error || response.statusText || 'Request failed', response.status, responseBody);
 		}
 		return responseBody as T;
+	}
+
+	async #requestText(path: string, init: RequestInit = {}): Promise<string> {
+		const headers = new Headers(init.headers);
+		const bearerToken = this.#auth.bearerToken?.()?.trim();
+		if (bearerToken) {
+			headers.set('Authorization', `Bearer ${bearerToken}`);
+		}
+		const csrfToken = this.#auth.csrfToken?.()?.trim();
+		if (csrfToken) {
+			headers.set('X-Agent-Tick-CSRF', csrfToken);
+		}
+		const response = await fetch(path, { ...init, credentials: 'same-origin', headers });
+		const text = await response.text();
+		if (!response.ok) {
+			throw new ApiError(text || response.statusText || 'Request failed', response.status, text);
+		}
+		return text;
 	}
 }
 

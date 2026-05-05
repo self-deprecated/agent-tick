@@ -41,7 +41,7 @@ Start it:
 docker compose up -d
 ```
 
-Open the dashboard at your public URL. Sign in, open **Devices** to pair your phone, then open **Agents** to create a request-only agent token. The **Billing** panel shows your self-hosted plan, current usage, retention defaults, and hosted-service contact placeholders without blocking local use. Agent Tick creates a default organization and project automatically; use **Teams** and **Projects** later if you want team grouping.
+Open the dashboard at your public URL. Sign in, open **Devices** to pair your phone, then open **Agents** to create a request-only agent token. The **Billing** panel shows your self-hosted plan, current usage, retention defaults, and hosted-service contact placeholders without blocking local use. The **Audit** panel lets organization admins inspect recent security events or export them as CSV. Agent Tick creates a default organization and project automatically; use **Teams** and **Projects** later if you want team grouping.
 
 ## Single-User Mode
 
