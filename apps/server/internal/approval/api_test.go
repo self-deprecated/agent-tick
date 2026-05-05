@@ -1369,6 +1369,31 @@ func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 	}
 }
 
+func TestAPIBillingWebhookDelegatesToProviderWithoutAuth(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	provider := &fakeBillingProvider{portalURL: "https://billing.example/portal"}
+	api.SetBillingProvider(provider)
+	handler := api.Handler()
+
+	webhookReq := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", strings.NewReader(`{"event":"invoice.paid"}`))
+	webhookReq.Header.Set("X-Agent-Tick-Billing-Signature", "signed")
+	webhookRec := httptest.NewRecorder()
+	handler.ServeHTTP(webhookRec, webhookReq)
+	if webhookRec.Code != http.StatusOK {
+		t.Fatalf("webhook status = %d body = %s, want %d", webhookRec.Code, webhookRec.Body.String(), http.StatusOK)
+	}
+	if string(provider.payload) != `{"event":"invoice.paid"}` || provider.signature != "signed" {
+		t.Fatalf("provider payload/signature = %q/%q", provider.payload, provider.signature)
+	}
+
+	status := request[BillingStatus](t, handler, http.MethodGet, "/v1/billing", nil)
+	if status.PortalURL != provider.portalURL {
+		t.Fatalf("PortalURL = %q, want provider URL %q", status.PortalURL, provider.portalURL)
+	}
+}
+
 func TestAPIBillingStatusShowsPlanUsageAndLinks(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
@@ -1790,6 +1815,22 @@ func requestWithoutAuth[T any](t *testing.T, handler http.Handler, method string
 		t.Fatalf("Decode() error = %v", err)
 	}
 	return output
+}
+
+type fakeBillingProvider struct {
+	portalURL string
+	payload   []byte
+	signature string
+}
+
+func (p *fakeBillingProvider) PortalURL(string) string {
+	return p.portalURL
+}
+
+func (p *fakeBillingProvider) HandleWebhook(payload []byte, signature string) error {
+	p.payload = append([]byte(nil), payload...)
+	p.signature = signature
+	return nil
 }
 
 type sessionAuth struct {

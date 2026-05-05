@@ -101,7 +101,7 @@ Dashboard sessions in user mode use HttpOnly session cookies plus a readable CSR
 
 Self-hosted organizations use the `self-hosted` plan by default. Seat, team, active-agent, and 30-day approval-request limits are stored as `-1`, which means unlimited. If an operator sets any of those limits to a non-negative value, the server enforces them when teams, new organization seats, active agent tokens, or rolling 30-day approval requests are created and returns HTTP 402 with a plan-limit message. Audit and approval retention settings are stored per organization and currently default to 365 days so operators can plan cleanup/backup policies explicitly. Run `agent-tick maintenance cleanup --data /path/to/agent-tick.db` from cron or a systemd timer to delete expired sessions, expired pairing codes, approval requests and audit events beyond each organization's retention window, and revoked agent tokens beyond the approval-retention window. The dashboard/API billing status endpoint is safe to expose to organization viewers and reports only the current organization's plan, limits, and usage counters. Organization admins can review security-sensitive events through `GET /v1/audit-events` and download CSV exports from `GET /v1/audit-events/export`; both are scoped to the authenticated organization.
 
-Hosted deployments can later replace the placeholder upgrade/contact links with a billing provider portal or invoice URL without changing the core approval flow.
+Hosted deployments can replace the placeholder upgrade/contact links with a `BillingProvider` portal URL and receive provider-signed events through `POST /v1/billing/webhook` without changing the core approval flow.
 
 ## Security Notes
 

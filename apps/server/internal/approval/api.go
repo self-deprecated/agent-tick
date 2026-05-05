@@ -36,6 +36,7 @@ type API struct {
 	policies         ApprovalPolicyStore
 	presence         PresenceStore
 	billing          BillingStore
+	billingProvider  BillingProvider
 	audit            AuditLogStore
 	rateLimiter      *rateLimiter
 	token            string
@@ -307,6 +308,10 @@ func (a *API) SetPublicURL(url string) {
 	a.publicURL = strings.TrimRight(strings.TrimSpace(url), "/")
 }
 
+func (a *API) SetBillingProvider(provider BillingProvider) {
+	a.billingProvider = provider
+}
+
 func (a *API) RequireSignatures(required bool) {
 	a.requireSignature = required
 }
@@ -328,6 +333,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/organizations", a.listOrganizations)
 	mux.HandleFunc("POST /v1/organizations", a.createOrganization)
 	mux.HandleFunc("GET /v1/billing", a.getBilling)
+	mux.HandleFunc("POST /v1/billing/webhook", a.billingWebhook)
 	mux.HandleFunc("GET /v1/audit-events", a.listAuditEvents)
 	mux.HandleFunc("GET /v1/audit-events/export", a.exportAuditEvents)
 	mux.HandleFunc("GET /v1/teams", a.listTeams)
@@ -823,7 +829,34 @@ func (a *API) getBilling(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if a.billingProvider != nil {
+		status.PortalURL = a.billingProvider.PortalURL(status.OrganizationID)
+	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+func (a *API) billingWebhook(w http.ResponseWriter, r *http.Request) {
+	if a.billingProvider == nil {
+		writeError(w, http.StatusNotImplemented, "billing webhooks are not configured")
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return
+	}
+	signature := r.Header.Get("X-Agent-Tick-Billing-Signature")
+	if signature == "" {
+		signature = r.Header.Get("Stripe-Signature")
+	}
+	if err := a.billingProvider.HandleWebhook(body, signature); errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "billing webhook failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (a *API) listAuditEvents(w http.ResponseWriter, r *http.Request) {
@@ -1650,7 +1683,7 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 
 func (a *API) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || ((r.Method == http.MethodGet || r.Method == http.MethodHead) && (r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/"))) {
+		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || (r.Method == http.MethodPost && r.URL.Path == "/v1/billing/webhook") || ((r.Method == http.MethodGet || r.Method == http.MethodHead) && (r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/"))) {
 			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, OrganizationID: defaultOrganizationID, Role: RoleOwner}))
 			return
 		}
