@@ -11,7 +11,8 @@ import (
 //go:embed admin_static
 var adminFiles embed.FS
 
-var adminStatic = http.FileServer(http.FS(mustSubFS(adminFiles, "admin_static")))
+var adminAssetsFS = mustSubFS(adminFiles, "admin_static/assets")
+var adminAssetServer = http.StripPrefix("/assets/", http.FileServer(http.FS(adminAssetsFS)))
 
 func mustSubFS(files embed.FS, dir string) fs.FS {
 	sub, err := fs.Sub(files, dir)
@@ -44,6 +45,27 @@ func (a *API) admin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) adminAsset(w http.ResponseWriter, r *http.Request) {
+	if (r.Method != http.MethodGet && r.Method != http.MethodHead) || !strings.HasPrefix(r.URL.Path, "/assets/") {
+		http.NotFound(w, r)
+		return
+	}
+	assetPath := strings.TrimPrefix(r.URL.Path, "/assets/")
+	if !fs.ValidPath(assetPath) {
+		http.NotFound(w, r)
+		return
+	}
+	file, err := adminAssetsFS.Open(assetPath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer file.Close()
+	stat, err := file.Stat()
+	if err != nil || stat.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	adminStatic.ServeHTTP(w, r)
+	adminAssetServer.ServeHTTP(w, r)
 }

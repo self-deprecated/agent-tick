@@ -417,9 +417,18 @@ func TestAPIDashboardBundleHandlesDynamicChoiceButtons(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	assetPath, ok := embeddedAdminAssetPath(rec.Body.String())
+	html := rec.Body.String()
+	assetPath, ok := embeddedAdminAssetPath(html)
 	if !ok {
-		t.Fatalf("admin asset path not found in body: %s", rec.Body.String())
+		t.Fatalf("admin asset path not found in body: %s", html)
+	}
+	if !strings.HasPrefix(assetPath, "/assets/") {
+		t.Fatalf("admin asset path = %q, want /assets/ scoped asset", assetPath)
+	}
+	for _, placeholder := range []string{"__MODE__", "__PUBLIC_URL__"} {
+		if strings.Contains(html, placeholder) {
+			t.Fatalf("admin HTML still contains placeholder %q: %s", placeholder, html)
+		}
 	}
 	assetReq := httptest.NewRequest(http.MethodGet, assetPath, nil)
 	assetRec := httptest.NewRecorder()
@@ -429,10 +438,43 @@ func TestAPIDashboardBundleHandlesDynamicChoiceButtons(t *testing.T) {
 	}
 
 	bundle := assetRec.Body.String()
-	for _, snippet := range []string{"choices", "choiceId", "responses"} {
+	for _, snippet := range []string{"choices", "choiceId", "/v1/approval-requests/", "/responses"} {
 		if !strings.Contains(bundle, snippet) {
 			t.Fatalf("dashboard bundle missing %q", snippet)
 		}
+	}
+}
+
+func TestAPIDashboardAssetsAllowHEADAndAvoidCaching404s(t *testing.T) {
+	handler := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token").Handler()
+	indexReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	indexRec := httptest.NewRecorder()
+	handler.ServeHTTP(indexRec, indexReq)
+	assetPath, ok := embeddedAdminAssetPath(indexRec.Body.String())
+	if !ok {
+		t.Fatalf("admin asset path not found in body: %s", indexRec.Body.String())
+	}
+
+	headReq := httptest.NewRequest(http.MethodHead, assetPath, nil)
+	headReq.RemoteAddr = "192.0.2.1:1234"
+	headRec := httptest.NewRecorder()
+	handler.ServeHTTP(headRec, headReq)
+	if headRec.Code != http.StatusOK {
+		t.Fatalf("HEAD asset status = %d body = %s, want %d", headRec.Code, headRec.Body.String(), http.StatusOK)
+	}
+	if got := headRec.Header().Get("Cache-Control"); !strings.Contains(got, "immutable") {
+		t.Fatalf("HEAD asset Cache-Control = %q, want immutable cache header", got)
+	}
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/assets/missing-dashboard-asset.js", nil)
+	missingReq.RemoteAddr = "192.0.2.1:1234"
+	missingRec := httptest.NewRecorder()
+	handler.ServeHTTP(missingRec, missingReq)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing asset status = %d body = %s, want %d", missingRec.Code, missingRec.Body.String(), http.StatusNotFound)
+	}
+	if got := missingRec.Header().Get("Cache-Control"); got != "" {
+		t.Fatalf("missing asset Cache-Control = %q, want no long-lived cache header", got)
 	}
 }
 

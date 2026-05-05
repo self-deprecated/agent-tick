@@ -1429,7 +1429,7 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 
 func (a *API) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || (r.Method == http.MethodGet && (r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/"))) {
+		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || ((r.Method == http.MethodGet || r.Method == http.MethodHead) && (r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/"))) {
 			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, OrganizationID: defaultOrganizationID, Role: RoleOwner}))
 			return
 		}
