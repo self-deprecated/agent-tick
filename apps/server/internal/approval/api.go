@@ -31,6 +31,7 @@ type API struct {
 	teamsProjects    TeamProjectStore
 	policies         ApprovalPolicyStore
 	presence         PresenceStore
+	billing          BillingStore
 	token            string
 	mode             string
 	publicURL        string
@@ -76,6 +77,9 @@ func NewAPI(store Store, token string) *API {
 	}
 	if presence, ok := store.(PresenceStore); ok {
 		api.presence = presence
+	}
+	if billing, ok := store.(BillingStore); ok {
+		api.billing = billing
 	}
 	return api
 }
@@ -305,6 +309,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/devices", a.listDevices)
 	mux.HandleFunc("GET /v1/organizations", a.listOrganizations)
 	mux.HandleFunc("POST /v1/organizations", a.createOrganization)
+	mux.HandleFunc("GET /v1/billing", a.getBilling)
 	mux.HandleFunc("GET /v1/teams", a.listTeams)
 	mux.HandleFunc("POST /v1/teams", a.createTeam)
 	mux.HandleFunc("GET /v1/teams/{id}", a.getTeam)
@@ -775,6 +780,26 @@ func (a *API) createOrganization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, organization)
+}
+
+func (a *API) getBilling(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeOrg(w, r, RoleViewer) {
+		return
+	}
+	if a.billing == nil {
+		writeError(w, http.StatusNotImplemented, "billing is not supported")
+		return
+	}
+	status, err := a.billing.BillingStatus(currentAuth(r).OrganizationID)
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }
 
 func (a *API) listTeams(w http.ResponseWriter, r *http.Request) {

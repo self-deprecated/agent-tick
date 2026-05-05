@@ -1313,6 +1313,70 @@ func (s *SQLiteStore) CreateOrganizationForUser(userID string, name string) (Org
 	return organization, nil
 }
 
+func (s *SQLiteStore) BillingStatus(organizationID string) (BillingStatus, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		organizationID = defaultOrganizationID
+	}
+	limits, plan, err := s.organizationPlan(organizationID)
+	if err != nil {
+		return BillingStatus{}, err
+	}
+	usage, err := s.organizationUsage(organizationID, limits.AuditRetentionDays)
+	if err != nil {
+		return BillingStatus{}, err
+	}
+	return BillingStatus{
+		OrganizationID: organizationID,
+		Plan:           plan,
+		Limits:         limits,
+		Usage:          usage,
+		PortalURL:      "",
+		InvoicesURL:    "",
+		UpgradeURL:     "mailto:support@agent-tick.local?subject=Agent%20Tick%20plan%20upgrade",
+	}, nil
+}
+
+func (s *SQLiteStore) organizationPlan(organizationID string) (BillingLimits, string, error) {
+	var plan string
+	limits := BillingLimits{}
+	err := s.db.QueryRow(`
+		SELECT plan, seat_limit, team_limit, agent_limit, request_limit, audit_retention_days, approval_retention_days
+		FROM organizations
+		WHERE id = ?
+	`, organizationID).Scan(&plan, &limits.Seats, &limits.Teams, &limits.Agents, &limits.Requests, &limits.AuditRetentionDays, &limits.ApprovalRetentionDays)
+	if errors.Is(err, sql.ErrNoRows) {
+		return BillingLimits{}, "", ErrNotFound
+	}
+	return limits, plan, err
+}
+
+func (s *SQLiteStore) organizationUsage(organizationID string, auditRetentionDays int) (BillingUsage, error) {
+	usage := BillingUsage{}
+	auditSince := time.Time{}
+	if auditRetentionDays > 0 {
+		auditSince = time.Now().UTC().AddDate(0, 0, -auditRetentionDays)
+	}
+	requestSince := time.Now().UTC().AddDate(0, 0, -30)
+	queries := []struct {
+		target *int
+		query  string
+		args   []any
+	}{
+		{&usage.ActiveUsers, "SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ?", []any{organizationID}},
+		{&usage.Teams, "SELECT COUNT(*) FROM teams WHERE organization_id = ?", []any{organizationID}},
+		{&usage.ActiveAgents, "SELECT COUNT(*) FROM agent_tokens WHERE organization_id = ? AND revoked_at = ''", []any{organizationID}},
+		{&usage.ApprovalRequests30d, "SELECT COUNT(*) FROM approval_requests WHERE organization_id = ? AND created_at >= ?", []any{organizationID, timeText(&requestSince)}},
+		{&usage.PushNotifications30d, "SELECT COUNT(*) FROM devices WHERE organization_id = ? AND expo_push_token != '' AND unpaired_at = ''", []any{organizationID}},
+		{&usage.AuditEventsRetained, "SELECT COUNT(*) FROM audit_events WHERE created_at >= ?", []any{timeText(&auditSince)}},
+	}
+	for _, item := range queries {
+		if err := s.db.QueryRow(item.query, item.args...).Scan(item.target); err != nil {
+			return BillingUsage{}, err
+		}
+	}
+	return usage, nil
+}
+
 func (s *SQLiteStore) ListTeams(organizationID string) ([]TeamRecord, error) {
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
@@ -2379,7 +2443,18 @@ func ensurePersonalOrganizationForUserTx(tx *sql.Tx, userID string, name string)
 
 func createOrganizationForUserTx(tx *sql.Tx, userID string, name string, organizationID string, projectID string) (OrganizationRecord, error) {
 	now := time.Now().UTC()
-	organization := OrganizationRecord{OrganizationID: organizationID, Name: strings.TrimSpace(name), CreatedAt: now}
+	organization := OrganizationRecord{
+		OrganizationID:        organizationID,
+		Name:                  strings.TrimSpace(name),
+		Plan:                  "self-hosted",
+		SeatLimit:             -1,
+		TeamLimit:             -1,
+		AgentLimit:            -1,
+		RequestLimit:          -1,
+		AuditRetentionDays:    365,
+		ApprovalRetentionDays: 365,
+		CreatedAt:             now,
+	}
 	if organization.Name == "" {
 		return OrganizationRecord{}, ErrInvalidRequest
 	}
@@ -2387,9 +2462,16 @@ func createOrganizationForUserTx(tx *sql.Tx, userID string, name string, organiz
 		userID = defaultUserID
 	}
 	_, err := tx.Exec(
-		"INSERT INTO organizations (id, name, default_policy_id, created_at, updated_at) VALUES (?, ?, '', ?, ?)",
+		"INSERT INTO organizations (id, name, plan, seat_limit, team_limit, agent_limit, request_limit, audit_retention_days, approval_retention_days, default_policy_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)",
 		organization.OrganizationID,
 		organization.Name,
+		organization.Plan,
+		organization.SeatLimit,
+		organization.TeamLimit,
+		organization.AgentLimit,
+		organization.RequestLimit,
+		organization.AuditRetentionDays,
+		organization.ApprovalRetentionDays,
 		timeText(&now),
 		timeText(&now),
 	)
@@ -3164,6 +3246,13 @@ func (s *SQLiteStore) migrate() error {
 		CREATE TABLE IF NOT EXISTS organizations (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
+			plan TEXT NOT NULL DEFAULT 'self-hosted',
+			seat_limit INTEGER NOT NULL DEFAULT -1,
+			team_limit INTEGER NOT NULL DEFAULT -1,
+			agent_limit INTEGER NOT NULL DEFAULT -1,
+			request_limit INTEGER NOT NULL DEFAULT -1,
+			audit_retention_days INTEGER NOT NULL DEFAULT 365,
+			approval_retention_days INTEGER NOT NULL DEFAULT 365,
 			default_policy_id TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
@@ -3366,7 +3455,7 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if _, err := s.db.Exec(
-		"INSERT OR IGNORE INTO organizations (id, name, default_policy_id, created_at, updated_at) VALUES (?, ?, '', ?, ?)",
+		"INSERT OR IGNORE INTO organizations (id, name, plan, seat_limit, team_limit, agent_limit, request_limit, audit_retention_days, approval_retention_days, default_policy_id, created_at, updated_at) VALUES (?, ?, 'self-hosted', -1, -1, -1, -1, 365, 365, '', ?, ?)",
 		defaultOrganizationID,
 		"Default Organization",
 		timeText(&now),
@@ -3414,6 +3503,27 @@ func (s *SQLiteStore) migrate() error {
 		return err
 	}
 	if err := s.addColumnIfMissing("approval_requests", "questions_json", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("organizations", "plan", "TEXT NOT NULL DEFAULT 'self-hosted'"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("organizations", "seat_limit", "INTEGER NOT NULL DEFAULT -1"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("organizations", "team_limit", "INTEGER NOT NULL DEFAULT -1"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("organizations", "agent_limit", "INTEGER NOT NULL DEFAULT -1"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("organizations", "request_limit", "INTEGER NOT NULL DEFAULT -1"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("organizations", "audit_retention_days", "INTEGER NOT NULL DEFAULT 365"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("organizations", "approval_retention_days", "INTEGER NOT NULL DEFAULT 365"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfMissing("users", "availability", "TEXT NOT NULL DEFAULT 'available'"); err != nil {

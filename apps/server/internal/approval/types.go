@@ -268,10 +268,45 @@ const (
 )
 
 type OrganizationRecord struct {
-	OrganizationID  string    `json:"organizationId"`
-	Name            string    `json:"name"`
-	DefaultPolicyID string    `json:"defaultPolicyId,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
+	OrganizationID        string    `json:"organizationId"`
+	Name                  string    `json:"name"`
+	Plan                  string    `json:"plan"`
+	SeatLimit             int       `json:"seatLimit"`
+	TeamLimit             int       `json:"teamLimit"`
+	AgentLimit            int       `json:"agentLimit"`
+	RequestLimit          int       `json:"requestLimit"`
+	AuditRetentionDays    int       `json:"auditRetentionDays"`
+	ApprovalRetentionDays int       `json:"approvalRetentionDays"`
+	DefaultPolicyID       string    `json:"defaultPolicyId,omitempty"`
+	CreatedAt             time.Time `json:"createdAt"`
+}
+
+type BillingLimits struct {
+	Seats                 int `json:"seats"`
+	Teams                 int `json:"teams"`
+	Agents                int `json:"agents"`
+	Requests              int `json:"requests"`
+	AuditRetentionDays    int `json:"auditRetentionDays"`
+	ApprovalRetentionDays int `json:"approvalRetentionDays"`
+}
+
+type BillingUsage struct {
+	ActiveUsers          int `json:"activeUsers"`
+	Teams                int `json:"teams"`
+	ActiveAgents         int `json:"activeAgents"`
+	ApprovalRequests30d  int `json:"approvalRequests30d"`
+	PushNotifications30d int `json:"pushNotifications30d"`
+	AuditEventsRetained  int `json:"auditEventsRetained"`
+}
+
+type BillingStatus struct {
+	OrganizationID string        `json:"organizationId"`
+	Plan           string        `json:"plan"`
+	Limits         BillingLimits `json:"limits"`
+	Usage          BillingUsage  `json:"usage"`
+	PortalURL      string        `json:"portalUrl,omitempty"`
+	InvoicesURL    string        `json:"invoicesUrl,omitempty"`
+	UpgradeURL     string        `json:"upgradeUrl,omitempty"`
 }
 
 type OrganizationMembershipRecord struct {

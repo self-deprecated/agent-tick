@@ -1289,6 +1289,27 @@ func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 	}
 }
 
+func TestAPIBillingStatusShowsPlanUsageAndLinks(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	_ = request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Billing"})
+	_ = request[AgentCredential](t, handler, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "billing-agent"})
+	_ = request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Billable approval"})
+
+	status := request[BillingStatus](t, handler, http.MethodGet, "/v1/billing", nil)
+	if status.OrganizationID != defaultOrganizationID || status.Plan != "self-hosted" || status.Limits.Agents != -1 || status.Limits.Requests != -1 {
+		t.Fatalf("status = %#v, want default self-hosted plan", status)
+	}
+	if status.Usage.Teams != 1 || status.Usage.ActiveAgents != 1 || status.Usage.ApprovalRequests30d != 1 {
+		t.Fatalf("usage = %#v, want team, active agent, and approval counters", status.Usage)
+	}
+	if status.UpgradeURL == "" {
+		t.Fatal("UpgradeURL is empty, want hosted-service contact action")
+	}
+}
+
 func TestAPITeamProjectEndpointsAuthorizeByOrganizationRole(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

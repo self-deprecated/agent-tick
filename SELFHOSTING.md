@@ -97,6 +97,12 @@ The phone app can show local notifications while it polls. Expo remote push requ
 
 Dashboard sessions in user mode use HttpOnly session cookies plus a readable CSRF token cookie for browser writes. Cookies are marked secure when the server sees HTTPS directly, receives `X-Forwarded-Proto: https`, or has an HTTPS `AGENT_TICK_PUBLIC_URL`.
 
+## Plan and Billing Defaults
+
+Self-hosted organizations use the `self-hosted` plan by default. Seat, team, active-agent, and 30-day approval-request limits are stored as `-1`, which means unlimited. Audit and approval retention settings are stored per organization and currently default to 365 days so operators can plan cleanup/backup policies explicitly. The dashboard/API billing status endpoint is safe to expose to organization viewers and reports only the current organization's plan, limits, and usage counters.
+
+Hosted deployments can later replace the placeholder upgrade/contact links with a billing provider portal or invoice URL without changing the core approval flow.
+
 ## Security Notes
 
 - Run production deployments behind HTTPS.

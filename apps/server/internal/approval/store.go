@@ -18,6 +18,7 @@ var ErrAlreadyResponded = errors.New("approval request already has a response")
 var ErrInvalidChoice = errors.New("approval response choice is not allowed")
 var ErrInvalidRequest = errors.New("approval request is invalid")
 var ErrInvalidResponse = errors.New("approval response is invalid")
+var ErrPlanLimitExceeded = errors.New("organization plan limit exceeded")
 var ErrExpired = errors.New("approval request has expired")
 var ErrAbandoned = errors.New("approval request has been abandoned")
 
@@ -125,6 +126,15 @@ type OrganizationStore interface {
 	CreateOrganizationForUser(userID string, name string) (OrganizationRecord, error)
 	OrganizationRoleForUser(userID string, organizationID string) (string, bool, error)
 	DefaultOrganizationForUser(userID string) (OrganizationMembershipRecord, error)
+}
+
+type BillingStore interface {
+	BillingStatus(organizationID string) (BillingStatus, error)
+}
+
+type BillingProvider interface {
+	PortalURL(organizationID string) string
+	HandleWebhook(payload []byte, signature string) error
 }
 
 type PresenceStore interface {

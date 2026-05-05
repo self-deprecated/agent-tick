@@ -576,6 +576,56 @@ func TestSQLiteStoreManagesTeamsProjectsMembersAndAudit(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreBillingStatusTracksPlanAndUsage(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	if _, err := store.UpsertTeamMember(defaultOrganizationID, "missing", UpsertTeamMemberRequest{UserID: "usr_nope", Role: RoleApprover}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("UpsertTeamMember(missing) error = %v, want %v", err, ErrNotFound)
+	}
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Billing"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: "usr_billing", Role: RoleApprover}); err != nil {
+		t.Fatalf("UpsertTeamMember() error = %v", err)
+	}
+	if _, err := store.CreateAgentTokenWithOptions(CreateAgentTokenRequest{Name: "billing-agent"}); err != nil {
+		t.Fatalf("CreateAgentTokenWithOptions() error = %v", err)
+	}
+	if _, err := store.Create(CreateRequest{Title: "Billing approval"}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	pairing, err := store.CreatePairingToken(time.Minute)
+	if err != nil {
+		t.Fatalf("CreatePairingToken() error = %v", err)
+	}
+	device, err := store.PairDevice(pairing.Token, "Phone")
+	if err != nil {
+		t.Fatalf("PairDevice() error = %v", err)
+	}
+	if err := store.SetDevicePushToken(device.DeviceID, "ExponentPushToken[billing]"); err != nil {
+		t.Fatalf("SetDevicePushToken() error = %v", err)
+	}
+
+	status, err := store.BillingStatus(defaultOrganizationID)
+	if err != nil {
+		t.Fatalf("BillingStatus() error = %v", err)
+	}
+	if status.Plan != "self-hosted" || status.Limits.Seats != -1 || status.Limits.AuditRetentionDays != 365 {
+		t.Fatalf("billing status = %#v, want self-hosted plan and default limits", status)
+	}
+	if status.Usage.ActiveUsers < 2 || status.Usage.Teams != 1 || status.Usage.ActiveAgents != 1 || status.Usage.ApprovalRequests30d != 1 || status.Usage.PushNotifications30d != 1 || status.Usage.AuditEventsRetained == 0 {
+		t.Fatalf("billing usage = %#v, want active users, teams, agents, requests, push tokens, and retained audit events", status.Usage)
+	}
+	if status.UpgradeURL == "" {
+		t.Fatalf("UpgradeURL = empty, want hosted-service upgrade contact")
+	}
+	if _, err := store.BillingStatus("org_missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("BillingStatus(missing) error = %v, want %v", err, ErrNotFound)
+	}
+}
+
 func TestSQLiteStoreApprovalPolicyCRUDValidationAndDefaults(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
