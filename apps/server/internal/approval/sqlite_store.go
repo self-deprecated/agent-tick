@@ -137,6 +137,27 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 	if strings.TrimSpace(userID) == "" {
 		userID = defaultUserID
 	}
+	if _, err := normalizeCreateRequest(input); err != nil {
+		return ApprovalRequest{}, err
+	}
+	organizationID, projectID, err := s.defaultOrganizationAndProjectForUser(userID)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	return s.createForUserInOrganization(userID, organizationID, projectID, input)
+}
+
+func (s *SQLiteStore) CreateForUserInOrganization(userID string, organizationID string, projectID string, input CreateRequest) (ApprovalRequest, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	if strings.TrimSpace(organizationID) == "" {
+		return s.CreateForUser(userID, input)
+	}
+	return s.createForUserInOrganization(userID, strings.TrimSpace(organizationID), strings.TrimSpace(projectID), input)
+}
+
+func (s *SQLiteStore) createForUserInOrganization(userID string, organizationID string, projectID string, input CreateRequest) (ApprovalRequest, error) {
 	input, err := normalizeCreateRequest(input)
 	if err != nil {
 		return ApprovalRequest{}, err
@@ -178,16 +199,24 @@ func (s *SQLiteStore) CreateForUser(userID string, input CreateRequest) (Approva
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
-	organizationID, projectID, err := s.defaultOrganizationAndProjectForUser(userID)
-	if err != nil {
-		return ApprovalRequest{}, err
-	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
 	defer rollback(tx)
+
+	if err := ensureOrganizationExistsTx(tx, organizationID); err != nil {
+		return ApprovalRequest{}, err
+	}
+	if projectID == "" {
+		projectID, err = defaultProjectForOrganizationTx(tx, organizationID)
+		if err != nil {
+			return ApprovalRequest{}, err
+		}
+	} else if err := ensureProjectExistsTx(tx, organizationID, projectID); err != nil {
+		return ApprovalRequest{}, err
+	}
 
 	requestSince := now.AddDate(0, 0, -30)
 	if err := enforceOrganizationPlanLimitTx(tx, organizationID, "requests", "30-day approval request", "SELECT COUNT(*) FROM approval_requests WHERE organization_id = ? AND created_at >= ?", organizationID, timeText(&requestSince)); err != nil {
@@ -453,7 +482,7 @@ func (s *SQLiteStore) RespondForUserWithAuth(auth authContext, id string, respon
 		return ApprovalRequest{}, err
 	}
 
-	if policyID == "" || request.RequestType == RequestTypeQuestionnaire || request.RequestType == RequestTypeSteer {
+	if policyID == "" {
 		if err := finalizeResponseTx(tx, request.ID, auth.UserID, response, time.Now().UTC()); err != nil {
 			return ApprovalRequest{}, err
 		}
@@ -489,6 +518,32 @@ func (s *SQLiteStore) RespondForUserWithAuth(auth authContext, id string, respon
 		return ApprovalRequest{}, ErrInvalidRequest
 	}
 	now := time.Now().UTC()
+	if request.RequestType == RequestTypeQuestionnaire || request.RequestType == RequestTypeSteer {
+		if err := finalizeResponseTx(tx, request.ID, auth.UserID, response, now); err != nil {
+			return ApprovalRequest{}, err
+		}
+		finalProgress := *progress
+		finalProgress.State = "approved"
+		if isDenyChoiceID(response.ChoiceID) {
+			finalProgress.State = "denied"
+		}
+		finalProgress.WaitingFor = 0
+		if err := updateRequestPolicyMetadataTx(tx, request.UserID, request.ID, &finalProgress); err != nil {
+			return ApprovalRequest{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return ApprovalRequest{}, err
+		}
+		current, err := s.GetForUser(auth.UserID, id)
+		if err != nil {
+			return ApprovalRequest{}, err
+		}
+		current.PolicyProgress, err = s.PolicyProgressForRequest(current.ID, auth.UserID)
+		if err != nil {
+			return ApprovalRequest{}, err
+		}
+		return current, nil
+	}
 	answersJSON, err := marshalJSON(response.Answers)
 	if err != nil {
 		return ApprovalRequest{}, err
@@ -761,6 +816,9 @@ func (s *SQLiteStore) PairDevice(token string, deviceName string) (DeviceCredent
 	if err != nil {
 		return DeviceCredential{}, err
 	}
+	if err := insertAuditForUser(tx, userID, "device.paired", deviceID, map[string]string{"deviceId": deviceID, "deviceName": deviceName}); err != nil {
+		return DeviceCredential{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return DeviceCredential{}, err
 	}
@@ -993,6 +1051,9 @@ func (s *SQLiteStore) CreateAgentTokenForUserWithOptions(userID string, input Cr
 	if err != nil {
 		return AgentCredential{}, err
 	}
+	if err := insertAuditForUser(tx, userID, "agent_token.created", agentID, map[string]string{"name": name, "projectId": projectID}); err != nil {
+		return AgentCredential{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return AgentCredential{}, err
 	}
@@ -1123,7 +1184,12 @@ func (s *SQLiteStore) RevokeAgentTokenForUser(userID string, agentID string) err
 		userID = defaultUserID
 	}
 	now := time.Now().UTC()
-	result, err := s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	result, err := tx.Exec(
 		"UPDATE agent_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at = ''",
 		timeText(&now),
 		agentID,
@@ -1139,7 +1205,10 @@ func (s *SQLiteStore) RevokeAgentTokenForUser(userID string, agentID string) err
 	if rows == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if err := insertAuditForUser(tx, userID, "agent_token.revoked", agentID, map[string]string{"agentId": agentID}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteStore) UnpairDevice(deviceID string) error {
@@ -1151,7 +1220,12 @@ func (s *SQLiteStore) UnpairDeviceForUser(userID string, deviceID string) error 
 		userID = defaultUserID
 	}
 	now := time.Now().UTC()
-	result, err := s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	result, err := tx.Exec(
 		"UPDATE devices SET unpaired_at = ? WHERE id = ? AND user_id = ? AND unpaired_at = ''",
 		timeText(&now),
 		deviceID,
@@ -1167,7 +1241,10 @@ func (s *SQLiteStore) UnpairDeviceForUser(userID string, deviceID string) error 
 	if rows == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if err := insertAuditForUser(tx, userID, "device.unpaired", deviceID, map[string]string{"deviceId": deviceID}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteStore) RotateAgentToken(agentID string) (AgentCredential, error) {
@@ -2030,6 +2107,13 @@ func (s *SQLiteStore) ListOnCallSchedules(organizationID string, teamID string) 
 }
 
 func (s *SQLiteStore) UpsertOnCallSchedule(organizationID string, teamID string, input UpsertOnCallScheduleRequest) (OnCallScheduleRecord, error) {
+	return s.UpsertOnCallScheduleForUser(defaultUserID, organizationID, teamID, input)
+}
+
+func (s *SQLiteStore) UpsertOnCallScheduleForUser(actorUserID string, organizationID string, teamID string, input UpsertOnCallScheduleRequest) (OnCallScheduleRecord, error) {
+	if strings.TrimSpace(actorUserID) == "" {
+		actorUserID = defaultUserID
+	}
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
@@ -2055,7 +2139,7 @@ func (s *SQLiteStore) UpsertOnCallSchedule(organizationID string, teamID string,
 	if err != nil {
 		return OnCallScheduleRecord{}, err
 	}
-	if err := insertAuditForUser(tx, defaultUserID, "team_on_call.upserted", teamID, map[string]string{"primaryUserId": primaryUserID, "secondaryUserId": secondaryUserID}); err != nil {
+	if err := insertAuditForUser(tx, actorUserID, "team_on_call.upserted", teamID, map[string]string{"primaryUserId": primaryUserID, "secondaryUserId": secondaryUserID}); err != nil {
 		return OnCallScheduleRecord{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -2353,7 +2437,11 @@ func (s *SQLiteStore) ListApprovalPolicies(organizationID string) ([]ApprovalPol
 }
 
 func (s *SQLiteStore) CreateApprovalPolicy(organizationID string, input CreateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
-	return s.createOrUpdatePolicy("", organizationID, UpdateApprovalPolicyRequest(input))
+	return s.CreateApprovalPolicyForUser(defaultUserID, organizationID, input)
+}
+
+func (s *SQLiteStore) CreateApprovalPolicyForUser(actorUserID string, organizationID string, input CreateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
+	return s.createOrUpdatePolicy(actorUserID, "", organizationID, UpdateApprovalPolicyRequest(input))
 }
 
 func (s *SQLiteStore) GetApprovalPolicy(organizationID string, policyID string) (ApprovalPolicyRecord, error) {
@@ -2379,15 +2467,31 @@ func (s *SQLiteStore) GetApprovalPolicy(organizationID string, policyID string) 
 }
 
 func (s *SQLiteStore) UpdateApprovalPolicy(organizationID string, policyID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
-	return s.createOrUpdatePolicy(policyID, organizationID, input)
+	return s.UpdateApprovalPolicyForUser(defaultUserID, organizationID, policyID, input)
+}
+
+func (s *SQLiteStore) UpdateApprovalPolicyForUser(actorUserID string, organizationID string, policyID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
+	return s.createOrUpdatePolicy(actorUserID, policyID, organizationID, input)
 }
 
 func (s *SQLiteStore) DeleteApprovalPolicy(organizationID string, policyID string) error {
+	return s.DeleteApprovalPolicyForUser(defaultUserID, organizationID, policyID)
+}
+
+func (s *SQLiteStore) DeleteApprovalPolicyForUser(actorUserID string, organizationID string, policyID string) error {
+	if strings.TrimSpace(actorUserID) == "" {
+		actorUserID = defaultUserID
+	}
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
 	now := time.Now().UTC()
-	result, err := s.db.Exec("UPDATE approval_policies SET deleted_at = ?, updated_at = ? WHERE organization_id = ? AND id = ? AND deleted_at = ''", timeText(&now), timeText(&now), organizationID, policyID)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	result, err := tx.Exec("UPDATE approval_policies SET deleted_at = ?, updated_at = ? WHERE organization_id = ? AND id = ? AND deleted_at = ''", timeText(&now), timeText(&now), organizationID, policyID)
 	if err != nil {
 		return err
 	}
@@ -2398,7 +2502,10 @@ func (s *SQLiteStore) DeleteApprovalPolicy(organizationID string, policyID strin
 	if rows == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if err := insertAuditForUser(tx, actorUserID, "approval_policy.deleted", policyID, map[string]string{"policyId": policyID}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteStore) PreviewApprovalPolicy(organizationID string, policyID string) (ApprovalPolicyPreview, error) {
@@ -2475,7 +2582,10 @@ func (s *SQLiteStore) ResolveApprovalPolicy(organizationID string, projectID str
 	return strings.TrimSpace(policyID), nil
 }
 
-func (s *SQLiteStore) createOrUpdatePolicy(policyID string, organizationID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
+func (s *SQLiteStore) createOrUpdatePolicy(actorUserID string, policyID string, organizationID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error) {
+	if strings.TrimSpace(actorUserID) == "" {
+		actorUserID = defaultUserID
+	}
 	if strings.TrimSpace(organizationID) == "" {
 		organizationID = defaultOrganizationID
 	}
@@ -2553,7 +2663,7 @@ func (s *SQLiteStore) createOrUpdatePolicy(policyID string, organizationID strin
 			return ApprovalPolicyRecord{}, err
 		}
 	}
-	if err := insertAuditForUser(tx, defaultUserID, map[bool]string{true: "approval_policy.created", false: "approval_policy.updated"}[creating], policy.PolicyID, policy); err != nil {
+	if err := insertAuditForUser(tx, actorUserID, map[bool]string{true: "approval_policy.created", false: "approval_policy.updated"}[creating], policy.PolicyID, policy); err != nil {
 		return ApprovalPolicyRecord{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -3019,10 +3129,7 @@ func loadPolicyStepsTx(tx *sql.Tx, policyID string) ([]ApprovalPolicyStep, error
 }
 
 func evaluatePolicyProgressTx(tx *sql.Tx, request ApprovalRequest, policy ApprovalPolicyRecord, currentUserID string) (*ApprovalPolicyProgress, error) {
-	steps := policy.Steps
-	if len(steps) == 0 {
-		steps = normalizedPolicySteps(policy.Template, policy.TeamID, nil, policy.Settings)
-	}
+	steps := policyStepsForRequest(policy, request)
 	votes, err := loadVotesTx(tx, request.ID)
 	if err != nil {
 		return nil, err
@@ -3036,10 +3143,11 @@ func evaluatePolicyProgressTx(tx *sql.Tx, request ApprovalRequest, policy Approv
 	}
 	terminalState := ""
 	if request.Status == StatusResponded {
-		progress.State = "approved"
+		terminalState = "approved"
 		if request.Response != nil && isDenyChoiceID(request.Response.ChoiceID) {
-			progress.State = "denied"
+			terminalState = "denied"
 		}
+		progress.State = terminalState
 	}
 	if request.Status == StatusExpired || request.Status == StatusAbandoned {
 		terminalState = request.Status
@@ -3388,6 +3496,80 @@ func normalizePolicyTemplate(template string) (string, error) {
 		return PolicyTemplateRiskBased, nil
 	default:
 		return "", ErrInvalidRequest
+	}
+}
+
+func policyStepsForRequest(policy ApprovalPolicyRecord, request ApprovalRequest) []ApprovalPolicyStep {
+	steps := policy.Steps
+	if len(steps) == 0 {
+		steps = normalizedPolicySteps(policy.Template, policy.TeamID, nil, policy.Settings)
+	}
+	if policy.Template != PolicyTemplateRiskBased {
+		return steps
+	}
+	return riskBasedPolicySteps(policy, request)
+}
+
+func riskBasedPolicySteps(policy ApprovalPolicyRecord, request ApprovalRequest) []ApprovalPolicyStep {
+	base := normalizedPolicySteps(policy.Template, policy.TeamID, policy.Steps, policy.Settings)
+	fallback := ApprovalPolicyStep{Position: 1, StepType: PolicyTemplateOwnerOnly, DenyVeto: true}
+	if len(base) > 0 {
+		fallback = base[0]
+		fallback.Position = 1
+	}
+	teamID := strings.TrimSpace(fallback.TeamID)
+	if teamID == "" {
+		teamID = strings.TrimSpace(policy.TeamID)
+	}
+	settings := policy.Settings
+	if settings == nil {
+		settings = map[string]string{}
+	}
+	step := fallback
+	step.Position = 1
+	step.TeamID = teamID
+	step.TimeoutSeconds = atoiDefault(settings["timeoutSeconds"], step.TimeoutSeconds)
+	step.EscalationTarget = strings.TrimSpace(settings["escalationTarget"])
+	step.DenyVeto = settings["denyVeto"] != "false"
+	switch normalizeRisk(request.Risk) {
+	case "high":
+		if teamID == "" {
+			step.StepType = PolicyTemplateOwnerOnly
+			step.Quorum = 1
+			return []ApprovalPolicyStep{step}
+		}
+		step.StepType = PolicyTemplateQuorum
+		step.Quorum = atoiDefault(settings["highRiskQuorum"], atoiDefault(settings["quorum"], 2))
+		if step.Quorum < 2 {
+			step.Quorum = 2
+		}
+	case "low":
+		step.StepType = PolicyTemplateOwnerOnly
+		step.TeamID = ""
+		step.Quorum = 1
+	default:
+		if teamID == "" {
+			step.StepType = PolicyTemplateOwnerOnly
+			step.Quorum = 1
+			return []ApprovalPolicyStep{step}
+		}
+		step.StepType = PolicyTemplateAnyTeamMember
+		step.Quorum = atoiDefault(settings["mediumRiskQuorum"], 1)
+		if step.Quorum < 1 {
+			step.Quorum = 1
+		}
+	}
+	return []ApprovalPolicyStep{step}
+}
+
+func normalizeRisk(risk string) string {
+	switch strings.ToLower(strings.TrimSpace(risk)) {
+	case "high":
+		return "high"
+	case "low":
+		return "low"
+	default:
+		return "medium"
 	}
 }
 
@@ -4328,6 +4510,7 @@ func auditOrganizationForTargetTx(tx *sql.Tx, userID string, targetID string) (s
 		"SELECT organization_id FROM projects WHERE id = ?",
 		"SELECT organization_id FROM approval_policies WHERE id = ?",
 		"SELECT organization_id FROM agent_tokens WHERE id = ?",
+		"SELECT organization_id FROM devices WHERE id = ?",
 	} {
 		var organizationID string
 		err := tx.QueryRow(query, targetID).Scan(&organizationID)

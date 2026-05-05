@@ -469,6 +469,25 @@ func TestAPIRequiresAuthForRemoteRequests(t *testing.T) {
 	}
 }
 
+func TestAPIUserModeRejectsLoopbackWithoutSession(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/teams", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("loopback user-mode status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
+	}
+}
+
 func TestAPIDashboardBundleHandlesDynamicChoiceButtons(t *testing.T) {
 	handler := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")), "test-token").Handler()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -766,6 +785,28 @@ func TestAPIPairsDeviceToken(t *testing.T) {
 	}
 	if !ok || userID != defaultUserID {
 		t.Fatalf("device user = %q, %v, want %q, true", userID, ok, defaultUserID)
+	}
+}
+
+func TestAPIDeviceTokenCannotAccessAdminEndpoints(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	pairing := request[PairingToken](t, handler, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
+	device := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairing.Token, DeviceName: "Phone"})
+
+	listRec := statusWithBearer(t, handler, device.Token, http.MethodGet, "/v1/approval-requests?status=pending", nil)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("device approval list status = %d body = %s, want %d", listRec.Code, listRec.Body.String(), http.StatusOK)
+	}
+
+	createAgentRec := statusWithBearer(t, handler, device.Token, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "device-created"})
+	if createAgentRec.Code != http.StatusForbidden {
+		t.Fatalf("device create agent status = %d body = %s, want %d", createAgentRec.Code, createAgentRec.Body.String(), http.StatusForbidden)
+	}
+	if agents := request[[]AgentTokenRecord](t, handler, http.MethodGet, "/v1/agent-tokens", nil); len(agents) != 0 {
+		t.Fatalf("agent tokens = %#v, want none created by device token", agents)
 	}
 }
 
@@ -1362,6 +1403,14 @@ func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 	if created.Metadata["projectId"] != project.ProjectID || created.Metadata["ownerUserId"] != defaultUserID || created.Metadata["teamId"] != team.TeamID || created.Metadata["approvalPolicy"] != policy.PolicyID || created.Metadata["effectiveApprovalPolicy"] != policy.PolicyID {
 		t.Fatalf("metadata = %#v, want token routing defaults", created.Metadata)
 	}
+	var storedOrganizationID string
+	var storedProjectID string
+	if err := store.db.QueryRow("SELECT organization_id, project_id FROM approval_requests WHERE id = ?", created.ID).Scan(&storedOrganizationID, &storedProjectID); err != nil {
+		t.Fatalf("query stored request route error = %v", err)
+	}
+	if storedOrganizationID != defaultOrganizationID || storedProjectID != project.ProjectID {
+		t.Fatalf("stored org/project = %q/%q, want %q/%q", storedOrganizationID, storedProjectID, defaultOrganizationID, project.ProjectID)
+	}
 
 	records := request[[]AgentTokenRecord](t, handler, http.MethodGet, "/v1/agent-tokens", nil)
 	if len(records) == 0 || records[0].ProjectID == "" || records[0].LastRequestAt == nil {
@@ -1689,7 +1738,10 @@ func TestAPITeamProjectAuditUsesActingUser(t *testing.T) {
 	if project.TeamID != team.TeamID {
 		t.Fatalf("project.TeamID = %q, want %q", project.TeamID, team.TeamID)
 	}
-	for _, eventType := range []string{"team.created", "project.created"} {
+	policy := requestWithSession[ApprovalPolicyRecord](t, handler, auth, http.MethodPost, "/v1/policies", CreateApprovalPolicyRequest{Name: "Audited Policy", Template: PolicyTemplateOwnerOnly})
+	_ = requestWithSession[map[string]string](t, handler, auth, http.MethodDelete, "/v1/policies/"+policy.PolicyID, nil)
+	_ = requestWithSession[OnCallScheduleRecord](t, handler, auth, http.MethodPost, "/v1/teams/"+team.TeamID+"/on-call", UpsertOnCallScheduleRequest{PrimaryUserID: adminUserID})
+	for _, eventType := range []string{"team.created", "project.created", "approval_policy.created", "approval_policy.deleted", "team_on_call.upserted"} {
 		var actor string
 		if err := store.db.QueryRow("SELECT user_id FROM audit_events WHERE event_type = ? ORDER BY id DESC LIMIT 1", eventType).Scan(&actor); err != nil {
 			t.Fatalf("query audit %s error = %v", eventType, err)

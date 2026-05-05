@@ -186,9 +186,16 @@ func roleRank(role string) int {
 	}
 }
 
-func (a *API) createForUser(userID string, input CreateRequest) (ApprovalRequest, error) {
+func (a *API) createForAuth(auth authContext, input CreateRequest) (ApprovalRequest, error) {
+	if scoped, ok := a.store.(OrganizationScopedCreateStore); ok {
+		projectID := strings.TrimSpace(auth.ProjectID)
+		if projectID == "" {
+			projectID = requestedProjectID(input)
+		}
+		return scoped.CreateForUserInOrganization(auth.UserID, auth.OrganizationID, projectID, input)
+	}
 	if a.scopedStore != nil {
-		return a.scopedStore.CreateForUser(userID, input)
+		return a.scopedStore.CreateForUser(auth.UserID, input)
 	}
 	return a.store.Create(input)
 }
@@ -396,6 +403,14 @@ func (a *API) session(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SessionCredential{UserID: userID})
 }
 
+func requestedProjectID(input CreateRequest) string {
+	projectID := strings.TrimSpace(input.Metadata["projectId"])
+	if projectID == "" && strings.HasPrefix(strings.TrimSpace(input.Requester.ProjectID), "prj_") {
+		projectID = strings.TrimSpace(input.Requester.ProjectID)
+	}
+	return projectID
+}
+
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	if a.mode != ModeUser {
 		writeError(w, http.StatusNotFound, "user login is disabled")
@@ -449,10 +464,7 @@ func (a *API) resolveRequestPolicy(auth authContext, input *CreateRequest) error
 	if input.Metadata == nil {
 		input.Metadata = map[string]string{}
 	}
-	projectID := strings.TrimSpace(input.Metadata["projectId"])
-	if projectID == "" && strings.HasPrefix(strings.TrimSpace(input.Requester.ProjectID), "prj_") {
-		projectID = strings.TrimSpace(input.Requester.ProjectID)
-	}
+	projectID := requestedProjectID(*input)
 	hint := strings.TrimSpace(input.Metadata["approvalPolicy"])
 	policyID, err := a.policies.ResolveApprovalPolicy(auth.OrganizationID, projectID, hint)
 	if err != nil {
@@ -561,9 +573,13 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, err := a.createForUser(auth.UserID, input)
+	request, err := a.createForAuth(auth, input)
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusBadRequest, "organization or project not found")
 		return
 	}
 	if writePlanLimitExceeded(w, err) {
@@ -1223,7 +1239,14 @@ func (a *API) upsertOnCallSchedule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid on-call JSON")
 		return
 	}
-	schedule, err := a.presence.UpsertOnCallSchedule(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	auth := currentAuth(r)
+	var schedule OnCallScheduleRecord
+	var err error
+	if store, ok := a.presence.(PresenceActorStore); ok {
+		schedule, err = store.UpsertOnCallScheduleForUser(auth.UserID, auth.OrganizationID, r.PathValue("id"), input)
+	} else {
+		schedule, err = a.presence.UpsertOnCallSchedule(auth.OrganizationID, r.PathValue("id"), input)
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1352,7 +1375,14 @@ func (a *API) createPolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid policy JSON")
 		return
 	}
-	policy, err := a.policies.CreateApprovalPolicy(currentAuth(r).OrganizationID, input)
+	auth := currentAuth(r)
+	var policy ApprovalPolicyRecord
+	var err error
+	if store, ok := a.policies.(ApprovalPolicyActorStore); ok {
+		policy, err = store.CreateApprovalPolicyForUser(auth.UserID, auth.OrganizationID, input)
+	} else {
+		policy, err = a.policies.CreateApprovalPolicy(auth.OrganizationID, input)
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1393,7 +1423,14 @@ func (a *API) updatePolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid policy JSON")
 		return
 	}
-	policy, err := a.policies.UpdateApprovalPolicy(currentAuth(r).OrganizationID, r.PathValue("id"), input)
+	auth := currentAuth(r)
+	var policy ApprovalPolicyRecord
+	var err error
+	if store, ok := a.policies.(ApprovalPolicyActorStore); ok {
+		policy, err = store.UpdateApprovalPolicyForUser(auth.UserID, auth.OrganizationID, r.PathValue("id"), input)
+	} else {
+		policy, err = a.policies.UpdateApprovalPolicy(auth.OrganizationID, r.PathValue("id"), input)
+	}
 	if errors.Is(err, ErrInvalidRequest) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1413,7 +1450,13 @@ func (a *API) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	if !a.authorizePolicy(w, r, RoleAdmin) {
 		return
 	}
-	err := a.policies.DeleteApprovalPolicy(currentAuth(r).OrganizationID, r.PathValue("id"))
+	auth := currentAuth(r)
+	var err error
+	if store, ok := a.policies.(ApprovalPolicyActorStore); ok {
+		err = store.DeleteApprovalPolicyForUser(auth.UserID, auth.OrganizationID, r.PathValue("id"))
+	} else {
+		err = a.policies.DeleteApprovalPolicy(auth.OrganizationID, r.PathValue("id"))
+	}
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "policy not found")
 		return
@@ -1689,6 +1732,28 @@ func (a *API) canManageDevice(r *http.Request, deviceID string) bool {
 	return err == nil && ok
 }
 
+func deviceEndpointAllowed(r *http.Request) bool {
+	path := r.URL.Path
+	switch {
+	case r.Method == http.MethodGet && path == "/v1/approval-requests":
+		return true
+	case r.Method == http.MethodGet && strings.HasPrefix(path, "/v1/approval-requests/"):
+		return true
+	case r.Method == http.MethodPost && strings.HasPrefix(path, "/v1/approval-requests/") && strings.HasSuffix(path, "/responses"):
+		return true
+	case r.Method == http.MethodPost && path == "/v1/heartbeat":
+		return true
+	case (r.Method == http.MethodGet || r.Method == http.MethodPost) && path == "/v1/availability":
+		return true
+	case r.Method == http.MethodPost && strings.HasPrefix(path, "/v1/devices/") && strings.HasSuffix(path, "/push-token"):
+		return true
+	case r.Method == http.MethodGet && path == "/v1/events":
+		return true
+	default:
+		return false
+	}
+}
+
 func (a *API) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/session" || (r.Method == http.MethodPost && r.URL.Path == "/v1/billing/webhook") || ((r.Method == http.MethodGet || r.Method == http.MethodHead) && (r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/assets/"))) {
@@ -1715,7 +1780,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if a.token == "" && isLoopback(r.RemoteAddr) {
+		if a.mode == ModeSingle && a.token == "" && isLoopback(r.RemoteAddr) {
 			auth, err := a.authContextForUser(defaultUserID, authSourceLoopback, false)
 			if err != nil {
 				writeInternalError(w, err)
@@ -1781,6 +1846,10 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 					return
 				}
 				if ok {
+					if !deviceEndpointAllowed(r) {
+						writeError(w, http.StatusForbidden, "device token cannot access this endpoint")
+						return
+					}
 					auth, err := a.authContextForUser(userID, authSourceDevice, false)
 					if err != nil {
 						writeInternalError(w, err)
@@ -1814,6 +1883,10 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 			if ok {
+				if !deviceEndpointAllowed(r) {
+					writeError(w, http.StatusForbidden, "device token cannot access this endpoint")
+					return
+				}
 				auth, err := a.authContextForUser(defaultUserID, authSourceDevice, false)
 				if err != nil {
 					writeInternalError(w, err)

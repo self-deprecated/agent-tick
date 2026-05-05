@@ -649,6 +649,41 @@ func TestSQLiteStoreBillingStatusTracksPlanAndUsage(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreAuditsAgentAndDeviceLifecycle(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	agent, err := store.CreateAgentTokenForUserWithOptions(defaultUserID, CreateAgentTokenRequest{Name: "audited-agent"})
+	if err != nil {
+		t.Fatalf("CreateAgentTokenForUserWithOptions() error = %v", err)
+	}
+	if err := store.RevokeAgentTokenForUser(defaultUserID, agent.AgentID); err != nil {
+		t.Fatalf("RevokeAgentTokenForUser() error = %v", err)
+	}
+	pairing, err := store.CreatePairingToken(time.Minute)
+	if err != nil {
+		t.Fatalf("CreatePairingToken() error = %v", err)
+	}
+	device, err := store.PairDevice(pairing.Token, "Audited Phone")
+	if err != nil {
+		t.Fatalf("PairDevice() error = %v", err)
+	}
+	if err := store.UnpairDeviceForUser(defaultUserID, device.DeviceID); err != nil {
+		t.Fatalf("UnpairDeviceForUser() error = %v", err)
+	}
+
+	for _, eventType := range []string{"agent_token.created", "agent_token.revoked", "device.paired", "device.unpaired"} {
+		var actor string
+		var organizationID string
+		if err := store.db.QueryRow("SELECT user_id, organization_id FROM audit_events WHERE event_type = ? ORDER BY id DESC LIMIT 1", eventType).Scan(&actor, &organizationID); err != nil {
+			t.Fatalf("query audit %s error = %v", eventType, err)
+		}
+		if actor != defaultUserID || organizationID != defaultOrganizationID {
+			t.Fatalf("audit %s user/org = %q/%q, want %q/%q", eventType, actor, organizationID, defaultUserID, defaultOrganizationID)
+		}
+	}
+}
+
 func TestSQLiteStoreRunRetentionCleanup(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
@@ -911,6 +946,75 @@ func TestSQLiteStorePresenceRecentlyActiveAndOnCallRouting(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreRiskBasedPolicyChoosesPathFromRequestRisk(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Risk"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	for _, userID := range []string{"usr_a", "usr_b"} {
+		if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: userID, Role: RoleApprover}); err != nil {
+			t.Fatalf("UpsertTeamMember(%s) error = %v", userID, err)
+		}
+	}
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Risk based", Template: PolicyTemplateRiskBased, TeamID: team.TeamID, Settings: map[string]string{"quorum": "2"}})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy() error = %v", err)
+	}
+
+	low, err := store.Create(CreateRequest{Title: "Low", Risk: "low", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(low) error = %v", err)
+	}
+	lowProgress, err := store.PolicyProgressForRequest(low.ID, defaultUserID)
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest(low) error = %v", err)
+	}
+	if lowProgress == nil || lowProgress.RequiredApprovals != 1 || len(lowProgress.EligibleApproverIDs) != 1 || lowProgress.EligibleApproverIDs[0] != defaultUserID || !lowProgress.CurrentUserEligible {
+		t.Fatalf("low progress = %#v, want owner-only low-risk path", lowProgress)
+	}
+
+	medium, err := store.Create(CreateRequest{Title: "Medium", Risk: "medium", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(medium) error = %v", err)
+	}
+	mediumProgress, err := store.PolicyProgressForRequest(medium.ID, "usr_a")
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest(medium) error = %v", err)
+	}
+	if mediumProgress == nil || mediumProgress.RequiredApprovals != 1 || len(mediumProgress.EligibleApproverIDs) != 2 || !mediumProgress.CurrentUserEligible {
+		t.Fatalf("medium progress = %#v, want any team member medium-risk path", mediumProgress)
+	}
+
+	high, err := store.Create(CreateRequest{Title: "High", Risk: "high", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(high) error = %v", err)
+	}
+	highProgress, err := store.PolicyProgressForRequest(high.ID, "usr_a")
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest(high) error = %v", err)
+	}
+	if highProgress == nil || highProgress.RequiredApprovals != 2 || highProgress.WaitingFor != 2 || len(highProgress.EligibleApproverIDs) != 2 {
+		t.Fatalf("high progress = %#v, want quorum high-risk path", highProgress)
+	}
+	first, err := store.RespondForUserWithAuth(authContext{UserID: "usr_a", OrganizationID: defaultOrganizationID, Source: authSourceSession}, high.ID, Response{ChoiceID: "approve"})
+	if err != nil {
+		t.Fatalf("first high-risk response error = %v", err)
+	}
+	if first.Status != StatusPending || first.PolicyProgress == nil || first.PolicyProgress.WaitingFor != 1 {
+		t.Fatalf("first high-risk response = %#v progress %#v, want one more approval", first, first.PolicyProgress)
+	}
+	final, err := store.RespondForUserWithAuth(authContext{UserID: "usr_b", OrganizationID: defaultOrganizationID, Source: authSourceSession}, high.ID, Response{ChoiceID: "approve"})
+	if err != nil {
+		t.Fatalf("final high-risk response error = %v", err)
+	}
+	if final.Status != StatusResponded || final.PolicyProgress == nil || final.PolicyProgress.State != "approved" {
+		t.Fatalf("final high-risk response = %#v progress %#v, want approved", final, final.PolicyProgress)
+	}
+}
+
 func TestSQLiteStorePolicyQuorumVoteFlow(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
@@ -959,6 +1063,63 @@ func TestSQLiteStorePolicyQuorumVoteFlow(t *testing.T) {
 	}
 	if _, err := store.RespondForUserWithAuth(authContext{UserID: "usr_a", OrganizationID: defaultOrganizationID, Source: authSourceSession}, request.ID, Response{ChoiceID: "approve"}); !errors.Is(err, ErrAlreadyResponded) {
 		t.Fatalf("post-final vote error = %v, want %v", err, ErrAlreadyResponded)
+	}
+}
+
+func TestSQLiteStorePolicyGatesSteerAndQuestionnaireResponders(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Steering"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: "usr_eligible", Role: RoleApprover}); err != nil {
+		t.Fatalf("UpsertTeamMember() error = %v", err)
+	}
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Eligible team", Template: PolicyTemplateAnyTeamMember, TeamID: team.TeamID})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy() error = %v", err)
+	}
+	steer, err := store.Create(CreateRequest{
+		RequestType: RequestTypeSteer,
+		Title:       "Choose",
+		Choices:     []Choice{{ID: "continue", Label: "Continue"}},
+		Metadata:    map[string]string{"effectiveApprovalPolicy": policy.PolicyID},
+	})
+	if err != nil {
+		t.Fatalf("Create(steer) error = %v", err)
+	}
+	if _, err := store.RespondForUserWithAuth(authContext{UserID: "usr_intruder", OrganizationID: defaultOrganizationID, Source: authSourceSession}, steer.ID, Response{ChoiceID: "continue"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("intruder steer error = %v, want %v", err, ErrInvalidRequest)
+	}
+	steered, err := store.RespondForUserWithAuth(authContext{UserID: "usr_eligible", OrganizationID: defaultOrganizationID, Source: authSourceSession}, steer.ID, Response{ChoiceID: "continue"})
+	if err != nil {
+		t.Fatalf("eligible steer response error = %v", err)
+	}
+	if steered.Status != StatusResponded || steered.Response == nil || steered.Response.ChoiceID != "continue" {
+		t.Fatalf("steered = %#v, want final selected choice", steered)
+	}
+
+	questionnaire, err := store.Create(CreateRequest{
+		RequestType: RequestTypeQuestionnaire,
+		Title:       "Questions",
+		Questions:   []Question{{Question: "Deploy?", Options: []QuestionOption{{Label: "yes"}, {Label: "no"}}}},
+		Metadata:    map[string]string{"effectiveApprovalPolicy": policy.PolicyID},
+	})
+	if err != nil {
+		t.Fatalf("Create(questionnaire) error = %v", err)
+	}
+	answers := Response{Answers: map[string][]string{"Deploy?": []string{"yes"}}}
+	if _, err := store.RespondForUserWithAuth(authContext{UserID: "usr_intruder", OrganizationID: defaultOrganizationID, Source: authSourceSession}, questionnaire.ID, answers); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("intruder questionnaire error = %v, want %v", err, ErrInvalidRequest)
+	}
+	answered, err := store.RespondForUserWithAuth(authContext{UserID: "usr_eligible", OrganizationID: defaultOrganizationID, Source: authSourceSession}, questionnaire.ID, answers)
+	if err != nil {
+		t.Fatalf("eligible questionnaire response error = %v", err)
+	}
+	if answered.Status != StatusResponded || answered.Response == nil || answered.Response.Answers["Deploy?"][0] != "yes" {
+		t.Fatalf("answered = %#v, want final questionnaire answer", answered)
 	}
 }
 

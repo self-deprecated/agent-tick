@@ -54,7 +54,11 @@ func (h *EventHub) Subscribe(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *EventHub) Publish(event Event) {
-	data, err := json.Marshal(event)
+	// The websocket stream is a coarse invalidation signal. Avoid broadcasting
+	// request IDs to every connected client; clients reload their scoped lists.
+	data, err := json.Marshal(struct {
+		Type string `json:"type"`
+	}{Type: event.Type})
 	if err != nil {
 		return
 	}

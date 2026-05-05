@@ -38,6 +38,10 @@ type UserScopedStore interface {
 	AbandonForUser(userID string, id string) (ApprovalRequest, bool, error)
 }
 
+type OrganizationScopedCreateStore interface {
+	CreateForUserInOrganization(userID string, organizationID string, projectID string, input CreateRequest) (ApprovalRequest, error)
+}
+
 type StoreWithAbandonReason interface {
 	AbandonWithReason(id string, reason string) (ApprovalRequest, bool, error)
 }
@@ -159,6 +163,10 @@ type PresenceStore interface {
 	UpsertOnCallSchedule(organizationID string, teamID string, input UpsertOnCallScheduleRequest) (OnCallScheduleRecord, error)
 }
 
+type PresenceActorStore interface {
+	UpsertOnCallScheduleForUser(actorUserID string, organizationID string, teamID string, input UpsertOnCallScheduleRequest) (OnCallScheduleRecord, error)
+}
+
 type TeamProjectStore interface {
 	ListTeams(organizationID string) ([]TeamRecord, error)
 	CreateTeam(organizationID string, input CreateTeamRequest) (TeamRecord, error)
@@ -190,6 +198,12 @@ type ApprovalPolicyStore interface {
 	DeleteApprovalPolicy(organizationID string, policyID string) error
 	PreviewApprovalPolicy(organizationID string, policyID string) (ApprovalPolicyPreview, error)
 	ResolveApprovalPolicy(organizationID string, projectID string, hint string) (string, error)
+}
+
+type ApprovalPolicyActorStore interface {
+	CreateApprovalPolicyForUser(actorUserID string, organizationID string, input CreateApprovalPolicyRequest) (ApprovalPolicyRecord, error)
+	UpdateApprovalPolicyForUser(actorUserID string, organizationID string, policyID string, input UpdateApprovalPolicyRequest) (ApprovalPolicyRecord, error)
+	DeleteApprovalPolicyForUser(actorUserID string, organizationID string, policyID string) error
 }
 
 type FileStore struct {

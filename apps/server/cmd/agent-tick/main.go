@@ -119,7 +119,7 @@ See also: setup, agent-token`,
   agent-tick server --addr :9090 --data /var/lib/agent-tick/agent-tick.db
   agent-tick server --token <admin-token> --public-url https://tick.example.com`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if token == "" {
+			if token == "" && mode != approval.ModeUser {
 				log.Print("--token is not set; only localhost requests are allowed")
 			}
 			store, err := approval.NewSQLiteStore(data)
