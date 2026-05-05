@@ -1008,8 +1008,16 @@ func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 		t.Fatalf("bad team status = %d body = %s, want %d", badTeamRec.Code, badTeamRec.Body.String(), http.StatusBadRequest)
 	}
 
+	badOwnerRec := statusWithBearer(t, handler, credential.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{
+		Title:    "Wrong owner",
+		Metadata: map[string]string{"ownerUserId": "usr_other"},
+	})
+	if badOwnerRec.Code != http.StatusBadRequest {
+		t.Fatalf("bad owner status = %d body = %s, want %d", badOwnerRec.Code, badOwnerRec.Body.String(), http.StatusBadRequest)
+	}
+
 	created := requestWithBearer[ApprovalRequest](t, handler, credential.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Allowed"})
-	if created.Metadata["projectId"] != project.ProjectID || created.Metadata["teamId"] != team.TeamID || created.Metadata["approvalPolicy"] != "team-quorum" {
+	if created.Metadata["projectId"] != project.ProjectID || created.Metadata["ownerUserId"] != defaultUserID || created.Metadata["teamId"] != team.TeamID || created.Metadata["approvalPolicy"] != "team-quorum" {
 		t.Fatalf("metadata = %#v, want token routing defaults", created.Metadata)
 	}
 

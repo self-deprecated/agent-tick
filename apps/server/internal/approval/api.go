@@ -82,6 +82,7 @@ type authContext struct {
 	Role                  string
 	AgentID               string
 	ProjectID             string
+	OwnerUserID           string
 	TeamID                string
 	DefaultApprovalPolicy string
 	FromSession           bool
@@ -399,6 +400,16 @@ func applyAgentRouting(input *CreateRequest, auth authContext) error {
 		}
 		input.Requester.ProjectID = auth.ProjectID
 		input.Metadata["projectId"] = auth.ProjectID
+	}
+
+	requestedOwnerUserID := strings.TrimSpace(input.Metadata["ownerUserId"])
+	if auth.OwnerUserID != "" {
+		if requestedOwnerUserID != "" && requestedOwnerUserID != auth.OwnerUserID {
+			return errors.New("agent token cannot route approvals to this owner")
+		}
+		input.Metadata["ownerUserId"] = auth.OwnerUserID
+	} else if requestedOwnerUserID != "" {
+		return errors.New("agent token cannot route approvals to an owner")
 	}
 
 	requestedTeamID := strings.TrimSpace(input.Metadata["teamId"])
@@ -1092,6 +1103,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 							Role:                  RoleViewer,
 							AgentID:               agentAuth.AgentID,
 							ProjectID:             agentAuth.ProjectID,
+							OwnerUserID:           agentAuth.OwnerUserID,
 							TeamID:                agentAuth.TeamID,
 							DefaultApprovalPolicy: agentAuth.DefaultApprovalPolicy,
 							Source:                authSourceAgent,

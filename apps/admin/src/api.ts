@@ -86,17 +86,32 @@ export interface AgentCredential {
 	name: string;
 	token: string;
 	scopes: string[];
+	organizationId?: string;
+	projectId?: string;
+	ownerUserId?: string;
+	teamId?: string;
+	defaultApprovalPolicy?: string;
 }
 
 export interface CreateAgentTokenRequest {
 	name: string;
 	scopes?: string[];
+	projectId?: string;
+	ownerUserId?: string;
+	teamId?: string;
+	defaultApprovalPolicy?: string;
 }
 
 export interface AgentTokenRecord {
 	agentId: string;
 	name: string;
 	scopes: string[];
+	organizationId?: string;
+	projectId?: string;
+	ownerUserId?: string;
+	teamId?: string;
+	defaultApprovalPolicy?: string;
+	lastRequestAt?: string;
 	createdAt: string;
 	revokedAt?: string;
 }

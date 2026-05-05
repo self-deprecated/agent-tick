@@ -80,7 +80,7 @@ The dashboard supports:
 - Organization-aware first-run defaults: single-user installs get a default organization and default project automatically, while user-mode sign-in creates a personal organization.
 - Basic organization creation plus team and project listing/creation from the dashboard.
 - Phone pairing with short-lived QR codes and device revocation.
-- Agent token listing, creation setup commands, and revocation.
+- Agent registration wizard with project/team/owner/default-policy metadata, config-file setup commands, environment-variable setup commands, token listing, and revocation.
 - Approval list with approve/deny or constrained choice responses for pending requests.
 
 Pair a phone:
@@ -90,13 +90,14 @@ Pair a phone:
 3. Click `Create QR`.
 4. In the phone app, open Settings, then `Scan Pairing QR`.
 
-Create an agent token:
+Register an agent:
 
 1. Open `Agents`.
-2. Click `Create Agent Token`.
-3. Run the shown `agent-tick setup ...` command once on the machine where the agent runs.
+2. Enter the agent name, choose an existing project or create one inline, choose the owner user, optionally choose team access, and choose a default approval behavior.
+3. Click `Create Agent Token`.
+4. Run either the shown `agent-tick setup ...` command or export the shown environment variables on the machine where the agent runs.
 
-The token is shown once. Agent tokens created by the dashboard default to `approval:write`, which lets the CLI create approval requests, poll its own request by ID, and abandon pending requests it no longer needs. It does not let the agent approve, pair devices, create tokens, or list all approvals.
+The token is shown once. Agent tokens created by the dashboard default to `approval:write`, which lets the CLI create approval requests, poll its own request by ID, and abandon pending requests it no longer needs. It does not let the agent approve, pair devices, create tokens, or list all approvals. Project, team, and policy hints are validated server-side against the token metadata.
 
 ## Teams and Projects
 

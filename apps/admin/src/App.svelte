@@ -50,6 +50,11 @@
 	let agentsError = $state('');
 	let agentActionError = $state('');
 	let agentName = $state('agent');
+	let agentProjectID = $state('');
+	let agentNewProjectName = $state('');
+	let agentOwnerUserID = $state('');
+	let agentTeamID = $state('');
+	let agentDefaultPolicy = $state('');
 	let creatingAgent = $state(false);
 	let busyAgent = $state('');
 	let newAgentCredential = $state<AgentCredential | null>(null);
@@ -99,6 +104,17 @@
 			? `agent-tick setup --server ${shellQuote(publicURL)} --token ${shellQuote(newAgentCredential.token)}`
 			: ''
 	);
+	let setupEnvCommand = $derived.by(() => {
+		if (!newAgentCredential) return '';
+		const lines = [
+			`export AGENT_TICK_SERVER=${shellQuote(publicURL)}`,
+			`export AGENT_TICK_TOKEN=${shellQuote(newAgentCredential.token)}`
+		];
+		if (newAgentCredential.projectId) lines.push(`export AGENT_TICK_PROJECT_ID=${shellQuote(newAgentCredential.projectId)}`);
+		if (newAgentCredential.teamId) lines.push(`export AGENT_TICK_TEAM=${shellQuote(newAgentCredential.teamId)}`);
+		if (newAgentCredential.defaultApprovalPolicy) lines.push(`export AGENT_TICK_APPROVAL_POLICY=${shellQuote(newAgentCredential.defaultApprovalPolicy)}`);
+		return lines.join('\n');
+	});
 	let testCommand = $derived(
 		"agent-tick request --title 'Run command?' --body 'Agent Tick test approval from the CLI' --command 'npm install'"
 	);
@@ -363,11 +379,23 @@
 		agentActionError = '';
 		newAgentCredential = null;
 		try {
+			let projectID = agentProjectID;
+			if (agentNewProjectName.trim()) {
+				const project = await api.createProject({ name: agentNewProjectName.trim(), teamId: agentTeamID || undefined });
+				projectID = project.projectId;
+				await loadProjects();
+			}
 			newAgentCredential = await api.createAgentToken({
 				name: agentName.trim() || 'agent',
-				scopes: ['approval:write']
+				scopes: ['approval:write'],
+				projectId: projectID || undefined,
+				ownerUserId: (agentOwnerUserID || session?.userId || '').trim() || undefined,
+				teamId: agentTeamID || undefined,
+				defaultApprovalPolicy: agentDefaultPolicy || undefined
 			});
 			agentName = 'agent';
+			agentProjectID = projectID;
+			agentNewProjectName = '';
 			await loadAgents();
 		} catch (error) {
 			agentActionError = errorMessage(error);
@@ -411,6 +439,19 @@
 	function teamNameForID(teamID: string | undefined): string {
 		if (!teamID) return 'No team';
 		return teams.find((team) => team.teamId === teamID)?.name || teamID;
+	}
+
+	function projectNameForID(projectID: string | undefined): string {
+		if (!projectID) return 'Default project';
+		return projects.find((project) => project.projectId === projectID)?.name || projectID;
+	}
+
+	function policyLabel(policy: string | undefined): string {
+		if (!policy) return 'No default policy';
+		return policy
+			.split('-')
+			.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+			.join(' ');
 	}
 
 	function projectCountForTeam(teamID: string): number {
@@ -651,10 +692,49 @@
 					<span class="summary-count">{agents.length}</span>
 				</summary>
 				<div class="panel-body">
-					<form class="agent-form" onsubmit={createAgentToken}>
+					<form class="wizard-form" onsubmit={createAgentToken}>
+						<div>
+							<p class="eyebrow">Registration wizard</p>
+							<h3>Where is this agent running, what project is it for, and who can approve it?</h3>
+						</div>
 						<label>
-							<span>Token name</span>
-							<input bind:value={agentName} type="text" autocomplete="off" placeholder="agent" />
+							<span>1. Agent name</span>
+							<input bind:value={agentName} type="text" autocomplete="off" placeholder="codex-laptop" />
+						</label>
+						<label>
+							<span>2. Existing project</span>
+							<select bind:value={agentProjectID}>
+								<option value="">Default project</option>
+								{#each projects as project (project.projectId)}
+									<option value={project.projectId}>{project.name}</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>Or create project</span>
+							<input bind:value={agentNewProjectName} type="text" autocomplete="off" placeholder="New project name" />
+						</label>
+						<label>
+							<span>3. Owner user ID</span>
+							<input bind:value={agentOwnerUserID} type="text" autocomplete="off" placeholder={session?.userId || 'usr_default'} />
+						</label>
+						<label>
+							<span>4. Team access</span>
+							<select bind:value={agentTeamID}>
+								<option value="">No team restriction</option>
+								{#each teams as team (team.teamId)}
+									<option value={team.teamId}>{team.name}</option>
+								{/each}
+							</select>
+						</label>
+						<label>
+							<span>5. Default approval behavior</span>
+							<select bind:value={agentDefaultPolicy}>
+								<option value="">Manual approval</option>
+								<option value="owner-only">Owner only</option>
+								<option value="team-quorum">Team quorum</option>
+								<option value="any-approver">Any approver</option>
+							</select>
 						</label>
 						<button type="submit" disabled={creatingAgent}>{creatingAgent ? 'Creating…' : 'Create Agent Token'}</button>
 					</form>
@@ -665,8 +745,11 @@
 					{#if newAgentCredential}
 						<details class="setup-output" open>
 							<summary>Setup commands for {newAgentCredential.name}</summary>
-							<p class="muted">Run setup once. The token will not be shown again after you refresh or create another token.</p>
+							<p class="muted">Run one of these setup paths once. The token will not be shown again after you refresh or create another token.</p>
+							<strong>Config-file setup</strong>
 							<pre>{setupCommand + '\n' + testCommand}</pre>
+							<strong>Environment-variable setup</strong>
+							<pre>{setupEnvCommand + '\n' + testCommand}</pre>
 						</details>
 					{/if}
 
@@ -689,6 +772,8 @@
 										<p class="muted">
 											{agent.revokedAt ? `Revoked ${formatDate(agent.revokedAt)}` : `Active · Created ${formatDate(agent.createdAt)}`}
 										</p>
+										<p class="muted">Owner: {agent.ownerUserId || 'default'} · Project: {projectNameForID(agent.projectId)} · Team: {teamNameForID(agent.teamId)}</p>
+										<p class="muted">Policy: {policyLabel(agent.defaultApprovalPolicy)} · Last request: {agent.lastRequestAt ? formatDate(agent.lastRequestAt) : 'never'}</p>
 										<p class="muted">Scopes: {agent.scopes.join(', ') || 'none'}</p>
 									</div>
 									{#if !agent.revokedAt}
