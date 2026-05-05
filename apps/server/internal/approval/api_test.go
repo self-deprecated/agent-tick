@@ -1168,6 +1168,74 @@ func TestAPIPolicySequencePublishesVoteStepAndFinalEvents(t *testing.T) {
 	)
 }
 
+func TestAPIPolicyStepAdvancedOnlyPublishesOnStepChange(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	events := &recordingEventBus{}
+	api.events = events
+	handler := api.Handler()
+
+	teamOne := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Gate one"})
+	teamTwo := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Gate two"})
+	userOne := loginAuth(t, handler, "gate-one@example.com")
+	userOneID, _, _ := store.UserIDForSessionToken(userOne.session.Value)
+	userTwo := loginAuth(t, handler, "gate-two-a@example.com")
+	userTwoID, _, _ := store.UserIDForSessionToken(userTwo.session.Value)
+	userThree := loginAuth(t, handler, "gate-two-b@example.com")
+	userThreeID, _, _ := store.UserIDForSessionToken(userThree.session.Value)
+	_, _ = store.UpsertTeamMember(defaultOrganizationID, teamOne.TeamID, UpsertTeamMemberRequest{UserID: userOneID, Role: RoleApprover})
+	_, _ = store.UpsertTeamMember(defaultOrganizationID, teamTwo.TeamID, UpsertTeamMemberRequest{UserID: userTwoID, Role: RoleApprover})
+	_, _ = store.UpsertTeamMember(defaultOrganizationID, teamTwo.TeamID, UpsertTeamMemberRequest{UserID: userThreeID, Role: RoleApprover})
+	policy := request[ApprovalPolicyRecord](t, handler, http.MethodPost, "/v1/policies", CreateApprovalPolicyRequest{
+		Name:     "Second-step quorum",
+		Template: PolicyTemplateSequence,
+		Steps: []ApprovalPolicyStep{
+			{Position: 1, StepType: PolicyTemplateAnyTeamMember, TeamID: teamOne.TeamID, Quorum: 1, DenyVeto: true},
+			{Position: 2, StepType: PolicyTemplateQuorum, TeamID: teamTwo.TeamID, Quorum: 2, DenyVeto: true},
+		},
+	})
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Ship gated sequence?", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+
+	advanced := requestWithSession[ApprovalRequest](t, handler, userOne, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
+	if advanced.Status != StatusPending || advanced.PolicyProgress == nil || advanced.PolicyProgress.CurrentStep != 2 {
+		t.Fatalf("advanced progress = %#v status %s, want step 2 pending", advanced.PolicyProgress, advanced.Status)
+	}
+	events.assertEvents(t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+		Event{Type: "approval.step_advanced", RequestID: created.ID},
+	)
+
+	stillStepTwo := requestWithSession[ApprovalRequest](t, handler, userTwo, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
+	if stillStepTwo.Status != StatusPending || stillStepTwo.PolicyProgress == nil || stillStepTwo.PolicyProgress.CurrentStep != 2 || stillStepTwo.PolicyProgress.WaitingFor != 1 {
+		t.Fatalf("stillStepTwo progress = %#v status %s, want step 2 waiting for one", stillStepTwo.PolicyProgress, stillStepTwo.Status)
+	}
+	events.assertEvents(t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+		Event{Type: "approval.step_advanced", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+	)
+
+	final := requestWithSession[ApprovalRequest](t, handler, userThree, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
+	if final.Status != StatusResponded || final.PolicyProgress == nil || final.PolicyProgress.State != "approved" {
+		t.Fatalf("final = %#v progress %#v, want approved final", final, final.PolicyProgress)
+	}
+	events.assertEvents(t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+		Event{Type: "approval.step_advanced", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+		Event{Type: "approval.final_decision", RequestID: created.ID},
+		Event{Type: "approval.responded", RequestID: created.ID},
+	)
+}
+
 func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
