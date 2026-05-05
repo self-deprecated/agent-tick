@@ -817,6 +817,34 @@ func TestSQLiteStorePolicyApprovalCoercesFinalChoice(t *testing.T) {
 	}
 }
 
+func TestSQLiteStorePolicyDenyCoercesFinalChoice(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Owner", Template: PolicyTemplateOwnerOnly})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy() error = %v", err)
+	}
+	request, err := store.Create(CreateRequest{
+		Title: "Custom deny",
+		Choices: []Choice{
+			{ID: "approve", Label: "Approve", Kind: "approve"},
+			{ID: "Deny", Label: "Escalate denial", Kind: "deny"},
+		},
+		Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	final, err := store.RespondForUserWithAuth(authContext{UserID: defaultUserID, OrganizationID: defaultOrganizationID, Source: authSourceSession}, request.ID, Response{ChoiceID: "Deny"})
+	if err != nil {
+		t.Fatalf("RespondForUserWithAuth() error = %v", err)
+	}
+	if final.Status != StatusResponded || final.Response == nil || final.Response.ChoiceID != "deny" {
+		t.Fatalf("final = %#v, want denied policy response coerced to deny", final)
+	}
+}
+
 func TestSQLiteStorePolicyDenyVetoAndSequence(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

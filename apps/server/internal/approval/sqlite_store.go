@@ -458,7 +458,7 @@ func (s *SQLiteStore) RespondForUserWithAuth(auth authContext, id string, respon
 		return s.GetForUser(auth.UserID, id)
 	}
 
-	policy, err := selectPolicyTx(tx, request.Metadata["organizationId"], policyID)
+	policy, err := selectPolicyTx(tx, requestOrganizationID, policyID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ApprovalRequest{}, ErrNotFound
 	}
