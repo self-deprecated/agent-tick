@@ -36,6 +36,7 @@ import {
   requestProjectID,
   requestProjectLabel,
   requestRequesterLabel,
+  shouldScheduleLocalNotifications,
   type ApprovalRequest,
   type Choice,
 } from "./approvalRequests";
@@ -51,6 +52,7 @@ const defaultServer = "http://localhost:8787";
 const serverURLKey = "agent-tick.serverURL";
 const tokenKey = "agent-tick.token";
 const deviceIDKey = "agent-tick.deviceID";
+const pushStatusKey = "agent-tick.pushStatus";
 const approvalCategoryID = "approval-request";
 
 Notifications.setNotificationHandler({
@@ -142,10 +144,12 @@ export default function App() {
           serverURLKey,
           tokenKey,
           deviceIDKey,
+          pushStatusKey,
         ]);
         const savedServerURL = entries.find(([key]) => key === serverURLKey)?.[1];
         const savedToken = entries.find(([key]) => key === tokenKey)?.[1];
         const savedDeviceID = entries.find(([key]) => key === deviceIDKey)?.[1];
+        const savedPushStatus = entries.find(([key]) => key === pushStatusKey)?.[1];
 
         if (!cancelled) {
           if (savedServerURL) {
@@ -156,6 +160,9 @@ export default function App() {
           }
           if (savedDeviceID) {
             setDeviceID(savedDeviceID);
+          }
+          if (isPushStatus(savedPushStatus)) {
+            setPushStatus(savedPushStatus);
           }
         }
       } finally {
@@ -188,6 +195,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener((notification) => {
+      const id = notification.request.content.data.approvalRequestID;
+      if (typeof id === "string" && id) {
+        seenRequestIDs.current.add(id);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     if (!settingsLoaded) {
       return;
     }
@@ -196,8 +214,9 @@ export default function App() {
       [serverURLKey, serverURL],
       [tokenKey, token],
       [deviceIDKey, deviceID],
+      [pushStatusKey, pushStatus],
     ]);
-  }, [deviceID, serverURL, settingsLoaded, token]);
+  }, [deviceID, pushStatus, serverURL, settingsLoaded, token]);
 
   const load = useCallback(async (options?: { visible?: boolean }) => {
     const visible = options?.visible ?? false;
@@ -214,6 +233,7 @@ export default function App() {
         pendingRequests,
         seenRequestIDs,
         didPrimeNotifications,
+        shouldScheduleLocalNotifications(pushStatus),
       );
       setRequests(pendingRequests);
       setConnectionStatus("connected");
@@ -243,7 +263,7 @@ export default function App() {
         setLoading(false);
       }
     }
-  }, [api, notificationTargetID, selectedProjectID]);
+  }, [api, notificationTargetID, pushStatus, selectedProjectID]);
 
   useEffect(() => {
     if (!settingsLoaded) {
@@ -482,6 +502,7 @@ export default function App() {
       }
       setDeviceID(credential.deviceId);
       setToken(credential.token);
+      setPushStatus("idle");
       setPairingCode("");
       await loadWithCredentials(activeServerURL, credential.token);
       Alert.alert("Paired", "This device can now receive approval requests.");
@@ -511,7 +532,12 @@ export default function App() {
       throw new Error(`Server returned ${response.status}`);
     }
     const pending = normalizeApprovals(await response.json());
-    await notifyForNewRequests(pending, seenRequestIDs, didPrimeNotifications);
+    await notifyForNewRequests(
+      pending,
+      seenRequestIDs,
+      didPrimeNotifications,
+      shouldScheduleLocalNotifications(pushStatus),
+    );
     setRequests(pending);
     setConnectionStatus("connected");
     setSelectedID((current) =>
@@ -774,10 +800,20 @@ function toNotificationStatus(
   return "undetermined";
 }
 
+function isPushStatus(value: unknown): value is PushStatus {
+  return (
+    value === "idle" ||
+    value === "registered" ||
+    value === "unsupported" ||
+    value === "failed"
+  );
+}
+
 async function notifyForNewRequests(
   pending: ApprovalRequest[],
   seenRequestIDs: React.MutableRefObject<Set<string>>,
   didPrimeNotifications: React.MutableRefObject<boolean>,
+  useLocalNotifications: boolean,
 ) {
   const pendingIDs = new Set(pending.map((request) => request.id));
 
@@ -791,6 +827,10 @@ async function notifyForNewRequests(
     (request) => !seenRequestIDs.current.has(request.id),
   );
   seenRequestIDs.current = pendingIDs;
+
+  if (!useLocalNotifications) {
+    return;
+  }
 
   const permissions = await Notifications.getPermissionsAsync();
   if (!permissions.granted) {

@@ -9,6 +9,7 @@ import {
   requestProjectID,
   requestProjectLabel,
   requestRequesterLabel,
+  shouldScheduleLocalNotifications,
 } from "./approvalRequests";
 import {
   notificationDecision,
@@ -223,6 +224,12 @@ describe("request normalization and notification helpers", () => {
         createdAt: "2026-04-19T12:00:00Z",
       }),
     ).toBe(true);
+  });
+
+  it("skips local notifications when remote push is registered", () => {
+    expect(shouldScheduleLocalNotifications("registered")).toBe(false);
+    expect(shouldScheduleLocalNotifications("idle")).toBe(true);
+    expect(shouldScheduleLocalNotifications("failed")).toBe(true);
   });
 });
 

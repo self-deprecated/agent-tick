@@ -212,6 +212,10 @@ export function supportsNotificationActions(request: ApprovalRequest) {
   );
 }
 
+export function shouldScheduleLocalNotifications(pushStatus: string) {
+  return pushStatus !== "registered";
+}
+
 export function notificationBody(request: ApprovalRequest) {
   if (request.command) {
     const host = request.requester.host || request.requester.name || "Agent";
