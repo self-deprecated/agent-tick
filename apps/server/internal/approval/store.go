@@ -78,6 +78,10 @@ type UserScopedAgentStore interface {
 	RevokeAgentTokenForUser(userID string, agentID string) error
 }
 
+type UserScopedAgentRotator interface {
+	RotateAgentTokenForUser(userID string, agentID string) (AgentCredential, error)
+}
+
 type AgentTokenOptionsStore interface {
 	CreateAgentTokenWithOptions(input CreateAgentTokenRequest) (AgentCredential, error)
 }

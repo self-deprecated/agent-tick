@@ -615,6 +615,23 @@
 		}
 	}
 
+	async function rotateAgent(agent: AgentTokenRecord) {
+		if (!window.confirm(`Rotate ${agent.name || agent.agentId}? Existing setup commands using this token will stop working.`)) {
+			return;
+		}
+		busyAgent = agent.agentId;
+		agentsError = '';
+		newAgentCredential = null;
+		try {
+			newAgentCredential = await api.rotateAgentToken(agent.agentId);
+			await loadAgents();
+		} catch (error) {
+			agentsError = errorMessage(error);
+		} finally {
+			busyAgent = '';
+		}
+	}
+
 	function selectTeam(teamID: string) {
 		selectedTeamID = teamID;
 		void loadTeamPresence(teamID);
@@ -1125,7 +1142,10 @@
 										<p class="muted">Scopes: {agent.scopes.join(', ') || 'none'}</p>
 									</div>
 									{#if !agent.revokedAt}
-										<button class="secondary danger-text" onclick={() => revokeAgent(agent)} disabled={busyAgent === agent.agentId}>{busyAgent === agent.agentId ? 'Revoking…' : 'Revoke'}</button>
+										<div class="toolbar">
+											<button class="secondary" onclick={() => rotateAgent(agent)} disabled={busyAgent !== ''}>{busyAgent === agent.agentId ? 'Working…' : 'Rotate'}</button>
+											<button class="secondary danger-text" onclick={() => revokeAgent(agent)} disabled={busyAgent !== ''}>{busyAgent === agent.agentId ? 'Working…' : 'Revoke'}</button>
+										</div>
 									{/if}
 								</article>
 							{/each}

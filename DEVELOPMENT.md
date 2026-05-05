@@ -98,7 +98,7 @@ Register an agent:
 3. Click `Create Agent Token`.
 4. Run either the shown `agent-tick setup ...` command or export the shown environment variables on the machine where the agent runs.
 
-The token is shown once. Agent tokens created by the dashboard default to `approval:write`, which lets the CLI create approval requests, poll its own request by ID, and abandon pending requests it no longer needs. It does not let the agent approve, pair devices, create tokens, or list all approvals. Project, team, and policy hints are validated server-side against the token metadata.
+The token is shown once. Agent tokens created by the dashboard default to `approval:write`, which lets the CLI create approval requests, poll its own request by ID, and abandon pending requests it no longer needs. It does not let the agent approve, pair devices, create tokens, or list all approvals. Project, team, and policy hints are validated server-side against the token metadata. Use the dashboard **Rotate** action when a token is exposed; it shows a replacement setup command once and immediately invalidates the old secret.
 
 ## Teams and Projects
 

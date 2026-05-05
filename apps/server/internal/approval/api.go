@@ -284,6 +284,13 @@ func (a *API) revokeAgentTokenForUser(userID string, agentID string) error {
 	return a.agents.RevokeAgentToken(agentID)
 }
 
+func (a *API) rotateAgentTokenForUser(userID string, agentID string) (AgentCredential, error) {
+	if rotator, ok := a.agents.(UserScopedAgentRotator); ok {
+		return rotator.RotateAgentTokenForUser(userID, agentID)
+	}
+	return a.agents.RotateAgentToken(agentID)
+}
+
 func (a *API) SetMode(mode string) error {
 	switch strings.TrimSpace(mode) {
 	case "", ModeSingle:
@@ -353,6 +360,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/agent-tokens", a.listAgentTokens)
 	mux.HandleFunc("POST /v1/agent-tokens", a.createAgentToken)
 	mux.HandleFunc("POST /v1/agent-tokens/{id}/revoke", a.revokeAgentToken)
+	mux.HandleFunc("POST /v1/agent-tokens/{id}/rotate", a.rotateAgentToken)
 	mux.HandleFunc("GET /v1/events", a.eventsSocket)
 	return a.withRequestSizeLimit(a.withRateLimit(a.withAuth(a.withCORS(mux))))
 }
@@ -1571,6 +1579,23 @@ func (a *API) revokeAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) rotateAgentToken(w http.ResponseWriter, r *http.Request) {
+	if a.agents == nil {
+		writeError(w, http.StatusNotImplemented, "agent tokens are not supported by this store")
+		return
+	}
+	credential, err := a.rotateAgentTokenForUser(currentAuth(r).UserID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "agent token not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, credential)
 }
 
 func (a *API) sendPush(request ApprovalRequest) {

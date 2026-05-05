@@ -1295,6 +1295,27 @@ func TestAPIPolicyStepAdvancedOnlyPublishesOnStepChange(t *testing.T) {
 	)
 }
 
+func TestAPIRotatesAgentTokenAndInvalidatesOldSecret(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	credential := request[AgentCredential](t, handler, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "rotate-me"})
+	rotated := request[AgentCredential](t, handler, http.MethodPost, "/v1/agent-tokens/"+credential.AgentID+"/rotate", nil)
+	if rotated.Token == "" || rotated.Token == credential.Token || rotated.AgentID != credential.AgentID {
+		t.Fatalf("rotated credential = %#v, original token %q", rotated, credential.Token)
+	}
+
+	oldRec := statusWithBearer(t, handler, credential.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Old token"})
+	if oldRec.Code != http.StatusUnauthorized {
+		t.Fatalf("old token status = %d body = %s, want %d", oldRec.Code, oldRec.Body.String(), http.StatusUnauthorized)
+	}
+	newRec := statusWithBearer(t, handler, rotated.Token, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "New token"})
+	if newRec.Code != http.StatusCreated {
+		t.Fatalf("new token status = %d body = %s, want %d", newRec.Code, newRec.Body.String(), http.StatusCreated)
+	}
+}
+
 func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

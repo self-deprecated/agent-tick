@@ -398,6 +398,13 @@ export class AdminApiClient {
 		});
 	}
 
+	rotateAgentToken(id: string): Promise<AgentCredential> {
+		return this.#requestJSON<AgentCredential>(`/v1/agent-tokens/${encodeURIComponent(id)}/rotate`, {
+			method: 'POST',
+			body: {}
+		});
+	}
+
 	listOrganizations(): Promise<OrganizationMembershipRecord[]> {
 		return this.#requestJSON<OrganizationMembershipRecord[]>('/v1/organizations');
 	}

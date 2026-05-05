@@ -1171,6 +1171,17 @@ func (s *SQLiteStore) UnpairDeviceForUser(userID string, deviceID string) error 
 }
 
 func (s *SQLiteStore) RotateAgentToken(agentID string) (AgentCredential, error) {
+	return s.rotateAgentTokenForUser(defaultUserID, agentID, false)
+}
+
+func (s *SQLiteStore) RotateAgentTokenForUser(userID string, agentID string) (AgentCredential, error) {
+	if strings.TrimSpace(userID) == "" {
+		userID = defaultUserID
+	}
+	return s.rotateAgentTokenForUser(userID, agentID, true)
+}
+
+func (s *SQLiteStore) rotateAgentTokenForUser(userID string, agentID string, scoped bool) (AgentCredential, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return AgentCredential{}, err
@@ -1179,11 +1190,17 @@ func (s *SQLiteStore) RotateAgentToken(agentID string) (AgentCredential, error) 
 
 	var credential AgentCredential
 	var scopesJSON string
-	err = tx.QueryRow(`
+	query := `
 		SELECT id, name, scopes_json, organization_id, project_id, owner_user_id, team_id, default_approval_policy
 		FROM agent_tokens
 		WHERE id = ? AND revoked_at = ''
-	`, agentID).Scan(
+	`
+	args := []any{agentID}
+	if scoped {
+		query += " AND user_id = ?"
+		args = append(args, userID)
+	}
+	err = tx.QueryRow(query, args...).Scan(
 		&credential.AgentID,
 		&credential.Name,
 		&scopesJSON,
@@ -1212,6 +1229,9 @@ func (s *SQLiteStore) RotateAgentToken(agentID string) (AgentCredential, error) 
 		agentID,
 	)
 	if err != nil {
+		return AgentCredential{}, err
+	}
+	if err := insertAuditForUser(tx, userID, "agent_token.rotated", agentID, map[string]string{"agentId": agentID}); err != nil {
 		return AgentCredential{}, err
 	}
 	if err := tx.Commit(); err != nil {

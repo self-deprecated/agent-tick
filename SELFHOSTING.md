@@ -91,7 +91,7 @@ Run Agent Tick behind an HTTPS reverse proxy for production. Set `AGENT_TICK_PUB
 
 Back up the `agent_tick_data` Docker volume. It contains the SQLite database with users, devices, coarse last-seen/availability state, team on-call schedules, agent tokens, approval history, policy definitions, approval votes, sessions, and audit events. For a simple backup, stop the container or take a filesystem-consistent snapshot before copying the volume contents.
 
-Rotate credentials deliberately. In single-user mode, change `AGENT_TICK_TOKEN` and restart the server if the dashboard token is exposed. For agent tokens, use the dashboard Agents panel or the server-local `agent-tick agent-token rotate <agent-id>` command, then rerun `agent-tick setup` on the machine where that agent runs. Revoke devices from the dashboard if a phone is lost or replaced.
+Rotate credentials deliberately. In single-user mode, change `AGENT_TICK_TOKEN` and restart the server if the dashboard token is exposed. For agent tokens, use **Rotate** in the dashboard Agents panel or the server-local `agent-tick agent-token rotate <agent-id>` command, then rerun `agent-tick setup` on the machine where that agent runs. Revoke devices from the dashboard if a phone is lost or replaced.
 
 The phone app can show local notifications while it polls. Expo remote push requires an EAS development or production build with a real EAS project id; Expo Go and placeholder project ids are limited to local notification behavior.
 
