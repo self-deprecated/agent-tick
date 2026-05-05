@@ -2,7 +2,9 @@ package approval
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -630,6 +632,266 @@ func TestSQLiteStoreApprovalPolicyCRUDValidationAndDefaults(t *testing.T) {
 	}
 	if _, err := store.GetApprovalPolicy(defaultOrganizationID, policy.PolicyID); err != ErrNotFound {
 		t.Fatalf("GetApprovalPolicy() after delete error = %v, want %v", err, ErrNotFound)
+	}
+}
+
+func TestSQLiteStorePolicyQuorumVoteFlow(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Backend"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	for _, userID := range []string{"usr_a", "usr_b"} {
+		if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: userID, Role: RoleApprover}); err != nil {
+			t.Fatalf("UpsertTeamMember(%s) error = %v", userID, err)
+		}
+	}
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Two approvers", Template: PolicyTemplateQuorum, TeamID: team.TeamID, Settings: map[string]string{"quorum": "2"}})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy() error = %v", err)
+	}
+	request, err := store.Create(CreateRequest{Title: "Deploy?", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	first, err := store.RespondForUserWithAuth(authContext{UserID: "usr_a", OrganizationID: defaultOrganizationID, Source: authSourceSession}, request.ID, Response{ChoiceID: "approve"})
+	if err != nil {
+		t.Fatalf("first RespondForUserWithAuth() error = %v", err)
+	}
+	if first.Status != StatusPending || first.Response != nil || first.PolicyProgress == nil || first.PolicyProgress.WaitingFor != 1 {
+		t.Fatalf("first response = %#v progress %#v, want pending waiting for one", first, first.PolicyProgress)
+	}
+	if _, err := store.RespondForUserWithAuth(authContext{UserID: "usr_a", OrganizationID: defaultOrganizationID, Source: authSourceSession}, request.ID, Response{ChoiceID: "approve"}); err != ErrAlreadyResponded {
+		t.Fatalf("duplicate vote error = %v, want %v", err, ErrAlreadyResponded)
+	}
+
+	final, err := store.RespondForUserWithAuth(authContext{UserID: "usr_b", OrganizationID: defaultOrganizationID, Source: authSourceSession}, request.ID, Response{ChoiceID: "approve"})
+	if err != nil {
+		t.Fatalf("final RespondForUserWithAuth() error = %v", err)
+	}
+	if final.Status != StatusResponded || final.Response == nil || final.Response.ChoiceID != "approve" {
+		t.Fatalf("final response = %#v, want approved responded", final)
+	}
+	if final.PolicyProgress == nil || final.PolicyProgress.State != "approved" || final.PolicyProgress.ReceivedApprovals != 2 {
+		t.Fatalf("final progress = %#v, want approved with two votes", final.PolicyProgress)
+	}
+}
+
+func TestSQLiteStorePolicyDenyVetoAndSequence(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	teamOne, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "One"})
+	if err != nil {
+		t.Fatalf("CreateTeam(one) error = %v", err)
+	}
+	teamTwo, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Two"})
+	if err != nil {
+		t.Fatalf("CreateTeam(two) error = %v", err)
+	}
+	_, _ = store.UpsertTeamMember(defaultOrganizationID, teamOne.TeamID, UpsertTeamMemberRequest{UserID: "usr_one", Role: RoleApprover})
+	_, _ = store.UpsertTeamMember(defaultOrganizationID, teamTwo.TeamID, UpsertTeamMemberRequest{UserID: "usr_two", Role: RoleApprover})
+
+	denyPolicy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Deny veto", Template: PolicyTemplateQuorum, TeamID: teamOne.TeamID, Settings: map[string]string{"quorum": "2", "denyVeto": "true"}})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy(deny) error = %v", err)
+	}
+	denyRequest, err := store.Create(CreateRequest{Title: "Danger", Metadata: map[string]string{"effectiveApprovalPolicy": denyPolicy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(deny) error = %v", err)
+	}
+	denied, err := store.RespondForUserWithAuth(authContext{UserID: "usr_one", OrganizationID: defaultOrganizationID, Source: authSourceSession}, denyRequest.ID, Response{ChoiceID: "deny"})
+	if err != nil {
+		t.Fatalf("deny vote error = %v", err)
+	}
+	if denied.Status != StatusResponded || denied.Response == nil || denied.Response.ChoiceID != "deny" || denied.PolicyProgress.State != "denied" {
+		t.Fatalf("denied = %#v progress %#v, want final denied", denied, denied.PolicyProgress)
+	}
+
+	sequencePolicy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{
+		Name:     "Two-step",
+		Template: PolicyTemplateSequence,
+		Steps: []ApprovalPolicyStep{
+			{Position: 1, StepType: PolicyTemplateAnyTeamMember, TeamID: teamOne.TeamID, Quorum: 1, DenyVeto: true},
+			{Position: 2, StepType: PolicyTemplateAnyTeamMember, TeamID: teamTwo.TeamID, Quorum: 1, DenyVeto: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy(sequence) error = %v", err)
+	}
+	sequenceRequest, err := store.Create(CreateRequest{Title: "Ship", Metadata: map[string]string{"effectiveApprovalPolicy": sequencePolicy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(sequence) error = %v", err)
+	}
+	advanced, err := store.RespondForUserWithAuth(authContext{UserID: "usr_one", OrganizationID: defaultOrganizationID, Source: authSourceSession}, sequenceRequest.ID, Response{ChoiceID: "approve"})
+	if err != nil {
+		t.Fatalf("sequence first vote error = %v", err)
+	}
+	if advanced.Status != StatusPending || advanced.PolicyProgress == nil || advanced.PolicyProgress.CurrentStep != 2 {
+		t.Fatalf("advanced progress = %#v status %s, want step 2 pending", advanced.PolicyProgress, advanced.Status)
+	}
+	complete, err := store.RespondForUserWithAuth(authContext{UserID: "usr_two", OrganizationID: defaultOrganizationID, Source: authSourceSession}, sequenceRequest.ID, Response{ChoiceID: "approve"})
+	if err != nil {
+		t.Fatalf("sequence second vote error = %v", err)
+	}
+	if complete.Status != StatusResponded || complete.PolicyProgress == nil || complete.PolicyProgress.State != "approved" {
+		t.Fatalf("complete = %#v progress %#v, want approved", complete, complete.PolicyProgress)
+	}
+}
+
+func TestSQLiteStorePolicyProgressTracksExpiredAndAbandoned(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Owner", Template: PolicyTemplateOwnerOnly})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy() error = %v", err)
+	}
+	expiredAt := time.Now().UTC().Add(-time.Minute)
+	expiredRequest, err := store.Create(CreateRequest{Title: "Expired", ExpiresAt: &expiredAt, Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(expired) error = %v", err)
+	}
+	if _, err := store.Get(expiredRequest.ID); err != nil {
+		t.Fatalf("Get(expired) error = %v", err)
+	}
+	expiredProgress, err := store.PolicyProgressForRequest(expiredRequest.ID, defaultUserID)
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest(expired) error = %v", err)
+	}
+	if expiredProgress == nil || expiredProgress.State != StatusExpired {
+		t.Fatalf("expired progress = %#v, want expired state", expiredProgress)
+	}
+
+	abandonedRequest, err := store.Create(CreateRequest{Title: "Abandoned", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create(abandoned) error = %v", err)
+	}
+	if _, changed, err := store.Abandon(abandonedRequest.ID); err != nil || !changed {
+		t.Fatalf("Abandon() changed=%v error=%v, want changed", changed, err)
+	}
+	abandonedProgress, err := store.PolicyProgressForRequest(abandonedRequest.ID, defaultUserID)
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest(abandoned) error = %v", err)
+	}
+	if abandonedProgress == nil || abandonedProgress.State != StatusAbandoned {
+		t.Fatalf("abandoned progress = %#v, want abandoned state", abandonedProgress)
+	}
+}
+
+func TestSQLiteStorePolicyQuorumRaceStopsAfterFinalDecision(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Single quorum"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	for _, userID := range []string{"usr_a", "usr_b"} {
+		if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: userID, Role: RoleApprover}); err != nil {
+			t.Fatalf("UpsertTeamMember(%s) error = %v", userID, err)
+		}
+	}
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "One wins", Template: PolicyTemplateAnyTeamMember, TeamID: team.TeamID})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy() error = %v", err)
+	}
+	request, err := store.Create(CreateRequest{Title: "Race one", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for _, userID := range []string{"usr_a", "usr_b"} {
+		wg.Add(1)
+		go func(userID string) {
+			defer wg.Done()
+			_, err := store.RespondForUserWithAuth(authContext{UserID: userID, OrganizationID: defaultOrganizationID, Source: authSourceSession}, request.ID, Response{ChoiceID: "approve"})
+			errs <- err
+		}(userID)
+	}
+	wg.Wait()
+	close(errs)
+	successes := 0
+	alreadyResponded := 0
+	for err := range errs {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrAlreadyResponded):
+			alreadyResponded++
+		default:
+			t.Fatalf("concurrent quorum-one vote error = %v", err)
+		}
+	}
+	if successes != 1 || alreadyResponded != 1 {
+		t.Fatalf("successes=%d alreadyResponded=%d, want one final decision and one conflict", successes, alreadyResponded)
+	}
+	progress, err := store.PolicyProgressForRequest(request.ID, "usr_a")
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest() error = %v", err)
+	}
+	if progress == nil || len(progress.Votes) != 1 || progress.State != "approved" {
+		t.Fatalf("progress = %#v, want one recorded vote and approved final state", progress)
+	}
+}
+
+func TestSQLiteStorePolicyQuorumConcurrentVotes(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	team, err := store.CreateTeam(defaultOrganizationID, CreateTeamRequest{Name: "Race"})
+	if err != nil {
+		t.Fatalf("CreateTeam() error = %v", err)
+	}
+	for _, userID := range []string{"usr_a", "usr_b"} {
+		if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: userID, Role: RoleApprover}); err != nil {
+			t.Fatalf("UpsertTeamMember(%s) error = %v", userID, err)
+		}
+	}
+	policy, err := store.CreateApprovalPolicy(defaultOrganizationID, CreateApprovalPolicyRequest{Name: "Race quorum", Template: PolicyTemplateQuorum, TeamID: team.TeamID, Settings: map[string]string{"quorum": "2"}})
+	if err != nil {
+		t.Fatalf("CreateApprovalPolicy() error = %v", err)
+	}
+	request, err := store.Create(CreateRequest{Title: "Race", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for _, userID := range []string{"usr_a", "usr_b"} {
+		wg.Add(1)
+		go func(userID string) {
+			defer wg.Done()
+			_, err := store.RespondForUserWithAuth(authContext{UserID: userID, OrganizationID: defaultOrganizationID, Source: authSourceSession}, request.ID, Response{ChoiceID: "approve"})
+			errs <- err
+		}(userID)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent vote error = %v", err)
+		}
+	}
+	final, err := store.Get(request.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if final.Status != StatusResponded || final.Response == nil || final.Response.ChoiceID != "approve" {
+		t.Fatalf("final = %#v, want approved response", final)
+	}
+	progress, err := store.PolicyProgressForRequest(request.ID, "usr_a")
+	if err != nil {
+		t.Fatalf("PolicyProgressForRequest() error = %v", err)
+	}
+	if progress == nil || len(progress.Votes) != 2 || progress.State != "approved" {
+		t.Fatalf("progress = %#v, want two approved votes", progress)
 	}
 }
 

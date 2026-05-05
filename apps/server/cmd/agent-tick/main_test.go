@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -449,6 +450,59 @@ func TestRequestJSONEventsEmitsIDImmediatelyAndTerminalLater(t *testing.T) {
 
 	if err := <-done; err != nil {
 		t.Fatalf("requestApprovalJSONEvents() error = %v", err)
+	}
+}
+
+func TestRequestApprovalWaitsForFinalPolicyDecision(t *testing.T) {
+	oldPollInterval := approvalPollInterval
+	approvalPollInterval = 10 * time.Millisecond
+	defer func() { approvalPollInterval = oldPollInterval }()
+
+	var gets atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/approval-requests":
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{ID: "req_policy", Title: "Run command?", Status: approval.StatusPending})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/approval-requests/req_policy":
+			if gets.Add(1) == 1 {
+				_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+					ID:     "req_policy",
+					Title:  "Run command?",
+					Status: approval.StatusPending,
+					PolicyProgress: &approval.ApprovalPolicyProgress{
+						PolicyID:          "pol_quorum",
+						State:             approval.StatusPending,
+						CurrentStep:       1,
+						TotalSteps:        1,
+						RequiredApprovals: 2,
+						ReceivedApprovals: 1,
+						WaitingFor:        1,
+					},
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(approval.ApprovalRequest{
+				ID:             "req_policy",
+				Title:          "Run command?",
+				Status:         approval.StatusResponded,
+				Response:       &approval.Response{ChoiceID: "approve"},
+				PolicyProgress: &approval.ApprovalPolicyProgress{PolicyID: "pol_quorum", State: "approved", RequiredApprovals: 2, ReceivedApprovals: 2},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	result, err := requestApproval(server.URL, approval.CreateRequest{Title: "Run command?"}, time.Second, "")
+	if err != nil {
+		t.Fatalf("requestApproval() error = %v", err)
+	}
+	if result.Status != approval.StatusResponded || result.Response == nil || result.Response.ChoiceID != "approve" {
+		t.Fatalf("result = %#v, want final approval response", result)
+	}
+	if gets.Load() < 2 {
+		t.Fatalf("GET count = %d, want requestApproval to keep polling past partial policy progress", gets.Load())
 	}
 }
 

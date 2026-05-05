@@ -181,9 +181,12 @@ func (a *API) getForUser(userID string, id string) (ApprovalRequest, error) {
 	return a.store.Get(id)
 }
 
-func (a *API) respondForUser(userID string, id string, response Response) (ApprovalRequest, error) {
+func (a *API) respondForUser(auth authContext, id string, response Response) (ApprovalRequest, error) {
+	if policyStore, ok := a.store.(PolicyResponseStore); ok {
+		return policyStore.RespondForUserWithAuth(auth, id, response)
+	}
 	if a.scopedStore != nil {
-		return a.scopedStore.RespondForUser(userID, id, response)
+		return a.scopedStore.RespondForUser(auth.UserID, id, response)
 	}
 	return a.store.Respond(id, response)
 }
@@ -527,20 +530,27 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.events.Publish(Event{Type: "approval.created", RequestID: request.ID})
-	writeJSON(w, http.StatusCreated, request)
+	writeJSON(w, http.StatusCreated, a.withPolicyProgress(request, auth.UserID))
 }
 
 func (a *API) list(w http.ResponseWriter, r *http.Request) {
-	requests, err := a.listForUser(currentAuth(r).UserID, r.URL.Query().Get("status"))
+	a.publishExpiredRequests()
+	auth := currentAuth(r)
+	requests, err := a.listForUser(auth.UserID, r.URL.Query().Get("status"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	for i := range requests {
+		requests[i] = a.withPolicyProgress(requests[i], auth.UserID)
 	}
 	writeJSON(w, http.StatusOK, requests)
 }
 
 func (a *API) get(w http.ResponseWriter, r *http.Request) {
-	request, err := a.getForUser(currentAuth(r).UserID, r.PathValue("id"))
+	a.publishExpiredRequests()
+	auth := currentAuth(r)
+	request, err := a.getForUser(auth.UserID, r.PathValue("id"))
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "approval request not found")
 		return
@@ -549,7 +559,40 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, request)
+	writeJSON(w, http.StatusOK, a.withPolicyProgress(request, auth.UserID))
+}
+
+func (a *API) withPolicyProgress(request ApprovalRequest, currentUserID string) ApprovalRequest {
+	request.PolicyProgress = a.policyProgressForRequest(request.ID, currentUserID)
+	return request
+}
+
+func (a *API) publishExpiredRequests() {
+	expiring, ok := a.store.(ExpiringStore)
+	if !ok {
+		return
+	}
+	expiredIDs, err := expiring.ExpirePendingRequests()
+	if err != nil {
+		log.Printf("expire pending approval requests: %v", err)
+		return
+	}
+	for _, requestID := range expiredIDs {
+		a.events.Publish(Event{Type: "approval.expired", RequestID: requestID})
+	}
+}
+
+func (a *API) policyProgressForRequest(requestID string, currentUserID string) *ApprovalPolicyProgress {
+	progressStore, ok := a.store.(PolicyProgressStore)
+	if !ok || strings.TrimSpace(requestID) == "" {
+		return nil
+	}
+	progress, err := progressStore.PolicyProgressForRequest(requestID, currentUserID)
+	if err != nil {
+		log.Printf("load policy progress for request %s: %v", requestID, err)
+		return nil
+	}
+	return progress
 }
 
 func (a *API) eventsSocket(w http.ResponseWriter, r *http.Request) {
@@ -557,6 +600,7 @@ func (a *API) eventsSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) respond(w http.ResponseWriter, r *http.Request) {
+	a.publishExpiredRequests()
 	var response Response
 	if err := json.NewDecoder(r.Body).Decode(&response); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid response JSON")
@@ -567,7 +611,9 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	request, err := a.respondForUser(currentAuth(r).UserID, r.PathValue("id"), response)
+	auth := currentAuth(r)
+	previousProgress := a.policyProgressForRequest(r.PathValue("id"), auth.UserID)
+	request, err := a.respondForUser(auth, r.PathValue("id"), response)
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "approval request not found")
 		return
@@ -596,11 +642,25 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	a.events.Publish(Event{Type: "approval.responded", RequestID: request.ID})
+	request = a.withPolicyProgress(request, auth.UserID)
+	if request.PolicyProgress != nil && request.PolicyProgress.PolicyID != "" {
+		a.events.Publish(Event{Type: "approval.vote_recorded", RequestID: request.ID})
+		if request.Status == StatusPending && previousProgress != nil && request.PolicyProgress.CurrentStep > previousProgress.CurrentStep {
+			a.events.Publish(Event{Type: "approval.step_advanced", RequestID: request.ID})
+			a.sendPush(request)
+		}
+	}
+	if request.Status == StatusResponded {
+		if request.PolicyProgress != nil && request.PolicyProgress.PolicyID != "" {
+			a.events.Publish(Event{Type: "approval.final_decision", RequestID: request.ID})
+		}
+		a.events.Publish(Event{Type: "approval.responded", RequestID: request.ID})
+	}
 	writeJSON(w, http.StatusOK, request)
 }
 
 func (a *API) abandon(w http.ResponseWriter, r *http.Request) {
+	a.publishExpiredRequests()
 	auth := currentAuth(r)
 	if auth.FromSession || auth.Source == authSourceDevice {
 		writeError(w, http.StatusForbidden, "only the request creator can abandon approval requests")
@@ -1174,7 +1234,13 @@ func (a *API) sendPush(request ApprovalRequest) {
 	if a.pairings == nil || a.push == nil {
 		return
 	}
-	tokens, err := a.listDevicePushTokensForUser(request.UserID)
+	var tokens []string
+	var err error
+	if eligible, ok := a.pairings.(EligiblePushTokenStore); ok {
+		tokens, err = eligible.ListEligibleDevicePushTokens(request)
+	} else {
+		tokens, err = a.listDevicePushTokensForUser(request.UserID)
+	}
 	if err != nil {
 		log.Printf("list push tokens for request %s: %v", request.ID, err)
 		return

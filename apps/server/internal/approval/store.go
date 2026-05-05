@@ -93,6 +93,22 @@ type AgentRequestRecorder interface {
 	RecordAgentRequest(agentID string, at time.Time) error
 }
 
+type PolicyResponseStore interface {
+	RespondForUserWithAuth(auth authContext, id string, response Response) (ApprovalRequest, error)
+}
+
+type PolicyProgressStore interface {
+	PolicyProgressForRequest(requestID string, currentUserID string) (*ApprovalPolicyProgress, error)
+}
+
+type EligiblePushTokenStore interface {
+	ListEligibleDevicePushTokens(request ApprovalRequest) ([]string, error)
+}
+
+type ExpiringStore interface {
+	ExpirePendingRequests() ([]string, error)
+}
+
 type UserTokenStore interface {
 	UserIDForAgentToken(token string, scope string) (string, bool, error)
 	UserIDForDeviceToken(token string) (string, bool, error)

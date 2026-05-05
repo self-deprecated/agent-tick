@@ -238,17 +238,16 @@ func (s *SQLiteStore) ListForUser(userID string, status string) ([]ApprovalReque
 
 	query := `
 		SELECT
-			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
+			r.id, r.user_id, r.organization_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
 			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
 			r.metadata_json, r.status, r.created_at,
 			resp.choice_id, resp.message, resp.answers_json, resp.created_at
 		FROM approval_requests r
 		LEFT JOIN approval_responses resp ON resp.request_id = r.id
-		WHERE r.user_id = ?
 	`
-	args := []any{userID}
+	args := []any{}
 	if status != "" {
-		query += " AND r.status = ?"
+		query += " WHERE r.status = ?"
 		args = append(args, status)
 	}
 	query += " ORDER BY r.created_at DESC"
@@ -259,15 +258,29 @@ func (s *SQLiteStore) ListForUser(userID string, status string) ([]ApprovalReque
 	}
 	defer rows.Close()
 
-	requests := []ApprovalRequest{}
+	allRequests := []ApprovalRequest{}
 	for rows.Next() {
-		request, err := scanRequest(rows)
+		var organizationID string
+		request, err := scanRequestWithOrganization(rows, &organizationID)
 		if err != nil {
 			return nil, err
 		}
-		requests = append(requests, request)
+		allRequests = append(allRequests, request)
 	}
-	return requests, rows.Err()
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	requests := []ApprovalRequest{}
+	for _, request := range allRequests {
+		if request.UserID == userID || s.policyRequestVisibleToUser(request, userID) {
+			requests = append(requests, request)
+		}
+	}
+	return requests, nil
 }
 
 func (s *SQLiteStore) Get(id string) (ApprovalRequest, error) {
@@ -282,22 +295,17 @@ func (s *SQLiteStore) GetForUser(userID string, id string) (ApprovalRequest, err
 		return ApprovalRequest{}, err
 	}
 
-	row := s.db.QueryRow(`
-		SELECT
-			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
-			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
-			r.metadata_json, r.status, r.created_at,
-			resp.choice_id, resp.message, resp.answers_json, resp.created_at
-		FROM approval_requests r
-		LEFT JOIN approval_responses resp ON resp.request_id = r.id
-		WHERE r.id = ? AND r.user_id = ?
-	`, id, userID)
-
-	request, err := scanRequest(row)
+	request, _, err := selectRequestByIDWithOrg(s.db, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ApprovalRequest{}, ErrNotFound
 	}
-	return request, err
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	if request.UserID == userID || s.policyRequestVisibleToUser(request, userID) {
+		return request, nil
+	}
+	return ApprovalRequest{}, ErrNotFound
 }
 
 func (s *SQLiteStore) Respond(id string, response Response) (ApprovalRequest, error) {
@@ -393,6 +401,140 @@ func (s *SQLiteStore) RespondForUser(userID string, id string, response Response
 	return request, nil
 }
 
+func (s *SQLiteStore) RespondForUserWithAuth(auth authContext, id string, response Response) (ApprovalRequest, error) {
+	if strings.TrimSpace(auth.UserID) == "" {
+		auth.UserID = defaultUserID
+	}
+	if strings.TrimSpace(auth.Source) == "" {
+		auth.Source = authSourceAdmin
+	}
+	if err := s.expirePendingRequests(); err != nil {
+		return ApprovalRequest{}, err
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	defer rollback(tx)
+
+	if _, err := tx.Exec("UPDATE approval_requests SET status = status WHERE id = ?", id); err != nil {
+		return ApprovalRequest{}, err
+	}
+	request, requestOrganizationID, err := selectRequestByIDWithOrg(tx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ApprovalRequest{}, ErrNotFound
+	}
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	policyID := effectivePolicyID(request)
+	if policyID == "" && request.UserID != auth.UserID {
+		return ApprovalRequest{}, ErrNotFound
+	}
+	if policyID != "" && strings.TrimSpace(auth.OrganizationID) != "" && requestOrganizationID != auth.OrganizationID {
+		return ApprovalRequest{}, ErrNotFound
+	}
+	if request.Response != nil {
+		return ApprovalRequest{}, ErrAlreadyResponded
+	}
+	if request.Status == StatusExpired {
+		return ApprovalRequest{}, ErrExpired
+	}
+	if request.Status == StatusAbandoned {
+		return ApprovalRequest{}, ErrAbandoned
+	}
+	if err := validateResponseForRequest(request, response); err != nil {
+		return ApprovalRequest{}, err
+	}
+
+	if policyID == "" || request.RequestType == RequestTypeQuestionnaire || request.RequestType == RequestTypeSteer {
+		if err := finalizeResponseTx(tx, request.ID, auth.UserID, response, time.Now().UTC()); err != nil {
+			return ApprovalRequest{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return ApprovalRequest{}, err
+		}
+		return s.GetForUser(auth.UserID, id)
+	}
+
+	policy, err := selectPolicyTx(tx, request.Metadata["organizationId"], policyID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ApprovalRequest{}, ErrNotFound
+	}
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	policy.Steps, err = loadPolicyStepsTx(tx, policy.PolicyID)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	if len(policy.Steps) == 0 {
+		policy.Steps = normalizedPolicySteps(policy.Template, policy.TeamID, nil, policy.Settings)
+	}
+
+	progress, err := evaluatePolicyProgressTx(tx, request, policy, auth.UserID)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	if progress.CurrentUserHasVoted && progress.State == StatusPending {
+		return ApprovalRequest{}, ErrAlreadyResponded
+	}
+	if len(progress.EligibleApproverIDs) > 0 && !slices.Contains(progress.EligibleApproverIDs, auth.UserID) {
+		return ApprovalRequest{}, ErrInvalidRequest
+	}
+	now := time.Now().UTC()
+	answersJSON, err := marshalJSON(response.Answers)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	_, err = tx.Exec(`
+		INSERT INTO approval_votes (id, request_id, policy_id, step, approver_user_id, source, choice_id, message, answers_json, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "vote_"+newID(), request.ID, policy.PolicyID, progress.CurrentStep, auth.UserID, auth.Source, response.ChoiceID, response.Message, answersJSON, timeText(&now))
+	if err != nil {
+		if strings.Contains(err.Error(), "constraint") || strings.Contains(err.Error(), "UNIQUE") {
+			return ApprovalRequest{}, ErrAlreadyResponded
+		}
+		return ApprovalRequest{}, err
+	}
+	if err := insertAuditForUser(tx, auth.UserID, "approval_vote.recorded", request.ID, map[string]any{"policyId": policy.PolicyID, "step": progress.CurrentStep, "choiceId": response.ChoiceID}); err != nil {
+		return ApprovalRequest{}, err
+	}
+
+	progress, err = evaluatePolicyProgressTx(tx, request, policy, auth.UserID)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	if err := updateRequestPolicyMetadataTx(tx, request.UserID, request.ID, progress); err != nil {
+		return ApprovalRequest{}, err
+	}
+	if progress.State == "approved" || progress.State == "denied" {
+		final := response
+		if progress.State == "approved" && strings.TrimSpace(final.ChoiceID) == "" {
+			final.ChoiceID = "approve"
+		}
+		if progress.State == "denied" {
+			final.ChoiceID = "deny"
+		}
+		if err := finalizeResponseTx(tx, request.ID, auth.UserID, final, now); err != nil {
+			return ApprovalRequest{}, err
+		}
+		if err := insertAuditForUser(tx, auth.UserID, "approval_policy.final_decision", request.ID, map[string]string{"policyId": policy.PolicyID, "state": progress.State}); err != nil {
+			return ApprovalRequest{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return ApprovalRequest{}, err
+	}
+	current, err := s.GetForUser(request.UserID, id)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	current.PolicyProgress, _ = s.PolicyProgressForRequest(current.ID, auth.UserID)
+	return current, nil
+}
+
 func (s *SQLiteStore) Abandon(id string) (ApprovalRequest, bool, error) {
 	return s.AbandonForUser(defaultUserID, id)
 }
@@ -479,14 +621,52 @@ func (s *SQLiteStore) AbandonForUserWithReason(userID string, id string, reason 
 	return request, changed, nil
 }
 
-func (s *SQLiteStore) expirePendingRequests() error {
+func (s *SQLiteStore) ExpirePendingRequests() ([]string, error) {
 	now := time.Now().UTC()
-	_, err := s.db.Exec(
-		"UPDATE approval_requests SET status = ? WHERE status = ? AND expires_at != '' AND expires_at <= ?",
-		StatusExpired,
-		StatusPending,
-		timeText(&now),
-	)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer rollback(tx)
+
+	rows, err := tx.Query("SELECT id FROM approval_requests WHERE status = ? AND expires_at != '' AND expires_at <= ?", StatusPending, timeText(&now))
+	if err != nil {
+		return nil, err
+	}
+	expiredIDs := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		expiredIDs = append(expiredIDs, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(expiredIDs) > 0 {
+		_, err = tx.Exec(
+			"UPDATE approval_requests SET status = ? WHERE status = ? AND expires_at != '' AND expires_at <= ?",
+			StatusExpired,
+			StatusPending,
+			timeText(&now),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return expiredIDs, nil
+}
+
+func (s *SQLiteStore) expirePendingRequests() error {
+	_, err := s.ExpirePendingRequests()
 	return err
 }
 
@@ -2112,6 +2292,259 @@ func ensurePolicyExistsDB(db rowQuerier, organizationID string, policyID string)
 	return err
 }
 
+func selectPolicyTx(tx *sql.Tx, organizationID string, policyID string) (ApprovalPolicyRecord, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		return scanPolicy(tx.QueryRow(`
+			SELECT id, organization_id, project_id, team_id, name, template, summary, settings_json, created_at, updated_at
+			FROM approval_policies
+			WHERE id = ? AND deleted_at = ''
+		`, policyID))
+	}
+	return scanPolicy(tx.QueryRow(`
+		SELECT id, organization_id, project_id, team_id, name, template, summary, settings_json, created_at, updated_at
+		FROM approval_policies
+		WHERE organization_id = ? AND id = ? AND deleted_at = ''
+	`, organizationID, policyID))
+}
+
+func loadPolicyStepsTx(tx *sql.Tx, policyID string) ([]ApprovalPolicyStep, error) {
+	rows, err := tx.Query(`
+		SELECT id, position, step_type, team_id, quorum, timeout_seconds, escalation_target, deny_veto
+		FROM approval_policy_steps
+		WHERE policy_id = ?
+		ORDER BY position ASC
+	`, policyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	steps := []ApprovalPolicyStep{}
+	for rows.Next() {
+		step, err := scanPolicyStep(rows)
+		if err != nil {
+			return nil, err
+		}
+		steps = append(steps, step)
+	}
+	return steps, rows.Err()
+}
+
+func evaluatePolicyProgressTx(tx *sql.Tx, request ApprovalRequest, policy ApprovalPolicyRecord, currentUserID string) (*ApprovalPolicyProgress, error) {
+	steps := policy.Steps
+	if len(steps) == 0 {
+		steps = normalizedPolicySteps(policy.Template, policy.TeamID, nil, policy.Settings)
+	}
+	votes, err := loadVotesTx(tx, request.ID)
+	if err != nil {
+		return nil, err
+	}
+	progress := &ApprovalPolicyProgress{
+		PolicyID:    policy.PolicyID,
+		State:       StatusPending,
+		CurrentStep: 1,
+		TotalSteps:  len(steps),
+		Votes:       votes,
+	}
+	terminalState := ""
+	if request.Status == StatusResponded {
+		progress.State = "approved"
+		if request.Response != nil && isDenyChoiceID(request.Response.ChoiceID) {
+			progress.State = "denied"
+		}
+	}
+	if request.Status == StatusExpired || request.Status == StatusAbandoned {
+		terminalState = request.Status
+		progress.State = terminalState
+	}
+	for _, step := range steps {
+		stepVotes := votesForStep(votes, step.Position)
+		required := requiredApprovals(step)
+		received := approvalVoteCount(stepVotes)
+		progress.CurrentStep = step.Position
+		progress.RequiredApprovals = required
+		progress.ReceivedApprovals = received
+		progress.CurrentUserHasVoted = hasVoteFromUser(stepVotes, currentUserID)
+		progress.WaitingFor = maxInt(0, required-received)
+		progress.EligibleApproverIDs, err = eligibleApproversTx(tx, request, policy, step)
+		if err != nil {
+			return nil, err
+		}
+		if denyVetoed(step, stepVotes) {
+			progress.State = "denied"
+			progress.WaitingFor = 0
+			return progress, nil
+		}
+		if received < required {
+			progress.State = StatusPending
+			if terminalState != "" {
+				progress.State = terminalState
+				progress.WaitingFor = 0
+			}
+			return progress, nil
+		}
+	}
+	if terminalState != "" {
+		progress.State = terminalState
+		progress.WaitingFor = 0
+		return progress, nil
+	}
+	progress.State = "approved"
+	progress.WaitingFor = 0
+	return progress, nil
+}
+
+func loadVotesTx(tx *sql.Tx, requestID string) ([]ApprovalVoteRecord, error) {
+	rows, err := tx.Query(`
+		SELECT id, request_id, policy_id, step, approver_user_id, source, choice_id, message, answers_json, created_at
+		FROM approval_votes
+		WHERE request_id = ?
+		ORDER BY step ASC, created_at ASC
+	`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	votes := []ApprovalVoteRecord{}
+	for rows.Next() {
+		vote, err := scanVote(rows)
+		if err != nil {
+			return nil, err
+		}
+		votes = append(votes, vote)
+	}
+	return votes, rows.Err()
+}
+
+func scanVote(scanner requestScanner) (ApprovalVoteRecord, error) {
+	var vote ApprovalVoteRecord
+	var answersJSON string
+	var createdAt string
+	err := scanner.Scan(&vote.VoteID, &vote.RequestID, &vote.PolicyID, &vote.Step, &vote.ApproverUserID, &vote.Source, &vote.ChoiceID, &vote.Message, &answersJSON, &createdAt)
+	if err != nil {
+		return ApprovalVoteRecord{}, err
+	}
+	if strings.TrimSpace(answersJSON) != "" {
+		if err := json.Unmarshal([]byte(answersJSON), &vote.Answers); err != nil {
+			return ApprovalVoteRecord{}, err
+		}
+	}
+	parsedCreatedAt, err := parseTime(createdAt)
+	if err != nil {
+		return ApprovalVoteRecord{}, err
+	}
+	vote.CreatedAt = parsedCreatedAt
+	return vote, nil
+}
+
+func eligibleApproversTx(tx *sql.Tx, request ApprovalRequest, policy ApprovalPolicyRecord, step ApprovalPolicyStep) ([]string, error) {
+	stepType := strings.TrimSpace(step.StepType)
+	if stepType == "" {
+		stepType = strings.TrimSpace(policy.Template)
+	}
+	if stepType == PolicyTemplateOwnerOnly {
+		return ownerApproverIDs(request), nil
+	}
+
+	teamID := strings.TrimSpace(step.TeamID)
+	if teamID == "" {
+		teamID = strings.TrimSpace(policy.TeamID)
+	}
+	if teamID != "" {
+		rows, err := tx.Query("SELECT user_id FROM team_members WHERE team_id = ? ORDER BY created_at ASC", teamID)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		users := []string{}
+		for rows.Next() {
+			var userID string
+			if err := rows.Scan(&userID); err != nil {
+				return nil, err
+			}
+			users = append(users, userID)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		if len(users) > 0 {
+			return users, nil
+		}
+	}
+	return ownerApproverIDs(request), nil
+}
+
+func ownerApproverIDs(request ApprovalRequest) []string {
+	if owner := strings.TrimSpace(request.Metadata["ownerUserId"]); owner != "" {
+		return []string{owner}
+	}
+	if strings.TrimSpace(request.UserID) != "" {
+		return []string{request.UserID}
+	}
+	return []string{defaultUserID}
+}
+
+func votesForStep(votes []ApprovalVoteRecord, step int) []ApprovalVoteRecord {
+	output := []ApprovalVoteRecord{}
+	for _, vote := range votes {
+		if vote.Step == step {
+			output = append(output, vote)
+		}
+	}
+	return output
+}
+
+func approvalVoteCount(votes []ApprovalVoteRecord) int {
+	count := 0
+	for _, vote := range votes {
+		if !isDenyChoiceID(vote.ChoiceID) {
+			count++
+		}
+	}
+	return count
+}
+
+func hasVoteFromUser(votes []ApprovalVoteRecord, userID string) bool {
+	if strings.TrimSpace(userID) == "" {
+		return false
+	}
+	for _, vote := range votes {
+		if vote.ApproverUserID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func denyVetoed(step ApprovalPolicyStep, votes []ApprovalVoteRecord) bool {
+	if !step.DenyVeto {
+		return false
+	}
+	for _, vote := range votes {
+		if isDenyChoiceID(vote.ChoiceID) {
+			return true
+		}
+	}
+	return false
+}
+
+func requiredApprovals(step ApprovalPolicyStep) int {
+	if step.Quorum > 0 {
+		return step.Quorum
+	}
+	return 1
+}
+
+func isDenyChoiceID(choiceID string) bool {
+	return strings.EqualFold(strings.TrimSpace(choiceID), "deny")
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func scanPolicy(scanner requestScanner) (ApprovalPolicyRecord, error) {
 	var policy ApprovalPolicyRecord
 	var settingsJSON string
@@ -2438,6 +2871,20 @@ func (s *SQLiteStore) migrate() error {
 			created_at TEXT NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS approval_votes (
+			id TEXT PRIMARY KEY,
+			request_id TEXT NOT NULL REFERENCES approval_requests(id) ON DELETE CASCADE,
+			policy_id TEXT NOT NULL DEFAULT '',
+			step INTEGER NOT NULL DEFAULT 1,
+			approver_user_id TEXT NOT NULL,
+			source TEXT NOT NULL DEFAULT '',
+			choice_id TEXT NOT NULL,
+			message TEXT NOT NULL DEFAULT '',
+			answers_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL,
+			UNIQUE(request_id, policy_id, step, approver_user_id)
+		);
+
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
@@ -2598,6 +3045,18 @@ func (s *SQLiteStore) migrate() error {
 	if err := s.addColumnIfMissing("approval_responses", "answers_json", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("approval_votes", "policy_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("approval_votes", "step", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("approval_votes", "source", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("approval_votes", "answers_json", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		return err
+	}
 
 	if _, err := s.db.Exec(`
 		UPDATE approval_requests SET organization_id = 'org_default' WHERE organization_id = '';
@@ -2636,6 +3095,8 @@ func (s *SQLiteStore) migrate() error {
 			ON approval_policies (organization_id, name);
 		CREATE INDEX IF NOT EXISTS approval_policy_steps_policy_position_idx
 			ON approval_policy_steps (policy_id, position);
+		CREATE INDEX IF NOT EXISTS approval_votes_request_step_idx
+			ON approval_votes (request_id, step, created_at);
 		CREATE INDEX IF NOT EXISTS organization_invites_org_email_idx
 			ON organization_invites (organization_id, email);
 	`)
@@ -2676,6 +3137,10 @@ type requestScanner interface {
 }
 
 func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
+	return scanRequestWithOrganization(scanner, nil)
+}
+
+func scanRequestWithOrganization(scanner requestScanner, organizationID *string) (ApprovalRequest, error) {
 	var request ApprovalRequest
 	var requesterJSON string
 	var choicesJSON string
@@ -2688,28 +3153,55 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 	var responseAnswers sql.NullString
 	var respondedAt sql.NullString
 
-	err := scanner.Scan(
-		&request.ID,
-		&request.UserID,
-		&requesterJSON,
-		&request.RequestType,
-		&request.Title,
-		&request.Body,
-		&request.Command,
-		&choicesJSON,
-		&questionsJSON,
-		&request.DefaultChoice,
-		&request.AllowFreeformReply,
-		&expiresAt,
-		&request.Risk,
-		&metadataJSON,
-		&request.Status,
-		&createdAt,
-		&responseChoice,
-		&responseMessage,
-		&responseAnswers,
-		&respondedAt,
-	)
+	var err error
+	if organizationID == nil {
+		err = scanner.Scan(
+			&request.ID,
+			&request.UserID,
+			&requesterJSON,
+			&request.RequestType,
+			&request.Title,
+			&request.Body,
+			&request.Command,
+			&choicesJSON,
+			&questionsJSON,
+			&request.DefaultChoice,
+			&request.AllowFreeformReply,
+			&expiresAt,
+			&request.Risk,
+			&metadataJSON,
+			&request.Status,
+			&createdAt,
+			&responseChoice,
+			&responseMessage,
+			&responseAnswers,
+			&respondedAt,
+		)
+	} else {
+		err = scanner.Scan(
+			&request.ID,
+			&request.UserID,
+			organizationID,
+			&requesterJSON,
+			&request.RequestType,
+			&request.Title,
+			&request.Body,
+			&request.Command,
+			&choicesJSON,
+			&questionsJSON,
+			&request.DefaultChoice,
+			&request.AllowFreeformReply,
+			&expiresAt,
+			&request.Risk,
+			&metadataJSON,
+			&request.Status,
+			&createdAt,
+			&responseChoice,
+			&responseMessage,
+			&responseAnswers,
+			&respondedAt,
+		)
+	}
 	if err != nil {
 		return ApprovalRequest{}, err
 	}
@@ -2730,6 +3222,12 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 		if err := json.Unmarshal([]byte(metadataJSON), &request.Metadata); err != nil {
 			return ApprovalRequest{}, err
 		}
+	}
+	if request.Metadata == nil {
+		request.Metadata = map[string]string{}
+	}
+	if organizationID != nil && *organizationID != "" {
+		request.Metadata["organizationId"] = *organizationID
 	}
 
 	parsedCreatedAt, err := parseTime(createdAt)
@@ -2755,6 +3253,184 @@ func scanRequest(scanner requestScanner) (ApprovalRequest, error) {
 	}
 
 	return request, nil
+}
+
+func (s *SQLiteStore) PolicyProgressForRequest(requestID string, currentUserID string) (*ApprovalPolicyProgress, error) {
+	request, err := s.getRequestByID(requestID)
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	policyID := effectivePolicyID(request)
+	if policyID == "" {
+		return nil, nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer rollback(tx)
+	policy, err := selectPolicyTx(tx, "", policyID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	policy.Steps, err = loadPolicyStepsTx(tx, policy.PolicyID)
+	if err != nil {
+		return nil, err
+	}
+	progress, err := evaluatePolicyProgressTx(tx, request, policy, currentUserID)
+	if err != nil {
+		return nil, err
+	}
+	return progress, tx.Commit()
+}
+
+func (s *SQLiteStore) getRequestByID(requestID string) (ApprovalRequest, error) {
+	row := s.db.QueryRow(`
+		SELECT
+			r.id, r.user_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
+			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
+			r.metadata_json, r.status, r.created_at,
+			resp.choice_id, resp.message, resp.answers_json, resp.created_at
+		FROM approval_requests r
+		LEFT JOIN approval_responses resp ON resp.request_id = r.id
+		WHERE r.id = ?
+	`, requestID)
+	request, err := scanRequest(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ApprovalRequest{}, ErrNotFound
+	}
+	return request, err
+}
+
+func (s *SQLiteStore) policyRequestVisibleToUser(request ApprovalRequest, userID string) bool {
+	if strings.TrimSpace(userID) == "" {
+		return false
+	}
+	progress, err := s.PolicyProgressForRequest(request.ID, userID)
+	if err != nil || progress == nil {
+		return false
+	}
+	if progress.CurrentUserHasVoted || slices.Contains(progress.EligibleApproverIDs, userID) {
+		return true
+	}
+	for _, vote := range progress.Votes {
+		if vote.ApproverUserID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *SQLiteStore) ListEligibleDevicePushTokens(request ApprovalRequest) ([]string, error) {
+	policyID := effectivePolicyID(request)
+	if policyID == "" {
+		return s.ListDevicePushTokensForUser(request.UserID)
+	}
+	progress, err := s.PolicyProgressForRequest(request.ID, "")
+	if err != nil {
+		return nil, err
+	}
+	if progress == nil || len(progress.EligibleApproverIDs) == 0 {
+		return s.ListDevicePushTokensForUser(request.UserID)
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(progress.EligibleApproverIDs)), ",")
+	args := make([]any, 0, len(progress.EligibleApproverIDs))
+	for _, userID := range progress.EligibleApproverIDs {
+		args = append(args, userID)
+	}
+	rows, err := s.db.Query("SELECT expo_push_token FROM devices WHERE unpaired_at = '' AND expo_push_token != '' AND user_id IN ("+placeholders+")", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tokens := []string{}
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens, rows.Err()
+}
+
+type requestQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func selectRequestTx(tx *sql.Tx, userID string, id string) (ApprovalRequest, error) {
+	request, _, err := selectRequestByIDWithOrg(tx, id)
+	if err != nil {
+		return ApprovalRequest{}, err
+	}
+	if request.UserID != userID {
+		return ApprovalRequest{}, sql.ErrNoRows
+	}
+	return request, nil
+}
+
+func selectRequestByIDWithOrg(queryer requestQueryer, id string) (ApprovalRequest, string, error) {
+	var organizationID string
+	row := queryer.QueryRow(`
+		SELECT
+			r.id, r.user_id, r.organization_id, r.requester_json, r.request_type, r.title, r.body, r.command, r.choices_json, r.questions_json,
+			r.default_choice, r.allow_freeform_reply, r.expires_at, r.risk,
+			r.metadata_json, r.status, r.created_at,
+			resp.choice_id, resp.message, resp.answers_json, resp.created_at
+		FROM approval_requests r
+		LEFT JOIN approval_responses resp ON resp.request_id = r.id
+		WHERE r.id = ?
+	`, id)
+	request, err := scanRequestWithOrganization(row, &organizationID)
+	return request, organizationID, err
+}
+
+func finalizeResponseTx(tx *sql.Tx, requestID string, userID string, response Response, now time.Time) error {
+	answersJSON, err := marshalJSON(response.Answers)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(
+		"INSERT INTO approval_responses (request_id, choice_id, message, answers_json, created_at) VALUES (?, ?, ?, ?, ?)",
+		requestID,
+		response.ChoiceID,
+		response.Message,
+		answersJSON,
+		timeText(&now),
+	)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec("UPDATE approval_requests SET status = ?, responded_at = ? WHERE id = ?", StatusResponded, timeText(&now), requestID); err != nil {
+		return err
+	}
+	return insertAuditForUser(tx, userID, "approval_request.responded", requestID, response)
+}
+
+func effectivePolicyID(request ApprovalRequest) string {
+	if request.Metadata == nil {
+		return ""
+	}
+	if policyID := strings.TrimSpace(request.Metadata["effectiveApprovalPolicy"]); strings.HasPrefix(policyID, "pol_") {
+		return policyID
+	}
+	if policyID := strings.TrimSpace(request.Metadata["approvalPolicy"]); strings.HasPrefix(policyID, "pol_") {
+		return policyID
+	}
+	return ""
+}
+
+func updateRequestPolicyMetadataTx(tx *sql.Tx, userID string, requestID string, progress *ApprovalPolicyProgress) error {
+	return updateRequestMetadata(tx, userID, requestID, func(metadata map[string]string) {
+		metadata["policyState"] = progress.State
+		metadata["policyStep"] = strconv.Itoa(progress.CurrentStep)
+	})
 }
 
 func updateRequestMetadata(tx *sql.Tx, userID string, requestID string, update func(map[string]string)) error {

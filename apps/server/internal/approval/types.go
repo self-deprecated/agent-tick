@@ -53,30 +53,57 @@ type CreateRequest struct {
 }
 
 type ApprovalRequest struct {
-	ID                 string            `json:"id"`
-	UserID             string            `json:"userId,omitempty"`
-	Requester          Requester         `json:"requester"`
-	RequestType        string            `json:"requestType"`
-	Title              string            `json:"title"`
-	Body               string            `json:"body,omitempty"`
-	Command            string            `json:"command,omitempty"`
-	Choices            []Choice          `json:"choices"`
-	Questions          []Question        `json:"questions,omitempty"`
-	DefaultChoice      string            `json:"defaultChoice,omitempty"`
-	AllowFreeformReply bool              `json:"allowFreeformReply"`
-	ExpiresAt          *time.Time        `json:"expiresAt,omitempty"`
-	Risk               string            `json:"risk,omitempty"`
-	Metadata           map[string]string `json:"metadata,omitempty"`
-	Status             string            `json:"status"`
-	CreatedAt          time.Time         `json:"createdAt"`
-	RespondedAt        *time.Time        `json:"respondedAt,omitempty"`
-	Response           *Response         `json:"response,omitempty"`
+	ID                 string                  `json:"id"`
+	UserID             string                  `json:"userId,omitempty"`
+	Requester          Requester               `json:"requester"`
+	RequestType        string                  `json:"requestType"`
+	Title              string                  `json:"title"`
+	Body               string                  `json:"body,omitempty"`
+	Command            string                  `json:"command,omitempty"`
+	Choices            []Choice                `json:"choices"`
+	Questions          []Question              `json:"questions,omitempty"`
+	DefaultChoice      string                  `json:"defaultChoice,omitempty"`
+	AllowFreeformReply bool                    `json:"allowFreeformReply"`
+	ExpiresAt          *time.Time              `json:"expiresAt,omitempty"`
+	Risk               string                  `json:"risk,omitempty"`
+	Metadata           map[string]string       `json:"metadata,omitempty"`
+	Status             string                  `json:"status"`
+	CreatedAt          time.Time               `json:"createdAt"`
+	RespondedAt        *time.Time              `json:"respondedAt,omitempty"`
+	Response           *Response               `json:"response,omitempty"`
+	PolicyProgress     *ApprovalPolicyProgress `json:"policyProgress,omitempty"`
 }
 
 type Response struct {
 	ChoiceID string              `json:"choiceId"`
 	Message  string              `json:"message,omitempty"`
 	Answers  map[string][]string `json:"answers,omitempty"`
+}
+
+type ApprovalVoteRecord struct {
+	VoteID         string              `json:"voteId"`
+	RequestID      string              `json:"requestId"`
+	PolicyID       string              `json:"policyId,omitempty"`
+	Step           int                 `json:"step"`
+	ApproverUserID string              `json:"approverUserId"`
+	Source         string              `json:"source"`
+	ChoiceID       string              `json:"choiceId"`
+	Message        string              `json:"message,omitempty"`
+	Answers        map[string][]string `json:"answers,omitempty"`
+	CreatedAt      time.Time           `json:"createdAt"`
+}
+
+type ApprovalPolicyProgress struct {
+	PolicyID            string               `json:"policyId,omitempty"`
+	State               string               `json:"state"`
+	CurrentStep         int                  `json:"currentStep"`
+	TotalSteps          int                  `json:"totalSteps"`
+	RequiredApprovals   int                  `json:"requiredApprovals"`
+	ReceivedApprovals   int                  `json:"receivedApprovals"`
+	CurrentUserHasVoted bool                 `json:"currentUserHasVoted"`
+	WaitingFor          int                  `json:"waitingFor"`
+	EligibleApproverIDs []string             `json:"eligibleApproverIds,omitempty"`
+	Votes               []ApprovalVoteRecord `json:"votes,omitempty"`
 }
 
 type PairingToken struct {

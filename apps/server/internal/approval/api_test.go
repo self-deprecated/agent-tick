@@ -352,6 +352,28 @@ func TestAPIAbandonPublishesOnlyOnTransition(t *testing.T) {
 	)
 }
 
+func TestAPIExpiredRequestsPublishOnAccess(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	events := &recordingEventBus{}
+	api.events = events
+	handler := api.Handler()
+
+	expiresAt := time.Now().UTC().Add(-time.Minute)
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Too late", ExpiresAt: &expiresAt})
+	events.assertEvents(t, Event{Type: "approval.created", RequestID: created.ID})
+
+	got := request[ApprovalRequest](t, handler, http.MethodGet, "/v1/approval-requests/"+created.ID, nil)
+	if got.Status != StatusExpired {
+		t.Fatalf("status = %q, want expired", got.Status)
+	}
+	events.assertEvents(t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.expired", RequestID: created.ID},
+	)
+}
+
 func TestAPIEventsPublishOnRespondNotGet(t *testing.T) {
 	api := NewAPI(
 		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),
@@ -973,6 +995,101 @@ func TestAPIRequiresSignedCreateRequestsWhenEnabled(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("signed status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusCreated)
 	}
+}
+
+func TestAPIPolicyResponsesReturnProgress(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	team := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Approvers"})
+	userA := loginAuth(t, handler, "a@example.com")
+	userAID, _, _ := store.UserIDForSessionToken(userA.session.Value)
+	userB := loginAuth(t, handler, "b@example.com")
+	userBID, _, _ := store.UserIDForSessionToken(userB.session.Value)
+	for _, userID := range []string{userAID, userBID} {
+		if _, err := store.UpsertTeamMember(defaultOrganizationID, team.TeamID, UpsertTeamMemberRequest{UserID: userID, Role: RoleApprover}); err != nil {
+			t.Fatalf("UpsertTeamMember(%s) error = %v", userID, err)
+		}
+	}
+	policy := request[ApprovalPolicyRecord](t, handler, http.MethodPost, "/v1/policies", CreateApprovalPolicyRequest{Name: "Two people", Template: PolicyTemplateQuorum, TeamID: team.TeamID, Settings: map[string]string{"quorum": "2"}})
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Ship?", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+
+	visible := requestWithSession[ApprovalRequest](t, handler, userA, http.MethodGet, "/v1/approval-requests/"+created.ID, nil)
+	if visible.PolicyProgress == nil || visible.PolicyProgress.RequiredApprovals != 2 {
+		t.Fatalf("visible progress = %#v, want quorum progress for eligible approver", visible.PolicyProgress)
+	}
+	listed := requestWithSession[[]ApprovalRequest](t, handler, userA, http.MethodGet, "/v1/approval-requests", nil)
+	if len(listed) != 1 || listed[0].ID != created.ID {
+		t.Fatalf("listed = %#v, want eligible policy request", listed)
+	}
+
+	first := requestWithSession[ApprovalRequest](t, handler, userA, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
+	if first.Status != StatusPending || first.PolicyProgress == nil || !first.PolicyProgress.CurrentUserHasVoted || first.PolicyProgress.WaitingFor != 1 {
+		t.Fatalf("first = %#v progress %#v, want pending progress after vote", first, first.PolicyProgress)
+	}
+	final := requestWithSession[ApprovalRequest](t, handler, userB, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
+	if final.Status != StatusResponded || final.Response == nil || final.PolicyProgress == nil || final.PolicyProgress.State != "approved" {
+		t.Fatalf("final = %#v progress %#v, want approved final", final, final.PolicyProgress)
+	}
+}
+
+func TestAPIPolicySequencePublishesVoteStepAndFinalEvents(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	events := &recordingEventBus{}
+	api.events = events
+	handler := api.Handler()
+
+	teamOne := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "One"})
+	teamTwo := request[TeamRecord](t, handler, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Two"})
+	userOne := loginAuth(t, handler, "one@example.com")
+	userOneID, _, _ := store.UserIDForSessionToken(userOne.session.Value)
+	userTwo := loginAuth(t, handler, "two@example.com")
+	userTwoID, _, _ := store.UserIDForSessionToken(userTwo.session.Value)
+	_, _ = store.UpsertTeamMember(defaultOrganizationID, teamOne.TeamID, UpsertTeamMemberRequest{UserID: userOneID, Role: RoleApprover})
+	_, _ = store.UpsertTeamMember(defaultOrganizationID, teamTwo.TeamID, UpsertTeamMemberRequest{UserID: userTwoID, Role: RoleApprover})
+	policy := request[ApprovalPolicyRecord](t, handler, http.MethodPost, "/v1/policies", CreateApprovalPolicyRequest{
+		Name:     "Two-step",
+		Template: PolicyTemplateSequence,
+		Steps: []ApprovalPolicyStep{
+			{Position: 1, StepType: PolicyTemplateAnyTeamMember, TeamID: teamOne.TeamID, Quorum: 1, DenyVeto: true},
+			{Position: 2, StepType: PolicyTemplateAnyTeamMember, TeamID: teamTwo.TeamID, Quorum: 1, DenyVeto: true},
+		},
+	})
+	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Ship sequence?", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
+	events.assertEvents(t, Event{Type: "approval.created", RequestID: created.ID})
+
+	advanced := requestWithSession[ApprovalRequest](t, handler, userOne, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
+	if advanced.Status != StatusPending || advanced.PolicyProgress == nil || advanced.PolicyProgress.CurrentStep != 2 {
+		t.Fatalf("advanced = %#v progress %#v, want step 2 pending", advanced, advanced.PolicyProgress)
+	}
+	events.assertEvents(t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+		Event{Type: "approval.step_advanced", RequestID: created.ID},
+	)
+
+	final := requestWithSession[ApprovalRequest](t, handler, userTwo, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
+	if final.Status != StatusResponded || final.Response == nil || final.PolicyProgress == nil || final.PolicyProgress.State != "approved" {
+		t.Fatalf("final = %#v progress %#v, want approved final", final, final.PolicyProgress)
+	}
+	events.assertEvents(t,
+		Event{Type: "approval.created", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+		Event{Type: "approval.step_advanced", RequestID: created.ID},
+		Event{Type: "approval.vote_recorded", RequestID: created.ID},
+		Event{Type: "approval.final_decision", RequestID: created.ID},
+		Event{Type: "approval.responded", RequestID: created.ID},
+	)
 }
 
 func TestAPIAgentTokenRoutingHintsAreRestricted(t *testing.T) {

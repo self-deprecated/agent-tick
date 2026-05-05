@@ -77,6 +77,8 @@ Your phone shows only the supplied options plus **Do nothing / skip**. The CLI p
 
 Requests are grouped in the mobile app by project. The CLI defaults the project to the current machine and working directory; override the display name with `--project` and the grouping directory with `--project-dir`. Team-aware servers can also use `--project-id` / `AGENT_TICK_PROJECT_ID`, `--team` / `AGENT_TICK_TEAM`, and `--approval-policy` / `AGENT_TICK_APPROVAL_POLICY` routing hints.
 
+Team-aware servers can attach approval policies to projects or agent tokens. Simple requests still need one response, while policy-backed requests can require an owner, any team member, a quorum, or an ordered multi-step flow. The CLI keeps waiting until the policy reaches its final approved or denied decision.
+
 ## How It Works
 
 An agent calls `agent-tick request`, `agent-tick guard`, or `agent-tick steer`. The CLI sends the request to the server and polls for a response. The server pushes the request to your paired phone. You approve, deny, or select a constrained steering option. The server returns the decision to the CLI, and the agent continues.
