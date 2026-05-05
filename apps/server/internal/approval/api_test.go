@@ -1020,7 +1020,7 @@ func TestAPIPolicyResponsesReturnProgress(t *testing.T) {
 	created := request[ApprovalRequest](t, handler, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Ship?", Metadata: map[string]string{"effectiveApprovalPolicy": policy.PolicyID}})
 
 	visible := requestWithSession[ApprovalRequest](t, handler, userA, http.MethodGet, "/v1/approval-requests/"+created.ID, nil)
-	if visible.PolicyProgress == nil || visible.PolicyProgress.RequiredApprovals != 2 {
+	if visible.PolicyProgress == nil || visible.PolicyProgress.RequiredApprovals != 2 || !visible.PolicyProgress.CurrentUserEligible {
 		t.Fatalf("visible progress = %#v, want quorum progress for eligible approver", visible.PolicyProgress)
 	}
 	listed := requestWithSession[[]ApprovalRequest](t, handler, userA, http.MethodGet, "/v1/approval-requests", nil)
@@ -1029,7 +1029,7 @@ func TestAPIPolicyResponsesReturnProgress(t *testing.T) {
 	}
 
 	first := requestWithSession[ApprovalRequest](t, handler, userA, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})
-	if first.Status != StatusPending || first.PolicyProgress == nil || !first.PolicyProgress.CurrentUserHasVoted || first.PolicyProgress.WaitingFor != 1 {
+	if first.Status != StatusPending || first.PolicyProgress == nil || !first.PolicyProgress.CurrentUserHasVoted || first.PolicyProgress.CurrentUserVote == nil || first.PolicyProgress.WaitingFor != 1 {
 		t.Fatalf("first = %#v progress %#v, want pending progress after vote", first, first.PolicyProgress)
 	}
 	final := requestWithSession[ApprovalRequest](t, handler, userB, http.MethodPost, "/v1/approval-requests/"+created.ID+"/responses", Response{ChoiceID: "approve"})

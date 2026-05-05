@@ -2364,11 +2364,13 @@ func evaluatePolicyProgressTx(tx *sql.Tx, request ApprovalRequest, policy Approv
 		progress.RequiredApprovals = required
 		progress.ReceivedApprovals = received
 		progress.CurrentUserHasVoted = hasVoteFromUser(stepVotes, currentUserID)
+		progress.CurrentUserVote = voteFromUser(stepVotes, currentUserID)
 		progress.WaitingFor = maxInt(0, required-received)
 		progress.EligibleApproverIDs, err = eligibleApproversTx(tx, request, policy, step)
 		if err != nil {
 			return nil, err
 		}
+		progress.CurrentUserEligible = strings.TrimSpace(currentUserID) != "" && slices.Contains(progress.EligibleApproverIDs, currentUserID)
 		if denyVetoed(step, stepVotes) {
 			progress.State = "denied"
 			progress.WaitingFor = 0
@@ -2504,15 +2506,20 @@ func approvalVoteCount(votes []ApprovalVoteRecord) int {
 }
 
 func hasVoteFromUser(votes []ApprovalVoteRecord, userID string) bool {
+	return voteFromUser(votes, userID) != nil
+}
+
+func voteFromUser(votes []ApprovalVoteRecord, userID string) *ApprovalVoteRecord {
 	if strings.TrimSpace(userID) == "" {
-		return false
+		return nil
 	}
 	for _, vote := range votes {
 		if vote.ApproverUserID == userID {
-			return true
+			copy := vote
+			return &copy
 		}
 	}
-	return false
+	return nil
 }
 
 func denyVetoed(step ApprovalPolicyStep, votes []ApprovalVoteRecord) bool {

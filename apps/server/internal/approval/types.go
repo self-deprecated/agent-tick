@@ -101,6 +101,8 @@ type ApprovalPolicyProgress struct {
 	RequiredApprovals   int                  `json:"requiredApprovals"`
 	ReceivedApprovals   int                  `json:"receivedApprovals"`
 	CurrentUserHasVoted bool                 `json:"currentUserHasVoted"`
+	CurrentUserEligible bool                 `json:"currentUserEligible"`
+	CurrentUserVote     *ApprovalVoteRecord  `json:"currentUserVote,omitempty"`
 	WaitingFor          int                  `json:"waitingFor"`
 	EligibleApproverIDs []string             `json:"eligibleApproverIds,omitempty"`
 	Votes               []ApprovalVoteRecord `json:"votes,omitempty"`

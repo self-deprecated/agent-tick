@@ -131,6 +131,12 @@ export function SettingsScreen({
             <Text style={styles.secondaryActionText}>Forget Device</Text>
           </Pressable>
         </View>
+        <View style={styles.settingsSection}>
+          <Text style={styles.sectionHeading}>Workspace</Text>
+          <Text style={styles.pairingHint}>
+            Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve.
+          </Text>
+        </View>
         {notificationsSection}
       </ScrollView>
     );

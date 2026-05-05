@@ -19,23 +19,33 @@ import {
 import {
   notificationDecision,
   notificationFallbackState,
+  notificationRequestID,
   parsePairingPayload,
   type PairingPayload,
   type Screen,
 } from "./AppLogic";
 import {
   buildQuestionnaireAnswers,
+  canRespondToRequest,
   groupRequestsByProject,
   isQuestionnaireRequest,
+  normalizeApproval,
   normalizeApprovals,
   notificationBody,
+  policyProgressMessage,
   questionnaireReady,
-  requestStatusLabel,
-  supportsNotificationActions,
-  updateQuestionnaireAnswers,
+  requestAgentLabel,
+  requestOwnerLabel,
+  requestPolicySummary,
   requestProjectID,
   requestProjectLabel,
   requestRequesterLabel,
+  requestResponsibilityLabel,
+  requestStatusLabel,
+  requestTargetTeamLabel,
+  requestVoteHistory,
+  supportsNotificationActions,
+  updateQuestionnaireAnswers,
   shouldScheduleLocalNotifications,
   type ApprovalRequest,
   type Choice,
@@ -196,8 +206,8 @@ export default function App() {
 
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener((notification) => {
-      const id = notification.request.content.data.approvalRequestID;
-      if (typeof id === "string" && id) {
+      const id = notificationRequestID(notification.request.content.data);
+      if (id) {
         seenRequestIDs.current.add(id);
       }
     });
@@ -312,6 +322,36 @@ export default function App() {
     }
   }, [loadHistory, screen]);
 
+  const removePendingRequest = useCallback((requestID: string) => {
+    setRequests((current) => {
+      const next = current.filter((request) => request.id !== requestID);
+      setSelectedID(next[0]?.id ?? null);
+      return next;
+    });
+  }, []);
+
+  const updatePendingRequest = useCallback((updated: ApprovalRequest) => {
+    setRequests((current) => {
+      const exists = current.some((request) => request.id === updated.id);
+      if (!exists) {
+        return [updated, ...current];
+      }
+      return current.map((request) => (request.id === updated.id ? updated : request));
+    });
+    setSelectedID(updated.id);
+  }, []);
+
+  const applyResponseResult = useCallback(
+    (requestID: string, updated: ApprovalRequest) => {
+      if (updated.status === "pending" && !updated.response) {
+        updatePendingRequest(updated);
+        return;
+      }
+      removePendingRequest(requestID);
+    },
+    [removePendingRequest, updatePendingRequest],
+  );
+
   const submitResponse = async (
     request: ApprovalRequest,
     payload: { choiceId?: string; message?: string; answers?: Record<string, string[]> },
@@ -329,14 +369,14 @@ export default function App() {
         },
       );
       if (response.status === 409) {
-        removePendingRequest(request.id);
+        void load({ visible: false });
         return;
       }
       if (!response.ok) {
         throw new Error(`Server returned ${response.status}`);
       }
-      await response.json();
-      removePendingRequest(request.id);
+      const updated = normalizeApproval(await response.json());
+      applyResponseResult(request.id, updated);
       setReply("");
       setQuestionnaireAnswers({});
       void load({ visible: false });
@@ -354,14 +394,6 @@ export default function App() {
   const submitQuestionnaire = async (request: ApprovalRequest) =>
     submitResponse(request, { answers: questionnaireAnswers });
 
-  const removePendingRequest = (requestID: string) => {
-    setRequests((current) => {
-      const next = current.filter((request) => request.id !== requestID);
-      setSelectedID(next[0]?.id ?? null);
-      return next;
-    });
-  };
-
   const respondByID = useCallback(
     async (requestID: string, choiceID: string) => {
       try {
@@ -377,14 +409,14 @@ export default function App() {
           },
         );
         if (response.status === 409) {
-          removePendingRequest(requestID);
+          void load({ visible: false });
           return;
         }
         if (!response.ok) {
           throw new Error(`Server returned ${response.status}`);
         }
-        await response.json();
-        removePendingRequest(requestID);
+        const updated = normalizeApproval(await response.json());
+        applyResponseResult(requestID, updated);
         void load({ visible: false });
       } catch {
         setNotificationTargetID(requestID);
@@ -392,7 +424,7 @@ export default function App() {
         setScreen("approvals");
       }
     },
-    [load, serverURL, token],
+    [applyResponseResult, load, removePendingRequest, serverURL, token],
   );
 
   useEffect(() => {
@@ -913,6 +945,9 @@ export function ApprovalsScreen({
     );
   }
 
+  const canRespond = canRespondToRequest(selected);
+  const responsibility = requestResponsibilityLabel(selected);
+
   return (
     <View style={styles.approvalsPane}>
       {projectGroups.length > 1 ? (
@@ -969,8 +1004,11 @@ export function ApprovalsScreen({
         style={styles.approvalScroll}
       >
         <Text style={styles.detailTitle}>{selected.title}</Text>
-        <Text style={styles.detailMeta}>{requestRequesterLabel(selected)}</Text>
+        <Text style={styles.detailMeta}>Requested by {requestRequesterLabel(selected)}</Text>
         <Text style={styles.detailMeta}>Project: {requestProjectLabel(selected)}</Text>
+        {responsibility ? (
+          <Text style={styles.responsibilityBadge}>{responsibility}</Text>
+        ) : null}
         <View style={styles.detailFacts}>
           {selected.risk ? (
             <Text
@@ -990,6 +1028,8 @@ export function ApprovalsScreen({
             </Text>
           ) : null}
         </View>
+        <RequestContextPanel request={selected} />
+        <PolicyProgressPanel request={selected} />
         {selected.requester.workingDirectory ? (
           <Text selectable numberOfLines={2} style={styles.cwdText}>
             {selected.requester.workingDirectory}
@@ -1092,7 +1132,7 @@ export function ApprovalsScreen({
           >
             <Text style={styles.choiceText}>Submit Answers</Text>
           </Pressable>
-        ) : (
+        ) : canRespond ? (
           (selected.choices ?? []).map((choice) => (
             <Pressable
               key={choice.id}
@@ -1106,13 +1146,73 @@ export function ApprovalsScreen({
               <Text style={styles.choiceText}>{choice.label}</Text>
             </Pressable>
           ))
+        ) : (
+          <Text style={styles.actionHint}>
+            {policyProgressMessage(selected) || "This request is read-only."}
+          </Text>
         )}
       </View>
     </View>
   );
 }
 
-function HistoryScreen({
+function RequestContextPanel({ request }: { request: ApprovalRequest }) {
+  const team = requestTargetTeamLabel(request);
+  const owner = requestOwnerLabel(request);
+  const policy = requestPolicySummary(request);
+  return (
+    <View style={styles.contextSummaryPanel}>
+      <Text style={styles.contextSummaryTitle}>Routing</Text>
+      <ContextRow label="Agent" value={requestAgentLabel(request)} />
+      <ContextRow label="Requester" value={requestRequesterLabel(request)} />
+      <ContextRow label="Project" value={requestProjectLabel(request)} />
+      {owner ? <ContextRow label="Owner" value={owner} /> : null}
+      {team ? <ContextRow label="Team" value={team} /> : null}
+      {policy ? <ContextRow label="Policy" value={policy} /> : null}
+    </View>
+  );
+}
+
+function PolicyProgressPanel({ request }: { request: ApprovalRequest }) {
+  const progress = request.policyProgress;
+  const message = policyProgressMessage(request);
+  const votes = requestVoteHistory(request);
+  if (!progress && votes.length === 0) {
+    return null;
+  }
+  return (
+    <View style={styles.policyPanel}>
+      <Text style={styles.policyTitle}>Approval progress</Text>
+      {message ? <Text style={styles.policyMessage}>{message}</Text> : null}
+      {progress ? (
+        <Text style={styles.policyMeta}>
+          {progress.receivedApprovals}/{progress.requiredApprovals} approvals · step {progress.currentStep}/{progress.totalSteps}
+        </Text>
+      ) : null}
+      {votes.length > 0 ? (
+        <View style={styles.voteList}>
+          {votes.map((vote) => (
+            <View key={vote.id} style={styles.voteRow}>
+              <Text style={styles.voteText}>{vote.label}</Text>
+              {vote.message ? <Text style={styles.voteMessage}>{vote.message}</Text> : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ContextRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.contextSummaryRow}>
+      <Text style={styles.contextSummaryLabel}>{label}</Text>
+      <Text selectable style={styles.contextSummaryValue}>{value}</Text>
+    </View>
+  );
+}
+
+export function HistoryScreen({
   error,
   history,
   loading,
@@ -1163,6 +1263,15 @@ function HistoryScreen({
                 <Text numberOfLines={2} style={styles.historyCommand}>
                   {request.command}
                 </Text>
+              ) : null}
+              {requestVoteHistory(request).length > 0 ? (
+                <View style={styles.historyVotes}>
+                  {requestVoteHistory(request).map((vote) => (
+                    <Text key={vote.id} style={styles.historyVoteText}>
+                      {vote.label}
+                    </Text>
+                  ))}
+                </View>
               ) : null}
             </View>
           ))
@@ -1354,6 +1463,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
+  historyVotes: {
+    borderTopColor: "#e3dbc9",
+    borderTopWidth: 1,
+    gap: 4,
+    marginTop: 4,
+    paddingTop: 8,
+  },
+  historyVoteText: {
+    color: "#5f5a4f",
+    fontSize: 12,
+    fontWeight: "800",
+  },
   emptyText: {
     color: "#6d6657",
     paddingVertical: 16,
@@ -1400,6 +1521,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     marginTop: 8,
+  },
+  responsibilityBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#edf7f3",
+    borderColor: "#1f6f5b",
+    borderRadius: 999,
+    borderWidth: 1,
+    color: "#184f42",
+    fontSize: 13,
+    fontWeight: "900",
+    marginTop: 12,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   detailFacts: {
     alignItems: "center",
@@ -1454,6 +1589,85 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 18,
     padding: 14,
+  },
+  contextSummaryPanel: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    marginTop: 16,
+    padding: 12,
+  },
+  contextSummaryTitle: {
+    color: "#545044",
+    fontSize: 13,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  contextSummaryRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+  },
+  contextSummaryLabel: {
+    color: "#6d6657",
+    fontSize: 13,
+    fontWeight: "900",
+    minWidth: 78,
+  },
+  contextSummaryValue: {
+    color: "#202124",
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  policyPanel: {
+    backgroundColor: "#fffaf0",
+    borderColor: "#d8c391",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    marginTop: 14,
+    padding: 12,
+  },
+  policyTitle: {
+    color: "#5f4724",
+    fontSize: 13,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  policyMessage: {
+    color: "#202124",
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 22,
+  },
+  policyMeta: {
+    color: "#6d6657",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  voteList: {
+    gap: 6,
+    marginTop: 2,
+  },
+  voteRow: {
+    backgroundColor: "#ffffff",
+    borderRadius: 6,
+    padding: 8,
+  },
+  voteText: {
+    color: "#202124",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  voteMessage: {
+    color: "#6d6657",
+    fontSize: 13,
+    marginTop: 3,
   },
   contextPanel: {
     backgroundColor: "#ffffff",
@@ -1592,6 +1806,13 @@ const styles = StyleSheet.create({
   },
   choiceButtonDisabled: {
     backgroundColor: "#8e8778",
+  },
+  actionHint: {
+    color: "#5f5a4f",
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 21,
+    textAlign: "center",
   },
   choiceText: {
     color: "#ffffff",

@@ -1,9 +1,14 @@
 import {
   buildQuestionnaireAnswers,
+  canRespondToRequest,
   groupRequestsByProject,
   normalizeApproval,
+  policyProgressMessage,
   questionnaireReady,
+  requestPolicySummary,
+  requestResponsibilityLabel,
   requestStatusLabel,
+  requestVoteHistory,
   supportsNotificationActions,
   updateQuestionnaireAnswers,
   requestProjectID,
@@ -14,6 +19,7 @@ import {
 import {
   notificationDecision,
   notificationFallbackState,
+  notificationRequestID,
   parsePairingPayload,
 } from "./AppLogic";
 
@@ -78,6 +84,16 @@ describe("notificationDecision", () => {
       kind: "open",
       requestID: "req_123",
     });
+  });
+
+  it("accepts team/quorum push payload aliases", () => {
+    expect(notificationRequestID({ requestId: "req_step" })).toBe("req_step");
+    expect(
+      notificationDecision({
+        actionIdentifier: "default",
+        notification: { request: { content: { data: { approvalRequestId: "req_quorum" } } } },
+      }),
+    ).toEqual({ kind: "open", requestID: "req_quorum" });
   });
 
   it("ignores notifications without approval ids", () => {
@@ -185,6 +201,101 @@ describe("approval detail metadata helpers", () => {
 
     expect(requestRequesterLabel(request)).toBe("agent-tick");
     expect(requestProjectLabel(request)).toBe("agent-tick · lattice");
+  });
+});
+
+describe("policy progress helpers", () => {
+  it("shows current-user quorum waiting state after voting", () => {
+    const request = normalizeApproval({
+      id: "req_quorum",
+      requester: { name: "Agent", agentId: "agent" },
+      requestType: "approval",
+      title: "Deploy?",
+      choices: [
+        { id: "approve", label: "Approve", kind: "approve" },
+        { id: "deny", label: "Deny", kind: "deny" },
+      ],
+      allowFreeformReply: false,
+      status: "pending",
+      createdAt: "2026-04-19T12:00:00Z",
+      metadata: { teamName: "Backend", approvalPolicySummary: "Requires 2 approvals from Backend" },
+      policyProgress: {
+        policyId: "pol_backend",
+        state: "pending",
+        currentStep: 1,
+        totalSteps: 1,
+        requiredApprovals: 2,
+        receivedApprovals: 1,
+        currentUserHasVoted: true,
+        currentUserEligible: true,
+        currentUserVote: {
+          voteId: "vote_a",
+          requestId: "req_quorum",
+          step: 1,
+          approverUserId: "usr_a",
+          source: "device",
+          choiceId: "approve",
+          createdAt: "2026-04-19T12:01:00Z",
+        },
+        waitingFor: 1,
+        votes: [
+          {
+            voteId: "vote_a",
+            requestId: "req_quorum",
+            step: 1,
+            approverUserId: "usr_a",
+            source: "device",
+            choiceId: "approve",
+            createdAt: "2026-04-19T12:01:00Z",
+          },
+        ],
+      },
+    });
+
+    expect(requestPolicySummary(request)).toBe("Requires 2 approvals from Backend");
+    expect(requestResponsibilityLabel(request)).toBe("Waiting for others");
+    expect(policyProgressMessage(request)).toBe("You approved. Waiting for 1 more approval.");
+    expect(canRespondToRequest(request)).toBe(false);
+    expect(supportsNotificationActions(request)).toBe(false);
+    expect(requestVoteHistory(request)[0]?.label).toBe("Step 1: usr_a approved via device");
+  });
+
+  it("distinguishes eligible and ineligible team approval views", () => {
+    const eligible = normalizeApproval({
+      id: "req_team",
+      requester: { name: "Agent", agentId: "agent" },
+      requestType: "approval",
+      title: "Restart?",
+      choices: [
+        { id: "approve", label: "Approve", kind: "approve" },
+        { id: "deny", label: "Deny", kind: "deny" },
+      ],
+      allowFreeformReply: false,
+      status: "pending",
+      createdAt: "2026-04-19T12:00:00Z",
+      policyProgress: {
+        state: "pending",
+        currentStep: 1,
+        totalSteps: 2,
+        requiredApprovals: 1,
+        receivedApprovals: 0,
+        currentUserHasVoted: false,
+        currentUserEligible: true,
+        waitingFor: 1,
+      },
+    });
+    const ineligible = normalizeApproval({
+      ...eligible,
+      id: "req_readonly",
+      policyProgress: { ...eligible.policyProgress!, currentUserEligible: false },
+    });
+
+    expect(requestResponsibilityLabel(eligible)).toBe("Your approval is needed");
+    expect(policyProgressMessage(eligible)).toContain("Step 1 of 2. Your approval is needed");
+    expect(canRespondToRequest(eligible)).toBe(true);
+    expect(requestResponsibilityLabel(ineligible)).toBe("Read-only");
+    expect(policyProgressMessage(ineligible)).toContain("You are not an eligible approver");
+    expect(canRespondToRequest(ineligible)).toBe(false);
   });
 });
 

@@ -41,8 +41,8 @@ export function parsePairingPayload(value: string): PairingPayload {
 export function notificationDecision(
   response: NotificationResponseLike,
 ): NotificationDecision | null {
-  const id = response.notification.request.content.data.approvalRequestID;
-  if (typeof id !== "string") {
+  const id = notificationRequestID(response.notification.request.content.data);
+  if (!id) {
     return null;
   }
   const action = response.actionIdentifier;
@@ -50,6 +50,16 @@ export function notificationDecision(
     return { kind: "respond", requestID: id, choiceID: action };
   }
   return { kind: "open", requestID: id };
+}
+
+export function notificationRequestID(data: Record<string, unknown>) {
+  for (const key of ["approvalRequestID", "approvalRequestId", "requestId"]) {
+    const value = data[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+  return "";
 }
 
 export function notificationFallbackState(

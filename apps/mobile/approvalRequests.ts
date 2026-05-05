@@ -30,8 +30,37 @@ export type ApprovalResponse = {
   answers?: Record<string, string[]>;
 };
 
+export type ApprovalVoteRecord = {
+  voteId: string;
+  requestId: string;
+  policyId?: string;
+  step: number;
+  approverUserId: string;
+  source: string;
+  choiceId: string;
+  message?: string;
+  answers?: Record<string, string[]>;
+  createdAt: string;
+};
+
+export type ApprovalPolicyProgress = {
+  policyId?: string;
+  state: "pending" | "approved" | "denied" | "expired" | "abandoned" | string;
+  currentStep: number;
+  totalSteps: number;
+  requiredApprovals: number;
+  receivedApprovals: number;
+  currentUserHasVoted: boolean;
+  currentUserEligible?: boolean;
+  currentUserVote?: ApprovalVoteRecord;
+  waitingFor: number;
+  eligibleApproverIds?: string[];
+  votes?: ApprovalVoteRecord[];
+};
+
 export type ApprovalRequest = {
   id: string;
+  userId?: string;
   requester: Requester;
   requestType?: "approval" | "questionnaire" | "steer" | string;
   title: string;
@@ -42,10 +71,11 @@ export type ApprovalRequest = {
   allowFreeformReply: boolean;
   risk?: string;
   expiresAt?: string;
-  status: "pending" | "responded" | string;
+  status: "pending" | "responded" | "expired" | "abandoned" | string;
   createdAt: string;
   response?: ApprovalResponse;
   metadata?: Record<string, string>;
+  policyProgress?: ApprovalPolicyProgress;
 };
 
 export function normalizeApprovals(value: unknown): ApprovalRequest[] {
@@ -69,7 +99,47 @@ export function normalizeApproval(value: unknown): ApprovalRequest {
     choices: Array.isArray(request.choices) ? request.choices : [],
     questions: Array.isArray(request.questions) ? request.questions : [],
     response,
+    policyProgress: normalizePolicyProgress(request.policyProgress),
   };
+}
+
+function normalizePolicyProgress(value: unknown): ApprovalPolicyProgress | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const progress = value as ApprovalPolicyProgress;
+  return {
+    ...progress,
+    currentStep: numberOrDefault(progress.currentStep, 1),
+    totalSteps: numberOrDefault(progress.totalSteps, 1),
+    requiredApprovals: numberOrDefault(progress.requiredApprovals, 0),
+    receivedApprovals: numberOrDefault(progress.receivedApprovals, 0),
+    waitingFor: numberOrDefault(progress.waitingFor, 0),
+    currentUserHasVoted: progress.currentUserHasVoted === true,
+    currentUserEligible:
+      typeof progress.currentUserEligible === "boolean"
+        ? progress.currentUserEligible
+        : undefined,
+    currentUserVote: progress.currentUserVote
+      ? normalizeVote(progress.currentUserVote)
+      : undefined,
+    eligibleApproverIds: Array.isArray(progress.eligibleApproverIds)
+      ? progress.eligibleApproverIds.filter((id): id is string => typeof id === "string")
+      : [],
+    votes: Array.isArray(progress.votes) ? progress.votes.map(normalizeVote) : [],
+  };
+}
+
+function normalizeVote(value: ApprovalVoteRecord): ApprovalVoteRecord {
+  return {
+    ...value,
+    step: numberOrDefault(value.step, 1),
+    answers: normalizeAnswers(value.answers),
+  };
+}
+
+function numberOrDefault(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function normalizeRequestType(value: unknown) {
@@ -144,6 +214,9 @@ export function requestStatusLabel(request: ApprovalRequest) {
   if (isQuestionnaireRequest(request) && request.response?.answers) {
     return "answered";
   }
+  if (request.policyProgress?.state && request.policyProgress.state !== "pending") {
+    return request.policyProgress.state;
+  }
   return request.status;
 }
 
@@ -154,6 +227,10 @@ export type ProjectGroup = {
 };
 
 export function requestProjectID(request: ApprovalRequest) {
+  const metadataProject = request.metadata?.projectId?.trim();
+  if (metadataProject) {
+    return metadataProject;
+  }
   const explicit = request.requester.projectId?.trim();
   if (explicit) {
     return explicit;
@@ -164,10 +241,148 @@ export function requestProjectID(request: ApprovalRequest) {
 }
 
 export function requestRequesterLabel(request: ApprovalRequest) {
-  return request.requester.name || request.requester.agentId;
+  return request.requester.name || request.requester.agentId || request.metadata?.ownerUserId || "Agent";
+}
+
+export function requestAgentLabel(request: ApprovalRequest) {
+  return request.requester.agentId || request.metadata?.agentId || request.requester.name || "Agent";
+}
+
+export function requestTargetTeamLabel(request: ApprovalRequest) {
+  return metadataLabel(request, ["teamName", "targetTeam", "team", "teamId"]);
+}
+
+export function requestOwnerLabel(request: ApprovalRequest) {
+  return metadataLabel(request, ["ownerName", "ownerUserId", "userId"]);
+}
+
+export function requestPolicySummary(request: ApprovalRequest) {
+  const explicit = metadataLabel(request, ["approvalPolicySummary", "policySummary"]);
+  if (explicit) {
+    return explicit;
+  }
+  const progress = request.policyProgress;
+  if (!progress) {
+    return metadataLabel(request, ["approvalPolicy", "effectiveApprovalPolicy"]);
+  }
+  const step = progress.totalSteps > 1 ? `Step ${progress.currentStep} of ${progress.totalSteps}: ` : "";
+  const quorum = progress.requiredApprovals > 1
+    ? `${progress.requiredApprovals} approvals required`
+    : "1 approval required";
+  return `${step}${quorum}`;
+}
+
+export function policyProgressMessage(request: ApprovalRequest) {
+  const progress = request.policyProgress;
+  if (!progress) {
+    return "";
+  }
+  if (progress.state === "approved") {
+    return "Policy approved. The request is complete.";
+  }
+  if (progress.state === "denied") {
+    return "Policy denied. The request is complete.";
+  }
+  if (progress.state === "expired") {
+    return "This request expired before the policy was satisfied.";
+  }
+  if (progress.state === "abandoned") {
+    return "This request was abandoned before the policy was satisfied.";
+  }
+
+  const step = progress.totalSteps > 1 ? `Step ${progress.currentStep} of ${progress.totalSteps}. ` : "";
+  const waiting = waitingForText(progress);
+  if (progress.currentUserHasVoted) {
+    return `${step}You ${votePastTense(progress.currentUserVote?.choiceId)}. ${waiting}`.trim();
+  }
+  if (progress.currentUserEligible === false) {
+    return `${step}You are not an eligible approver for this step. ${waiting}`.trim();
+  }
+  if (progress.currentUserEligible === true) {
+    return `${step}Your approval is needed. ${waiting}`.trim();
+  }
+  return `${step}${waiting}`.trim();
+}
+
+export function requestResponsibilityLabel(request: ApprovalRequest) {
+  const progress = request.policyProgress;
+  if (!progress || request.status !== "pending") {
+    return "";
+  }
+  if (progress.currentUserHasVoted) {
+    return "Waiting for others";
+  }
+  if (progress.currentUserEligible === false) {
+    return "Read-only";
+  }
+  if (progress.currentUserEligible === true) {
+    return "Your approval is needed";
+  }
+  return "Pending";
+}
+
+export function canRespondToRequest(request: ApprovalRequest) {
+  if (request.status !== "pending" || request.response) {
+    return false;
+  }
+  if (isQuestionnaireRequest(request)) {
+    return true;
+  }
+  const progress = request.policyProgress;
+  if (!progress) {
+    return true;
+  }
+  return progress.state === "pending" && progress.currentUserEligible !== false && !progress.currentUserHasVoted;
+}
+
+export function requestVoteHistory(request: ApprovalRequest) {
+  return (request.policyProgress?.votes ?? []).map((vote) => ({
+    id: vote.voteId || `${vote.approverUserId}-${vote.step}-${vote.createdAt}`,
+    label: voteHistoryLabel(vote),
+    message: vote.message,
+  }));
+}
+
+function waitingForText(progress: ApprovalPolicyProgress) {
+  if (progress.waitingFor <= 0) {
+    return progress.totalSteps > 1 ? "Waiting for the next step." : "Quorum is satisfied.";
+  }
+  return `Waiting for ${progress.waitingFor} more ${progress.waitingFor === 1 ? "approval" : "approvals"}.`;
+}
+
+function votePastTense(choiceID?: string) {
+  if (choiceID === "approve") {
+    return "approved";
+  }
+  if (choiceID === "deny") {
+    return "denied";
+  }
+  if (choiceID) {
+    return `voted ${choiceID}`;
+  }
+  return "voted";
+}
+
+function voteHistoryLabel(vote: ApprovalVoteRecord) {
+  const source = vote.source ? ` via ${vote.source}` : "";
+  return `Step ${vote.step}: ${vote.approverUserId} ${votePastTense(vote.choiceId)}${source}`;
+}
+
+function metadataLabel(request: ApprovalRequest, keys: string[]) {
+  for (const key of keys) {
+    const value = request.metadata?.[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return "";
 }
 
 export function requestProjectLabel(request: ApprovalRequest) {
+  const metadataProject = request.metadata?.projectName?.trim();
+  if (metadataProject) {
+    return metadataProject;
+  }
   const explicit = request.requester.projectName?.trim();
   const host = request.requester.host?.trim();
   if (explicit) {
@@ -206,6 +421,7 @@ export function isSteerRequest(request: ApprovalRequest) {
 
 export function supportsNotificationActions(request: ApprovalRequest) {
   return (
+    canRespondToRequest(request) &&
     request.requestType === "approval" &&
     (request.choices ?? []).some((choice) => choice.id === "approve") &&
     (request.choices ?? []).some((choice) => choice.id === "deny")
@@ -217,15 +433,17 @@ export function shouldScheduleLocalNotifications(pushStatus: string) {
 }
 
 export function notificationBody(request: ApprovalRequest) {
+  const responsibility = requestResponsibilityLabel(request);
+  const prefix = responsibility ? `${responsibility}: ` : "";
   if (request.command) {
     const host = request.requester.host || request.requester.name || "Agent";
-    return `${host}: ${request.command}`;
+    return `${prefix}${host}: ${request.command}`;
   }
   if (isQuestionnaireRequest(request) && request.questions?.length) {
-    return request.questions[0]?.question || request.body || "Questions waiting";
+    return `${prefix}${request.questions[0]?.question || request.body || "Questions waiting"}`;
   }
   if (isSteerRequest(request)) {
-    return request.body || "Steering requested";
+    return `${prefix}${request.body || "Steering requested"}`;
   }
-  return request.body || "Approval requested";
+  return `${prefix}${request.body || "Approval requested"}`;
 }
