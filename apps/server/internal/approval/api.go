@@ -1619,8 +1619,15 @@ func (a *API) sendPush(request ApprovalRequest) {
 	// Push delivery is intentionally fire-and-forget so request creation can
 	// return the request ID to CLI/automation clients without waiting on Expo.
 	go func() {
+		status := "sent"
 		if err := a.push.SendApprovalRequest(tokens, request); err != nil {
+			status = "failed"
 			log.Printf("send push for request %s: %v", request.ID, err)
+		}
+		if usage, ok := a.store.(PushUsageStore); ok {
+			if err := usage.RecordPushNotificationAttempt(request.ID, len(tokens), status); err != nil {
+				log.Printf("record push usage for request %s: %v", request.ID, err)
+			}
 		}
 	}()
 }

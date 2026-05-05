@@ -1402,7 +1402,7 @@ func (s *SQLiteStore) organizationUsage(organizationID string, auditRetentionDay
 		{&usage.Teams, "SELECT COUNT(*) FROM teams WHERE organization_id = ?", []any{organizationID}},
 		{&usage.ActiveAgents, "SELECT COUNT(*) FROM agent_tokens WHERE organization_id = ? AND revoked_at = ''", []any{organizationID}},
 		{&usage.ApprovalRequests30d, "SELECT COUNT(*) FROM approval_requests WHERE organization_id = ? AND created_at >= ?", []any{organizationID, timeText(&requestSince)}},
-		{&usage.PushNotifications30d, "SELECT COUNT(*) FROM devices WHERE organization_id = ? AND expo_push_token != '' AND unpaired_at = ''", []any{organizationID}},
+		{&usage.PushNotifications30d, "SELECT COALESCE(SUM(token_count), 0) FROM push_notification_events WHERE organization_id = ? AND created_at >= ?", []any{organizationID, timeText(&requestSince)}},
 		{&usage.AuditEventsRetained, "SELECT COUNT(*) FROM audit_events WHERE organization_id = ? AND created_at >= ?", []any{organizationID, timeText(&auditSince)}},
 	}
 	for _, item := range queries {
@@ -1411,6 +1411,35 @@ func (s *SQLiteStore) organizationUsage(organizationID string, auditRetentionDay
 		}
 	}
 	return usage, nil
+}
+
+func (s *SQLiteStore) RecordPushNotificationAttempt(requestID string, tokenCount int, status string) error {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" || tokenCount <= 0 {
+		return nil
+	}
+	status = strings.TrimSpace(status)
+	if status == "" {
+		status = "attempted"
+	}
+	var organizationID string
+	err := s.db.QueryRow("SELECT organization_id FROM approval_requests WHERE id = ?", requestID).Scan(&organizationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	_, err = s.db.Exec(
+		"INSERT INTO push_notification_events (organization_id, request_id, token_count, status, created_at) VALUES (?, ?, ?, ?, ?)",
+		organizationID,
+		requestID,
+		tokenCount,
+		status,
+		timeText(&now),
+	)
+	return err
 }
 
 func (s *SQLiteStore) ListAuditEvents(organizationID string, input ListAuditEventsRequest) ([]AuditEventRecord, error) {
@@ -3645,6 +3674,15 @@ func (s *SQLiteStore) migrate() error {
 			UNIQUE(request_id, policy_id, step, approver_user_id)
 		);
 
+		CREATE TABLE IF NOT EXISTS push_notification_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			organization_id TEXT NOT NULL DEFAULT 'org_default',
+			request_id TEXT NOT NULL,
+			token_count INTEGER NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'attempted',
+			created_at TEXT NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS audit_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id TEXT NOT NULL DEFAULT 'usr_default',
@@ -3884,6 +3922,8 @@ func (s *SQLiteStore) migrate() error {
 			ON devices (organization_id, created_at);
 		CREATE INDEX IF NOT EXISTS audit_events_org_created_at_idx
 			ON audit_events (organization_id, created_at);
+		CREATE INDEX IF NOT EXISTS push_notification_events_org_created_at_idx
+			ON push_notification_events (organization_id, created_at);
 		CREATE INDEX IF NOT EXISTS agent_tokens_user_created_at_idx
 			ON agent_tokens (user_id, created_at);
 		CREATE INDEX IF NOT EXISTS agent_tokens_org_project_created_at_idx

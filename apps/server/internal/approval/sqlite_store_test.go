@@ -593,8 +593,12 @@ func TestSQLiteStoreBillingStatusTracksPlanAndUsage(t *testing.T) {
 	if _, err := store.CreateAgentTokenWithOptions(CreateAgentTokenRequest{Name: "billing-agent"}); err != nil {
 		t.Fatalf("CreateAgentTokenWithOptions() error = %v", err)
 	}
-	if _, err := store.Create(CreateRequest{Title: "Billing approval"}); err != nil {
+	request, err := store.Create(CreateRequest{Title: "Billing approval"})
+	if err != nil {
 		t.Fatalf("Create() error = %v", err)
+	}
+	if err := store.RecordPushNotificationAttempt(request.ID, 1, "sent"); err != nil {
+		t.Fatalf("RecordPushNotificationAttempt() error = %v", err)
 	}
 	pairing, err := store.CreatePairingToken(time.Minute)
 	if err != nil {

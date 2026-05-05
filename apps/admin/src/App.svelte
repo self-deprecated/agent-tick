@@ -168,7 +168,7 @@
 			{ label: 'Teams', used: billing.usage.teams, limit: billing.limits.teams, help: 'Team workspaces for routing and on-call coverage.' },
 			{ label: 'Active agents', used: billing.usage.activeAgents, limit: billing.limits.agents, help: 'Non-revoked agent tokens.' },
 			{ label: 'Approval requests', used: billing.usage.approvalRequests30d, limit: billing.limits.requests, help: 'Requests created in the last 30 days.' },
-			{ label: 'Push notifications', used: billing.usage.pushNotifications30d, limit: -1, help: 'Push-enabled paired devices counted for hosted capacity.' },
+			{ label: 'Push notifications', used: billing.usage.pushNotifications30d, limit: -1, help: 'Remote push notification attempts in the last 30 days.' },
 			{ label: 'Audit events', used: billing.usage.auditEventsRetained, limit: -1, help: `${formatLimit(billing.limits.auditRetentionDays, 'days')} audit retention.` }
 		];
 	});

@@ -110,6 +110,10 @@ type EligiblePushTokenStore interface {
 	ListEligibleDevicePushTokens(request ApprovalRequest) ([]string, error)
 }
 
+type PushUsageStore interface {
+	RecordPushNotificationAttempt(requestID string, tokenCount int, status string) error
+}
+
 type ExpiringStore interface {
 	ExpirePendingRequests() ([]string, error)
 }
