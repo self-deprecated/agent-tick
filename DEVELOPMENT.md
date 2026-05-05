@@ -104,7 +104,7 @@ The token is shown once. Agent tokens created by the dashboard default to `appro
 
 Agent Tick stores organizations, memberships, teams, team members, projects, and invite-ready records in SQLite. Existing single-user records are backfilled into `org_default` and `prj_default`, so self-hosted users can continue pairing phones and creating agent tokens without thinking about organizations.
 
-Organization roles are `owner`, `admin`, `approver`, and `viewer`. Owners can manage team membership; owners and admins can create or update teams and projects; viewers can list team and project context. Current approval, device, and agent-token endpoints remain user-scoped for compatibility while storing organization/project columns for hosted/team features.
+Organization roles are `owner`, `admin`, `approver`, and `viewer`. Owners can manage team membership; owners and admins can create or update teams and projects; viewers can list team and project context. Current approval, device, and agent-token endpoints remain user-scoped for compatibility while storing organization/project columns for hosted/team features. The API test suite includes tenant-isolation coverage for teams, policies, agents, devices, approvals, and audit logs so hosted changes do not accidentally leak data across organizations.
 
 Approval policies are stored as organization-scoped templates plus ordered policy steps. Supported templates are owner-only, any-team-member, on-call, recently-active, quorum, sequence, and risk-based. The dashboard exposes friendly labels like "Just me", "Anyone on a team", "On-call person", "Most recently active", "Require multiple approvals", and "Multi-step flow" instead of raw workflow JSON.
 

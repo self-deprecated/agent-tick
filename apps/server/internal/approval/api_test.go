@@ -1536,6 +1536,69 @@ func TestAPIMissingMembershipGetsPersonalOrganizationNotDefaultOwner(t *testing.
 	}
 }
 
+func TestAPITenantIsolationAcrossOrganizations(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	ownerA := loginAuth(t, handler, "owner-a@example.com")
+	teamA := requestWithSession[TeamRecord](t, handler, ownerA, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Tenant A"})
+	policyA := requestWithSession[ApprovalPolicyRecord](t, handler, ownerA, http.MethodPost, "/v1/policies", CreateApprovalPolicyRequest{Name: "Tenant A policy", Template: PolicyTemplateAnyTeamMember, TeamID: teamA.TeamID})
+	agentA := requestWithSession[AgentCredential](t, handler, ownerA, http.MethodPost, "/v1/agent-tokens", CreateAgentTokenRequest{Name: "tenant-a-agent"})
+	pairingA := requestWithSession[PairingToken](t, handler, ownerA, http.MethodPost, "/v1/pairing-tokens", map[string]string{})
+	deviceA := requestWithoutAuth[DeviceCredential](t, handler, http.MethodPost, "/v1/devices/pair", PairDeviceRequest{Token: pairingA.Token, DeviceName: "Tenant A phone"})
+	approvalA := requestWithSession[ApprovalRequest](t, handler, ownerA, http.MethodPost, "/v1/approval-requests", CreateRequest{Title: "Tenant A request"})
+	_ = requestWithSession[[]AuditEventRecord](t, handler, ownerA, http.MethodGet, "/v1/audit-events?limit=10", nil)
+
+	ownerB := loginAuth(t, handler, "owner-b@example.com")
+	if teams := requestWithSession[[]TeamRecord](t, handler, ownerB, http.MethodGet, "/v1/teams", nil); len(teams) != 0 {
+		t.Fatalf("tenant B teams = %#v, want no tenant A teams", teams)
+	}
+	if policies := requestWithSession[[]ApprovalPolicyRecord](t, handler, ownerB, http.MethodGet, "/v1/policies", nil); len(policies) != 0 {
+		t.Fatalf("tenant B policies = %#v, want no tenant A policies", policies)
+	}
+	if agents := requestWithSession[[]AgentTokenRecord](t, handler, ownerB, http.MethodGet, "/v1/agent-tokens", nil); len(agents) != 0 {
+		t.Fatalf("tenant B agents = %#v, want no tenant A agents", agents)
+	}
+	if devices := requestWithSession[[]DeviceRecord](t, handler, ownerB, http.MethodGet, "/v1/devices", nil); len(devices) != 0 {
+		t.Fatalf("tenant B devices = %#v, want no tenant A devices", devices)
+	}
+	if approvals := requestWithSession[[]ApprovalRequest](t, handler, ownerB, http.MethodGet, "/v1/approval-requests", nil); len(approvals) != 0 {
+		t.Fatalf("tenant B approvals = %#v, want no tenant A approvals", approvals)
+	}
+	for _, event := range requestWithSession[[]AuditEventRecord](t, handler, ownerB, http.MethodGet, "/v1/audit-events?limit=50", nil) {
+		if event.OrganizationID == teamA.OrganizationID || event.TargetID == teamA.TeamID || event.TargetID == policyA.PolicyID || event.TargetID == approvalA.ID {
+			t.Fatalf("tenant B audit event = %#v, want no tenant A audit events", event)
+		}
+	}
+
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{name: "team", path: "/v1/teams/" + teamA.TeamID},
+		{name: "policy", path: "/v1/policies/" + policyA.PolicyID},
+		{name: "approval", path: "/v1/approval-requests/" + approvalA.ID},
+	} {
+		rec := statusWithSession(t, handler, ownerB, http.MethodGet, tc.path, nil, "")
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("tenant B get %s status = %d body = %s, want %d", tc.name, rec.Code, rec.Body.String(), http.StatusNotFound)
+		}
+	}
+	revokeRec := statusWithSession(t, handler, ownerB, http.MethodPost, "/v1/agent-tokens/"+agentA.AgentID+"/revoke", nil, ownerB.csrf.Value)
+	if revokeRec.Code != http.StatusNotFound {
+		t.Fatalf("tenant B revoke agent status = %d body = %s, want %d", revokeRec.Code, revokeRec.Body.String(), http.StatusNotFound)
+	}
+	unpairRec := statusWithSession(t, handler, ownerB, http.MethodPost, "/v1/devices/"+deviceA.DeviceID+"/unpair", nil, ownerB.csrf.Value)
+	if unpairRec.Code != http.StatusNotFound {
+		t.Fatalf("tenant B unpair device status = %d body = %s, want %d", unpairRec.Code, unpairRec.Body.String(), http.StatusNotFound)
+	}
+}
+
 func TestAPITeamProjectAuditUsesActingUser(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
