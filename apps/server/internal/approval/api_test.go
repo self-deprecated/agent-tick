@@ -1415,6 +1415,38 @@ func TestAPIBillingStatusShowsPlanUsageAndLinks(t *testing.T) {
 	}
 }
 
+func TestAPIBillingDoesNotRequireTeamProjectStore(t *testing.T) {
+	store := &billingOnlyStore{
+		FileStore: NewFileStore(filepath.Join(t.TempDir(), "billing-only.json")),
+		status: BillingStatus{
+			OrganizationID: defaultOrganizationID,
+			Plan:           "external",
+			Limits:         BillingLimits{Seats: 10},
+		},
+	}
+	handler := NewAPI(store, "test-token").Handler()
+
+	status := request[BillingStatus](t, handler, http.MethodGet, "/v1/billing", nil)
+	if status.Plan != "external" || status.Limits.Seats != 10 {
+		t.Fatalf("status = %#v, want fake billing status without TeamProjectStore", status)
+	}
+}
+
+func TestAPIBillingHandlesUnsupportedAndMissingOrganization(t *testing.T) {
+	unsupported := NewAPI(NewFileStore(filepath.Join(t.TempDir(), "no-billing.json")), "test-token").Handler()
+	unsupportedRec := statusWithBearer(t, unsupported, "test-token", http.MethodGet, "/v1/billing", nil)
+	if unsupportedRec.Code != http.StatusNotImplemented {
+		t.Fatalf("unsupported billing status = %d body = %s, want %d", unsupportedRec.Code, unsupportedRec.Body.String(), http.StatusNotImplemented)
+	}
+
+	missingStore := &billingOnlyStore{FileStore: NewFileStore(filepath.Join(t.TempDir(), "missing-billing.json")), err: ErrNotFound}
+	missing := NewAPI(missingStore, "test-token").Handler()
+	missingRec := statusWithBearer(t, missing, "test-token", http.MethodGet, "/v1/billing", nil)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("missing billing status = %d body = %s, want %d", missingRec.Code, missingRec.Body.String(), http.StatusNotFound)
+	}
+}
+
 func TestAPIAuditEventsListAndExportAreOrganizationScoped(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
@@ -1815,6 +1847,19 @@ func requestWithoutAuth[T any](t *testing.T, handler http.Handler, method string
 		t.Fatalf("Decode() error = %v", err)
 	}
 	return output
+}
+
+type billingOnlyStore struct {
+	*FileStore
+	status BillingStatus
+	err    error
+}
+
+func (s *billingOnlyStore) BillingStatus(string) (BillingStatus, error) {
+	if s.err != nil {
+		return BillingStatus{}, s.err
+	}
+	return s.status, nil
 }
 
 type fakeBillingProvider struct {

@@ -813,11 +813,7 @@ func (a *API) createOrganization(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) getBilling(w http.ResponseWriter, r *http.Request) {
-	if !a.authorizeOrg(w, r, RoleViewer) {
-		return
-	}
-	if a.billing == nil {
-		writeError(w, http.StatusNotImplemented, "billing is not supported")
+	if !a.authorizeBilling(w, r) {
 		return
 	}
 	status, err := a.billing.BillingStatus(currentAuth(r).OrganizationID)
@@ -1451,6 +1447,18 @@ func (a *API) authorizeOrg(w http.ResponseWriter, r *http.Request, requiredRole 
 		return false
 	}
 	if !roleAllows(currentAuth(r).Role, requiredRole) {
+		writeError(w, http.StatusForbidden, "insufficient organization role")
+		return false
+	}
+	return true
+}
+
+func (a *API) authorizeBilling(w http.ResponseWriter, r *http.Request) bool {
+	if a.billing == nil {
+		writeError(w, http.StatusNotImplemented, "billing is not supported")
+		return false
+	}
+	if !roleAllows(currentAuth(r).Role, RoleViewer) {
 		writeError(w, http.StatusForbidden, "insufficient organization role")
 		return false
 	}
