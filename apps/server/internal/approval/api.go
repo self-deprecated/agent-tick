@@ -386,7 +386,7 @@ func (a *API) session(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, ok, err := a.userIDFromSessionCookie(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if !ok {
@@ -416,7 +416,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	csrfToken := "csrf_" + newID()
@@ -557,7 +557,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -570,7 +570,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	a.sendPush(request)
@@ -590,7 +590,7 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	auth := currentAuth(r)
 	requests, err := a.listForUser(auth.UserID, r.URL.Query().Get("status"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	for i := range requests {
@@ -608,7 +608,7 @@ func (a *API) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, a.withPolicyProgress(request, auth.UserID))
@@ -694,7 +694,7 @@ func (a *API) respond(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	request = a.withPolicyProgress(request, auth.UserID)
@@ -740,7 +740,7 @@ func (a *API) abandon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if changed {
@@ -757,7 +757,7 @@ func (a *API) createPairingToken(w http.ResponseWriter, r *http.Request) {
 
 	token, err := a.createPairingTokenForUser(currentAuth(r).UserID, 10*time.Minute)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	token.QRDataURL = a.pairingQRDataURL(r, token.Token)
@@ -771,7 +771,7 @@ func (a *API) listDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	devices, err := a.listDevicesForUser(currentAuth(r).UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, devices)
@@ -784,7 +784,7 @@ func (a *API) listOrganizations(w http.ResponseWriter, r *http.Request) {
 	}
 	memberships, err := a.organizations.ListOrganizationsForUser(currentAuth(r).UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, memberships)
@@ -806,7 +806,7 @@ func (a *API) createOrganization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, organization)
@@ -826,7 +826,7 @@ func (a *API) getBilling(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	if a.billingProvider != nil {
@@ -870,7 +870,7 @@ func (a *API) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	events, err := a.audit.ListAuditEvents(currentAuth(r).OrganizationID, input)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, events)
@@ -890,7 +890,7 @@ func (a *API) exportAuditEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	events, err := a.audit.ListAuditEvents(currentAuth(r).OrganizationID, input)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -942,7 +942,7 @@ func (a *API) listTeams(w http.ResponseWriter, r *http.Request) {
 	}
 	teams, err := a.teamsProjects.ListTeams(currentAuth(r).OrganizationID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, teams)
@@ -973,7 +973,7 @@ func (a *API) createTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, team)
@@ -989,7 +989,7 @@ func (a *API) getTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, team)
@@ -1021,7 +1021,7 @@ func (a *API) updateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, team)
@@ -1037,7 +1037,7 @@ func (a *API) listTeamMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, members)
@@ -1072,7 +1072,7 @@ func (a *API) upsertTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, member)
@@ -1094,7 +1094,7 @@ func (a *API) removeTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -1113,7 +1113,7 @@ func (a *API) recordHeartbeat(w http.ResponseWriter, r *http.Request) {
 	auth := currentAuth(r)
 	record, err := a.presence.RecordHeartbeat(auth.UserID, input.DeviceID, input.Client)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, record)
@@ -1126,7 +1126,7 @@ func (a *API) getAvailability(w http.ResponseWriter, r *http.Request) {
 	}
 	record, err := a.presence.GetAvailability(currentAuth(r).UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, record)
@@ -1148,7 +1148,7 @@ func (a *API) setAvailability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, record)
@@ -1168,7 +1168,7 @@ func (a *API) listTeamAvailability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, records)
@@ -1188,7 +1188,7 @@ func (a *API) getTeamCoverage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, coverage)
@@ -1208,7 +1208,7 @@ func (a *API) listOnCallSchedules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, schedules)
@@ -1237,7 +1237,7 @@ func (a *API) upsertOnCallSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, schedule)
@@ -1249,7 +1249,7 @@ func (a *API) listProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := a.teamsProjects.ListProjects(currentAuth(r).OrganizationID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, projects)
@@ -1281,7 +1281,7 @@ func (a *API) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, project)
@@ -1297,7 +1297,7 @@ func (a *API) getProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, project)
@@ -1329,7 +1329,7 @@ func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, project)
@@ -1341,7 +1341,7 @@ func (a *API) listPolicies(w http.ResponseWriter, r *http.Request) {
 	}
 	policies, err := a.policies.ListApprovalPolicies(currentAuth(r).OrganizationID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, policies)
@@ -1366,7 +1366,7 @@ func (a *API) createPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, policy)
@@ -1382,7 +1382,7 @@ func (a *API) getPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, policy)
@@ -1407,7 +1407,7 @@ func (a *API) updatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, policy)
@@ -1423,7 +1423,7 @@ func (a *API) deletePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -1439,7 +1439,7 @@ func (a *API) previewPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, preview)
@@ -1499,7 +1499,7 @@ func (a *API) pairDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, credential)
@@ -1531,7 +1531,7 @@ func (a *API) setDevicePushToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "device not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -1544,7 +1544,7 @@ func (a *API) listAgentTokens(w http.ResponseWriter, r *http.Request) {
 	}
 	records, err := a.listAgentTokensForUser(currentAuth(r).UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, records)
@@ -1576,7 +1576,7 @@ func (a *API) createAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, credential)
@@ -1592,7 +1592,7 @@ func (a *API) unpairDevice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "device not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -1608,7 +1608,7 @@ func (a *API) revokeAgentToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "agent token not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -1625,7 +1625,7 @@ func (a *API) rotateAgentToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, credential)
@@ -1690,7 +1690,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		if a.mode == ModeUser && a.accounts != nil {
 			userID, ok, err := a.userIDFromSessionCookie(r)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+				writeInternalError(w, err)
 				return
 			}
 			if ok {
@@ -1700,7 +1700,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				}
 				auth, err := a.authContextForUser(userID, authSourceSession, true)
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, err.Error())
+					writeInternalError(w, err)
 					return
 				}
 				next.ServeHTTP(w, withAuthContext(r, auth))
@@ -1710,7 +1710,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		if a.token == "" && isLoopback(r.RemoteAddr) {
 			auth, err := a.authContextForUser(defaultUserID, authSourceLoopback, false)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+				writeInternalError(w, err)
 				return
 			}
 			next.ServeHTTP(w, withAuthContext(r, auth))
@@ -1721,7 +1721,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		if a.token != "" && tokenMatches(token, a.token) {
 			auth, err := a.authContextForUser(defaultUserID, authSourceAdmin, false)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+				writeInternalError(w, err)
 				return
 			}
 			next.ServeHTTP(w, withAuthContext(r, auth))
@@ -1732,7 +1732,7 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				if authStore, ok := a.userTokens.(AgentTokenAuthStore); ok {
 					agentAuth, ok, err := authStore.AgentAuthForToken(token, requiredScope(r))
 					if err != nil {
-						writeError(w, http.StatusInternalServerError, err.Error())
+						writeInternalError(w, err)
 						return
 					}
 					if ok {
@@ -1753,13 +1753,13 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				}
 				userID, ok, err := a.userTokens.UserIDForAgentToken(token, requiredScope(r))
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, err.Error())
+					writeInternalError(w, err)
 					return
 				}
 				if ok {
 					auth, err := a.authContextForUser(userID, authSourceAgent, false)
 					if err != nil {
-						writeError(w, http.StatusInternalServerError, err.Error())
+						writeInternalError(w, err)
 						return
 					}
 					next.ServeHTTP(w, withAuthContext(r, auth))
@@ -1769,13 +1769,13 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 			if a.pairings != nil && token != "" {
 				userID, ok, err := a.userTokens.UserIDForDeviceToken(token)
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, err.Error())
+					writeInternalError(w, err)
 					return
 				}
 				if ok {
 					auth, err := a.authContextForUser(userID, authSourceDevice, false)
 					if err != nil {
-						writeError(w, http.StatusInternalServerError, err.Error())
+						writeInternalError(w, err)
 						return
 					}
 					next.ServeHTTP(w, withAuthContext(r, auth))
@@ -1786,13 +1786,13 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		if a.agents != nil {
 			ok, err := a.agents.VerifyAgentToken(token, requiredScope(r))
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+				writeInternalError(w, err)
 				return
 			}
 			if ok {
 				auth, err := a.authContextForUser(defaultUserID, authSourceAgent, false)
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, err.Error())
+					writeInternalError(w, err)
 					return
 				}
 				next.ServeHTTP(w, withAuthContext(r, auth))
@@ -1802,13 +1802,13 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		if a.pairings != nil && token != "" {
 			ok, err := a.pairings.VerifyDeviceToken(token)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+				writeInternalError(w, err)
 				return
 			}
 			if ok {
 				auth, err := a.authContextForUser(defaultUserID, authSourceDevice, false)
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, err.Error())
+					writeInternalError(w, err)
 					return
 				}
 				next.ServeHTTP(w, withAuthContext(r, auth))
@@ -2077,6 +2077,13 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func writeInternalError(w http.ResponseWriter, err error) {
+	if err != nil {
+		log.Printf("internal API error: %v", err)
+	}
+	writeError(w, http.StatusInternalServerError, "internal server error")
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
