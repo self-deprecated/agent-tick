@@ -853,7 +853,7 @@
 												{#if question.header && question.question}
 													<p>{question.question}</p>
 												{/if}
-												{#if question.options.length}
+												{#if question.options?.length}
 													<p class="muted">Options: {question.options.map((option) => option.label).join(', ')}</p>
 												{/if}
 											</div>

@@ -727,3 +727,68 @@ select:focus {
 		grid-template-columns: 1fr;
 	}
 }
+
+/* Keep the admin UI intentionally light/blue even on dark-mode browsers. */
+:root {
+	color-scheme: light;
+}
+
+.hero-copy,
+.muted,
+label,
+.quick-actions a,
+.eyebrow {
+	color: #475569;
+}
+
+.empty-state,
+.pairing-card,
+.request-card,
+.item-card,
+.setup-output,
+.detail-card,
+.billing-summary > div,
+.link-card,
+.usage-card,
+.coverage-card,
+.mini-row,
+.question-list {
+	border-color: #dbeafe;
+	background: #f8fbff;
+	color: #334155;
+}
+
+.empty-state {
+	border-color: #bfdbfe;
+	background: #eff6ff;
+}
+
+code {
+	background: #eaf2ff;
+	color: #1e3a8a;
+}
+
+pre,
+.button-link,
+.mode-pill {
+	background: #0f172a;
+	color: #f8fafc;
+}
+
+.summary-count,
+.status-pill {
+	background: #dbeafe;
+	color: #1e40af;
+}
+
+.link-card.highlight {
+	background: #ecfeff;
+}
+
+.usage-meter {
+	background: #dbeafe;
+}
+
+.usage-meter span {
+	background: linear-gradient(90deg, #2563eb, #14b8a6);
+}
