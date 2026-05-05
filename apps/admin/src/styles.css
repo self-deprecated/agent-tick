@@ -612,3 +612,118 @@ summary strong {
 		text-align: center;
 	}
 }
+
+/* Refined onboarding-first dashboard theme */
+:root {
+	color: #111827;
+	background: #f7f9fc;
+}
+
+body {
+	background:
+		radial-gradient(circle at 12% 0%, rgba(59, 130, 246, 0.18), transparent 30rem),
+		radial-gradient(circle at 90% 8%, rgba(20, 184, 166, 0.14), transparent 28rem),
+		linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+button {
+	background: linear-gradient(135deg, #2563eb, #0f766e);
+}
+
+button.secondary {
+	background: white;
+	color: #1d4ed8;
+	border-color: #d8e2f3;
+}
+
+input,
+select {
+	border-color: #d6e0ef;
+	background: #ffffff;
+	color: #111827;
+}
+
+input:focus,
+select:focus {
+	border-color: #2563eb;
+	box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.auth-card,
+.panel,
+.quick-actions,
+.onboarding-card {
+	border-color: rgba(148, 163, 184, 0.28);
+	background: rgba(255, 255, 255, 0.9);
+	box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
+}
+
+.quick-actions a:hover {
+	background: #e8f1ff;
+	color: #1d4ed8;
+}
+
+.onboarding-card {
+	display: grid;
+	grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+	gap: 1rem;
+	align-items: center;
+	border: 1px solid rgba(148, 163, 184, 0.28);
+	border-radius: 28px;
+	padding: 1.25rem;
+	margin-bottom: 1rem;
+	backdrop-filter: blur(10px);
+}
+
+.onboarding-card h2 {
+	margin: 0;
+	font-size: clamp(1.6rem, 3vw, 2.5rem);
+	letter-spacing: -0.04em;
+}
+
+.setup-steps {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 0.75rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.setup-steps a,
+.submenu-grid a {
+	display: grid;
+	gap: 0.35rem;
+	min-height: 100%;
+	padding: 1rem;
+	border: 1px solid #dbeafe;
+	border-radius: 20px;
+	background: linear-gradient(180deg, #ffffff, #f4f8ff);
+	text-decoration: none;
+}
+
+.setup-steps strong {
+	color: #1d4ed8;
+}
+
+.setup-steps span {
+	color: #64748b;
+	font-size: 0.9rem;
+}
+
+.submenu-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+	gap: 0.75rem;
+}
+
+.secondary-panel:not([open]) {
+	padding: 0.85rem 1rem;
+}
+
+@media (max-width: 760px) {
+	.onboarding-card,
+	.setup-steps {
+		grid-template-columns: 1fr;
+	}
+}

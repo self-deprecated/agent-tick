@@ -790,18 +790,77 @@
 		</section>
 
 		<nav class="quick-actions" aria-label="Dashboard sections">
+			<a href="#setup">Start here</a>
+			<a href="#devices">Pair phone</a>
+			<a href="#agents">Agent token</a>
 			<a href="#approvals">Approvals</a>
-			<a href="#billing">Billing</a>
-			<a href="#audit">Audit</a>
-			<a href="#devices">Devices</a>
-			<a href="#agents">Agents</a>
-			<a href="#teams">Teams</a>
-			<a href="#policies">Policies</a>
-			<a href="#projects">Projects</a>
+			<a href="#more">More</a>
 		</nav>
 
+		<section id="setup" class="onboarding-card" aria-labelledby="setup-title">
+			<div>
+				<p class="eyebrow">First run</p>
+				<h2 id="setup-title">Connect an agent to your phone in three steps</h2>
+				<p class="muted">This dashboard is focused on setup. Pair a phone, create one scoped agent token, then send a test approval.</p>
+			</div>
+			<ol class="setup-steps">
+				<li><a href="#devices"><strong>Pair mobile</strong><span>Create a QR and scan it from the app.</span></a></li>
+				<li><a href="#agents"><strong>Create agent token</strong><span>Copy the one-time setup command.</span></a></li>
+				<li><a href="#approvals"><strong>Test approval</strong><span>Run the request command and approve on mobile.</span></a></li>
+			</ol>
+		</section>
+
 		<main class="dashboard-grid">
-			<details id="billing" class="panel" open>
+			<section id="approvals" class="panel approvals-panel" aria-labelledby="approvals-title">
+				<div class="panel-heading">
+					<div>
+						<p class="eyebrow">Approvals</p>
+						<h2 id="approvals-title">Requests</h2>
+					</div>
+					<button class="secondary" onclick={loadApprovals} disabled={approvalsStatus === 'loading'}>Refresh</button>
+				</div>
+
+				{#if approvalsError}
+					<div class="inline-error" role="alert"><strong>Error</strong><span>{approvalsError}</span></div>
+				{/if}
+				{#if approvalsStatus === 'idle'}
+					<div class="empty-state">Connect to load approval requests.</div>
+				{:else if approvalsStatus === 'loading'}
+					<div class="empty-state">{statusText(approvalsStatus, 'Loading approvals…')}</div>
+				{:else if approvals.length === 0 && !approvalsError}
+					<div class="empty-state">No approval requests yet. After setup, test requests appear here.</div>
+				{:else}
+					<div class="request-list">
+						{#each approvals as approval (approval.id)}
+							<article class={['request-card', `status-${approval.status}`]}>
+								<div class="request-meta-row">
+									<span class="status-pill">{approval.status}</span>
+									<time datetime={approval.createdAt}>{formatDate(approval.createdAt)}</time>
+								</div>
+								<h3>{approval.title}</h3>
+								<p class="muted">{requesterLabel(approval.requester)}</p>
+								{#if approval.body}
+									<p>{approval.body}</p>
+								{/if}
+								{#if approval.command}
+									<pre>{approval.command}</pre>
+								{/if}
+								{#if approval.response}
+									<p class="muted">Response: {approval.response.choiceId || 'answered'}{approval.respondedAt ? ` · ${formatDate(approval.respondedAt)}` : ''}</p>
+								{/if}
+								{#if isActionable(approval)}
+									<div class="toolbar">
+										{#each approval.choices as choice (choice.id)}
+											<button onclick={() => respond(approval.id, choice)} disabled={busyApproval !== ''} class={choice.kind === 'deny' || choice.id === 'deny' ? 'danger' : ''}>{busyApproval === `${approval.id}:${choice.id}` ? 'Sending…' : choiceLabel(choice)}</button>
+										{/each}
+									</div>
+								{/if}
+							</article>
+						{/each}
+					</div>
+				{/if}
+			</section>
+			<details id="billing" class="panel secondary-panel">
 				<summary>
 					<span>
 						<span class="eyebrow">Billing</span>
@@ -871,7 +930,7 @@
 				</div>
 			</details>
 
-			<details id="audit" class="panel" open>
+			<details id="audit" class="panel secondary-panel">
 				<summary>
 					<span>
 						<span class="eyebrow">Audit</span>
@@ -916,74 +975,6 @@
 				</div>
 			</details>
 
-			<section id="approvals" class="panel approvals-panel" aria-labelledby="approvals-title">
-				<div class="panel-heading">
-					<div>
-						<p class="eyebrow">Approvals</p>
-						<h2 id="approvals-title">Requests</h2>
-					</div>
-					<button class="secondary" onclick={loadApprovals} disabled={approvalsStatus === 'loading'}>Refresh</button>
-				</div>
-
-				{#if approvalsError}
-					<div class="inline-error" role="alert"><strong>Error</strong><span>{approvalsError}</span></div>
-				{/if}
-				{#if approvalsStatus === 'idle'}
-					<div class="empty-state">Connect to load approval requests.</div>
-				{:else if approvalsStatus === 'loading'}
-					<div class="empty-state">{statusText(approvalsStatus, 'Loading approvals…')}</div>
-				{:else if approvals.length === 0 && !approvalsError}
-					<div class="empty-state">No approval requests yet.</div>
-				{:else}
-					<div class="request-list">
-						{#each approvals as approval (approval.id)}
-							<article class={['request-card', `status-${approval.status}`]}>
-								<div class="request-meta-row">
-									<span class="status-pill">{approval.status}</span>
-									<time datetime={approval.createdAt}>{formatDate(approval.createdAt)}</time>
-								</div>
-								<h3>{approval.title}</h3>
-								<p class="muted">{requesterLabel(approval.requester)}</p>
-								{#if approval.body}
-									<p>{approval.body}</p>
-								{/if}
-								{#if approval.command}
-									<pre>{approval.command}</pre>
-								{/if}
-								{#if approval.questions?.length}
-									<div class="question-list">
-										{#each approval.questions as question, index (`${approval.id}-${index}`)}
-											<div>
-												<strong>{question.header || question.question}</strong>
-												{#if question.header && question.question}
-													<p>{question.question}</p>
-												{/if}
-												{#if question.options.length}
-													<p class="muted">Options: {question.options.map((option) => option.label).join(', ')}</p>
-												{/if}
-											</div>
-										{/each}
-									</div>
-								{/if}
-								{#if approval.response}
-									<p class="muted">Response: {approval.response.choiceId || 'answered'}{approval.respondedAt ? ` · ${formatDate(approval.respondedAt)}` : ''}</p>
-								{/if}
-								{#if isActionable(approval)}
-									<div class="toolbar">
-										{#each approval.choices as choice (choice.id)}
-											<button onclick={() => respond(approval.id, choice)} disabled={busyApproval !== ''} class={choice.kind === 'deny' || choice.id === 'deny' ? 'danger' : ''}>
-												{busyApproval === `${approval.id}:${choice.id}` ? 'Sending…' : choiceLabel(choice)}
-											</button>
-										{/each}
-									</div>
-								{:else if approval.status === 'pending' && approval.requestType === 'questionnaire'}
-									<p class="muted">Respond in the phone app for questionnaire requests.</p>
-								{/if}
-							</article>
-						{/each}
-					</div>
-				{/if}
-			</section>
 
 			<details id="devices" class="panel" open>
 				<summary>
@@ -1154,7 +1145,7 @@
 				</div>
 			</details>
 
-			<details id="teams" class="panel" open>
+			<details id="teams" class="panel secondary-panel">
 				<summary>
 					<span>
 						<span class="eyebrow">Teams</span>
@@ -1273,7 +1264,7 @@
 				</div>
 			</details>
 
-			<details id="policies" class="panel" open>
+			<details id="policies" class="panel secondary-panel">
 				<summary>
 					<span>
 						<span class="eyebrow">Policies</span>
@@ -1380,7 +1371,24 @@
 				</div>
 			</details>
 
-			<details id="projects" class="panel" open>
+			<details id="more" class="panel secondary-panel">
+				<summary>
+					<span>
+						<span class="eyebrow">More</span>
+						<strong>Advanced settings</strong>
+					</span>
+					<span class="summary-count">•••</span>
+				</summary>
+				<div class="panel-body submenu-grid">
+					<a href="#billing">Billing</a>
+					<a href="#audit">Audit</a>
+					<a href="#teams">Teams</a>
+					<a href="#policies">Policies</a>
+					<a href="#projects">Projects</a>
+				</div>
+			</details>
+
+			<details id="projects" class="panel secondary-panel">
 				<summary>
 					<span>
 						<span class="eyebrow">Projects</span>
