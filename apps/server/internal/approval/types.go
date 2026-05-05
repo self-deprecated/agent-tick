@@ -325,6 +325,14 @@ type ListAuditEventsRequest struct {
 	Limit     int
 }
 
+type RetentionCleanupResult struct {
+	ExpiredSessions     int64 `json:"expiredSessions"`
+	ApprovalRequests    int64 `json:"approvalRequests"`
+	AuditEvents         int64 `json:"auditEvents"`
+	RevokedAgentTokens  int64 `json:"revokedAgentTokens"`
+	ExpiredPairingCodes int64 `json:"expiredPairingCodes"`
+}
+
 type OrganizationMembershipRecord struct {
 	OrganizationID string    `json:"organizationId"`
 	Name           string    `json:"name"`

@@ -1458,6 +1458,91 @@ func (s *SQLiteStore) ListAuditEvents(organizationID string, input ListAuditEven
 	return events, rows.Err()
 }
 
+func (s *SQLiteStore) RunRetentionCleanup(now time.Time) (RetentionCleanupResult, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
+	result := RetentionCleanupResult{}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return RetentionCleanupResult{}, err
+	}
+	defer rollback(tx)
+
+	deleted, err := execRowsAffected(tx, "DELETE FROM user_sessions WHERE expires_at != '' AND expires_at <= ?", timeText(&now))
+	if err != nil {
+		return RetentionCleanupResult{}, err
+	}
+	result.ExpiredSessions = deleted
+	deleted, err = execRowsAffected(tx, "DELETE FROM pairing_tokens WHERE expires_at != '' AND expires_at <= ?", timeText(&now))
+	if err != nil {
+		return RetentionCleanupResult{}, err
+	}
+	result.ExpiredPairingCodes = deleted
+
+	rows, err := tx.Query("SELECT id, audit_retention_days, approval_retention_days FROM organizations")
+	if err != nil {
+		return RetentionCleanupResult{}, err
+	}
+	defer rows.Close()
+	type retentionPlan struct {
+		organizationID        string
+		auditRetentionDays    int
+		approvalRetentionDays int
+	}
+	plans := []retentionPlan{}
+	for rows.Next() {
+		var plan retentionPlan
+		if err := rows.Scan(&plan.organizationID, &plan.auditRetentionDays, &plan.approvalRetentionDays); err != nil {
+			return RetentionCleanupResult{}, err
+		}
+		plans = append(plans, plan)
+	}
+	if err := rows.Err(); err != nil {
+		return RetentionCleanupResult{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return RetentionCleanupResult{}, err
+	}
+
+	for _, plan := range plans {
+		if plan.auditRetentionDays >= 0 {
+			cutoff := now.AddDate(0, 0, -plan.auditRetentionDays)
+			deleted, err := execRowsAffected(tx, "DELETE FROM audit_events WHERE organization_id = ? AND created_at < ?", plan.organizationID, timeText(&cutoff))
+			if err != nil {
+				return RetentionCleanupResult{}, err
+			}
+			result.AuditEvents += deleted
+		}
+		if plan.approvalRetentionDays >= 0 {
+			cutoff := now.AddDate(0, 0, -plan.approvalRetentionDays)
+			deleted, err := execRowsAffected(tx, "DELETE FROM approval_requests WHERE organization_id = ? AND created_at < ?", plan.organizationID, timeText(&cutoff))
+			if err != nil {
+				return RetentionCleanupResult{}, err
+			}
+			result.ApprovalRequests += deleted
+			deleted, err = execRowsAffected(tx, "DELETE FROM agent_tokens WHERE organization_id = ? AND revoked_at != '' AND revoked_at < ?", plan.organizationID, timeText(&cutoff))
+			if err != nil {
+				return RetentionCleanupResult{}, err
+			}
+			result.RevokedAgentTokens += deleted
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return RetentionCleanupResult{}, err
+	}
+	return result, nil
+}
+
+func execRowsAffected(tx *sql.Tx, query string, args ...any) (int64, error) {
+	res, err := tx.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func enforceOrganizationPlanLimitTx(db rowQuerier, organizationID string, limitKind string, label string, countQuery string, args ...any) error {
 	limit, err := organizationLimitValue(db, organizationID, limitKind)
 	if err != nil {

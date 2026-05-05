@@ -62,6 +62,7 @@ UI or mobile app before the action proceeds.`,
 		newGuardCmd(),
 		newPairCmd(),
 		newAgentTokenCmd(),
+		newMaintenanceCmd(),
 		newAdapterCmd(),
 	)
 	return root
@@ -143,6 +144,41 @@ See also: setup, agent-token`,
 	cmd.Flags().StringVar(&mode, "mode", getenv("AGENT_TICK_MODE", approval.ModeSingle), "API mode (single) [env: AGENT_TICK_MODE]")
 	cmd.Flags().StringVar(&publicURL, "public-url", os.Getenv("AGENT_TICK_PUBLIC_URL"), "public server URL [env: AGENT_TICK_PUBLIC_URL]")
 	cmd.Flags().BoolVar(&requireSignature, "require-signature", parseBoolEnv(os.Getenv("AGENT_TICK_REQUIRE_SIGNATURE")), "require request signatures [env: AGENT_TICK_REQUIRE_SIGNATURE]")
+	return cmd
+}
+
+func newMaintenanceCmd() *cobra.Command {
+	var data string
+	cmd := &cobra.Command{
+		Use:   "maintenance",
+		Short: "Run server-local maintenance hooks",
+		Long:  "maintenance exposes server-local operational hooks for hosted and self-hosted SQLite data stores.",
+	}
+	cleanup := &cobra.Command{
+		Use:   "cleanup",
+		Short: "Delete expired sessions and data past organization retention windows",
+		Long: `cleanup deletes expired dashboard sessions, expired pairing codes, approval
+requests older than each organization's approval retention setting, audit events
+older than each organization's audit retention setting, and revoked agent tokens
+older than the approval retention setting.`,
+		Example: `  agent-tick maintenance cleanup --data /var/lib/agent-tick/agent-tick.db`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store, err := approval.NewSQLiteStore(data)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			result, err := store.RunRetentionCleanup(time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(result)
+		},
+	}
+	cleanup.Flags().StringVar(&data, "data", "./agent-tick.db", "path to SQLite data file")
+	cmd.AddCommand(cleanup)
 	return cmd
 }
 

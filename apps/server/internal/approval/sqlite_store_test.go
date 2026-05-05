@@ -645,6 +645,51 @@ func TestSQLiteStoreBillingStatusTracksPlanAndUsage(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreRunRetentionCleanup(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	now := time.Now().UTC()
+	old := now.AddDate(0, 0, -10)
+	if _, err := store.db.Exec("UPDATE organizations SET audit_retention_days = 1, approval_retention_days = 1 WHERE id = ?", defaultOrganizationID); err != nil {
+		t.Fatalf("update retention error = %v", err)
+	}
+	if _, err := store.db.Exec("INSERT INTO user_sessions (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)", defaultUserID, tokenHash("expired"), timeText(&old), timeText(&old)); err != nil {
+		t.Fatalf("insert expired session error = %v", err)
+	}
+	if _, err := store.db.Exec("INSERT INTO pairing_tokens (user_id, organization_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)", defaultUserID, defaultOrganizationID, tokenHash("expired-pair"), timeText(&old), timeText(&old)); err != nil {
+		t.Fatalf("insert expired pairing token error = %v", err)
+	}
+	request, err := store.Create(CreateRequest{Title: "Old request"})
+	if err != nil {
+		t.Fatalf("Create(old request) error = %v", err)
+	}
+	if _, err := store.db.Exec("UPDATE approval_requests SET created_at = ? WHERE id = ?", timeText(&old), request.ID); err != nil {
+		t.Fatalf("age request error = %v", err)
+	}
+	if _, err := store.db.Exec("UPDATE audit_events SET created_at = ? WHERE organization_id = ?", timeText(&old), defaultOrganizationID); err != nil {
+		t.Fatalf("age audit events error = %v", err)
+	}
+	agent, err := store.CreateAgentTokenWithOptions(CreateAgentTokenRequest{Name: "old revoked"})
+	if err != nil {
+		t.Fatalf("CreateAgentTokenWithOptions() error = %v", err)
+	}
+	if err := store.RevokeAgentToken(agent.AgentID); err != nil {
+		t.Fatalf("RevokeAgentToken() error = %v", err)
+	}
+	if _, err := store.db.Exec("UPDATE agent_tokens SET revoked_at = ? WHERE id = ?", timeText(&old), agent.AgentID); err != nil {
+		t.Fatalf("age revoked token error = %v", err)
+	}
+
+	result, err := store.RunRetentionCleanup(now)
+	if err != nil {
+		t.Fatalf("RunRetentionCleanup() error = %v", err)
+	}
+	if result.ExpiredSessions != 1 || result.ExpiredPairingCodes != 1 || result.ApprovalRequests != 1 || result.AuditEvents == 0 || result.RevokedAgentTokens != 1 {
+		t.Fatalf("cleanup result = %#v, want expired session/pairing/request/audit/revoked token removals", result)
+	}
+}
+
 func TestSQLiteStoreListsAuditEventsByOrganization(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
