@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"rsc.io/qr"
@@ -36,6 +37,7 @@ type API struct {
 	presence         PresenceStore
 	billing          BillingStore
 	audit            AuditLogStore
+	rateLimiter      *rateLimiter
 	token            string
 	mode             string
 	publicURL        string
@@ -50,7 +52,7 @@ const (
 const maxRequestBodyBytes int64 = 1 << 20
 
 func NewAPI(store Store, token string) *API {
-	api := &API{store: store, push: NewPushSender(), events: NewEventHub(), token: token, mode: ModeSingle}
+	api := &API{store: store, push: NewPushSender(), events: NewEventHub(), rateLimiter: newRateLimiter(time.Minute, 240, 20), token: token, mode: ModeSingle}
 	if scopedStore, ok := store.(UserScopedStore); ok {
 		api.scopedStore = scopedStore
 	}
@@ -352,7 +354,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/agent-tokens", a.createAgentToken)
 	mux.HandleFunc("POST /v1/agent-tokens/{id}/revoke", a.revokeAgentToken)
 	mux.HandleFunc("GET /v1/events", a.eventsSocket)
-	return a.withRequestSizeLimit(a.withAuth(a.withCORS(mux)))
+	return a.withRequestSizeLimit(a.withRateLimit(a.withAuth(a.withCORS(mux))))
 }
 
 func (a *API) health(w http.ResponseWriter, _ *http.Request) {
@@ -1912,6 +1914,68 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+type rateLimiter struct {
+	mu             sync.Mutex
+	buckets        map[string]rateBucket
+	window         time.Duration
+	defaultLimit   int
+	sensitiveLimit int
+}
+
+type rateBucket struct {
+	windowStart time.Time
+	count       int
+}
+
+func newRateLimiter(window time.Duration, defaultLimit int, sensitiveLimit int) *rateLimiter {
+	return &rateLimiter{buckets: map[string]rateBucket{}, window: window, defaultLimit: defaultLimit, sensitiveLimit: sensitiveLimit}
+}
+
+func (l *rateLimiter) allow(key string, limit int, now time.Time) bool {
+	if l == nil || limit <= 0 {
+		return true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	bucket := l.buckets[key]
+	if bucket.windowStart.IsZero() || now.Sub(bucket.windowStart) >= l.window {
+		bucket = rateBucket{windowStart: now}
+	}
+	if bucket.count >= limit {
+		l.buckets[key] = bucket
+		return false
+	}
+	bucket.count++
+	l.buckets[key] = bucket
+	return true
+}
+
+func (a *API) withRateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions || r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/assets/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		limit := a.rateLimiter.defaultLimit
+		if r.URL.Path == "/v1/session" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/pairing-tokens" {
+			limit = a.rateLimiter.sensitiveLimit
+		}
+		if !a.rateLimiter.allow(clientIP(r), limit, time.Now().UTC()) {
+			writeError(w, http.StatusTooManyRequests, "rate limit exceeded; retry later")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && strings.TrimSpace(host) != "" {
+		return host
+	}
+	return r.RemoteAddr
 }
 
 func (a *API) withRequestSizeLimit(next http.Handler) http.Handler {

@@ -43,6 +43,23 @@ func TestAPICORSAllowsConfiguredOriginOnly(t *testing.T) {
 	}
 }
 
+func TestAPIRateLimitsByClientIP(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	api.rateLimiter = newRateLimiter(time.Minute, 1, 1)
+	handler := api.Handler()
+
+	first := statusWithBearer(t, handler, "test-token", http.MethodGet, "/v1/approval-requests", nil)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d body = %s, want %d", first.Code, first.Body.String(), http.StatusOK)
+	}
+	second := statusWithBearer(t, handler, "test-token", http.MethodGet, "/v1/approval-requests", nil)
+	if second.Code != http.StatusTooManyRequests || !strings.Contains(second.Body.String(), "rate limit") {
+		t.Fatalf("second status/body = %d/%s, want rate limit", second.Code, second.Body.String())
+	}
+}
+
 func TestAPIRejectsOversizedRequestBodies(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()
