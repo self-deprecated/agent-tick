@@ -95,7 +95,7 @@ Rotate credentials deliberately. In single-user mode, change `AGENT_TICK_TOKEN` 
 
 The phone app can show local notifications while it polls. Expo remote push requires an EAS development or production build with a real EAS project id; Expo Go and placeholder project ids are limited to local notification behavior.
 
-Dashboard sessions in user mode use HttpOnly session cookies plus a readable CSRF token cookie for browser writes. Cookies are marked secure when the server sees HTTPS directly, receives `X-Forwarded-Proto: https`, or has an HTTPS `AGENT_TICK_PUBLIC_URL`.
+Dashboard sessions in user mode use HttpOnly session cookies plus a readable CSRF token cookie for browser writes. Cookies are marked secure when the server sees HTTPS directly, receives `X-Forwarded-Proto: https`, or has an HTTPS `AGENT_TICK_PUBLIC_URL`. Browser CORS responses are restricted to the configured public origin, the request host, or loopback development origins instead of using a wildcard, and write request bodies are capped at 1 MiB.
 
 ## Plan and Billing Defaults
 

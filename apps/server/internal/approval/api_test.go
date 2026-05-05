@@ -15,6 +15,48 @@ import (
 	"time"
 )
 
+func TestAPICORSAllowsConfiguredOriginOnly(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	api.SetPublicURL("https://tick.example.com/app")
+	handler := api.Handler()
+
+	allowedReq := httptest.NewRequest(http.MethodOptions, "/v1/approval-requests", nil)
+	allowedReq.Host = "tick.example.com"
+	allowedReq.Header.Set("Origin", "https://tick.example.com")
+	allowedReq.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	allowedRec := httptest.NewRecorder()
+	handler.ServeHTTP(allowedRec, allowedReq)
+	if allowedRec.Code != http.StatusNoContent || allowedRec.Header().Get("Access-Control-Allow-Origin") != "https://tick.example.com" {
+		t.Fatalf("allowed CORS status/origin = %d/%q, want no-content configured origin", allowedRec.Code, allowedRec.Header().Get("Access-Control-Allow-Origin"))
+	}
+
+	blockedReq := httptest.NewRequest(http.MethodOptions, "/v1/approval-requests", nil)
+	blockedReq.Host = "tick.example.com"
+	blockedReq.Header.Set("Origin", "https://evil.example")
+	blockedReq.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	blockedRec := httptest.NewRecorder()
+	handler.ServeHTTP(blockedRec, blockedReq)
+	if blockedRec.Code != http.StatusForbidden || blockedRec.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("blocked CORS status/origin = %d/%q, want forbidden without wildcard", blockedRec.Code, blockedRec.Header().Get("Access-Control-Allow-Origin"))
+	}
+}
+
+func TestAPIRejectsOversizedRequestBodies(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	handler := NewAPI(store, "test-token").Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/approval-requests", strings.NewReader(strings.Repeat("x", int(maxRequestBodyBytes)+1)))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge || !strings.Contains(rec.Body.String(), "too large") {
+		t.Fatalf("oversized request status/body = %d/%s, want 413", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAdminServesEmbeddedSvelteApp(t *testing.T) {
 	api := NewAPI(
 		NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json")),

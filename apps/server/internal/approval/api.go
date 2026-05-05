@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,8 @@ const (
 	ModeSingle = "single"
 	ModeUser   = "user"
 )
+
+const maxRequestBodyBytes int64 = 1 << 20
 
 func NewAPI(store Store, token string) *API {
 	api := &API{store: store, push: NewPushSender(), events: NewEventHub(), token: token, mode: ModeSingle}
@@ -349,7 +352,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/agent-tokens", a.createAgentToken)
 	mux.HandleFunc("POST /v1/agent-tokens/{id}/revoke", a.revokeAgentToken)
 	mux.HandleFunc("GET /v1/events", a.eventsSocket)
-	return a.withAuth(a.withCORS(mux))
+	return a.withRequestSizeLimit(a.withAuth(a.withCORS(mux)))
 }
 
 func (a *API) health(w http.ResponseWriter, _ *http.Request) {
@@ -1848,12 +1851,77 @@ func tokenMatches(got string, want string) bool {
 
 func (a *API) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" {
+			w.Header().Add("Vary", "Origin")
+			if a.corsOriginAllowed(origin, r) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			} else if r.Method == http.MethodOptions {
+				writeError(w, http.StatusForbidden, "origin is not allowed")
+				return
+			}
+		}
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, "+csrfHeaderName)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (a *API) corsOriginAllowed(origin string, r *http.Request) bool {
+	originURL, err := url.Parse(origin)
+	if err != nil || originURL.Scheme == "" || originURL.Host == "" {
+		return false
+	}
+	if publicOrigin := originFromURL(a.publicURL); publicOrigin != "" && strings.EqualFold(origin, publicOrigin) {
+		return true
+	}
+	if publicOrigin := originFromURL(publicServerURL(r)); publicOrigin != "" && strings.EqualFold(origin, publicOrigin) {
+		return true
+	}
+	return isLoopbackHost(originURL.Hostname()) && isLoopbackHost(requestHost(r))
+}
+
+func originFromURL(value string) string {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+	return parsed.Scheme + "://" + parsed.Host
+}
+
+func requestHost(r *http.Request) string {
+	host := r.Host
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwarded != "" {
+		host = forwarded
+	}
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		return parsedHost
+	}
+	return host
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func (a *API) withRequestSizeLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil && (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete) {
+			if r.ContentLength > maxRequestBodyBytes {
+				writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		}
 		next.ServeHTTP(w, r)
 	})
