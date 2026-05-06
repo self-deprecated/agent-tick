@@ -1,21 +1,29 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import * as ts from 'typescript';
+
+const tempDirectories = [];
+
+after(() => {
+	for (const directory of tempDirectories) {
+		rmSync(directory, { recursive: true, force: true });
+	}
+});
 
 async function loadRoutingModule() {
 	const source = readFileSync(new URL('./pageRouting.ts', import.meta.url), 'utf8');
 	const { outputText } = ts.transpileModule(source, {
 		compilerOptions: {
 			module: ts.ModuleKind.ES2022,
-			target: ts.ScriptTarget.ES2022,
-			verbatimModuleSyntax: true
+			target: ts.ScriptTarget.ES2022
 		}
 	});
 	const directory = mkdtempSync(path.join(tmpdir(), 'agent-tick-admin-routing-'));
+	tempDirectories.push(directory);
 	const modulePath = path.join(directory, 'pageRouting.mjs');
 	writeFileSync(modulePath, outputText);
 	return import(pathToFileURL(modulePath).href);
@@ -56,11 +64,32 @@ test('shouldShowBillingPanel shows hosted loading and error states', () => {
 		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'error', billingError: 'billing unavailable', billingPlan: undefined }),
 		true
 	);
+	for (const billingError of ['   ', '\n\t']) {
+		assert.equal(
+			routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'error', billingError, billingPlan: undefined }),
+			true
+		);
+	}
 });
 
-test('shouldShowBillingPanel hides self-hosted and unauthorized states', () => {
+test('shouldShowBillingPanel preserves hosted-plan display semantics', () => {
+	assert.equal(
+		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'ready', billingError: '', billingPlan: 'team' }),
+		true
+	);
+	assert.equal(
+		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'ready', billingError: '', billingPlan: '' }),
+		true
+	);
+});
+
+test('shouldShowBillingPanel hides self-hosted, unauthorized, and idle hosted states', () => {
 	assert.equal(
 		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'ready', billingError: '', billingPlan: 'self-hosted' }),
+		false
+	);
+	assert.equal(
+		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'idle', billingError: '', billingPlan: undefined }),
 		false
 	);
 	assert.equal(

@@ -29,6 +29,6 @@ export function refreshLoadKeys(activePage: Page): DashboardLoadKey[] {
 export function shouldShowBillingPanel(input: BillingPanelInput): boolean {
 	if (input.activePage !== 'admin' || !input.isOrgAdmin || !input.isUserMode) return false;
 	if (input.billingStatus === 'loading') return true;
-	if (input.billingError.trim() !== '') return true;
-	return input.billingPlan !== undefined && input.billingPlan !== '' && input.billingPlan !== 'self-hosted';
+	if (input.billingError !== '') return true;
+	return input.billingPlan !== undefined && input.billingPlan !== 'self-hosted';
 }
