@@ -14,6 +14,8 @@ import (
 
 const defaultSlackAPIBaseURL = "https://slack.com/api"
 
+var smtpSendMail = smtp.SendMail
+
 type RequestNotifier struct {
 	client           *http.Client
 	publicURL        string
@@ -186,7 +188,7 @@ func (e *emailNotifier) send(request ApprovalRequest, dashboardURL string) error
 		auth = smtp.PlainAuth("", e.username, e.password, host)
 	}
 	message := buildSMTPMessage(e.from, e.to, request, dashboardURL)
-	return smtp.SendMail(e.addr, auth, e.from, e.to, []byte(message))
+	return smtpSendMail(e.addr, auth, e.from, e.to, []byte(message))
 }
 
 func buildSMTPMessage(from string, to []string, request ApprovalRequest, dashboardURL string) string {

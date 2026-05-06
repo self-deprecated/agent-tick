@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/smtp"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +36,44 @@ func TestBuildSMTPMessageIncludesDashboardURL(t *testing.T) {
 		if !strings.Contains(message, fragment) {
 			t.Fatalf("SMTP message missing %q\n%s", fragment, message)
 		}
+	}
+}
+
+func TestRequestNotifierSendsEmail(t *testing.T) {
+	original := smtpSendMail
+	defer func() { smtpSendMail = original }()
+
+	var gotAddr string
+	var gotFrom string
+	var gotTo []string
+	var gotMessage string
+	smtpSendMail = func(addr string, _ smtp.Auth, from string, to []string, msg []byte) error {
+		gotAddr = addr
+		gotFrom = from
+		gotTo = append([]string{}, to...)
+		gotMessage = string(msg)
+		return nil
+	}
+
+	notifier := &RequestNotifier{
+		publicURL: "https://tick.example.com",
+		email: &emailNotifier{
+			addr: "smtp.example.com:587",
+			from: "tick@example.com",
+			to:   []string{"ops@example.com", "oncall@example.com"},
+		},
+	}
+	if err := notifier.NotifyRequestCreated(sampleNotificationRequest()); err != nil {
+		t.Fatalf("NotifyRequestCreated error = %v", err)
+	}
+	if gotAddr != "smtp.example.com:587" || gotFrom != "tick@example.com" {
+		t.Fatalf("smtp args = %q/%q, want smtp.example.com:587/tick@example.com", gotAddr, gotFrom)
+	}
+	if len(gotTo) != 2 || gotTo[0] != "ops@example.com" || gotTo[1] != "oncall@example.com" {
+		t.Fatalf("smtp recipients = %#v", gotTo)
+	}
+	if !strings.Contains(gotMessage, "Open: https://tick.example.com/#approvals") {
+		t.Fatalf("smtp message = %q, want dashboard URL", gotMessage)
 	}
 }
 
