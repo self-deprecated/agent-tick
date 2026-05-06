@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestSplitAndTrimCSV(t *testing.T) {
@@ -23,11 +24,42 @@ func TestSplitAndTrimCSV(t *testing.T) {
 	}
 }
 
-func TestBuildSMTPMessageIncludesDashboardURL(t *testing.T) {
-	message := buildSMTPMessage("tick@example.com", []string{"ops@example.com"}, sampleNotificationRequest(), "https://tick.example.com/#approvals")
+func TestNewRequestNotifierFromEnvRequiresCompleteSMTPConfig(t *testing.T) {
+	t.Setenv("AGENT_TICK_EMAIL_SMTP_ADDR", "smtp.example.com:587")
+	t.Setenv("AGENT_TICK_EMAIL_FROM", "")
+	t.Setenv("AGENT_TICK_EMAIL_TO", "ops@example.com")
+	notifier := NewRequestNotifierFromEnv("https://tick.example.com")
+	if notifier.email != nil {
+		t.Fatalf("email notifier = %#v, want nil without complete SMTP config", notifier.email)
+	}
+
+	t.Setenv("AGENT_TICK_EMAIL_FROM", "tick@example.com\r\nBcc:evil@example.com")
+	t.Setenv("AGENT_TICK_EMAIL_TO", "ops@example.com\r\noncall@example.com")
+	notifier = NewRequestNotifierFromEnv("https://tick.example.com")
+	if notifier.email == nil {
+		t.Fatal("email notifier = nil, want configured notifier")
+	}
+	if strings.ContainsAny(notifier.email.from, "\r\n") {
+		t.Fatalf("email from = %q, want sanitized header value", notifier.email.from)
+	}
+	for _, recipient := range notifier.email.to {
+		if strings.ContainsAny(recipient, "\r\n") {
+			t.Fatalf("recipient = %q, want sanitized header value", recipient)
+		}
+	}
+	if notifier.requestTimeout != defaultNotificationTimeout {
+		t.Fatalf("requestTimeout = %v, want %v", notifier.requestTimeout, defaultNotificationTimeout)
+	}
+	if notifier.client == nil || notifier.client.Timeout != defaultNotificationTimeout {
+		t.Fatalf("client timeout = %#v, want %v", notifier.client, defaultNotificationTimeout)
+	}
+}
+
+func TestBuildSMTPMessageIncludesDashboardURLAndSanitizesHeaders(t *testing.T) {
+	message := buildSMTPMessage("tick@example.com\r\nBcc:evil@example.com", []string{"ops@example.com\r\nCc:evil@example.com"}, sampleNotificationRequest(), "https://tick.example.com/#approvals")
 	for _, fragment := range []string{
-		"From: tick@example.com",
-		"To: ops@example.com",
+		"From: tick@example.com  Bcc:evil@example.com",
+		"To: ops@example.com  Cc:evil@example.com",
 		"Subject: [Agent Tick] Deploy production?",
 		"Agent Tick approval request",
 		"Title: Deploy production?",
@@ -36,6 +68,20 @@ func TestBuildSMTPMessageIncludesDashboardURL(t *testing.T) {
 		if !strings.Contains(message, fragment) {
 			t.Fatalf("SMTP message missing %q\n%s", fragment, message)
 		}
+	}
+	if strings.Contains(message, "\r\nBcc:") || strings.Contains(message, "\r\nCc:") {
+		t.Fatalf("SMTP message contains injected headers:\n%s", message)
+	}
+}
+
+func TestRequestNotifierAsyncRejectsWhenQueueIsFull(t *testing.T) {
+	notifier := &RequestNotifier{
+		deliverySlots: make(chan struct{}, 1),
+		webhookURLs:   []string{"https://example.test"},
+	}
+	notifier.deliverySlots <- struct{}{}
+	if err := notifier.NotifyRequestCreatedAsync(sampleNotificationRequest()); err == nil || !strings.Contains(err.Error(), "queue is full") {
+		t.Fatalf("NotifyRequestCreatedAsync() error = %v, want queue full error", err)
 	}
 }
 
@@ -47,20 +93,23 @@ func TestRequestNotifierSendsEmail(t *testing.T) {
 	var gotFrom string
 	var gotTo []string
 	var gotMessage string
-	smtpSendMail = func(addr string, _ smtp.Auth, from string, to []string, msg []byte) error {
+	var gotTimeout time.Duration
+	smtpSendMail = func(addr string, _ smtp.Auth, from string, to []string, msg []byte, timeout time.Duration) error {
 		gotAddr = addr
 		gotFrom = from
 		gotTo = append([]string{}, to...)
 		gotMessage = string(msg)
+		gotTimeout = timeout
 		return nil
 	}
 
 	notifier := &RequestNotifier{
 		publicURL: "https://tick.example.com",
 		email: &emailNotifier{
-			addr: "smtp.example.com:587",
-			from: "tick@example.com",
-			to:   []string{"ops@example.com", "oncall@example.com"},
+			addr:    "smtp.example.com:587",
+			from:    "tick@example.com",
+			to:      []string{"ops@example.com", "oncall@example.com"},
+			timeout: 3 * time.Second,
 		},
 	}
 	if err := notifier.NotifyRequestCreated(sampleNotificationRequest()); err != nil {
@@ -71,6 +120,9 @@ func TestRequestNotifierSendsEmail(t *testing.T) {
 	}
 	if len(gotTo) != 2 || gotTo[0] != "ops@example.com" || gotTo[1] != "oncall@example.com" {
 		t.Fatalf("smtp recipients = %#v", gotTo)
+	}
+	if gotTimeout != 3*time.Second {
+		t.Fatalf("smtp timeout = %v, want %v", gotTimeout, 3*time.Second)
 	}
 	if !strings.Contains(gotMessage, "Open: https://tick.example.com/#approvals") {
 		t.Fatalf("smtp message = %q, want dashboard URL", gotMessage)
@@ -105,6 +157,7 @@ func TestRequestNotifierSendsConfiguredWebhooks(t *testing.T) {
 	notifier := &RequestNotifier{
 		client:           server.Client(),
 		publicURL:        "https://tick.example.com",
+		requestTimeout:   time.Second,
 		webhookURLs:      []string{server.URL + "/generic"},
 		slackWebhookURLs: []string{server.URL + "/slack"},
 		teamsWebhookURLs: []string{server.URL + "/teams"},
@@ -142,7 +195,7 @@ func TestRequestNotifierSendsConfiguredWebhooks(t *testing.T) {
 
 func TestRequestNotifierSendsSlackDM(t *testing.T) {
 	var openAuth string
-	var openedUsers []string
+	var openedUsers any
 	var postedChannel string
 	var postedText string
 
@@ -151,7 +204,7 @@ func TestRequestNotifierSendsSlackDM(t *testing.T) {
 		openAuth = r.Header.Get("Authorization")
 		switch r.URL.Path {
 		case "/conversations.open":
-			var payload map[string][]string
+			var payload map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				t.Fatalf("decode conversations.open payload: %v", err)
 			}
@@ -172,8 +225,9 @@ func TestRequestNotifierSendsSlackDM(t *testing.T) {
 	defer server.Close()
 
 	notifier := &RequestNotifier{
-		client:    server.Client(),
-		publicURL: "https://tick.example.com",
+		client:         server.Client(),
+		publicURL:      "https://tick.example.com",
+		requestTimeout: time.Second,
 		slackDM: &slackDMNotifier{
 			botToken:   "xoxb-test",
 			userIDs:    []string{"U123"},
@@ -186,14 +240,24 @@ func TestRequestNotifierSendsSlackDM(t *testing.T) {
 	if openAuth != "Bearer xoxb-test" {
 		t.Fatalf("Authorization = %q, want Bearer xoxb-test", openAuth)
 	}
-	if len(openedUsers) != 1 || openedUsers[0] != "U123" {
-		t.Fatalf("opened users = %#v, want U123", openedUsers)
+	if openedUsers != "U123" {
+		t.Fatalf("opened users = %#v, want string U123", openedUsers)
 	}
 	if postedChannel != "D123" {
 		t.Fatalf("posted channel = %q, want D123", postedChannel)
 	}
 	if !strings.Contains(postedText, "Deploy production?") {
 		t.Fatalf("posted text = %q, want title", postedText)
+	}
+}
+
+func TestTruncateNotificationPreservesUTF8(t *testing.T) {
+	truncated := truncateNotification("ééééé", 4)
+	if !utf8.ValidString(truncated) {
+		t.Fatalf("truncateNotification() produced invalid UTF-8: %q", truncated)
+	}
+	if truncated != "ééé…" {
+		t.Fatalf("truncateNotification() = %q, want %q", truncated, "ééé…")
 	}
 }
 

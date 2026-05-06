@@ -2,23 +2,34 @@ package approval
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/smtp"
 	"os"
 	"strings"
+	"time"
 )
 
-const defaultSlackAPIBaseURL = "https://slack.com/api"
+const (
+	defaultSlackAPIBaseURL         = "https://slack.com/api"
+	defaultNotificationTimeout     = 10 * time.Second
+	defaultNotificationConcurrency = 16
+)
 
-var smtpSendMail = smtp.SendMail
+var smtpSendMail = sendMailWithTimeout
 
 type RequestNotifier struct {
 	client           *http.Client
 	publicURL        string
+	requestTimeout   time.Duration
+	deliverySlots    chan struct{}
 	webhookURLs      []string
 	slackWebhookURLs []string
 	teamsWebhookURLs []string
@@ -32,6 +43,7 @@ type emailNotifier struct {
 	password string
 	from     string
 	to       []string
+	timeout  time.Duration
 }
 
 type slackDMNotifier struct {
@@ -48,16 +60,18 @@ type requestCreatedWebhookPayload struct {
 
 func NewRequestNotifierFromEnv(publicURL string) *RequestNotifier {
 	notifier := &RequestNotifier{
-		client:           http.DefaultClient,
+		client:           &http.Client{Timeout: defaultNotificationTimeout},
 		publicURL:        strings.TrimRight(strings.TrimSpace(publicURL), "/"),
+		requestTimeout:   defaultNotificationTimeout,
+		deliverySlots:    make(chan struct{}, defaultNotificationConcurrency),
 		webhookURLs:      splitAndTrimCSV(os.Getenv("AGENT_TICK_WEBHOOK_URLS")),
 		slackWebhookURLs: splitAndTrimCSV(os.Getenv("AGENT_TICK_SLACK_WEBHOOK_URLS")),
 		teamsWebhookURLs: splitAndTrimCSV(os.Getenv("AGENT_TICK_TEAMS_WEBHOOK_URLS")),
 	}
 
 	smtpAddr := strings.TrimSpace(os.Getenv("AGENT_TICK_EMAIL_SMTP_ADDR"))
-	from := strings.TrimSpace(os.Getenv("AGENT_TICK_EMAIL_FROM"))
-	to := splitAndTrimCSV(os.Getenv("AGENT_TICK_EMAIL_TO"))
+	from := sanitizeHeader(strings.TrimSpace(os.Getenv("AGENT_TICK_EMAIL_FROM")))
+	to := sanitizeHeaderValues(splitAndTrimCSV(os.Getenv("AGENT_TICK_EMAIL_TO")))
 	if smtpAddr != "" && from != "" && len(to) > 0 {
 		notifier.email = &emailNotifier{
 			addr:     smtpAddr,
@@ -65,6 +79,7 @@ func NewRequestNotifierFromEnv(publicURL string) *RequestNotifier {
 			password: os.Getenv("AGENT_TICK_EMAIL_SMTP_PASSWORD"),
 			from:     from,
 			to:       to,
+			timeout:  defaultNotificationTimeout,
 		}
 	}
 
@@ -83,6 +98,27 @@ func NewRequestNotifierFromEnv(publicURL string) *RequestNotifier {
 
 func (n *RequestNotifier) Enabled() bool {
 	return n != nil && (len(n.webhookURLs) > 0 || len(n.slackWebhookURLs) > 0 || len(n.teamsWebhookURLs) > 0 || n.email != nil || n.slackDM != nil)
+}
+
+func (n *RequestNotifier) NotifyRequestCreatedAsync(request ApprovalRequest) error {
+	if !n.Enabled() {
+		return nil
+	}
+	if n.deliverySlots == nil {
+		return n.NotifyRequestCreated(request)
+	}
+	select {
+	case n.deliverySlots <- struct{}{}:
+		go func() {
+			defer func() { <-n.deliverySlots }()
+			if err := n.NotifyRequestCreated(request); err != nil {
+				log.Printf("notify external sinks for request %s: %v", request.ID, err)
+			}
+		}()
+		return nil
+	default:
+		return fmt.Errorf("notification delivery queue is full")
+	}
 }
 
 func (n *RequestNotifier) NotifyRequestCreated(request ApprovalRequest) error {
@@ -132,7 +168,7 @@ func (n *RequestNotifier) sendGenericWebhooks(request ApprovalRequest) error {
 	}
 	var errs []error
 	for _, webhookURL := range n.webhookURLs {
-		if err := postJSON(n.client, webhookURL, payload, nil); err != nil {
+		if err := postJSON(n.client, n.requestTimeout, webhookURL, payload, nil); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", webhookURL, err))
 		}
 	}
@@ -146,7 +182,7 @@ func (n *RequestNotifier) sendSlackWebhooks(request ApprovalRequest) error {
 	payload := slackWebhookPayload(request, n.dashboardURL())
 	var errs []error
 	for _, webhookURL := range n.slackWebhookURLs {
-		if err := postJSON(n.client, webhookURL, payload, nil); err != nil {
+		if err := postJSON(n.client, n.requestTimeout, webhookURL, payload, nil); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", webhookURL, err))
 		}
 	}
@@ -160,7 +196,7 @@ func (n *RequestNotifier) sendTeamsWebhooks(request ApprovalRequest) error {
 	payload := teamsWebhookPayload(request, n.dashboardURL())
 	var errs []error
 	for _, webhookURL := range n.teamsWebhookURLs {
-		if err := postJSON(n.client, webhookURL, payload, nil); err != nil {
+		if err := postJSON(n.client, n.requestTimeout, webhookURL, payload, nil); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", webhookURL, err))
 		}
 	}
@@ -178,7 +214,7 @@ func (n *RequestNotifier) sendSlackDM(request ApprovalRequest) error {
 	if n == nil || n.slackDM == nil {
 		return nil
 	}
-	return n.slackDM.send(n.client, request, n.dashboardURL())
+	return n.slackDM.send(n.client, n.requestTimeout, request, n.dashboardURL())
 }
 
 func (e *emailNotifier) send(request ApprovalRequest, dashboardURL string) error {
@@ -188,13 +224,72 @@ func (e *emailNotifier) send(request ApprovalRequest, dashboardURL string) error
 		auth = smtp.PlainAuth("", e.username, e.password, host)
 	}
 	message := buildSMTPMessage(e.from, e.to, request, dashboardURL)
-	return smtpSendMail(e.addr, auth, e.from, e.to, []byte(message))
+	return smtpSendMail(e.addr, auth, e.from, e.to, []byte(message), e.timeout)
+}
+
+func sendMailWithTimeout(addr string, auth smtp.Auth, from string, to []string, msg []byte, timeout time.Duration) error {
+	host := smtpHost(addr)
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if timeout > 0 {
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+	}
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return err
+		}
+	}
+	if auth != nil {
+		if ok, _ := client.Extension("AUTH"); !ok {
+			return errors.New("smtp server does not support AUTH")
+		}
+		if err := client.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := client.Mail(from); err != nil {
+		return err
+	}
+	for _, recipient := range to {
+		if err := client.Rcpt(recipient); err != nil {
+			return err
+		}
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(msg); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
 }
 
 func buildSMTPMessage(from string, to []string, request ApprovalRequest, dashboardURL string) string {
 	headers := []string{
-		fmt.Sprintf("From: %s", from),
-		fmt.Sprintf("To: %s", strings.Join(to, ", ")),
+		fmt.Sprintf("From: %s", sanitizeHeader(from)),
+		fmt.Sprintf("To: %s", sanitizeHeader(strings.Join(sanitizeHeaderValues(to), ", "))),
 		fmt.Sprintf("Subject: [Agent Tick] %s", sanitizeHeader(notificationTitle(request))),
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=UTF-8",
@@ -202,22 +297,22 @@ func buildSMTPMessage(from string, to []string, request ApprovalRequest, dashboa
 	return strings.Join(headers, "\r\n") + "\r\n\r\n" + renderPlainNotification(request, dashboardURL) + "\r\n"
 }
 
-func (s *slackDMNotifier) send(client *http.Client, request ApprovalRequest, dashboardURL string) error {
+func (s *slackDMNotifier) send(client *http.Client, timeout time.Duration, request ApprovalRequest, dashboardURL string) error {
 	var errs []error
 	for _, userID := range s.userIDs {
-		channelID, err := s.openConversation(client, userID)
+		channelID, err := s.openConversation(client, timeout, userID)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("open %s: %w", userID, err))
 			continue
 		}
-		if err := s.postMessage(client, channelID, request, dashboardURL); err != nil {
+		if err := s.postMessage(client, timeout, channelID, request, dashboardURL); err != nil {
 			errs = append(errs, fmt.Errorf("post %s: %w", userID, err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (s *slackDMNotifier) openConversation(client *http.Client, userID string) (string, error) {
+func (s *slackDMNotifier) openConversation(client *http.Client, timeout time.Duration, userID string) (string, error) {
 	var response struct {
 		OK      bool   `json:"ok"`
 		Error   string `json:"error,omitempty"`
@@ -225,7 +320,7 @@ func (s *slackDMNotifier) openConversation(client *http.Client, userID string) (
 			ID string `json:"id"`
 		} `json:"channel"`
 	}
-	if err := postJSON(client, s.apiBaseURL+"/conversations.open", map[string][]string{"users": []string{userID}}, slackBearerHeader(s.botToken), &response); err != nil {
+	if err := postJSON(client, timeout, s.apiBaseURL+"/conversations.open", map[string]string{"users": userID}, slackBearerHeader(s.botToken), &response); err != nil {
 		return "", err
 	}
 	if !response.OK || strings.TrimSpace(response.Channel.ID) == "" {
@@ -237,14 +332,14 @@ func (s *slackDMNotifier) openConversation(client *http.Client, userID string) (
 	return response.Channel.ID, nil
 }
 
-func (s *slackDMNotifier) postMessage(client *http.Client, channelID string, request ApprovalRequest, dashboardURL string) error {
+func (s *slackDMNotifier) postMessage(client *http.Client, timeout time.Duration, channelID string, request ApprovalRequest, dashboardURL string) error {
 	var response struct {
 		OK    bool   `json:"ok"`
 		Error string `json:"error,omitempty"`
 	}
 	payload := slackWebhookPayload(request, dashboardURL)
 	payload["channel"] = channelID
-	if err := postJSON(client, s.apiBaseURL+"/chat.postMessage", payload, slackBearerHeader(s.botToken), &response); err != nil {
+	if err := postJSON(client, timeout, s.apiBaseURL+"/chat.postMessage", payload, slackBearerHeader(s.botToken), &response); err != nil {
 		return err
 	}
 	if !response.OK {
@@ -305,12 +400,18 @@ func teamsWebhookPayload(request ApprovalRequest, dashboardURL string) map[strin
 	return payload
 }
 
-func postJSON(client *http.Client, endpoint string, payload any, headers http.Header, out ...any) error {
+func postJSON(client *http.Client, timeout time.Duration, endpoint string, payload any, headers http.Header, out ...any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -326,9 +427,11 @@ func postJSON(client *http.Client, endpoint string, payload any, headers http.He
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return fmt.Errorf("unexpected status %s", resp.Status)
 	}
 	if len(out) == 0 || out[0] == nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out[0])
@@ -365,6 +468,17 @@ func splitAndTrimCSV(value string) []string {
 func sanitizeHeader(value string) string {
 	replacer := strings.NewReplacer("\r", " ", "\n", " ")
 	return replacer.Replace(strings.TrimSpace(value))
+}
+
+func sanitizeHeaderValues(values []string) []string {
+	cleaned := make([]string, 0, len(values))
+	for _, value := range values {
+		value = sanitizeHeader(value)
+		if value != "" {
+			cleaned = append(cleaned, value)
+		}
+	}
+	return cleaned
 }
 
 func notificationTitle(request ApprovalRequest) string {
@@ -411,10 +525,17 @@ func notificationDetails(request ApprovalRequest) string {
 
 func truncateNotification(value string, limit int) string {
 	value = strings.TrimSpace(value)
-	if len(value) <= limit {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
 		return value
 	}
-	return strings.TrimSpace(value[:limit-1]) + "…"
+	if limit == 1 {
+		return "…"
+	}
+	return strings.TrimSpace(string(runes[:limit-1])) + "…"
 }
 
 func renderPlainNotification(request ApprovalRequest, dashboardURL string) string {

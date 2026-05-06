@@ -29,6 +29,7 @@ type API struct {
 	agents           AgentStore
 	scopedAgents     UserScopedAgentStore
 	push             *PushSender
+	notifierMu       sync.RWMutex
 	notifier         *RequestNotifier
 	events           eventBus
 	userTokens       UserTokenStore
@@ -322,6 +323,8 @@ func (a *API) SetPublicURL(url string) {
 }
 
 func (a *API) SetRequestNotifier(notifier *RequestNotifier) {
+	a.notifierMu.Lock()
+	defer a.notifierMu.Unlock()
 	a.notifier = notifier
 }
 
@@ -1869,14 +1872,15 @@ func (a *API) rotateAgentToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) notifyRequestCreated(request ApprovalRequest) {
-	if a.notifier == nil || !a.notifier.Enabled() {
+	a.notifierMu.RLock()
+	notifier := a.notifier
+	a.notifierMu.RUnlock()
+	if notifier == nil || !notifier.Enabled() {
 		return
 	}
-	go func() {
-		if err := a.notifier.NotifyRequestCreated(request); err != nil {
-			log.Printf("notify external sinks for request %s: %v", request.ID, err)
-		}
-	}()
+	if err := notifier.NotifyRequestCreatedAsync(request); err != nil {
+		log.Printf("notify external sinks for request %s: %v", request.ID, err)
+	}
 }
 
 func (a *API) sendPush(request ApprovalRequest) {
