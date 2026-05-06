@@ -137,11 +137,15 @@ func TestRequestNotifierAsyncSuccessReleasesSlot(t *testing.T) {
 }
 
 func TestRequestNotifierAsyncWithoutQueueStillReturnsQuickly(t *testing.T) {
+	requestStarted := make(chan struct{}, 1)
+	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(100 * time.Millisecond)
+		requestStarted <- struct{}{}
+		<-release
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
+	defer close(release)
 
 	notifier := &RequestNotifier{
 		client:         server.Client(),
@@ -152,8 +156,13 @@ func TestRequestNotifierAsyncWithoutQueueStillReturnsQuickly(t *testing.T) {
 	if err := notifier.NotifyRequestCreatedAsync(sampleNotificationRequest()); err != nil {
 		t.Fatalf("NotifyRequestCreatedAsync() error = %v", err)
 	}
-	if elapsed := time.Since(started); elapsed > 50*time.Millisecond {
-		t.Fatalf("NotifyRequestCreatedAsync() elapsed = %v, want under 50ms", elapsed)
+	if elapsed := time.Since(started); elapsed > 200*time.Millisecond {
+		t.Fatalf("NotifyRequestCreatedAsync() elapsed = %v, want under 200ms", elapsed)
+	}
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("async request never started")
 	}
 }
 
@@ -603,6 +612,93 @@ func TestSendMailWithTimeoutHonorsDeadline(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("fake smtp server error = %v", err)
+	}
+}
+
+func TestSendMailWithTimeoutFallsBackForZeroTimeout(t *testing.T) {
+	message := buildSMTPMessage("tick@example.com", []string{"ops@example.com"}, sampleNotificationRequest(), "https://tick.example.com/#approvals")
+	addr, done := startFakeSMTPServer(t, func(conn net.Conn) error {
+		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		if err := writeSMTPLine(rw.Writer, "220 smtp.example.test ESMTP"); err != nil {
+			return err
+		}
+		line, err := readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "EHLO ") && !strings.HasPrefix(line, "HELO ") {
+			return fmt.Errorf("greeting command = %q, want EHLO/HELO", line)
+		}
+		if err := writeSMTPLines(rw.Writer, "250-smtp.example.test", "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "MAIL FROM:") {
+			return fmt.Errorf("MAIL command = %q", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "RCPT TO:") {
+			return fmt.Errorf("RCPT command = %q", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if line != "DATA" {
+			return fmt.Errorf("DATA command = %q, want DATA", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "354 End data with <CR><LF>.<CR><LF>"); err != nil {
+			return err
+		}
+		if _, err := readSMTPData(rw.Reader); err != nil {
+			return err
+		}
+		if err := writeSMTPLine(rw.Writer, "250 queued"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if line != "QUIT" {
+			return fmt.Errorf("QUIT command = %q, want QUIT", line)
+		}
+		return writeSMTPLine(rw.Writer, "221 bye")
+	})
+
+	if err := sendMailWithTimeout(addr, nil, "tick@example.com", []string{"ops@example.com"}, []byte(message), 0); err != nil {
+		t.Fatalf("sendMailWithTimeout() error = %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("fake smtp server error = %v", err)
+	}
+}
+
+func TestPostJSONFallsBackForZeroTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	var response map[string]any
+	if err := postJSON(server.Client(), 0, server.URL, map[string]string{"hello": "world"}, nil, &response); err != nil {
+		t.Fatalf("postJSON() error = %v", err)
+	}
+	if response["ok"] != true {
+		t.Fatalf("postJSON() response = %#v, want ok=true", response)
 	}
 }
 

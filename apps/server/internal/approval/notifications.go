@@ -24,6 +24,8 @@ const (
 )
 
 var smtpSendMail = sendMailWithTimeout
+
+// smtpTLSConfig is replaced in tests for the STARTTLS happy-path coverage.
 var smtpTLSConfig = func(host string) *tls.Config {
 	return &tls.Config{ServerName: host}
 }
@@ -240,12 +242,8 @@ func sendMailWithTimeout(addr string, auth smtp.Auth, from string, to []string, 
 		timeout = defaultNotificationTimeout
 	}
 	host := smtpHost(addr)
-	ctx := context.Background()
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -420,12 +418,8 @@ func postJSON(client *http.Client, timeout time.Duration, endpoint string, paylo
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
