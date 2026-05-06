@@ -28,6 +28,17 @@ This supports safer long-lived and reusable invite links while keeping onboardin
 
 These can be added later once the link-based invite and approval flow is solid.
 
+## Security decisions
+
+These are implementation requirements, not open questions:
+
+- Only owners can create invites that grant `admin` or `owner`-equivalent privileges. Admins may create invites for `viewer` and `approver` roles only.
+- Invite creation must reject any requested role greater than the creator's role.
+- `approval_required` defaults to `true`. If `approval_required=false` is ever supported, only owners may create that invite, and acceptance must atomically create an active membership plus an approved acceptance record.
+- Invite tokens must use at least 256 bits of CSPRNG entropy. Store only a token hash and compare hashes without leaking timing-sensitive information.
+- Preview and accept endpoints must be rate limited to reduce token guessing.
+- Public unauthenticated previews must be minimal: organization display name and approval-required state are okay; team names, internal IDs, member names, and detailed org structure are omitted until after sign-in and authorization checks.
+
 ## User flows
 
 ### Admin creates an invite
@@ -35,7 +46,8 @@ These can be added later once the link-based invite and approval flow is solid.
 From the Organization page, an admin or owner opens an **Invite people** panel and configures:
 
 - Invite label, for example `Backend onboarding link`.
-- Organization role to grant after approval: `viewer`, `approver`, `admin`.
+- Organization role to grant after approval: `viewer`, `approver`, or `admin`.
+  - `admin` invites can be created by owners only.
 - Optional teams to add the user to after approval.
 - Whether approval is required. Default: `true`.
 - Maximum uses:
@@ -61,7 +73,7 @@ The raw token should be shown only once. The server stores only a token hash.
 2. If already signed in, they see an invite preview:
    - organization name
    - requested role
-   - requested teams
+   - requested teams, after sign-in only
    - whether admin approval is required
 3. User clicks **Accept invite**.
 4. Server validates the invite and records a pending membership request.
@@ -74,7 +86,7 @@ Request sent. An organization admin needs to approve your access before you can 
 ### New user accepts an invite
 
 1. User opens `/invite/{token}`.
-2. User sees a preview before account creation.
+2. User sees a minimal preview before account creation.
 3. User signs in or creates an account.
 4. After successful account creation, the dashboard automatically continues the invite acceptance.
 5. User lands on a pending state page:
@@ -99,16 +111,18 @@ Each pending row shows:
 - approve action
 - reject action
 
-Approving:
+Approving happens in one transaction:
 
+- changes the acceptance status to `approved`
 - changes the membership status to `active`
 - applies the requested organization role
-- adds requested team memberships
+- re-validates and adds requested team memberships
 - records audit events
 
-Rejecting:
+Rejecting happens in one transaction:
 
-- marks the request as `rejected`
+- marks the acceptance status as `rejected`
+- marks the membership/request status as `rejected`
 - does not grant organization/team access
 - records an audit event
 
@@ -125,7 +139,11 @@ rejected
 removed
 ```
 
-Only `active` memberships should be accepted by authorization checks.
+`organization_memberships.status` is the authorization source of truth. Only `active` memberships satisfy normal organization authorization. `organization_invite_acceptances.status` is the workflow/audit source of truth for invite approvals. Any operation that changes approval state must update both records in the same database transaction so these invariants hold:
+
+- `acceptance.status = pending_approval` implies `membership.status = pending_approval`.
+- `acceptance.status = approved` implies `membership.status = active`.
+- `acceptance.status = rejected` implies `membership.status = rejected` or no active membership exists.
 
 Pending members:
 
@@ -180,7 +198,18 @@ Optional restrictions:
 
 If a signed-in user's email does not match the invite restriction, acceptance should fail with a clear message and offer account switching.
 
+### Re-invites and rejected users
+
+A rejected user cannot re-accept the same invite acceptance record. To re-apply, either:
+
+- an admin reopens/approves the rejected request, or
+- the user accepts a different valid invite after the system clears or supersedes the old rejected request.
+
+There must never be more than one active or pending membership request per `(organization_id, user_id)`.
+
 ## Proposed backend model
+
+SQLite stores timestamps as `TEXT` in this project; all timestamp fields must use UTC RFC3339 format so lexical ordering works for expiry and retention queries.
 
 ### organization_invites
 
@@ -193,7 +222,6 @@ CREATE TABLE organization_invites (
 
   label TEXT,
   role TEXT NOT NULL,
-  team_ids_json TEXT NOT NULL DEFAULT '[]',
 
   approval_required INTEGER NOT NULL DEFAULT 1,
 
@@ -202,11 +230,14 @@ CREATE TABLE organization_invites (
 
   expires_at TEXT,
   max_uses INTEGER,
-  used_count INTEGER NOT NULL DEFAULT 0,
+  used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
 
   revoked_at TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE INDEX idx_organization_invites_org ON organization_invites(organization_id);
+CREATE INDEX idx_organization_invites_active ON organization_invites(organization_id, revoked_at, expires_at);
 ```
 
 `max_uses` semantics:
@@ -214,6 +245,35 @@ CREATE TABLE organization_invites (
 - `NULL`: unlimited uses
 - `1`: single-use invite
 - `N`: accept up to `N` users
+
+Accepting an invite must atomically enforce the use limit. The accept transaction must either:
+
+```sql
+UPDATE organization_invites
+SET used_count = used_count + 1
+WHERE id = ?
+  AND revoked_at IS NULL
+  AND (expires_at IS NULL OR expires_at > ?)
+  AND (max_uses IS NULL OR used_count < max_uses);
+```
+
+and require exactly one affected row before creating the acceptance, or use an equivalent serialized transaction/constraint. This prevents concurrent accepts from exceeding `max_uses`.
+
+### organization_invite_teams
+
+Invite teams should be normalized instead of stored only as JSON, so team IDs can be validated and queried.
+
+```sql
+CREATE TABLE organization_invite_teams (
+  invite_id TEXT NOT NULL,
+  team_id TEXT NOT NULL,
+  PRIMARY KEY (invite_id, team_id)
+);
+
+CREATE INDEX idx_organization_invite_teams_team ON organization_invite_teams(team_id);
+```
+
+The application must validate team IDs at invite creation and re-validate them at approval time in case a team was deleted or moved.
 
 ### organization_invite_acceptances
 
@@ -235,6 +295,13 @@ CREATE TABLE organization_invite_acceptances (
   decided_by_user_id TEXT,
   decided_at TEXT
 );
+
+CREATE UNIQUE INDEX idx_invite_acceptances_invite_user ON organization_invite_acceptances(invite_id, user_id);
+CREATE UNIQUE INDEX idx_invite_acceptances_pending_org_user ON organization_invite_acceptances(organization_id, user_id)
+  WHERE status = 'pending_approval';
+CREATE INDEX idx_invite_acceptances_invite ON organization_invite_acceptances(invite_id);
+CREATE INDEX idx_invite_acceptances_org_status ON organization_invite_acceptances(organization_id, status);
+CREATE INDEX idx_invite_acceptances_user ON organization_invite_acceptances(user_id);
 ```
 
 Suggested statuses:
@@ -245,7 +312,7 @@ approved
 rejected
 ```
 
-A unique constraint on `(invite_id, user_id)` prevents duplicate pending requests for the same invite/user pair. A separate uniqueness rule may also prevent multiple active/pending requests for the same organization/user.
+A user must not have multiple active or pending invite/membership requests for the same organization. This is mandatory to keep approval logic and audit trails unambiguous.
 
 ### organization_memberships changes
 
@@ -258,6 +325,10 @@ ALTER TABLE organization_memberships ADD COLUMN approved_at TEXT;
 ALTER TABLE organization_memberships ADD COLUMN rejected_by_user_id TEXT;
 ALTER TABLE organization_memberships ADD COLUMN rejected_at TEXT;
 ALTER TABLE organization_memberships ADD COLUMN invite_id TEXT;
+
+CREATE INDEX idx_organization_memberships_status ON organization_memberships(organization_id, status);
+CREATE UNIQUE INDEX idx_organization_memberships_active_pending_user ON organization_memberships(organization_id, user_id)
+  WHERE status IN ('pending_approval', 'active');
 ```
 
 Existing rows should migrate to `active`.
@@ -271,9 +342,9 @@ GET  /v1/invites/{token}
 POST /v1/invites/{token}/accept
 ```
 
-`GET /v1/invites/{token}` returns a safe preview. It may be available while signed out, but should avoid exposing unnecessary internal details.
+`GET /v1/invites/{token}` returns a safe preview. It may be available while signed out, but must be rate limited and must avoid exposing team names, internal IDs, member names, or detailed organization structure until after sign-in.
 
-`POST /v1/invites/{token}/accept` requires an authenticated user session.
+`POST /v1/invites/{token}/accept` requires an authenticated user session and must run as a single transaction that validates the invite, atomically consumes one use, creates the acceptance, and creates/updates the pending membership.
 
 ### Admin invite management endpoints
 
@@ -283,7 +354,9 @@ POST /v1/organization-invites
 POST /v1/organization-invites/{id}/revoke
 ```
 
-Requires organization admin or owner.
+Requires organization admin or owner. Owners only are allowed to create invites for `admin` role or disable approval.
+
+Revoking an invite prevents future accepts. Existing pending acceptances remain visible but are marked as sourced from a revoked invite; admins may still reject them. Approval from a revoked invite should require an explicit owner/admin action and should re-validate role, team, and seat limits.
 
 ### Pending membership endpoints
 
@@ -297,9 +370,10 @@ Requires organization admin or owner.
 
 ## Authorization rules
 
-- Invite preview can be public, but minimal.
+- Invite preview can be public, but minimal and rate limited.
 - Invite acceptance requires a signed-in user.
 - Invite creation/list/revoke requires `admin` or `owner`.
+- Only owners can create `admin` invites or auto-approved invites.
 - Approval/rejection requires `admin` or `owner`.
 - Only `active` organization memberships satisfy normal organization authorization.
 - Pending users can only access their own session and pending invite/membership status.
@@ -343,6 +417,8 @@ Add to the Organization page:
 - create invite button
 - copy invite link result
 
+The UI must hide or disable roles the current actor cannot grant. Admin users should not see `admin` as a grantable invite role.
+
 ### Active/reusable invite list
 
 Show:
@@ -375,7 +451,7 @@ States:
 
 - loading preview
 - invalid or expired invite
-- signed out preview with sign-in/create-account CTA
+- signed out minimal preview with sign-in/create-account CTA
 - signed in preview with accept CTA
 - pending approval success
 - already active member
@@ -387,24 +463,30 @@ For a new account created from the invite page, the app should automatically acc
 
 ### Slice 1: Core backend
 
-- DB migrations for invites, acceptances, membership status.
+- DB migrations for invites, invite teams, acceptances, membership status, indexes, and uniqueness constraints.
 - Store methods for create/preview/accept/list/revoke invites.
 - Store methods for list/approve/reject pending requests.
 - Active-only membership authorization.
-- Backend tests.
+- Backend tests covering:
+  - privilege boundaries for admin/owner invite creation
+  - atomic max-use enforcement under concurrent accepts
+  - duplicate pending request prevention per org/user
+  - dual-status transaction invariants
+  - pending-user denial across org, team, project, agent, approval, billing, and audit endpoints
+  - public preview redaction and rate limiting
 
 ### Slice 2: Admin and invite UI
 
 - API client methods.
-- Invite creation card.
+- Invite creation card with role restrictions.
 - Invite preview/accept route.
 - Pending member approval UI.
-- Basic UI tests.
+- UI tests for signed-out preview, signup continuation, pending state, approval, rejection, and role restriction display.
 
 ### Slice 3: Reusable invite polish
 
 - Invite list counts.
-- Revoke flows.
+- Revoke flows and explicit pending-request behavior for revoked invites.
 - Better expired/max-use messaging.
 - Long-lived invite warnings.
 
@@ -422,8 +504,6 @@ For a new account created from the invite page, the app should automatically acc
 
 ## Open questions
 
-- Should non-owner admins be allowed to create invites that grant `admin` role?
-- Should approval be required for all invite types, or can owners create auto-approved links?
-- Should seat limits be enforced at invite acceptance time or approval time? Approval time is probably better.
+- Should approval be required for all invite types long-term, or can owners create auto-approved links for trusted environments?
 - Should pending users be visible in global user/member lists, or only in a pending section?
 - Should reusable invite URLs be visible after creation? If the raw token is only shown once, admins may need to create a new link if they lose it.
