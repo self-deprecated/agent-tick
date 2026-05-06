@@ -23,9 +23,10 @@
 		type UserAvailabilityRecord
 	} from './api';
 	import type { AdminConfig } from './app';
+	import { pageFromHash as routePageFromHash, refreshLoadKeys, shouldShowBillingPanel } from './pageRouting';
+	import type { DashboardLoadKey, Page } from './pageRouting';
 
 	type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
-	type Page = 'setup' | 'approvals' | 'organization' | 'admin';
 
 	let { config }: { config: AdminConfig } = $props();
 
@@ -247,11 +248,15 @@
 
 	async function refreshDashboard() {
 		if (!canShowDashboard) return;
-		const loads: Promise<void>[] = [loadDevices(), loadAgents()];
-		if (activePage !== 'approvals') loads.push(loadApprovals());
-		if (activePage !== 'organization' && activePage !== 'admin') loads.push(loadOrganizations());
-		await Promise.all(loads);
+		await Promise.all(refreshLoadKeys(activePage).map(loadDashboardResource));
 		await ensurePageData(activePage);
+	}
+
+	function loadDashboardResource(resource: DashboardLoadKey): Promise<void> {
+		if (resource === 'approvals') return loadApprovals();
+		if (resource === 'devices') return loadDevices();
+		if (resource === 'agents') return loadAgents();
+		return loadOrganizations();
 	}
 
 	async function ensurePageData(page: Page) {
@@ -693,11 +698,7 @@
 	}
 
 	function pageFromHash(): Page {
-		const hash = window.location.hash.replace(/^#/, '');
-		if (hash === 'admin') return isOrgAdmin ? 'admin' : 'setup';
-		if (hash === 'organization') return 'organization';
-		if (hash === 'approvals') return 'approvals';
-		return 'setup';
+		return routePageFromHash(window.location.hash, isOrgAdmin);
 	}
 
 	async function copyText(text: string, label: string) {
@@ -888,7 +889,7 @@
 			<div>
 				<p class="eyebrow">First run</p>
 				<h2 id="setup-title">Connect an agent to your phone in three steps</h2>
-				<p class="muted">Most users only need these two connections. Team, policy, audit, and billing tools live on their own settings pages.</p>
+				<p class="muted">Most users only need a phone, an agent, and one quick test. Team, policy, audit, and billing tools live on their own settings pages.</p>
 			</div>
 			<ol class="setup-steps">
 				<li><a href="#devices" onclick={(event) => navigate(event, 'setup', 'devices')}><strong>Pair your phone</strong><span>Create a QR and scan it from the mobile app.</span></a></li>
@@ -968,7 +969,7 @@
 			</section>
 			{/if}
 
-			{#if activePage === 'admin' && isOrgAdmin && billing && billing.plan !== 'self-hosted'}
+			{#if shouldShowBillingPanel({ activePage, isOrgAdmin, isUserMode, billingStatus, billingError, billingPlan: billing?.plan })}
 			<details id="billing" class="panel secondary-panel" open>
 				<summary>
 					<span>
@@ -979,9 +980,14 @@
 				</summary>
 				<div class="panel-body">
 					{#if billingError}
-						<div class="inline-error" role="alert"><strong>Error</strong><span>{billingError}</span></div>
-					{/if}
-					{#if billing}
+						<div class="inline-error" role="alert">
+							<strong>Billing failed</strong>
+							<span>{billingError}</span>
+							<button type="button" class="secondary" onclick={loadBilling} disabled={billingStatus === 'loading'}>Retry billing</button>
+						</div>
+					{:else if billingStatus === 'loading'}
+						<div class="empty-state">Loading billing settings…</div>
+					{:else if billing}
 						<div class="billing-summary">
 							<div>
 								<p class="eyebrow">Current plan</p>
