@@ -159,6 +159,72 @@ func TestFileStoreSteerRequest(t *testing.T) {
 	}
 }
 
+func TestFileStoreRejectsLegacyRawApprovalPayloads(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
+
+	invalid := []CreateRequest{
+		{Title: "Approve-AI approval required", Body: `Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123 correlationToken: piapr_corr_456`},
+		{Title: "Run command?", Body: `Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123`},
+		{Title: "Run command?", Body: `Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123`, Command: "echo structured"},
+		{Title: "Run command?", Command: `Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123`},
+		{Title: "Run command?", Command: `Tool: bash { "command":"echo simple-only-ok" } --- Pi approval metadata: brokerRequestId: piapr_123`},
+		{Title: "Run command?", Body: "Tool: bash {\"command\":\"echo simple-only-ok\"}\nPi approval metadata:\nbrokerRequestId: piapr_123\ncorrelationToken: piapr_corr_456"},
+		{Title: `Tool: bash {"command":"echo simple-only-ok"}`, Body: "Pi approval metadata:\nbrokerRequestId: piapr_123"},
+		{Title: `Tool: bash {"command":"echo simple-only-ok"}`, Body: "Pi approval metadata:\nbrokerRequestId: piapr_123", Command: "echo structured"},
+		{Title: "Run command?", Body: `Tool: bash {"command":"echo simple-only-ok"}`, Command: "Pi approval metadata: brokerRequestId: piapr_123"},
+		{Title: "Run command?", Body: "Tool: bash {\"command\":\"echo simple-only-ok\"}\nPi approval metadata:\nbrokerRequestId: piapr_123\n---\ncorrelationToken: piapr_corr_456"},
+		{Title: "Run command?", Body: `Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: call_uuid: 019de7c4 actionFingerprint: sha256:abc`},
+		{Title: "Run command?", Body: `- Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123`},
+		{Title: "Run command?", Body: `* Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123`},
+		{Title: "Run command?", Body: `tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: BrokerRequestId: piapr_123`},
+		{Title: "Run command?", Body: `Please review: Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: BrokerRequestId: piapr_123`},
+		{Title: "Run command?", Body: "1. Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nnoop\nSessionId: 123E4567-E89B-12D3-A456-426614174000"},
+		{Title: "Run command?", Body: "10. Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nSessionId: 123e4567-e89b-12d3-a456-426614174000"},
+		{Title: "Run command?", Body: "Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nSessionId: \"123e4567-e89b-12d3-a456-426614174000\""},
+		{Title: "Run command?", Body: "Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nbrokerRequestId : PIAPR_123"},
+		{Title: "Run command?", Body: "Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nbrokerRequestId: 12345"},
+		{Title: "Run command?", Body: "Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\n\nbrokerRequestId: piapr_123"},
+		{Title: "Run command?", Body: "Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata: mybrokerRequestId: docs, brokerRequestId: piapr_123"},
+		{Title: "Run command?", Body: "- 99. Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nSessionId: 123e4567-e89b-12d3-a456-426614174000"},
+		{Title: "Run command?", Body: "> Tool: bash\nPi approval metadata:\ncorrelationToken: piapr_corr_456"},
+	}
+	for _, input := range invalid {
+		if _, err := store.Create(input); err == nil || !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("Create(%#v) error = %v, want %v", input, err, ErrInvalidRequest)
+		}
+	}
+}
+
+func TestFileStoreAllowsStructuredPayloadsWithIncidentalLegacyWords(t *testing.T) {
+	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
+
+	valid := []CreateRequest{
+		{Title: "Approve-AI approval required", Body: "Approve a structured request with a normal command field.", Command: "echo ok"},
+		{Title: "Run command?", Body: "See Tool: deployment docs and the brokerRequestId spec.", Command: "echo ok"},
+		{Title: "Run command?", Body: "Tool: bash", Command: "echo ok"},
+		{Title: "Run command?", Body: "Docs mention Pi approval metadata: as a heading without legacy fields.", Command: "echo ok"},
+		{Title: "Run command?", Body: "Pi approval metadata: docs header only\n\nSessionId is used in API docs.", Command: "echo ok"},
+		{Title: "Run command?", Body: "Pi approval metadata: docs header only\nSessionId: see API docs", Command: "echo ok"},
+		{Title: "Run command?", Body: "Pi approval metadata: docs header only\nsessionId: abcdefgh", Command: "echo ok"},
+		{Title: "Run command?", Body: "Tool: bash is mentioned in our deployment docs\nPi approval metadata: docs header only\nsessionId: production", Command: "echo ok"},
+		{Title: `Tool: bash {"command":"example from docs"}`, Body: "Pi approval metadata:\nsessionId: see API docs", Command: "echo structured"},
+		{Title: "Run command?", Body: "Pi approval metadata: docs mention mybrokerRequestId: piapr_123", Command: "echo ok"},
+		{Title: "Run command?", Body: "Tool: bash {\"command\":\"echo ok\"}\nPi approval metadata: docs mention mybrokerRequestId: piapr_123", Command: "echo ok"},
+		{Title: "Run command?", Body: "Tool: see brokerRequestId mapping at {example}", Command: "echo ok"},
+		{Title: "Pi approval metadata: docs header only", Body: "SessionId is used in API docs.", Command: "echo ok"}, 
+		{Title: "Run command?", Body: "Structured request", Command: "echo ok", Requester: Requester{Name: `Tool: bash {"command":"echo ok"} brokerRequestId: piapr_123`}},
+		{Title: "Run command?", Body: "Structured request", Command: "echo ok", Metadata: map[string]string{"audit": `Tool: bash {"command":"echo ok"} brokerRequestId: piapr_123`}},
+		{RequestType: RequestTypeSteer, Title: "Choose", Body: "Tool: docs mention brokerRequestId", Choices: []Choice{{ID: "next", Label: "Next"}}},
+		{RequestType: RequestTypeSteer, Title: "Choose", Body: "Pi approval metadata: docs example", Choices: []Choice{{ID: "next", Label: "Next"}}},
+		{RequestType: RequestTypeQuestionnaire, Title: "Questions", Questions: []Question{{Question: "Metadata?", Options: []QuestionOption{{Label: "Yes"}}}}, Body: "Pi approval metadata:\nbrokerRequestId: piapr_123"},
+	}
+	for _, input := range valid {
+		if _, err := store.Create(input); err != nil {
+			t.Fatalf("Create(%#v) error = %v, want nil", input, err)
+		}
+	}
+}
+
 func TestFileStoreRejectsInvalidSteerRequests(t *testing.T) {
 	store := NewFileStore(filepath.Join(t.TempDir(), "agent-tick.json"))
 

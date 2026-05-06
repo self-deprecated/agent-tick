@@ -11,6 +11,44 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestSQLiteStoreRejectsLegacyRawApprovalPayload(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	invalid := []CreateRequest{
+		{Title: `Tool: bash {"command":"echo simple-only-ok"}`, Body: "Pi approval metadata:\n---\ncorrelationToken: piapr_corr_456"},
+		{Title: `Tool: bash {"command":"echo simple-only-ok"}`, Body: "Pi approval metadata:\n---\ncorrelationToken: piapr_corr_456", Command: "echo structured"},
+		{Title: "Run command?", Body: `Tool: bash {"command":"echo simple-only-ok"}`, Command: "Pi approval metadata: brokerRequestId: piapr_123"},
+		{Title: "Run command?", Body: `- Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123`},
+		{Title: "Run command?", Body: `Please review: Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123`},
+		{Title: "Run command?", Body: `Tool: bash {"command":"echo simple-only-ok"} --- Pi approval metadata: brokerRequestId: piapr_123`, Command: "echo structured"},
+		{Title: "Run command?", Body: "10. Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nSessionId: 123e4567-e89b-12d3-a456-426614174000"},
+		{Title: "Run command?", Body: "Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nSessionId: \"123e4567-e89b-12d3-a456-426614174000\""},
+		{Title: "Run command?", Body: "Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nbrokerRequestId : PIAPR_123"},
+		{Title: "Run command?", Body: "Tool: bash {\"cmd\":\"echo simple-only-ok\"}\nPi approval metadata:\nbrokerRequestId: 12345"},
+	}
+	for _, input := range invalid {
+		if _, err := store.Create(input); err == nil || !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("Create(%#v) error = %v, want %v", input, err, ErrInvalidRequest)
+		}
+	}
+}
+
+func TestSQLiteStoreAllowsStructuredApprovalWithIncidentalLegacyWords(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+
+	valid := []CreateRequest{
+		{Title: "Run command?", Body: "Docs mention Pi approval metadata: as a heading without legacy fields.", Command: "echo ok"},
+		{Title: `Tool: bash {"command":"example from docs"}`, Body: "Pi approval metadata:\nsessionId: see API docs", Command: "echo structured"},
+	}
+	for _, input := range valid {
+		if _, err := store.Create(input); err != nil {
+			t.Fatalf("Create(%#v) error = %v, want nil", input, err)
+		}
+	}
+}
+
 func TestSQLiteStoreCreateListRespond(t *testing.T) {
 	store := newTestSQLiteStore(t)
 	defer store.Close()

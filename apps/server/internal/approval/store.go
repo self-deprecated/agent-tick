@@ -388,6 +388,9 @@ func hasChoice(request ApprovalRequest, choiceID string) bool {
 
 func normalizeCreateRequest(input CreateRequest) (CreateRequest, error) {
 	input.RequestType = normalizeRequestType(input.RequestType)
+	if input.RequestType == RequestTypeApproval && containsLegacyRawApproval(input) {
+		return CreateRequest{}, fmt.Errorf("%w: legacy raw approval payloads are not supported; send structured title, body, command, requester, and metadata fields", ErrInvalidRequest)
+	}
 	switch input.RequestType {
 	case RequestTypeApproval:
 		if len(input.Questions) > 0 {
@@ -445,6 +448,161 @@ func normalizeCreateRequest(input CreateRequest) (CreateRequest, error) {
 	}
 	input.Risk = effectiveCreateRequestRisk(input)
 	return input, nil
+}
+
+func containsLegacyRawApproval(input CreateRequest) bool {
+	// Legacy clients stuffed the entire human-facing approval into Title, Body, or
+	// Command. Structured Requester and Metadata values are intentionally not
+	// scanned here; those fields are allowed to carry broker IDs and audit context.
+	titleBody := strings.Join([]string{input.Title, input.Body}, "\n")
+	if strings.TrimSpace(input.Command) != "" {
+		// With a structured Command value, avoid composing docs/runbook snippets with
+		// the command field into a synthetic legacy envelope unless each side carries
+		// one of the two legacy envelope signals.
+		titleBodySignals := legacyRawApprovalSignals(titleBody)
+		commandSignals := legacyRawApprovalSignals(input.Command)
+		return titleBodySignals.complete() || commandSignals.complete() ||
+			(titleBodySignals.hasToolCommand && commandSignals.hasLegacyMetadata) ||
+			(titleBodySignals.hasLegacyMetadata && commandSignals.hasToolCommand)
+	}
+	return containsLegacyRawApprovalText(titleBody)
+}
+
+type legacyRawSignals struct {
+	hasToolCommand    bool
+	hasLegacyMetadata bool
+}
+
+func (s legacyRawSignals) complete() bool {
+	return s.hasToolCommand && s.hasLegacyMetadata
+}
+
+func containsLegacyRawApprovalText(text string) bool {
+	return legacyRawApprovalSignals(text).complete()
+}
+
+func legacyRawApprovalSignals(text string) legacyRawSignals {
+	inLegacyMetadataBlock := false
+	signals := legacyRawSignals{}
+	for _, line := range strings.Split(text, "\n") {
+		lower := normalizeLegacyApprovalLine(line)
+		if strings.Contains(lower, "pi approval metadata:") {
+			if containsLegacyApprovalMetadataToken(lower) {
+				signals.hasLegacyMetadata = true
+			}
+			inLegacyMetadataBlock = true
+		} else if inLegacyMetadataBlock {
+			if lower == "" {
+				if signals.hasToolCommand {
+					continue
+				}
+				inLegacyMetadataBlock = false
+			} else if lower == "---" {
+				continue
+			} else if containsLegacyApprovalMetadataToken(lower) {
+				signals.hasLegacyMetadata = true
+			} else if !strings.Contains(lower, ":") && !signals.hasToolCommand {
+				inLegacyMetadataBlock = false
+			}
+		}
+		if strings.Contains(lower, "tool:") && (strings.Contains(lower, "{") || strings.Contains(lower, "bash") || strings.Contains(lower, "command") || strings.Contains(lower, "cmd")) {
+			signals.hasToolCommand = true
+		}
+	}
+	return signals
+}
+
+func normalizeLegacyApprovalLine(line string) string {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	for {
+		trimmed := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(lower, "- "), "* "), "> ")
+		if dot := strings.Index(trimmed, ". "); dot > 0 && allASCIIDigits(trimmed[:dot]) {
+			trimmed = trimmed[dot+2:]
+		}
+		if trimmed == lower {
+			return lower
+		}
+		lower = strings.TrimSpace(trimmed)
+	}
+}
+
+func allASCIIDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func containsLegacyApprovalMetadataToken(line string) bool {
+	for _, token := range []string{"brokerrequestid", "correlationtoken", "sessionid", "call_uuid", "actionfingerprint"} {
+		searchFrom := 0
+		for {
+			index := strings.Index(line[searchFrom:], token)
+			if index == -1 {
+				break
+			}
+			index += searchFrom
+			searchFrom = index + len(token)
+			if !isLegacyMetadataKeyBoundary(line, index) {
+				continue
+			}
+			afterKey := strings.TrimSpace(line[index+len(token):])
+			if !strings.HasPrefix(afterKey, ":") {
+				continue
+			}
+			value := strings.TrimSpace(afterKey[1:])
+			if strings.Contains(value, "piapr_") || strings.Contains(value, "sha256:") || looksLikeLegacyMetadataUUID(value) || looksLikeLegacyNumericID(value) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isLegacyMetadataKeyBoundary(line string, index int) bool {
+	if index == 0 {
+		return true
+	}
+	previous := line[index-1]
+	return previous == ' ' || previous == '\t' || previous == '-' || previous == '*' || previous == ',' || previous == ';' || previous == '(' || previous == '[' || previous == '{'
+}
+
+func looksLikeLegacyNumericID(value string) bool {
+	field := strings.Fields(value)
+	if len(field) == 0 {
+		return false
+	}
+	candidate := strings.Trim(field[0], `"',;.)]}`)
+	return len(candidate) >= 4 && allASCIIDigits(candidate)
+}
+
+func looksLikeLegacyMetadataUUID(value string) bool {
+	field := strings.Fields(value)
+	if len(field) == 0 {
+		return false
+	}
+	candidate := strings.Trim(field[0], `"',;.)]}`)
+	if len(candidate) != 36 {
+		return false
+	}
+	for i, r := range candidate {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if r != '-' {
+				return false
+			}
+			continue
+		}
+		if (r >= 'a' && r <= 'f') || (r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func effectiveCreateRequestRisk(input CreateRequest) string {
