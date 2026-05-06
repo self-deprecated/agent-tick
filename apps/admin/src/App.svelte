@@ -130,6 +130,8 @@
 
 	let activePage = $state<Page>('setup');
 	let copiedSnippet = $state('');
+	let copyError = $state('');
+	let copyClearTimer: number | undefined;
 
 	const api = new AdminApiClient({
 		bearerToken: () => bearerToken,
@@ -195,7 +197,11 @@
 		if (isUserMode) {
 			void resumeSession();
 		}
-		return () => window.removeEventListener('hashchange', handleHashChange);
+		return () => {
+			window.removeEventListener('hashchange', handleHashChange);
+			if (copyClearTimer !== undefined) window.clearTimeout(copyClearTimer);
+			if (pairingClearTimer !== undefined) window.clearTimeout(pairingClearTimer);
+		};
 	});
 
 	async function resumeSession() {
@@ -241,7 +247,10 @@
 
 	async function refreshDashboard() {
 		if (!canShowDashboard) return;
-		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations()]);
+		const loads: Promise<void>[] = [loadDevices(), loadAgents()];
+		if (activePage !== 'approvals') loads.push(loadApprovals());
+		if (activePage !== 'organization' && activePage !== 'admin') loads.push(loadOrganizations());
+		await Promise.all(loads);
 		await ensurePageData(activePage);
 	}
 
@@ -249,7 +258,7 @@
 		if (!canShowDashboard) return;
 		if (page === 'organization') {
 			await Promise.all([loadOrganizations(), loadTeams(), loadProjects(), loadPolicies()]);
-		} else if (page === 'admin') {
+		} else if (page === 'admin' && isOrgAdmin) {
 			const loads: Promise<void>[] = [loadOrganizations(), loadAuditEvents()];
 			if (isUserMode) loads.push(loadBilling());
 			await Promise.all(loads);
@@ -669,27 +678,42 @@
 		}
 	}
 
-	function navigate(event: MouseEvent, page: Page) {
+	function navigate(event: MouseEvent, page: Page, anchor: string = page) {
 		event.preventDefault();
+		if (page === 'admin' && !isOrgAdmin) {
+			activePage = 'setup';
+			return;
+		}
 		activePage = page;
-		if (window.location.hash !== `#${page}`) {
-			window.history.pushState(null, '', `#${page}`);
+		if (window.location.hash !== `#${anchor}`) {
+			window.history.pushState(null, '', `#${anchor}`);
 		}
 		void ensurePageData(page);
+		window.requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ block: 'start' }));
 	}
 
 	function pageFromHash(): Page {
 		const hash = window.location.hash.replace(/^#/, '');
-		return hash === 'approvals' || hash === 'organization' || hash === 'admin' ? hash : 'setup';
+		if (hash === 'admin') return isOrgAdmin ? 'admin' : 'setup';
+		if (hash === 'organization') return 'organization';
+		if (hash === 'approvals') return 'approvals';
+		return 'setup';
 	}
 
 	async function copyText(text: string, label: string) {
 		if (!text) return;
-		await navigator.clipboard.writeText(text);
-		copiedSnippet = label;
-		window.setTimeout(() => {
-			if (copiedSnippet === label) copiedSnippet = '';
-		}, 1600);
+		copyError = '';
+		try {
+			await navigator.clipboard.writeText(text);
+			copiedSnippet = label;
+			if (copyClearTimer !== undefined) window.clearTimeout(copyClearTimer);
+			copyClearTimer = window.setTimeout(() => {
+				if (copiedSnippet === label) copiedSnippet = '';
+				copyClearTimer = undefined;
+			}, 1600);
+		} catch {
+			copyError = 'Copy failed. Select the command text and copy it manually.';
+		}
 	}
 
 	function selectTeam(teamID: string) {
@@ -867,9 +891,9 @@
 				<p class="muted">Most users only need these two connections. Team, policy, audit, and billing tools live on their own settings pages.</p>
 			</div>
 			<ol class="setup-steps">
-				<li><a href="#devices"><strong>Pair your phone</strong><span>Create a QR and scan it from the mobile app.</span></a></li>
-				<li><a href="#agents"><strong>Connect your agent</strong><span>Create one token and copy the command.</span></a></li>
-				<li><a href="#approvals"><strong>Send a test</strong><span>Run the example and approve it on your phone.</span></a></li>
+				<li><a href="#devices" onclick={(event) => navigate(event, 'setup', 'devices')}><strong>Pair your phone</strong><span>Create a QR and scan it from the mobile app.</span></a></li>
+				<li><a href="#agents" onclick={(event) => navigate(event, 'setup', 'agents')}><strong>Connect your agent</strong><span>Create one token and copy the command.</span></a></li>
+				<li><a href="#approvals" onclick={(event) => navigate(event, 'approvals')}><strong>Send a test</strong><span>Run the example and approve it on your phone.</span></a></li>
 			</ol>
 		</section>
 		{/if}
@@ -1204,6 +1228,9 @@
 								<button type="button" class="secondary" onclick={() => void copyText(setupExample, 'setup')}>{copiedSnippet === 'setup' ? 'Copied' : 'Copy'}</button>
 							</div>
 							<p class="muted">This token is shown once. Run setup, then send the test request and approve it on your phone.</p>
+							{#if copyError}
+								<p class="error" role="alert">{copyError}</p>
+							{/if}
 							<pre>{setupExample}</pre>
 							<details class="env-output">
 								<summary>Prefer environment variables?</summary>
