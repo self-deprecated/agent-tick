@@ -24,6 +24,7 @@ const (
 )
 
 var smtpSendMail = sendMailWithTimeout
+var notificationTimeoutFallback = defaultNotificationTimeout
 
 // smtpTLSConfig is replaced in tests for the STARTTLS happy-path coverage.
 var smtpTLSConfig = func(host string) *tls.Config {
@@ -67,7 +68,7 @@ func NewRequestNotifierFromEnv(publicURL string) *RequestNotifier {
 	notifier := &RequestNotifier{
 		client:           &http.Client{},
 		publicURL:        strings.TrimRight(strings.TrimSpace(publicURL), "/"),
-		requestTimeout:   defaultNotificationTimeout,
+		requestTimeout:   notificationTimeoutFallback,
 		deliverySlots:    make(chan struct{}, defaultNotificationConcurrency),
 		webhookURLs:      splitAndTrimCSV(os.Getenv("AGENT_TICK_WEBHOOK_URLS")),
 		slackWebhookURLs: splitAndTrimCSV(os.Getenv("AGENT_TICK_SLACK_WEBHOOK_URLS")),
@@ -84,7 +85,7 @@ func NewRequestNotifierFromEnv(publicURL string) *RequestNotifier {
 			password: os.Getenv("AGENT_TICK_EMAIL_SMTP_PASSWORD"),
 			from:     from,
 			to:       to,
-			timeout:  defaultNotificationTimeout,
+			timeout:  notificationTimeoutFallback,
 		}
 	}
 
@@ -239,7 +240,7 @@ func (e *emailNotifier) send(request ApprovalRequest, dashboardURL string) error
 
 func sendMailWithTimeout(addr string, auth smtp.Auth, from string, to []string, msg []byte, timeout time.Duration) error {
 	if timeout <= 0 {
-		timeout = defaultNotificationTimeout
+		timeout = notificationTimeoutFallback
 	}
 	host := smtpHost(addr)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -412,7 +413,7 @@ func teamsWebhookPayload(request ApprovalRequest, dashboardURL string) map[strin
 
 func postJSON(client *http.Client, timeout time.Duration, endpoint string, payload any, headers http.Header, out ...any) error {
 	if timeout <= 0 {
-		timeout = defaultNotificationTimeout
+		timeout = notificationTimeoutFallback
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

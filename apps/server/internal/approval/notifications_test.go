@@ -616,70 +616,22 @@ func TestSendMailWithTimeoutHonorsDeadline(t *testing.T) {
 }
 
 func TestSendMailWithTimeoutFallsBackForZeroTimeout(t *testing.T) {
-	message := buildSMTPMessage("tick@example.com", []string{"ops@example.com"}, sampleNotificationRequest(), "https://tick.example.com/#approvals")
+	originalFallback := notificationTimeoutFallback
+	notificationTimeoutFallback = 50 * time.Millisecond
+	defer func() { notificationTimeoutFallback = originalFallback }()
+
 	addr, done := startFakeSMTPServer(t, func(conn net.Conn) error {
-		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-		if err := writeSMTPLine(rw.Writer, "220 smtp.example.test ESMTP"); err != nil {
-			return err
-		}
-		line, err := readSMTPLine(rw.Reader)
-		if err != nil {
-			return err
-		}
-		if !strings.HasPrefix(line, "EHLO ") && !strings.HasPrefix(line, "HELO ") {
-			return fmt.Errorf("greeting command = %q, want EHLO/HELO", line)
-		}
-		if err := writeSMTPLines(rw.Writer, "250-smtp.example.test", "250 OK"); err != nil {
-			return err
-		}
-		line, err = readSMTPLine(rw.Reader)
-		if err != nil {
-			return err
-		}
-		if !strings.HasPrefix(line, "MAIL FROM:") {
-			return fmt.Errorf("MAIL command = %q", line)
-		}
-		if err := writeSMTPLine(rw.Writer, "250 OK"); err != nil {
-			return err
-		}
-		line, err = readSMTPLine(rw.Reader)
-		if err != nil {
-			return err
-		}
-		if !strings.HasPrefix(line, "RCPT TO:") {
-			return fmt.Errorf("RCPT command = %q", line)
-		}
-		if err := writeSMTPLine(rw.Writer, "250 OK"); err != nil {
-			return err
-		}
-		line, err = readSMTPLine(rw.Reader)
-		if err != nil {
-			return err
-		}
-		if line != "DATA" {
-			return fmt.Errorf("DATA command = %q, want DATA", line)
-		}
-		if err := writeSMTPLine(rw.Writer, "354 End data with <CR><LF>.<CR><LF>"); err != nil {
-			return err
-		}
-		if _, err := readSMTPData(rw.Reader); err != nil {
-			return err
-		}
-		if err := writeSMTPLine(rw.Writer, "250 queued"); err != nil {
-			return err
-		}
-		line, err = readSMTPLine(rw.Reader)
-		if err != nil {
-			return err
-		}
-		if line != "QUIT" {
-			return fmt.Errorf("QUIT command = %q, want QUIT", line)
-		}
-		return writeSMTPLine(rw.Writer, "221 bye")
+		time.Sleep(150 * time.Millisecond)
+		return nil
 	})
 
-	if err := sendMailWithTimeout(addr, nil, "tick@example.com", []string{"ops@example.com"}, []byte(message), 0); err != nil {
-		t.Fatalf("sendMailWithTimeout() error = %v", err)
+	started := time.Now()
+	err := sendMailWithTimeout(addr, nil, "tick@example.com", []string{"ops@example.com"}, []byte("test"), 0)
+	if err == nil {
+		t.Fatal("sendMailWithTimeout() error = nil, want fallback timeout")
+	}
+	if elapsed := time.Since(started); elapsed > 120*time.Millisecond {
+		t.Fatalf("sendMailWithTimeout() elapsed = %v, want under 120ms with fallback timeout", elapsed)
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("fake smtp server error = %v", err)
@@ -687,18 +639,25 @@ func TestSendMailWithTimeoutFallsBackForZeroTimeout(t *testing.T) {
 }
 
 func TestPostJSONFallsBackForZeroTimeout(t *testing.T) {
+	originalFallback := notificationTimeoutFallback
+	notificationTimeoutFallback = 50 * time.Millisecond
+	defer func() { notificationTimeoutFallback = originalFallback }()
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(150 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
 
+	started := time.Now()
 	var response map[string]any
-	if err := postJSON(server.Client(), 0, server.URL, map[string]string{"hello": "world"}, nil, &response); err != nil {
-		t.Fatalf("postJSON() error = %v", err)
+	err := postJSON(server.Client(), 0, server.URL, map[string]string{"hello": "world"}, nil, &response)
+	if err == nil {
+		t.Fatal("postJSON() error = nil, want fallback timeout")
 	}
-	if response["ok"] != true {
-		t.Fatalf("postJSON() response = %#v, want ok=true", response)
+	if elapsed := time.Since(started); elapsed > 120*time.Millisecond {
+		t.Fatalf("postJSON() elapsed = %v, want under 120ms with fallback timeout", elapsed)
 	}
 }
 
