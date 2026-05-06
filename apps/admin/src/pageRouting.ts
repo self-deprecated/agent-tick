@@ -1,4 +1,4 @@
-export type Page = 'setup' | 'approvals' | 'organization' | 'admin';
+export type Page = 'setup' | 'approvals' | 'organization' | 'admin' | 'invite';
 export type DashboardLoadKey = 'approvals' | 'devices' | 'agents' | 'organizations';
 export type BillingPanelStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -24,12 +24,14 @@ export function pageFromHash(hash: string, isOrgAdmin: boolean, defaultPage: Pag
 	const page = hash.replace(/^#/, '');
 	if (page === '') return defaultPage;
 	if (page === 'admin') return isOrgAdmin ? 'admin' : 'setup';
+	if (page.startsWith('/invite/') || page.startsWith('invite/')) return 'invite';
 	if (page === 'organization') return 'organization';
 	if (page === 'approvals') return 'approvals';
 	return 'setup';
 }
 
 export function refreshLoadKeys(activePage: Page): DashboardLoadKey[] {
+	if (activePage === 'invite') return ['organizations'];
 	const loads: DashboardLoadKey[] = ['devices', 'agents'];
 	if (activePage !== 'approvals') loads.push('approvals');
 	if (activePage !== 'organization' && activePage !== 'admin') loads.push('organizations');

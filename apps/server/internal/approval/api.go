@@ -39,6 +39,7 @@ type API struct {
 	billing          BillingStore
 	billingProvider  BillingProvider
 	audit            AuditLogStore
+	invites          InviteStore
 	rateLimiter      *rateLimiter
 	token            string
 	mode             string
@@ -93,6 +94,9 @@ func NewAPI(store Store, token string) *API {
 	}
 	if audit, ok := store.(AuditLogStore); ok {
 		api.audit = audit
+	}
+	if invites, ok := store.(InviteStore); ok {
+		api.invites = invites
 	}
 	return api
 }
@@ -340,6 +344,14 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/devices", a.listDevices)
 	mux.HandleFunc("GET /v1/organizations", a.listOrganizations)
 	mux.HandleFunc("POST /v1/organizations", a.createOrganization)
+	mux.HandleFunc("GET /v1/invites/{token}", a.previewInvite)
+	mux.HandleFunc("POST /v1/invites/{token}/accept", a.acceptInvite)
+	mux.HandleFunc("GET /v1/organization-invites", a.listOrganizationInvites)
+	mux.HandleFunc("POST /v1/organization-invites", a.createOrganizationInvite)
+	mux.HandleFunc("POST /v1/organization-invites/{id}/revoke", a.revokeOrganizationInvite)
+	mux.HandleFunc("GET /v1/organization-membership-requests", a.listMembershipRequests)
+	mux.HandleFunc("POST /v1/organization-membership-requests/{id}/approve", a.approveMembershipRequest)
+	mux.HandleFunc("POST /v1/organization-membership-requests/{id}/reject", a.rejectMembershipRequest)
 	mux.HandleFunc("GET /v1/billing", a.getBilling)
 	mux.HandleFunc("POST /v1/billing/webhook", a.billingWebhook)
 	mux.HandleFunc("GET /v1/audit-events", a.listAuditEvents)
@@ -827,6 +839,168 @@ func (a *API) createOrganization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, organization)
+}
+
+func (a *API) previewInvite(w http.ResponseWriter, r *http.Request) {
+	if a.invites == nil {
+		writeError(w, http.StatusNotImplemented, "invites are not supported")
+		return
+	}
+	preview, err := a.invites.PreviewInvite(r.PathValue("token"), currentAuth(r).FromSession)
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "invite not found")
+		return
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
+}
+
+func (a *API) acceptInvite(w http.ResponseWriter, r *http.Request) {
+	if a.invites == nil {
+		writeError(w, http.StatusNotImplemented, "invites are not supported")
+		return
+	}
+	auth := currentAuth(r)
+	if (a.mode == ModeUser && !auth.FromSession) || (auth.Source != authSourceSession && auth.Source != authSourceAdmin) {
+		writeError(w, http.StatusUnauthorized, "sign in to accept invite")
+		return
+	}
+	record, err := a.invites.AcceptInviteForUser(auth.UserID, r.PathValue("token"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "invite not found")
+		return
+	}
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if writePlanLimitExceeded(w, err) {
+		return
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, record)
+}
+
+func (a *API) listOrganizationInvites(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeInvites(w, r) {
+		return
+	}
+	records, err := a.invites.ListOrganizationInvites(currentAuth(r).OrganizationID)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, records)
+}
+
+func (a *API) createOrganizationInvite(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeInvites(w, r) {
+		return
+	}
+	var input CreateOrganizationInviteRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid invite JSON")
+		return
+	}
+	record, err := a.invites.CreateOrganizationInviteForUser(currentAuth(r).UserID, currentAuth(r).OrganizationID, input)
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, record)
+}
+
+func (a *API) revokeOrganizationInvite(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeInvites(w, r) {
+		return
+	}
+	record, err := a.invites.RevokeOrganizationInviteForUser(currentAuth(r).UserID, currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "invite not found")
+		return
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
+}
+
+func (a *API) listMembershipRequests(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeInvites(w, r) {
+		return
+	}
+	records, err := a.invites.ListMembershipRequests(currentAuth(r).OrganizationID)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, records)
+}
+
+func (a *API) approveMembershipRequest(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeInvites(w, r) {
+		return
+	}
+	record, err := a.invites.ApproveMembershipRequestForUser(currentAuth(r).UserID, currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "membership request not found")
+		return
+	}
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if writePlanLimitExceeded(w, err) {
+		return
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
+}
+
+func (a *API) rejectMembershipRequest(w http.ResponseWriter, r *http.Request) {
+	if !a.authorizeInvites(w, r) {
+		return
+	}
+	record, err := a.invites.RejectMembershipRequestForUser(currentAuth(r).UserID, currentAuth(r).OrganizationID, r.PathValue("id"))
+	if errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusNotFound, "membership request not found")
+		return
+	}
+	if errors.Is(err, ErrInvalidRequest) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, record)
+}
+
+func (a *API) authorizeInvites(w http.ResponseWriter, r *http.Request) bool {
+	if a.invites == nil {
+		writeError(w, http.StatusNotImplemented, "invites are not supported")
+		return false
+	}
+	if !roleAllows(currentAuth(r).Role, RoleAdmin) {
+		writeError(w, http.StatusForbidden, "insufficient organization role")
+		return false
+	}
+	return true
 }
 
 func (a *API) getBilling(w http.ResponseWriter, r *http.Request) {
@@ -1837,6 +2011,10 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 				return
 			}
 		}
+		if publicInvitePreviewEndpoint(r) {
+			next.ServeHTTP(w, withAuthContext(r, authContext{UserID: defaultUserID, OrganizationID: defaultOrganizationID, Role: RoleViewer}))
+			return
+		}
 		if a.mode == ModeSingle && a.token == "" && isLoopback(r.RemoteAddr) {
 			auth, err := a.authContextForUser(defaultUserID, authSourceLoopback, false)
 			if err != nil {
@@ -1955,6 +2133,30 @@ func (a *API) withAuth(next http.Handler) http.Handler {
 		}
 		writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
 	})
+}
+
+func publicInvitePreviewEndpoint(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
+	if len(parts) != 3 || parts[0] != "v1" || parts[1] != "invites" {
+		return false
+	}
+	return validInviteTokenSegment(parts[2])
+}
+
+func validInviteTokenSegment(token string) bool {
+	if len(token) != 43 {
+		return false
+	}
+	for _, ch := range token {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (a *API) userIDFromSessionCookie(r *http.Request) (string, bool, error) {
@@ -2162,7 +2364,7 @@ func (a *API) withRateLimit(next http.Handler) http.Handler {
 			return
 		}
 		limit := a.rateLimiter.defaultLimit
-		if r.URL.Path == "/v1/session" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/pairing-tokens" {
+		if r.URL.Path == "/v1/session" || r.URL.Path == "/v1/devices/pair" || r.URL.Path == "/v1/pairing-tokens" || strings.HasPrefix(r.URL.Path, "/v1/invites/") {
 			limit = a.rateLimiter.sensitiveLimit
 		}
 		if !a.rateLimiter.allow(clientIP(r), limit, time.Now().UTC()) {

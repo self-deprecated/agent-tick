@@ -2116,3 +2116,207 @@ func (b *recordingEventBus) assertEvents(t *testing.T, want ...Event) {
 		}
 	}
 }
+
+func TestAPIInvitePreviewPublicAndAcceptRequiresSession(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	owner := loginAuth(t, handler, "owner@example.com")
+	invite := requestWithSession[OrganizationInviteRecord](t, handler, owner, http.MethodPost, "/v1/organization-invites", CreateOrganizationInviteRequest{Role: RoleViewer})
+
+	previewRec := httptest.NewRecorder()
+	handler.ServeHTTP(previewRec, httptest.NewRequest(http.MethodGet, "/v1/invites/"+invite.Token, nil))
+	if previewRec.Code != http.StatusOK {
+		t.Fatalf("public preview status = %d body = %s, want %d", previewRec.Code, previewRec.Body.String(), http.StatusOK)
+	}
+	var publicPreview InvitePreview
+	if err := json.NewDecoder(previewRec.Body).Decode(&publicPreview); err != nil {
+		t.Fatalf("Decode(public preview) error = %v", err)
+	}
+	if len(publicPreview.TeamIDs) != 0 {
+		t.Fatalf("public preview team IDs = %#v, want none", publicPreview.TeamIDs)
+	}
+
+	team := requestWithSession[TeamRecord](t, handler, owner, http.MethodPost, "/v1/teams", CreateTeamRequest{Name: "Platform"})
+	teamInvite := requestWithSession[OrganizationInviteRecord](t, handler, owner, http.MethodPost, "/v1/organization-invites", CreateOrganizationInviteRequest{Role: RoleViewer, TeamIDs: []string{team.TeamID}})
+	signedPreview := requestWithSession[InvitePreview](t, handler, owner, http.MethodGet, "/v1/invites/"+teamInvite.Token, nil)
+	if len(signedPreview.TeamIDs) != 1 || signedPreview.TeamIDs[0] != team.TeamID {
+		t.Fatalf("signed preview team IDs = %#v, want %q", signedPreview.TeamIDs, team.TeamID)
+	}
+
+	acceptRec := httptest.NewRecorder()
+	handler.ServeHTTP(acceptRec, httptest.NewRequest(http.MethodPost, "/v1/invites/"+invite.Token+"/accept", nil))
+	if acceptRec.Code != http.StatusUnauthorized {
+		t.Fatalf("public accept status = %d body = %s, want %d", acceptRec.Code, acceptRec.Body.String(), http.StatusUnauthorized)
+	}
+}
+
+func TestAPIInviteAcceptRejectsUnauthenticatedSingleModeLoopback(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	handler := api.Handler()
+	invite, err := store.CreateOrganizationInviteForUser(defaultUserID, defaultOrganizationID, CreateOrganizationInviteRequest{Role: RoleViewer})
+	if err != nil {
+		t.Fatalf("CreateOrganizationInviteForUser() error = %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/invites/"+invite.Token+"/accept", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("single-mode loopback accept status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
+	}
+}
+
+func TestAPIOrganizationInvitesListDoesNotExposeTokens(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+	owner := loginAuth(t, handler, "owner@example.com")
+	invite := requestWithSession[OrganizationInviteRecord](t, handler, owner, http.MethodPost, "/v1/organization-invites", CreateOrganizationInviteRequest{Role: RoleViewer})
+	rec := statusWithSession(t, handler, owner, http.MethodGet, "/v1/organization-invites", nil, owner.csrf.Value)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list invites status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusOK)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, invite.Token) || strings.Contains(body, `"token"`) || strings.Contains(body, `"url"`) {
+		t.Fatalf("list invites leaked token/url: %s", body)
+	}
+}
+
+func TestAPIInviteExhaustedReturnsBadRequest(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	owner := loginAuth(t, handler, "owner@example.com")
+	invite := requestWithSession[OrganizationInviteRecord](t, handler, owner, http.MethodPost, "/v1/organization-invites", CreateOrganizationInviteRequest{Role: RoleViewer, MaxUses: intPtr(1)})
+	first := loginAuth(t, handler, "first@example.com")
+	requestWithSession[MembershipRequestRecord](t, handler, first, http.MethodPost, "/v1/invites/"+invite.Token+"/accept", map[string]string{})
+	second := loginAuth(t, handler, "second@example.com")
+	rec := statusWithSession(t, handler, second, http.MethodPost, "/v1/invites/"+invite.Token+"/accept", map[string]string{}, second.csrf.Value)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("exhausted accept status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusBadRequest)
+	}
+}
+
+func TestPublicInvitePreviewEndpointRejectsPrefixTricks(t *testing.T) {
+	allowed := httptest.NewRequest(http.MethodGet, "/v1/invites/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12", nil)
+	if !publicInvitePreviewEndpoint(allowed) {
+		t.Fatalf("normal invite preview path was not public")
+	}
+	blocked := []string{
+		"/v1/invites/../organization-invites",
+		"/v1/invites/%2e",
+		"/v1/invites/%2e%2e",
+		"/v1/invites/%252e",
+		"/v1/invites/%252e%252e",
+		"/v1/invites/%2e%2e/organization-invites",
+		"/v1/invites/%252e%252e/organization-invites",
+		"/v1/invites/token%2faccept",
+		"/v1/invites/token%2Faccept",
+		"/v1/invites/token%252faccept",
+		"/v1/invites/token%5caccept",
+		"/v1/invites/token%255caccept",
+		"/v1/invites/token/accept",
+		"/v1/invites/token/extra",
+	}
+	for _, path := range blocked {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		if publicInvitePreviewEndpoint(req) {
+			t.Fatalf("path %q was incorrectly public", path)
+		}
+	}
+}
+
+func TestAPIInvitePrefixTrickDoesNotBypassAuth(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/invites/../organization-invites", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("prefix trick status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
+	}
+}
+
+func TestAPIInviteAcceptRejectsBadBearerInSingleMode(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "test-token")
+	handler := api.Handler()
+	invite, err := store.CreateOrganizationInviteForUser(defaultUserID, defaultOrganizationID, CreateOrganizationInviteRequest{Role: RoleViewer})
+	if err != nil {
+		t.Fatalf("CreateOrganizationInviteForUser() error = %v", err)
+	}
+	rec := statusWithBearer(t, handler, "wrong-token", http.MethodPost, "/v1/invites/"+invite.Token+"/accept", map[string]string{})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("single-mode bad bearer accept status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusUnauthorized)
+	}
+}
+
+func TestAPIRejectMembershipRequestAlreadyDecidedReturnsNotFound(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+
+	owner := loginAuth(t, handler, "owner@example.com")
+	invite := requestWithSession[OrganizationInviteRecord](t, handler, owner, http.MethodPost, "/v1/organization-invites", CreateOrganizationInviteRequest{Role: RoleViewer})
+	user := loginAuth(t, handler, "reject-api@example.com")
+	request := requestWithSession[MembershipRequestRecord](t, handler, user, http.MethodPost, "/v1/invites/"+invite.Token+"/accept", map[string]string{})
+	requestWithSession[MembershipRequestRecord](t, handler, owner, http.MethodPost, "/v1/organization-membership-requests/"+request.RequestID+"/reject", map[string]string{})
+	rec := statusWithSession(t, handler, owner, http.MethodPost, "/v1/organization-membership-requests/"+request.RequestID+"/reject", map[string]string{}, owner.csrf.Value)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("second reject status = %d body = %s, want %d", rec.Code, rec.Body.String(), http.StatusNotFound)
+	}
+}
+
+func TestAPIApproveRejectMembershipRequestStatusContract(t *testing.T) {
+	store := newTestSQLiteStore(t)
+	defer store.Close()
+	api := NewAPI(store, "")
+	if err := api.SetMode(ModeUser); err != nil {
+		t.Fatalf("SetMode() error = %v", err)
+	}
+	handler := api.Handler()
+	owner := loginAuth(t, handler, "owner@example.com")
+
+	approveInvite := requestWithSession[OrganizationInviteRecord](t, handler, owner, http.MethodPost, "/v1/organization-invites", CreateOrganizationInviteRequest{Role: RoleViewer})
+	approveUser := loginAuth(t, handler, "approve-contract@example.com")
+	approveRequest := requestWithSession[MembershipRequestRecord](t, handler, approveUser, http.MethodPost, "/v1/invites/"+approveInvite.Token+"/accept", map[string]string{})
+	approved := requestWithSession[MembershipRequestRecord](t, handler, owner, http.MethodPost, "/v1/organization-membership-requests/"+approveRequest.RequestID+"/approve", map[string]string{})
+	if approved.Status != InviteAcceptanceApproved {
+		t.Fatalf("approved status = %q, want %q", approved.Status, InviteAcceptanceApproved)
+	}
+
+	rejectInvite := requestWithSession[OrganizationInviteRecord](t, handler, owner, http.MethodPost, "/v1/organization-invites", CreateOrganizationInviteRequest{Role: RoleViewer})
+	rejectUser := loginAuth(t, handler, "reject-contract@example.com")
+	rejectRequest := requestWithSession[MembershipRequestRecord](t, handler, rejectUser, http.MethodPost, "/v1/invites/"+rejectInvite.Token+"/accept", map[string]string{})
+	rejected := requestWithSession[MembershipRequestRecord](t, handler, owner, http.MethodPost, "/v1/organization-membership-requests/"+rejectRequest.RequestID+"/reject", map[string]string{})
+	if rejected.Status != InviteAcceptanceRejected {
+		t.Fatalf("rejected status = %q, want %q", rejected.Status, InviteAcceptanceRejected)
+	}
+}

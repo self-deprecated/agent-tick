@@ -174,6 +174,58 @@ export interface CreateOrganizationRequest {
 	name: string;
 }
 
+export interface CreateOrganizationInviteRequest {
+	label?: string;
+	role: OrganizationRole;
+	teamIds?: string[];
+	approvalRequired?: boolean;
+	email?: string;
+	domain?: string;
+	expiresAt?: string;
+	maxUses?: number;
+}
+
+export interface OrganizationInviteRecord {
+	inviteId: string;
+	organizationId: string;
+	label?: string;
+	role: OrganizationRole;
+	teamIds?: string[];
+	approvalRequired: boolean;
+	email?: string;
+	domain?: string;
+	expiresAt?: string;
+	maxUses?: number;
+	usedCount: number;
+	pendingCount?: number;
+	approvedCount?: number;
+	revokedAt?: string;
+	createdAt: string;
+	url?: string;
+	token?: string;
+}
+
+export interface InvitePreview {
+	organizationName: string;
+	role: OrganizationRole;
+	approvalRequired: boolean;
+	teamIds?: string[];
+	expiresAt?: string;
+}
+
+export interface MembershipRequestRecord {
+	requestId: string;
+	inviteId: string;
+	organizationId: string;
+	userId: string;
+	userName?: string;
+	userEmail?: string;
+	requestedRole: OrganizationRole;
+	requestedTeamIds?: string[];
+	status: string;
+	acceptedAt: string;
+}
+
 export interface TeamRecord {
 	teamId: string;
 	organizationId: string;
@@ -414,6 +466,38 @@ export class AdminApiClient {
 			method: 'POST',
 			body: input
 		});
+	}
+
+	previewInvite(token: string): Promise<InvitePreview> {
+		return this.#requestJSON<InvitePreview>(`/v1/invites/${encodeURIComponent(token)}`);
+	}
+
+	acceptInvite(token: string): Promise<MembershipRequestRecord> {
+		return this.#requestJSON<MembershipRequestRecord>(`/v1/invites/${encodeURIComponent(token)}/accept`, { method: 'POST', body: {} });
+	}
+
+	listOrganizationInvites(): Promise<OrganizationInviteRecord[]> {
+		return this.#requestJSON<OrganizationInviteRecord[]>('/v1/organization-invites');
+	}
+
+	createOrganizationInvite(input: CreateOrganizationInviteRequest): Promise<OrganizationInviteRecord> {
+		return this.#requestJSON<OrganizationInviteRecord>('/v1/organization-invites', { method: 'POST', body: input });
+	}
+
+	revokeOrganizationInvite(id: string): Promise<OrganizationInviteRecord> {
+		return this.#requestJSON<OrganizationInviteRecord>(`/v1/organization-invites/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: {} });
+	}
+
+	listMembershipRequests(): Promise<MembershipRequestRecord[]> {
+		return this.#requestJSON<MembershipRequestRecord[]>('/v1/organization-membership-requests');
+	}
+
+	approveMembershipRequest(id: string): Promise<MembershipRequestRecord> {
+		return this.#requestJSON<MembershipRequestRecord>(`/v1/organization-membership-requests/${encodeURIComponent(id)}/approve`, { method: 'POST', body: {} });
+	}
+
+	rejectMembershipRequest(id: string): Promise<MembershipRequestRecord> {
+		return this.#requestJSON<MembershipRequestRecord>(`/v1/organization-membership-requests/${encodeURIComponent(id)}/reject`, { method: 'POST', body: {} });
 	}
 
 	listTeams(): Promise<TeamRecord[]> {

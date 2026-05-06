@@ -1325,7 +1325,7 @@ func (s *SQLiteStore) ListOrganizationsForUser(userID string) ([]OrganizationMem
 		SELECT m.organization_id, o.name, m.user_id, m.role, m.created_at
 		FROM organization_memberships m
 		JOIN organizations o ON o.id = m.organization_id
-		WHERE m.user_id = ?
+		WHERE m.user_id = ? AND m.status = 'active'
 		ORDER BY m.created_at DESC
 	`, userID)
 	if err != nil {
@@ -1352,7 +1352,7 @@ func (s *SQLiteStore) DefaultOrganizationForUser(userID string) (OrganizationMem
 		SELECT m.organization_id, o.name, m.user_id, m.role, m.created_at
 		FROM organization_memberships m
 		JOIN organizations o ON o.id = m.organization_id
-		WHERE m.user_id = ?
+		WHERE m.user_id = ? AND m.status = 'active'
 		ORDER BY m.created_at DESC
 		LIMIT 1
 	`, userID)
@@ -1372,7 +1372,7 @@ func (s *SQLiteStore) OrganizationRoleForUser(userID string, organizationID stri
 	}
 	var role string
 	err := s.db.QueryRow(
-		"SELECT role FROM organization_memberships WHERE user_id = ? AND organization_id = ? LIMIT 1",
+		"SELECT role FROM organization_memberships WHERE user_id = ? AND organization_id = ? AND status = 'active' LIMIT 1",
 		userID,
 		organizationID,
 	).Scan(&role)
@@ -1472,7 +1472,7 @@ func (s *SQLiteStore) organizationUsage(organizationID string, auditRetentionDay
 		query  string
 		args   []any
 	}{
-		{&usage.ActiveUsers, "SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ?", []any{organizationID}},
+		{&usage.ActiveUsers, "SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ? AND status = 'active'", []any{organizationID}},
 		{&usage.Teams, "SELECT COUNT(*) FROM teams WHERE organization_id = ?", []any{organizationID}},
 		{&usage.ActiveAgents, "SELECT COUNT(*) FROM agent_tokens WHERE organization_id = ? AND revoked_at = ''", []any{organizationID}},
 		{&usage.ApprovalRequests30d, "SELECT COUNT(*) FROM approval_requests WHERE organization_id = ? AND created_at >= ?", []any{organizationID, timeText(&requestSince)}},
@@ -1688,7 +1688,7 @@ func organizationLimitValue(db rowQuerier, organizationID string, limitKind stri
 
 func organizationMembershipExistsTx(db rowQuerier, organizationID string, userID string) (bool, error) {
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ? AND user_id = ?", organizationID, userID).Scan(&count); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ? AND user_id = ? AND status = 'active'", organizationID, userID).Scan(&count); err != nil {
 		return false, err
 	}
 	return count > 0, nil
@@ -1901,7 +1901,7 @@ func (s *SQLiteStore) UpsertTeamMemberForUser(actorUserID string, organizationID
 		return TeamMemberRecord{}, err
 	}
 	if !exists {
-		if err := enforceOrganizationPlanLimitTx(tx, organizationID, "seats", "seat", "SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ?", organizationID); err != nil {
+		if err := enforceOrganizationPlanLimitTx(tx, organizationID, "seats", "seat", "SELECT COUNT(*) FROM organization_memberships WHERE organization_id = ? AND status = 'active'", organizationID); err != nil {
 			return TeamMemberRecord{}, err
 		}
 	}
@@ -3797,13 +3797,37 @@ func (s *SQLiteStore) migrate() error {
 		CREATE TABLE IF NOT EXISTS organization_invites (
 			id TEXT PRIMARY KEY,
 			organization_id TEXT NOT NULL,
-			email TEXT NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			created_by_user_id TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
 			role TEXT NOT NULL,
-			team_id TEXT NOT NULL DEFAULT '',
-			token_hash TEXT NOT NULL DEFAULT '',
+			approval_required INTEGER NOT NULL DEFAULT 1,
+			email TEXT NOT NULL DEFAULT '',
+			domain TEXT NOT NULL DEFAULT '',
 			expires_at TEXT NOT NULL DEFAULT '',
-			accepted_at TEXT NOT NULL DEFAULT '',
+			max_uses INTEGER,
+			used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
+			revoked_at TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS organization_invite_teams (
+			invite_id TEXT NOT NULL,
+			team_id TEXT NOT NULL,
+			PRIMARY KEY (invite_id, team_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS organization_invite_acceptances (
+			id TEXT PRIMARY KEY,
+			invite_id TEXT NOT NULL,
+			organization_id TEXT NOT NULL,
+			user_id TEXT NOT NULL,
+			requested_role TEXT NOT NULL,
+			requested_team_ids_json TEXT NOT NULL DEFAULT '[]',
+			status TEXT NOT NULL,
+			accepted_at TEXT NOT NULL,
+			decided_by_user_id TEXT NOT NULL DEFAULT '',
+			decided_at TEXT NOT NULL DEFAULT ''
 		);
 
 		CREATE TABLE IF NOT EXISTS approval_requests (
@@ -4127,6 +4151,39 @@ func (s *SQLiteStore) migrate() error {
 			ON approval_votes (request_id, step, created_at);
 		CREATE INDEX IF NOT EXISTS organization_invites_org_email_idx
 			ON organization_invites (organization_id, email);
+	`)
+	if err != nil {
+		return err
+	}
+	for _, c := range []struct{ table, column, def string }{
+		{"organization_memberships", "status", "TEXT NOT NULL DEFAULT 'active'"},
+		{"organization_memberships", "approved_by_user_id", "TEXT NOT NULL DEFAULT ''"},
+		{"organization_memberships", "approved_at", "TEXT NOT NULL DEFAULT ''"},
+		{"organization_memberships", "rejected_by_user_id", "TEXT NOT NULL DEFAULT ''"},
+		{"organization_memberships", "rejected_at", "TEXT NOT NULL DEFAULT ''"},
+		{"organization_memberships", "invite_id", "TEXT NOT NULL DEFAULT ''"},
+		{"organization_invites", "created_by_user_id", "TEXT NOT NULL DEFAULT ''"},
+		{"organization_invites", "label", "TEXT NOT NULL DEFAULT ''"},
+		{"organization_invites", "approval_required", "INTEGER NOT NULL DEFAULT 1"},
+		{"organization_invites", "domain", "TEXT NOT NULL DEFAULT ''"},
+		{"organization_invites", "max_uses", "INTEGER"},
+		{"organization_invites", "used_count", "INTEGER NOT NULL DEFAULT 0"},
+		{"organization_invites", "revoked_at", "TEXT NOT NULL DEFAULT ''"},
+	} {
+		if err := s.addColumnIfMissing(c.table, c.column, c.def); err != nil {
+			return err
+		}
+	}
+	_, err = s.db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_organization_memberships_status ON organization_memberships(organization_id, status);
+		CREATE INDEX IF NOT EXISTS idx_organization_invites_org ON organization_invites(organization_id);
+		CREATE INDEX IF NOT EXISTS idx_organization_invites_active ON organization_invites(organization_id, revoked_at, expires_at);
+		CREATE INDEX IF NOT EXISTS idx_organization_invite_teams_team ON organization_invite_teams(team_id);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_invite_acceptances_invite_user ON organization_invite_acceptances(invite_id, user_id);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_invite_acceptances_pending_org_user ON organization_invite_acceptances(organization_id, user_id) WHERE status = 'pending_approval';
+		CREATE INDEX IF NOT EXISTS idx_invite_acceptances_invite ON organization_invite_acceptances(invite_id);
+		CREATE INDEX IF NOT EXISTS idx_invite_acceptances_org_status ON organization_invite_acceptances(organization_id, status);
+		CREATE INDEX IF NOT EXISTS idx_invite_acceptances_user ON organization_invite_acceptances(user_id);
 	`)
 	return err
 }

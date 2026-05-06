@@ -35,6 +35,8 @@ test('pageFromHash maps known pages', () => {
 	assert.equal(routing.pageFromHash('#setup', true), 'setup');
 	assert.equal(routing.pageFromHash('#approvals', true), 'approvals');
 	assert.equal(routing.pageFromHash('#organization', true), 'organization');
+	assert.equal(routing.pageFromHash('#/invite/token-123', true), 'invite');
+	assert.equal(routing.pageFromHash('#invite/token-123', false), 'invite');
 });
 
 test('pageFromHash gates direct admin hashes for non-admin users', () => {
@@ -62,6 +64,7 @@ test('refreshLoadKeys avoids duplicate page-specific fetches', () => {
 	assert.deepEqual(routing.refreshLoadKeys('approvals'), ['devices', 'agents', 'organizations']);
 	assert.deepEqual(routing.refreshLoadKeys('organization'), ['devices', 'agents', 'approvals']);
 	assert.deepEqual(routing.refreshLoadKeys('admin'), ['devices', 'agents', 'approvals']);
+	assert.deepEqual(routing.refreshLoadKeys('invite'), ['organizations']);
 });
 
 test('shouldShowBillingPanel shows hosted loading and error states', () => {

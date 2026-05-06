@@ -13,7 +13,10 @@
 		type Choice,
 		type DeviceRecord,
 		type OnCallScheduleRecord,
+		type InvitePreview,
+		type OrganizationInviteRecord,
 		type OrganizationMembershipRecord,
+		type MembershipRequestRecord,
 		type PairingToken,
 		type ProjectRecord,
 		type Requester,
@@ -23,6 +26,8 @@
 		type UserAvailabilityRecord
 	} from './api';
 	import type { AdminConfig } from './app';
+	import { inviteAcceptStarted } from './inviteFlow';
+	import { inviteAcceptedMessage } from './inviteStatus';
 	import { defaultPageForSetupStatus, pageFromHash as routePageFromHash, refreshLoadKeys, shouldShowBillingPanel } from './pageRouting';
 	import type { DashboardLoadKey, Page } from './pageRouting';
 
@@ -74,6 +79,23 @@
 	let organizationName = $state('');
 	let organizationActionError = $state('');
 	let creatingOrganization = $state(false);
+	let invites = $state.raw<OrganizationInviteRecord[]>([]);
+	let invitesStatus = $state<LoadStatus>('idle');
+	let invitesError = $state('');
+	let inviteLabel = $state('');
+	let inviteRole = $state('viewer');
+	let inviteTeamID = $state('');
+	let inviteApprovalRequired = $state(true);
+	let inviteMaxUses = $state('1');
+	let inviteExpiresAt = $state('');
+	let inviteEmail = $state('');
+	let inviteDomain = $state('');
+	let creatingInvite = $state(false);
+	let newInviteURL = $state('');
+	let pendingMembers = $state.raw<MembershipRequestRecord[]>([]);
+	let pendingMembersStatus = $state<LoadStatus>('idle');
+	let pendingMembersError = $state('');
+	let busyMembershipRequest = $state('');
 
 	let teams = $state.raw<TeamRecord[]>([]);
 	let teamsStatus = $state<LoadStatus>('idle');
@@ -130,6 +152,12 @@
 	let auditExporting = $state(false);
 
 	let activePage = $state<Page>('setup');
+	let inviteToken = $state('');
+	let invitePreview = $state<InvitePreview | null>(null);
+	let invitePreviewStatus = $state<LoadStatus>('idle');
+	let inviteAcceptStatus = $state<LoadStatus>('idle');
+	let inviteFlowError = $state('');
+	let inviteAccepted = $state<MembershipRequestRecord | null>(null);
 	let copiedSnippet = $state('');
 	let copyError = $state('');
 	let copyClearTimer: number | undefined;
@@ -145,9 +173,21 @@
 	let organizationLabel = $derived(organizations[0]?.name || 'Default organization');
 	let currentMembership = $derived(organizations[0]);
 	let isOrgAdmin = $derived(!isUserMode || ['owner', 'admin'].includes((currentMembership?.role || '').toLowerCase()));
+	let isOrgOwner = $derived(!isUserMode || (currentMembership?.role || '').toLowerCase() === 'owner');
 	let modeLabel = $derived(isUserMode ? 'Account dashboard' : 'Self-hosted dashboard');
 	let anyDashboardLoading = $derived(
-		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading' || billingStatus === 'loading' || auditStatus === 'loading'
+		approvalsStatus === 'loading' ||
+			devicesStatus === 'loading' ||
+			agentsStatus === 'loading' ||
+			teamsStatus === 'loading' ||
+			projectsStatus === 'loading' ||
+			policiesStatus === 'loading' ||
+			billingStatus === 'loading' ||
+			auditStatus === 'loading' ||
+			invitesStatus === 'loading' ||
+			pendingMembersStatus === 'loading' ||
+			invitePreviewStatus === 'loading' ||
+			inviteAcceptStatus === 'loading'
 	);
 	let selectedTeam = $derived(teams.find((team) => team.teamId === selectedTeamID));
 	let selectedProject = $derived(projects.find((project) => project.projectId === selectedProjectID));
@@ -195,6 +235,7 @@
 			void ensurePageData(activePage);
 		};
 		window.addEventListener('hashchange', handleHashChange);
+		if (activePage === 'invite' && !isUserMode) void loadInvitePreview();
 		if (isUserMode) {
 			void resumeSession();
 		}
@@ -211,7 +252,8 @@
 		try {
 			session = await api.getSession();
 			authStatus = 'ready';
-			await refreshDashboard();
+			if (activePage === 'invite') await loadInvitePreview();
+			else await refreshDashboard();
 		} catch {
 			session = null;
 			authStatus = 'idle';
@@ -231,7 +273,8 @@
 			session = await api.login({ email: email.trim(), password });
 			password = '';
 			authStatus = 'ready';
-			await refreshDashboard();
+			if (activePage === 'invite') await loadInvitePreview();
+			else await refreshDashboard();
 		} catch (error) {
 			session = null;
 			authStatus = 'error';
@@ -265,13 +308,15 @@
 	async function ensurePageData(page: Page) {
 		if (!canShowDashboard) return;
 		if (page === 'organization') {
-			await Promise.all([loadOrganizations(), loadTeams(), loadProjects(), loadPolicies()]);
+			await Promise.all([loadOrganizations(), loadTeams(), loadProjects(), loadPolicies(), loadInvites(), loadPendingMembers()]);
 		} else if (page === 'admin' && isOrgAdmin) {
 			const loads: Promise<void>[] = [loadOrganizations(), loadAuditEvents()];
 			if (isUserMode) loads.push(loadBilling());
 			await Promise.all(loads);
 		} else if (page === 'approvals') {
 			await loadApprovals();
+		} else if (page === 'invite') {
+			await loadInvitePreview();
 		}
 	}
 
@@ -372,6 +417,145 @@
 			organizations = [];
 			organizationsStatus = 'error';
 			organizationsError = errorMessage(error);
+		}
+	}
+
+	async function loadInvitePreview() {
+		inviteToken = inviteTokenFromHash();
+		inviteAccepted = null;
+		inviteFlowError = '';
+		if (!inviteToken) {
+			invitePreview = null;
+			invitePreviewStatus = 'idle';
+			return;
+		}
+		invitePreviewStatus = 'loading';
+		try {
+			invitePreview = await api.previewInvite(inviteToken);
+			invitePreviewStatus = 'ready';
+		} catch (error) {
+			invitePreview = null;
+			invitePreviewStatus = 'error';
+			inviteFlowError = errorMessage(error);
+		}
+	}
+
+	async function acceptInvite() {
+		inviteToken = inviteTokenFromHash();
+		if (!inviteToken) return;
+		if (isUserMode && !session) {
+			authError = 'Sign in or create an account to accept this invite.';
+			return;
+		}
+		({ inviteAccepted, inviteAcceptStatus, inviteFlowError } = inviteAcceptStarted());
+		try {
+			inviteAccepted = await api.acceptInvite(inviteToken);
+			inviteAcceptStatus = 'ready';
+			await loadOrganizations();
+		} catch (error) {
+			inviteAcceptStatus = 'error';
+			inviteFlowError = errorMessage(error);
+		}
+	}
+
+	function inviteTokenFromHash(): string {
+		try {
+			return decodeURIComponent(window.location.hash.replace(/^#\/?invite\//, ''));
+		} catch {
+			return '';
+		}
+	}
+
+	async function loadInvites() {
+		if (!isOrgAdmin) return;
+		invitesStatus = 'loading';
+		invitesError = '';
+		try {
+			invites = await api.listOrganizationInvites();
+			invitesStatus = 'ready';
+		} catch (error) {
+			invites = [];
+			invitesStatus = 'error';
+			invitesError = errorMessage(error);
+		}
+	}
+
+	async function loadPendingMembers() {
+		if (!isOrgAdmin) return;
+		pendingMembersStatus = 'loading';
+		pendingMembersError = '';
+		try {
+			pendingMembers = await api.listMembershipRequests();
+			pendingMembersStatus = 'ready';
+		} catch (error) {
+			pendingMembers = [];
+			pendingMembersStatus = 'error';
+			pendingMembersError = errorMessage(error);
+		}
+	}
+
+	async function createInvite(event?: SubmitEvent) {
+		event?.preventDefault();
+		invitesError = '';
+		newInviteURL = '';
+		creatingInvite = true;
+		try {
+			const maxUses = inviteMaxUses.trim() ? Number(inviteMaxUses.trim()) : undefined;
+			if (inviteMaxUses.trim() && (!Number.isFinite(maxUses) || maxUses < 1)) {
+				invitesError = 'Enter a valid number of max uses.';
+				return;
+			}
+			let expiresAt: string | undefined;
+			if (inviteExpiresAt) {
+				const expiresDate = new Date(inviteExpiresAt);
+				if (Number.isNaN(expiresDate.getTime())) {
+					invitesError = 'Enter a valid expiration date and time.';
+					return;
+				}
+				expiresAt = expiresDate.toISOString();
+			}
+			const record = await api.createOrganizationInvite({
+				label: inviteLabel.trim(),
+				role: inviteRole,
+				teamIds: inviteTeamID ? [inviteTeamID] : [],
+				approvalRequired: inviteApprovalRequired,
+				maxUses,
+				expiresAt,
+				email: inviteEmail.trim() || undefined,
+				domain: inviteDomain.trim() || undefined
+			});
+			const baseURL = publicURL.replace(/\/$/, '');
+			newInviteURL = record.token ? `${baseURL}/#/invite/${encodeURIComponent(record.token)}` : record.url ? new URL(record.url, publicURL).toString() : '';
+			inviteLabel = '';
+			await loadInvites();
+		} catch (error) {
+			invitesError = errorMessage(error);
+		} finally {
+			creatingInvite = false;
+		}
+	}
+
+	async function revokeInvite(invite: OrganizationInviteRecord) {
+		invitesError = '';
+		try {
+			await api.revokeOrganizationInvite(invite.inviteId);
+			await loadInvites();
+		} catch (error) {
+			invitesError = errorMessage(error);
+		}
+	}
+
+	async function decidePendingMember(request: MembershipRequestRecord, approve: boolean) {
+		busyMembershipRequest = request.requestId;
+		pendingMembersError = '';
+		try {
+			if (approve) await api.approveMembershipRequest(request.requestId);
+			else await api.rejectMembershipRequest(request.requestId);
+			await Promise.all([loadPendingMembers(), loadInvites()]);
+		} catch (error) {
+			pendingMembersError = errorMessage(error);
+		} finally {
+			busyMembershipRequest = '';
 		}
 	}
 
@@ -701,7 +885,9 @@
 	}
 
 	function pageFromHash(): Page {
-		return routePageFromHash(window.location.hash, isOrgAdmin, defaultPageForSetupStatus({ hasActiveDevice: hasActiveDevice(), hasActiveAgent: hasActiveAgent() }));
+		const page = routePageFromHash(window.location.hash, isOrgAdmin, defaultPageForSetupStatus({ hasActiveDevice: hasActiveDevice(), hasActiveAgent: hasActiveAgent() }));
+		if (page === 'invite') inviteToken = inviteTokenFromHash();
+		return page;
 	}
 
 	function applyDefaultPageIfNoHash() {
@@ -841,10 +1027,19 @@
 	</header>
 
 	{#if isUserMode && !session}
+		{#if activePage === 'invite'}
+			<section class="page-intro panel" aria-labelledby="invite-title">
+				<p class="eyebrow">Organization invite</p>
+				<h2 id="invite-title">Join {invitePreview?.organizationName || 'this organization'}</h2>
+				<p class="muted">Sign in or create an account to continue. Approval is required before you receive organization access.</p>
+				{#if invitePreviewStatus === 'loading'}<p class="muted">Loading invite…</p>{/if}
+				{#if inviteFlowError}<p class="error" role="alert">{inviteFlowError}</p>{/if}
+			</section>
+		{/if}
 		<section class="auth-card" aria-labelledby="signin-title">
 			<div>
 				<p class="eyebrow">Sign in</p>
-				<h2 id="signin-title">Connect your dashboard</h2>
+				<h2 id="signin-title">{activePage === 'invite' ? 'Continue invite' : 'Connect your dashboard'}</h2>
 				<p class="muted">Use your Agent Tick account to resume your session, pair phones, and manage your own agent tokens.</p>
 			</div>
 			<form class="auth-form" onsubmit={login}>
@@ -889,6 +1084,20 @@
 				<p class="error" role="alert">{authError}</p>
 			{/if}
 		</section>
+
+		{#if activePage === 'invite'}
+			<section class="page-intro panel" aria-labelledby="accept-invite-title">
+				<p class="eyebrow">Organization invite</p>
+				<h2 id="accept-invite-title">Join {invitePreview?.organizationName || 'this organization'}</h2>
+				{#if inviteAccepted}
+					<p>{inviteAcceptedMessage(inviteAccepted.status)}</p>
+				{:else}
+					<p class="muted">Requested role: {invitePreview?.role || 'viewer'} · Approval required: {invitePreview?.approvalRequired ? 'yes' : 'no'}</p>
+					<button onclick={acceptInvite} disabled={inviteAcceptStatus === 'loading'}>{inviteAcceptStatus === 'loading' ? 'Accepting…' : 'Accept invite'}</button>
+				{/if}
+				{#if inviteFlowError}<p class="error" role="alert">{inviteFlowError}</p>{/if}
+			</section>
+		{/if}
 
 		<nav class="quick-actions" aria-label="Dashboard sections">
 			<a class={activePage === 'setup' ? 'active' : undefined} href="#setup" onclick={(event) => navigate(event, 'setup')}>Setup</a>
@@ -1422,6 +1631,45 @@
 					{/if}
 				</div>
 			</details>
+
+			{#if isOrgAdmin}
+			<details id="invites" class="panel secondary-panel" open>
+				<summary>
+					<span><span class="eyebrow">Invite people</span><strong>Invite links and pending members</strong></span>
+					<span class="summary-count">{pendingMembers.length} pending</span>
+				</summary>
+				<div class="panel-body">
+					<form class="wizard-form" onsubmit={createInvite}>
+						<div>
+							<p class="eyebrow">Safe by default</p>
+							<h3>Create an invite link</h3>
+							<p class="muted">Invited users enter pending approval before they receive organization or team access.</p>
+						</div>
+						<label><span>Label</span><input bind:value={inviteLabel} type="text" autocomplete="off" placeholder="Backend onboarding link" /></label>
+						<label><span>Role after approval</span><select bind:value={inviteRole}><option value="viewer">Viewer</option><option value="approver">Approver</option>{#if isOrgOwner}<option value="admin">Admin</option>{/if}</select></label>
+						<label><span>Team after approval</span><select bind:value={inviteTeamID}><option value="">No team</option>{#each teams as team (team.teamId)}<option value={team.teamId}>{team.name}</option>{/each}</select></label>
+						<label><span>Max uses</span><input bind:value={inviteMaxUses} type="number" min="1" inputmode="numeric" placeholder="1" /></label>
+						<label><span>Expires at</span><input bind:value={inviteExpiresAt} type="datetime-local" /></label>
+						<label><span>Email restriction</span><input bind:value={inviteEmail} type="email" autocomplete="off" placeholder="person@example.com" /></label>
+						<label><span>Domain restriction</span><input bind:value={inviteDomain} type="text" autocomplete="off" placeholder="example.com" /></label>
+						<label class="checkbox-label"><input bind:checked={inviteApprovalRequired} type="checkbox" disabled={!isOrgOwner} /><span>Admin approval required{isOrgOwner ? '' : ' (owner only to disable)'}</span></label>
+						<button type="submit" disabled={creatingInvite}>{creatingInvite ? 'Creating…' : 'Create invite'}</button>
+					</form>
+					{#if newInviteURL}<div class="snippet-card"><p class="muted">Copy this URL now. The raw token is only shown once.</p><code>{newInviteURL}</code></div>{/if}
+					{#if invitesError}<p class="error" role="alert">{invitesError}</p>{/if}
+					<section class="detail-card" aria-label="Pending members">
+						<div class="panel-heading"><div><p class="eyebrow">Pending members</p><h3>Approve or reject access</h3></div><button class="secondary" onclick={loadPendingMembers}>Refresh</button></div>
+						<p class="muted">Pending users do not have access to organization resources until approved.</p>
+						{#if pendingMembersError}<p class="error" role="alert">{pendingMembersError}</p>{/if}
+						{#if pendingMembersStatus === 'loading'}<div class="empty-state">Loading pending members…</div>{:else if pendingMembers.length === 0}<div class="empty-state">No pending members.</div>{:else}<div class="item-list">{#each pendingMembers as request (request.requestId)}<article class="item-card"><div><strong>{request.userName || request.userEmail || request.userId}</strong><code>{request.userId}</code><p class="muted">Role: {request.requestedRole} · Teams: {(request.requestedTeamIds || []).map(teamNameForID).join(', ') || 'none'} · Accepted {formatDate(request.acceptedAt)}</p></div><div class="toolbar"><button onclick={() => decidePendingMember(request, true)} disabled={busyMembershipRequest !== ''}>{busyMembershipRequest === request.requestId ? 'Working…' : 'Approve'}</button><button class="secondary danger-text" onclick={() => decidePendingMember(request, false)} disabled={busyMembershipRequest !== ''}>{busyMembershipRequest === request.requestId ? 'Working…' : 'Reject'}</button></div></article>{/each}</div>{/if}
+					</section>
+					<section class="detail-card" aria-label="Active invites">
+						<div class="panel-heading"><div><p class="eyebrow">Active and reusable invites</p><h3>Shared links</h3></div><button class="secondary" onclick={loadInvites}>Refresh</button></div>
+						{#if invitesStatus === 'loading'}<div class="empty-state">Loading invites…</div>{:else if invites.length === 0}<div class="empty-state">No invite links yet.</div>{:else}<div class="item-list">{#each invites as invite (invite.inviteId)}<article class="item-card"><div><strong>{invite.label || invite.inviteId}</strong><code>{invite.inviteId}</code><p class="muted">Role: {invite.role} · Teams: {(invite.teamIds || []).map(teamNameForID).join(', ') || 'none'} · Uses: {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ' unlimited'} · Pending: {invite.pendingCount || 0} · Approved: {invite.approvedCount || 0}</p><p class="muted">{invite.revokedAt ? `Revoked ${formatDate(invite.revokedAt)}` : 'Active'} · Expires {invite.expiresAt ? formatDate(invite.expiresAt) : 'never'}</p></div>{#if !invite.revokedAt}<button class="secondary danger-text" onclick={() => revokeInvite(invite)}>Revoke</button>{/if}</article>{/each}</div>{/if}
+					</section>
+				</div>
+			</details>
+			{/if}
 
 			<details id="policies" class="panel secondary-panel">
 				<summary>
