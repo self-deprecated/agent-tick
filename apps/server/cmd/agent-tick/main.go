@@ -64,6 +64,7 @@ UI or mobile app before the action proceeds.`,
 		newAgentTokenCmd(),
 		newMaintenanceCmd(),
 		newAdapterCmd(),
+		newMCPCmd(),
 	)
 	return root
 }

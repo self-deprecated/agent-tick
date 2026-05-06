@@ -9,20 +9,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install agent-tick
-        run: |
-          curl -sSL https://raw.githubusercontent.com/self-deprecated/agent-tick/main/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Wait for human approval
-        env:
-          AGENT_TICK_SERVER: ${{ secrets.AGENT_TICK_SERVER }}
-          AGENT_TICK_TOKEN: ${{ secrets.AGENT_TICK_TOKEN }}
-        run: |
-          agent-tick request \
-            --title "Deploy production?" \
-            --body "${{ github.repository }} @ ${{ github.sha }}" \
-            --command "gh workflow run deploy"
+        uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
+        with:
+          server: ${{ secrets.AGENT_TICK_SERVER }}
+          token: ${{ secrets.AGENT_TICK_TOKEN }}
+          title: Deploy production?
+          body: ${{ github.repository }} @ ${{ github.sha }}
+          command: gh workflow run deploy
+          metadata: >-
+            {"githubRunId":"${{ github.run_id }}","githubWorkflow":"${{ github.workflow }}"}
 
       - name: Deploy
         run: ./scripts/deploy.sh

@@ -1,8 +1,22 @@
 # MCP + Agent Tick
 
-If an MCP host, tool wrapper, or custom server can emit an approval request as JSON, pipe it into `agent-tick adapter`.
+Agent Tick now ships a minimal MCP stdio server via `agent-tick mcp`.
 
-## Minimal example
+## Start the MCP server
+
+```sh
+agent-tick mcp
+```
+
+The server exposes these MCP tools:
+
+- `request_approval`
+- `request_steer`
+- `abandon_request`
+
+## Legacy adapter path
+
+If an MCP host, tool wrapper, or custom server already emits an approval request as JSON, you can still pipe it into `agent-tick adapter`.
 
 ```sh
 printf '{"title":"Run production SQL?","body":"Requested from MCP tool","command":"psql -f migrate.sql"}' \

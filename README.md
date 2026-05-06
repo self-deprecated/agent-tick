@@ -83,7 +83,7 @@ Team-aware servers can attach approval policies to projects or agent tokens. Sim
 
 An agent calls `agent-tick request`, `agent-tick guard`, or `agent-tick steer`. The CLI sends the request to the server and polls for a response. The server pushes the request to your paired phone. You approve, deny, or select a constrained steering option. The server returns the decision to the CLI, and the agent continues.
 
-The server can also fan out new requests to extra notification sinks such as generic webhooks, Slack, Slack DM, Microsoft Teams, and SMTP email while keeping the existing mobile push flow.
+The server can also fan out new requests to extra notification sinks such as generic webhooks, Slack, Slack DM, Microsoft Teams, and SMTP email while keeping the existing mobile push flow. For connector-style integrations, the repo also includes a GitHub Actions composite action and an MCP stdio server.
 
 ## Agent Skill
 

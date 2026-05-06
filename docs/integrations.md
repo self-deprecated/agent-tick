@@ -72,25 +72,38 @@ If your SMTP relay allows unauthenticated local delivery, omit the username/pass
 
 ### GitHub Actions
 
-Use the CLI inside a workflow to gate deployments or destructive steps:
+This repo now includes a composite action at [`integrations/github-actions/request-approval/action.yml`](../integrations/github-actions/request-approval/action.yml).
+
+Use it from a workflow:
 
 ```yaml
 - name: Wait for approval
-  env:
-    AGENT_TICK_SERVER: ${{ secrets.AGENT_TICK_SERVER }}
-    AGENT_TICK_TOKEN: ${{ secrets.AGENT_TICK_TOKEN }}
-  run: |
-    agent-tick request \
-      --title "Deploy production?" \
-      --body "${{ github.repository }} @ ${{ github.sha }}" \
-      --command "gh workflow run deploy"
+  uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
+  with:
+    server: ${{ secrets.AGENT_TICK_SERVER }}
+    token: ${{ secrets.AGENT_TICK_TOKEN }}
+    title: Deploy production?
+    body: ${{ github.repository }} @ ${{ github.sha }}
+    command: gh workflow run deploy
 ```
 
-A fuller example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml).
+The action waits for the final decision and exposes `request-id`, `status`, and `choice-id` outputs. A fuller example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml).
 
 ### MCP
 
-If an MCP host or tool can emit a JSON approval request on stdin, bridge it through Agent Tick with the existing adapter:
+This repo now includes a minimal MCP stdio server:
+
+```sh
+agent-tick mcp
+```
+
+It exposes three tools:
+
+- `request_approval`
+- `request_steer`
+- `abandon_request`
+
+For hosts that already emit Agent Tick-shaped JSON, the older adapter path still works too:
 
 ```sh
 printf '{"title":"Run migration?","command":"atlas migrate apply"}' | agent-tick adapter

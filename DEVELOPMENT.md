@@ -58,7 +58,7 @@ devbox run server
 
 For local integration testing you can also set outbound sink variables such as `AGENT_TICK_WEBHOOK_URLS`, `AGENT_TICK_SLACK_WEBHOOK_URLS`, `AGENT_TICK_SLACK_BOT_TOKEN` + `AGENT_TICK_SLACK_DM_USER_IDS`, `AGENT_TICK_TEAMS_WEBHOOK_URLS`, and the SMTP variables `AGENT_TICK_EMAIL_SMTP_ADDR`, `AGENT_TICK_EMAIL_SMTP_USERNAME`, `AGENT_TICK_EMAIL_SMTP_PASSWORD`, `AGENT_TICK_EMAIL_FROM`, `AGENT_TICK_EMAIL_TO`.
 
-See [docs/integrations.md](./docs/integrations.md) for end-to-end examples, including GitHub Actions and MCP adapter patterns.
+See [docs/integrations.md](./docs/integrations.md) for end-to-end examples, including the GitHub Actions composite action and the `agent-tick mcp` stdio server.
 
 ## Dashboard
 
