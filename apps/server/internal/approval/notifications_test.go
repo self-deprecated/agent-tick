@@ -3,9 +3,15 @@ package approval
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -127,6 +133,27 @@ func TestRequestNotifierAsyncSuccessReleasesSlot(t *testing.T) {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
+	}
+}
+
+func TestRequestNotifierAsyncWithoutQueueStillReturnsQuickly(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	notifier := &RequestNotifier{
+		client:         server.Client(),
+		requestTimeout: time.Second,
+		webhookURLs:    []string{server.URL},
+	}
+	started := time.Now()
+	if err := notifier.NotifyRequestCreatedAsync(sampleNotificationRequest()); err != nil {
+		t.Fatalf("NotifyRequestCreatedAsync() error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 50*time.Millisecond {
+		t.Fatalf("NotifyRequestCreatedAsync() elapsed = %v, want under 50ms", elapsed)
 	}
 }
 
@@ -441,6 +468,125 @@ func TestSendMailWithTimeoutRequiresSTARTTLSForAuth(t *testing.T) {
 	}
 }
 
+func TestSendMailWithTimeoutSucceedsWithSTARTTLSAndAuth(t *testing.T) {
+	originalTLSConfig := smtpTLSConfig
+	smtpTLSConfig = func(string) *tls.Config { return &tls.Config{InsecureSkipVerify: true} }
+	defer func() { smtpTLSConfig = originalTLSConfig }()
+
+	certificate := testSMTPCertificate(t)
+	auth := smtp.PlainAuth("", "agent-tick", "secret", "127.0.0.1")
+	message := buildSMTPMessage("tick@example.com", []string{"ops@example.com"}, sampleNotificationRequest(), "https://tick.example.com/#approvals")
+	addr, done := startFakeSMTPServer(t, func(conn net.Conn) error {
+		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		if err := writeSMTPLine(rw.Writer, "220 smtp.example.test ESMTP"); err != nil {
+			return err
+		}
+		line, err := readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "EHLO ") && !strings.HasPrefix(line, "HELO ") {
+			return fmt.Errorf("greeting command = %q, want EHLO/HELO", line)
+		}
+		if err := writeSMTPLines(rw.Writer, "250-smtp.example.test", "250-STARTTLS", "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if line != "STARTTLS" {
+			return fmt.Errorf("STARTTLS command = %q, want STARTTLS", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "220 Ready to start TLS"); err != nil {
+			return err
+		}
+		tlsConn := tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{certificate}})
+		if err := tlsConn.Handshake(); err != nil {
+			return err
+		}
+		rw = bufio.NewReadWriter(bufio.NewReader(tlsConn), bufio.NewWriter(tlsConn))
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "EHLO ") && !strings.HasPrefix(line, "HELO ") {
+			return fmt.Errorf("tls greeting command = %q, want EHLO/HELO", line)
+		}
+		if err := writeSMTPLines(rw.Writer, "250-smtp.example.test", "250-AUTH PLAIN", "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "AUTH PLAIN ") {
+			return fmt.Errorf("AUTH command = %q, want AUTH PLAIN", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "235 Authenticated"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "MAIL FROM:") {
+			return fmt.Errorf("MAIL command = %q", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "RCPT TO:") {
+			return fmt.Errorf("RCPT command = %q", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if line != "DATA" {
+			return fmt.Errorf("DATA command = %q, want DATA", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "354 End data with <CR><LF>.<CR><LF>"); err != nil {
+			return err
+		}
+		data, err := readSMTPData(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(data, "Subject: [Agent Tick] Deploy production?") {
+			return fmt.Errorf("smtp data missing subject: %q", data)
+		}
+		if err := writeSMTPLine(rw.Writer, "250 queued"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if line != "QUIT" {
+			return fmt.Errorf("QUIT command = %q, want QUIT", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "221 bye"); err != nil {
+			return err
+		}
+		return tlsConn.Close()
+	})
+
+	if err := sendMailWithTimeout(addr, auth, "tick@example.com", []string{"ops@example.com"}, []byte(message), time.Second); err != nil {
+		t.Fatalf("sendMailWithTimeout() error = %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("fake smtp server error = %v", err)
+	}
+}
+
 func TestSendMailWithTimeoutHonorsDeadline(t *testing.T) {
 	addr, done := startFakeSMTPServer(t, func(conn net.Conn) error {
 		time.Sleep(150 * time.Millisecond)
@@ -517,6 +663,28 @@ func readSMTPData(r *bufio.Reader) (string, error) {
 		}
 		builder.WriteString(line)
 	}
+}
+
+func testSMTPCertificate(t *testing.T) tls.Certificate {
+	t.Helper()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey() error = %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "127.0.0.1"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}
+	certificateDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatalf("x509.CreateCertificate() error = %v", err)
+	}
+	return tls.Certificate{Certificate: [][]byte{certificateDER}, PrivateKey: privateKey, Leaf: template}
 }
 
 func sampleNotificationRequest() ApprovalRequest {

@@ -24,6 +24,9 @@ const (
 )
 
 var smtpSendMail = sendMailWithTimeout
+var smtpTLSConfig = func(host string) *tls.Config {
+	return &tls.Config{ServerName: host}
+}
 
 type RequestNotifier struct {
 	client           *http.Client
@@ -233,6 +236,9 @@ func (e *emailNotifier) send(request ApprovalRequest, dashboardURL string) error
 }
 
 func sendMailWithTimeout(addr string, auth smtp.Auth, from string, to []string, msg []byte, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = defaultNotificationTimeout
+	}
 	host := smtpHost(addr)
 	ctx := context.Background()
 	var cancel context.CancelFunc
@@ -260,7 +266,7 @@ func sendMailWithTimeout(addr string, auth smtp.Auth, from string, to []string, 
 		if ok, _ := client.Extension("STARTTLS"); !ok {
 			return errors.New("smtp AUTH requires STARTTLS")
 		}
-		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+		if err := client.StartTLS(smtpTLSConfig(host)); err != nil {
 			return err
 		}
 		if ok, _ := client.Extension("AUTH"); !ok {
@@ -407,6 +413,9 @@ func teamsWebhookPayload(request ApprovalRequest, dashboardURL string) map[strin
 }
 
 func postJSON(client *http.Client, timeout time.Duration, endpoint string, payload any, headers http.Header, out ...any) error {
+	if timeout <= 0 {
+		timeout = defaultNotificationTimeout
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
