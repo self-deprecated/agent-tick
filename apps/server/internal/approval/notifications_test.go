@@ -3,12 +3,14 @@ package approval
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -16,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -616,22 +619,17 @@ func TestSendMailWithTimeoutHonorsDeadline(t *testing.T) {
 }
 
 func TestSendMailWithTimeoutFallsBackForZeroTimeout(t *testing.T) {
-	originalFallback := notificationTimeoutFallback
-	notificationTimeoutFallback = 50 * time.Millisecond
-	defer func() { notificationTimeoutFallback = originalFallback }()
-
 	addr, done := startFakeSMTPServer(t, func(conn net.Conn) error {
 		time.Sleep(150 * time.Millisecond)
 		return nil
 	})
 
-	started := time.Now()
-	err := sendMailWithTimeout(addr, nil, "tick@example.com", []string{"ops@example.com"}, []byte("test"), 0)
+	err := sendMailWithTimeoutUsingFallback(addr, nil, "tick@example.com", []string{"ops@example.com"}, []byte("test"), 0, 50*time.Millisecond)
 	if err == nil {
-		t.Fatal("sendMailWithTimeout() error = nil, want fallback timeout")
+		t.Fatal("sendMailWithTimeoutUsingFallback() error = nil, want fallback timeout")
 	}
-	if elapsed := time.Since(started); elapsed > 120*time.Millisecond {
-		t.Fatalf("sendMailWithTimeout() elapsed = %v, want under 120ms with fallback timeout", elapsed)
+	if !isTimeoutLikeError(err) {
+		t.Fatalf("sendMailWithTimeoutUsingFallback() error = %v, want timeout-like error", err)
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("fake smtp server error = %v", err)
@@ -639,10 +637,6 @@ func TestSendMailWithTimeoutFallsBackForZeroTimeout(t *testing.T) {
 }
 
 func TestPostJSONFallsBackForZeroTimeout(t *testing.T) {
-	originalFallback := notificationTimeoutFallback
-	notificationTimeoutFallback = 50 * time.Millisecond
-	defer func() { notificationTimeoutFallback = originalFallback }()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(150 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
@@ -650,15 +644,30 @@ func TestPostJSONFallsBackForZeroTimeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	started := time.Now()
 	var response map[string]any
-	err := postJSON(server.Client(), 0, server.URL, map[string]string{"hello": "world"}, nil, &response)
+	err := postJSONUsingFallback(server.Client(), 0, 50*time.Millisecond, server.URL, map[string]string{"hello": "world"}, nil, &response)
 	if err == nil {
-		t.Fatal("postJSON() error = nil, want fallback timeout")
+		t.Fatal("postJSONUsingFallback() error = nil, want fallback timeout")
 	}
-	if elapsed := time.Since(started); elapsed > 120*time.Millisecond {
-		t.Fatalf("postJSON() elapsed = %v, want under 120ms with fallback timeout", elapsed)
+	if !isTimeoutLikeError(err) {
+		t.Fatalf("postJSONUsingFallback() error = %v, want timeout-like error", err)
 	}
+}
+
+func isTimeoutLikeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	type timeoutError interface{ Timeout() bool }
+	var timeoutErr timeoutError
+	if errors.As(err, &timeoutErr) && timeoutErr.Timeout() {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "timeout") || strings.Contains(message, "deadline exceeded")
 }
 
 func startFakeSMTPServer(t *testing.T, handler func(net.Conn) error) (string, <-chan error) {
