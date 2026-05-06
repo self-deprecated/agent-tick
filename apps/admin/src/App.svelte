@@ -25,6 +25,7 @@
 	import type { AdminConfig } from './app';
 
 	type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+	type Page = 'setup' | 'approvals' | 'organization' | 'admin';
 
 	let { config }: { config: AdminConfig } = $props();
 
@@ -127,6 +128,9 @@
 	let auditEventType = $state('');
 	let auditExporting = $state(false);
 
+	let activePage = $state<Page>('setup');
+	let copiedSnippet = $state('');
+
 	const api = new AdminApiClient({
 		bearerToken: () => bearerToken,
 		csrfToken: csrfTokenFromCookie
@@ -136,6 +140,9 @@
 	let canShowDashboard = $derived(!isUserMode || session !== null);
 	let signedInLabel = $derived(session?.email || session?.name || session?.userId || 'Signed in');
 	let organizationLabel = $derived(organizations[0]?.name || 'Default organization');
+	let currentMembership = $derived(organizations[0]);
+	let isOrgAdmin = $derived(!isUserMode || ['owner', 'admin'].includes((currentMembership?.role || '').toLowerCase()));
+	let modeLabel = $derived(isUserMode ? 'Account dashboard' : 'Self-hosted dashboard');
 	let anyDashboardLoading = $derived(
 		approvalsStatus === 'loading' || devicesStatus === 'loading' || agentsStatus === 'loading' || teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading' || billingStatus === 'loading' || auditStatus === 'loading'
 	);
@@ -161,6 +168,11 @@
 	let testCommand = $derived(
 		"agent-tick request --title 'Run command?' --body 'Agent Tick test approval from the CLI' --command 'npm install'"
 	);
+	let setupExample = $derived(
+		newAgentCredential
+			? ['# 1. Connect this machine to Agent Tick', setupCommand, '', '# 2. Send a test approval to your phone', testCommand].join('\n')
+			: ''
+	);
 	let billingUsageRows = $derived.by(() => {
 		if (!billing) return [];
 		return [
@@ -174,9 +186,16 @@
 	});
 
 	onMount(() => {
+		activePage = pageFromHash();
+		const handleHashChange = () => {
+			activePage = pageFromHash();
+			void ensurePageData(activePage);
+		};
+		window.addEventListener('hashchange', handleHashChange);
 		if (isUserMode) {
 			void resumeSession();
 		}
+		return () => window.removeEventListener('hashchange', handleHashChange);
 	});
 
 	async function resumeSession() {
@@ -222,7 +241,25 @@
 
 	async function refreshDashboard() {
 		if (!canShowDashboard) return;
-		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations(), loadTeams(), loadProjects(), loadPolicies(), loadBilling(), loadAuditEvents()]);
+		await Promise.all([loadApprovals(), loadDevices(), loadAgents(), loadOrganizations()]);
+		await ensurePageData(activePage);
+	}
+
+	async function ensurePageData(page: Page) {
+		if (!canShowDashboard) return;
+		if (page === 'organization') {
+			await Promise.all([loadOrganizations(), loadTeams(), loadProjects(), loadPolicies()]);
+		} else if (page === 'admin') {
+			const loads: Promise<void>[] = [loadOrganizations(), loadAuditEvents()];
+			if (isUserMode) loads.push(loadBilling());
+			await Promise.all(loads);
+		} else if (page === 'approvals') {
+			await loadApprovals();
+		}
+	}
+
+	async function loadRoutingOptions() {
+		await Promise.all([loadTeams(), loadProjects(), loadPolicies()]);
 	}
 
 	async function loadBilling() {
@@ -632,6 +669,29 @@
 		}
 	}
 
+	function navigate(event: MouseEvent, page: Page) {
+		event.preventDefault();
+		activePage = page;
+		if (window.location.hash !== `#${page}`) {
+			window.history.pushState(null, '', `#${page}`);
+		}
+		void ensurePageData(page);
+	}
+
+	function pageFromHash(): Page {
+		const hash = window.location.hash.replace(/^#/, '');
+		return hash === 'approvals' || hash === 'organization' || hash === 'admin' ? hash : 'setup';
+	}
+
+	async function copyText(text: string, label: string) {
+		if (!text) return;
+		await navigator.clipboard.writeText(text);
+		copiedSnippet = label;
+		window.setTimeout(() => {
+			if (copiedSnippet === label) copiedSnippet = '';
+		}, 1600);
+	}
+
 	function selectTeam(teamID: string) {
 		selectedTeamID = teamID;
 		void loadTeamPresence(teamID);
@@ -734,9 +794,9 @@
 		<div>
 			<p class="eyebrow">Approval dashboard</p>
 			<h1>Agent Tick</h1>
-			<p class="hero-copy">Pair phones, create scoped agent tokens, and clear approval requests without leaving the browser.</p>
+			<p class="hero-copy">Approve agent requests from your phone. Start by pairing one phone and one agent.</p>
 		</div>
-		<div class="mode-pill">{isUserMode ? 'User mode' : 'Single-user mode'}</div>
+		<div class="mode-pill">{modeLabel}</div>
 	</header>
 
 	{#if isUserMode && !session}
@@ -772,7 +832,7 @@
 				<div>
 					<p class="eyebrow">Session</p>
 					<h2>{signedInLabel}</h2>
-					<p class="muted">{organizationLabel} · Session cookies and CSRF protection are active for dashboard actions.</p>
+					<p class="muted">Ready to pair your phone, connect an agent, and approve requests.</p>
 				</div>
 			{:else}
 				<form class="connect-form" onsubmit={connectDashboard}>
@@ -790,27 +850,32 @@
 		</section>
 
 		<nav class="quick-actions" aria-label="Dashboard sections">
-			<a href="#setup">Start here</a>
-			<a href="#devices">Pair phone</a>
-			<a href="#agents">Agent token</a>
-			<a href="#approvals">Approvals</a>
-			<a href="#more">More</a>
+			<a class={activePage === 'setup' ? 'active' : undefined} href="#setup" onclick={(event) => navigate(event, 'setup')}>Setup</a>
+			<a class={activePage === 'approvals' ? 'active' : undefined} href="#approvals" onclick={(event) => navigate(event, 'approvals')}>Approvals</a>
+			<span class="nav-spacer"></span>
+			<a class={['secondary-nav', activePage === 'organization' ? 'active' : undefined]} href="#organization" onclick={(event) => navigate(event, 'organization')}>Organization</a>
+			{#if isOrgAdmin}
+				<a class={['secondary-nav', activePage === 'admin' ? 'active' : undefined]} href="#admin" onclick={(event) => navigate(event, 'admin')}>Admin</a>
+			{/if}
 		</nav>
 
+		{#if activePage === 'setup'}
 		<section id="setup" class="onboarding-card" aria-labelledby="setup-title">
 			<div>
 				<p class="eyebrow">First run</p>
 				<h2 id="setup-title">Connect an agent to your phone in three steps</h2>
-				<p class="muted">This dashboard is focused on setup. Pair a phone, create one scoped agent token, then send a test approval.</p>
+				<p class="muted">Most users only need these two connections. Team, policy, audit, and billing tools live on their own settings pages.</p>
 			</div>
 			<ol class="setup-steps">
-				<li><a href="#devices"><strong>Pair mobile</strong><span>Create a QR and scan it from the app.</span></a></li>
-				<li><a href="#agents"><strong>Create agent token</strong><span>Copy the one-time setup command.</span></a></li>
-				<li><a href="#approvals"><strong>Test approval</strong><span>Run the request command and approve on mobile.</span></a></li>
+				<li><a href="#devices"><strong>Pair your phone</strong><span>Create a QR and scan it from the mobile app.</span></a></li>
+				<li><a href="#agents"><strong>Connect your agent</strong><span>Create one token and copy the command.</span></a></li>
+				<li><a href="#approvals"><strong>Send a test</strong><span>Run the example and approve it on your phone.</span></a></li>
 			</ol>
 		</section>
+		{/if}
 
-		<main class="dashboard-grid">
+		<main class={['dashboard-grid', activePage !== 'setup' ? 'single-page-grid' : undefined]}>
+			{#if activePage === 'setup' || activePage === 'approvals'}
 			<section id="approvals" class="panel approvals-panel" aria-labelledby="approvals-title">
 				<div class="panel-heading">
 					<div>
@@ -877,7 +942,10 @@
 					</div>
 				{/if}
 			</section>
-			<details id="billing" class="panel secondary-panel">
+			{/if}
+
+			{#if activePage === 'admin' && isOrgAdmin && billing && billing.plan !== 'self-hosted'}
+			<details id="billing" class="panel secondary-panel" open>
 				<summary>
 					<span>
 						<span class="eyebrow">Billing</span>
@@ -889,11 +957,7 @@
 					{#if billingError}
 						<div class="inline-error" role="alert"><strong>Error</strong><span>{billingError}</span></div>
 					{/if}
-					{#if billingStatus === 'idle'}
-						<div class="empty-state">Connect to load billing settings.</div>
-					{:else if billingStatus === 'loading'}
-						<div class="empty-state">Loading billing settings…</div>
-					{:else if billing}
+					{#if billing}
 						<div class="billing-summary">
 							<div>
 								<p class="eyebrow">Current plan</p>
@@ -924,7 +988,7 @@
 								{#if billing.portalUrl}
 									<a class="button-link" href={billing.portalUrl}>Open portal</a>
 								{:else}
-									<p class="muted">Portal link is not configured for this self-hosted plan yet.</p>
+									<p class="muted">Portal link is not configured for this plan yet.</p>
 								{/if}
 							</div>
 							<div class="link-card">
@@ -937,7 +1001,7 @@
 							</div>
 							<div class="link-card highlight">
 								<strong>Need more seats or agents?</strong>
-								<p class="muted">Limits are shown before you hit them. Self-hosted installs stay unlimited by default.</p>
+								<p class="muted">Hosted plan limits are shown before you hit them.</p>
 								{#if billing.upgradeUrl}
 									<a class="button-link" href={billing.upgradeUrl}>Contact / upgrade</a>
 								{/if}
@@ -946,8 +1010,10 @@
 					{/if}
 				</div>
 			</details>
+			{/if}
 
-			<details id="audit" class="panel secondary-panel">
+			{#if activePage === 'admin' && isOrgAdmin}
+			<details id="audit" class="panel secondary-panel" open>
 				<summary>
 					<span>
 						<span class="eyebrow">Audit</span>
@@ -991,21 +1057,22 @@
 					{/if}
 				</div>
 			</details>
+			{/if}
 
-
+			{#if activePage === 'setup'}
 			<details id="devices" class="panel" open>
 				<summary>
 					<span>
-						<span class="eyebrow">Devices</span>
-						<strong>Phones and pairing</strong>
+						<span class="eyebrow">Step 1</span>
+						<strong>Pair your phone</strong>
 					</span>
 					<span class="summary-count">{devices.length}</span>
 				</summary>
 				<div class="panel-body">
 					<div class="pairing-card">
 						<div>
-							<h3>Pair a phone</h3>
-							<p class="muted">Create a short-lived QR only when your phone is ready to scan.</p>
+							<h3>Open the mobile app and scan a QR</h3>
+							<p class="muted">Create a short-lived QR only when your phone is ready. Paired phones receive approval prompts.</p>
 						</div>
 						{#if pairing}
 							<div class="qr-wrap">
@@ -1059,71 +1126,90 @@
 			<details id="agents" class="panel" open>
 				<summary>
 					<span>
-						<span class="eyebrow">Agents</span>
-						<strong>Agent tokens</strong>
+						<span class="eyebrow">Step 2</span>
+						<strong>Connect your agent</strong>
 					</span>
 					<span class="summary-count">{agents.length}</span>
 				</summary>
 				<div class="panel-body">
-					<form class="wizard-form" onsubmit={createAgentToken}>
+					<form class="wizard-form simple-agent-form" onsubmit={createAgentToken}>
 						<div>
-							<p class="eyebrow">Registration wizard</p>
-							<h3>Where is this agent running, what project is it for, and who can approve it?</h3>
+							<p class="eyebrow">Agent setup</p>
+							<h3>Create one token, then copy the command into the agent terminal.</h3>
+							<p class="muted">For personal use, the defaults are enough. Organization routing stays tucked away below.</p>
 						</div>
 						<label>
-							<span>1. Agent name</span>
+							<span>Agent name</span>
 							<input bind:value={agentName} type="text" autocomplete="off" placeholder="codex-laptop" />
 						</label>
-						<label>
-							<span>2. Existing project</span>
-							<select bind:value={agentProjectID}>
-								<option value="">Default project</option>
-								{#each projects as project (project.projectId)}
-									<option value={project.projectId}>{project.name}</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>Or create project</span>
-							<input bind:value={agentNewProjectName} type="text" autocomplete="off" placeholder="New project name" />
-						</label>
-						<label>
-							<span>3. Owner user ID</span>
-							<input bind:value={agentOwnerUserID} type="text" autocomplete="off" placeholder={session?.userId || 'usr_default'} />
-						</label>
-						<label>
-							<span>4. Team access</span>
-							<select bind:value={agentTeamID}>
-								<option value="">No team restriction</option>
-								{#each teams as team (team.teamId)}
-									<option value={team.teamId}>{team.name}</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>5. Default approval policy</span>
-							<select bind:value={agentDefaultPolicy}>
-								<option value="">Use project or organization default</option>
-								{#each policies as policy (policy.policyId)}
-									<option value={policy.policyId}>{policy.name}</option>
-								{/each}
-							</select>
-						</label>
-						<button type="submit" disabled={creatingAgent}>{creatingAgent ? 'Creating…' : 'Create Agent Token'}</button>
+						<button type="submit" disabled={creatingAgent}>{creatingAgent ? 'Creating…' : 'Create setup command'}</button>
+						<details class="advanced-routing">
+							<summary>
+								<span>
+									<span class="eyebrow">Optional</span>
+									<strong>Organization routing</strong>
+								</span>
+							</summary>
+							<p class="muted">Use this only when the agent belongs to a team, project, or policy.</p>
+							<button type="button" class="secondary" onclick={loadRoutingOptions} disabled={teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading'}>Load team/project options</button>
+							<div class="routing-grid">
+								<label>
+									<span>Existing project</span>
+									<select bind:value={agentProjectID}>
+										<option value="">Default project</option>
+										{#each projects as project (project.projectId)}
+											<option value={project.projectId}>{project.name}</option>
+										{/each}
+									</select>
+								</label>
+								<label>
+									<span>Or create project</span>
+									<input bind:value={agentNewProjectName} type="text" autocomplete="off" placeholder="New project name" />
+								</label>
+								<label>
+									<span>Owner user ID</span>
+									<input bind:value={agentOwnerUserID} type="text" autocomplete="off" placeholder={session?.userId || 'usr_default'} />
+								</label>
+								<label>
+									<span>Team access</span>
+									<select bind:value={agentTeamID}>
+										<option value="">No team restriction</option>
+										{#each teams as team (team.teamId)}
+											<option value={team.teamId}>{team.name}</option>
+										{/each}
+									</select>
+								</label>
+								<label>
+									<span>Default approval policy</span>
+									<select bind:value={agentDefaultPolicy}>
+										<option value="">Use project or organization default</option>
+										{#each policies as policy (policy.policyId)}
+											<option value={policy.policyId}>{policy.name}</option>
+										{/each}
+									</select>
+								</label>
+							</div>
+						</details>
 					</form>
-					<p class="muted">Dashboard-created agent tokens use the <code>approval:write</code> scope for CLI request creation and polling.</p>
 					{#if agentActionError}
 						<p class="error" role="alert">{agentActionError}</p>
 					{/if}
 					{#if newAgentCredential}
-						<details class="setup-output" open>
-							<summary>Setup commands for {newAgentCredential.name}</summary>
-							<p class="muted">Run one of these setup paths once. The token will not be shown again after you refresh or create another token.</p>
-							<strong>Config-file setup</strong>
-							<pre>{setupCommand + '\n' + testCommand}</pre>
-							<strong>Environment-variable setup</strong>
-							<pre>{setupEnvCommand + '\n' + testCommand}</pre>
-						</details>
+						<section class="setup-output" aria-live="polite">
+							<div class="panel-heading compact-heading">
+								<div>
+									<p class="eyebrow">Step 3</p>
+									<h3>Run this in the agent terminal</h3>
+								</div>
+								<button type="button" class="secondary" onclick={() => void copyText(setupExample, 'setup')}>{copiedSnippet === 'setup' ? 'Copied' : 'Copy'}</button>
+							</div>
+							<p class="muted">This token is shown once. Run setup, then send the test request and approve it on your phone.</p>
+							<pre>{setupExample}</pre>
+							<details class="env-output">
+								<summary>Prefer environment variables?</summary>
+								<pre>{setupEnvCommand + '\n' + testCommand}</pre>
+							</details>
+						</section>
 					{/if}
 
 					{#if agentsError}
@@ -1161,8 +1247,16 @@
 					{/if}
 				</div>
 			</details>
+			{/if}
 
-			<details id="teams" class="panel secondary-panel">
+			{#if activePage === 'organization'}
+			<section class="page-intro panel" aria-labelledby="organization-title">
+				<p class="eyebrow">Organization</p>
+				<h2 id="organization-title">Team routing, projects, and policies</h2>
+				<p class="muted">Only set these up when more than one person or project needs approval routing. Personal agents can keep using the default setup.</p>
+			</section>
+
+			<details id="teams" class="panel secondary-panel" open>
 				<summary>
 					<span>
 						<span class="eyebrow">Teams</span>
@@ -1388,23 +1482,6 @@
 				</div>
 			</details>
 
-			<details id="more" class="panel secondary-panel">
-				<summary>
-					<span>
-						<span class="eyebrow">More</span>
-						<strong>Advanced settings</strong>
-					</span>
-					<span class="summary-count">•••</span>
-				</summary>
-				<div class="panel-body submenu-grid">
-					<a href="#billing">Billing</a>
-					<a href="#audit">Audit</a>
-					<a href="#teams">Teams</a>
-					<a href="#policies">Policies</a>
-					<a href="#projects">Projects</a>
-				</div>
-			</details>
-
 			<details id="projects" class="panel secondary-panel">
 				<summary>
 					<span>
@@ -1490,6 +1567,7 @@
 					{/if}
 				</div>
 			</details>
+			{/if}
 		</main>
 	{/if}
 </div>

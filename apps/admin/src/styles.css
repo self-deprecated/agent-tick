@@ -303,8 +303,17 @@ a {
 	color: #4f463a;
 }
 
-.quick-actions a:hover {
+.quick-actions a:hover,
+.quick-actions a.active {
 	background: #f0e4d2;
+}
+
+.nav-spacer {
+	flex: 1 1 auto;
+}
+
+.quick-actions a.secondary-nav {
+	color: #64748b;
 }
 
 .dashboard-grid {
@@ -312,6 +321,10 @@ a {
 	grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
 	gap: 1rem;
 	align-items: start;
+}
+
+.dashboard-grid.single-page-grid {
+	grid-template-columns: minmax(0, 1fr);
 }
 
 .panel {
@@ -574,6 +587,36 @@ summary strong {
 	background: #fff7e8;
 }
 
+.page-intro h2,
+.setup-output h3 {
+	margin: 0;
+}
+
+.simple-agent-form > details,
+.simple-agent-form > p {
+	grid-column: 1 / -1;
+}
+
+.advanced-routing,
+.env-output {
+	border: 1px solid #e3d7c5;
+	border-radius: 18px;
+	background: #fffaf3;
+	padding: 0.85rem;
+}
+
+.advanced-routing > summary,
+.env-output > summary {
+	font-weight: 900;
+}
+
+.routing-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.75rem;
+	margin-top: 0.85rem;
+}
+
 .setup-output summary {
 	font-weight: 900;
 }
@@ -658,7 +701,8 @@ select:focus {
 	box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
 }
 
-.quick-actions a:hover {
+.quick-actions a:hover,
+.quick-actions a.active {
 	background: #e8f1ff;
 	color: #1d4ed8;
 }
@@ -723,7 +767,8 @@ select:focus {
 
 @media (max-width: 760px) {
 	.onboarding-card,
-	.setup-steps {
+	.setup-steps,
+	.routing-grid {
 		grid-template-columns: 1fr;
 	}
 }
@@ -747,6 +792,9 @@ label,
 .item-card,
 .setup-output,
 .detail-card,
+.page-intro,
+.advanced-routing,
+.env-output,
 .billing-summary > div,
 .link-card,
 .usage-card,
