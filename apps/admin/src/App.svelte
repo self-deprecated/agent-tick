@@ -23,7 +23,7 @@
 		type UserAvailabilityRecord
 	} from './api';
 	import type { AdminConfig } from './app';
-	import { pageFromHash as routePageFromHash, refreshLoadKeys, shouldShowBillingPanel } from './pageRouting';
+	import { defaultPageForSetupStatus, pageFromHash as routePageFromHash, refreshLoadKeys, shouldShowBillingPanel } from './pageRouting';
 	import type { DashboardLoadKey, Page } from './pageRouting';
 
 	type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -248,7 +248,10 @@
 
 	async function refreshDashboard() {
 		if (!canShowDashboard) return;
-		await Promise.all(refreshLoadKeys(activePage).map(loadDashboardResource));
+		const loadedResources = refreshLoadKeys(activePage);
+		await Promise.all(loadedResources.map(loadDashboardResource));
+		applyDefaultPageIfNoHash();
+		if (activePage === 'approvals' && loadedResources.includes('approvals')) return;
 		await ensurePageData(activePage);
 	}
 
@@ -698,7 +701,20 @@
 	}
 
 	function pageFromHash(): Page {
-		return routePageFromHash(window.location.hash, isOrgAdmin);
+		return routePageFromHash(window.location.hash, isOrgAdmin, defaultPageForSetupStatus({ hasActiveDevice: hasActiveDevice(), hasActiveAgent: hasActiveAgent() }));
+	}
+
+	function applyDefaultPageIfNoHash() {
+		if (window.location.hash !== '') return;
+		activePage = defaultPageForSetupStatus({ hasActiveDevice: hasActiveDevice(), hasActiveAgent: hasActiveAgent() });
+	}
+
+	function hasActiveDevice(): boolean {
+		return devices.some((device) => !device.unpairedAt);
+	}
+
+	function hasActiveAgent(): boolean {
+		return agents.some((agent) => !agent.revokedAt);
 	}
 
 	async function copyText(text: string, label: string) {
@@ -888,19 +904,18 @@
 		<section id="setup" class="onboarding-card" aria-labelledby="setup-title">
 			<div>
 				<p class="eyebrow">First run</p>
-				<h2 id="setup-title">Connect an agent to your phone in three steps</h2>
-				<p class="muted">Most users only need a phone, an agent, and one quick test. Team, policy, audit, and billing tools live on their own settings pages.</p>
+				<h2 id="setup-title">Pair your phone and connect your agent</h2>
+				<p class="muted">Setup is only for creating these two connections. Once both exist, the dashboard opens to approvals by default.</p>
 			</div>
-			<ol class="setup-steps">
+			<ol class="setup-steps two-step">
 				<li><a href="#devices" onclick={(event) => navigate(event, 'setup', 'devices')}><strong>Pair your phone</strong><span>Create a QR and scan it from the mobile app.</span></a></li>
 				<li><a href="#agents" onclick={(event) => navigate(event, 'setup', 'agents')}><strong>Connect your agent</strong><span>Create one token and copy the command.</span></a></li>
-				<li><a href="#approvals" onclick={(event) => navigate(event, 'approvals')}><strong>Send a test</strong><span>Run the example and approve it on your phone.</span></a></li>
 			</ol>
 		</section>
 		{/if}
 
 		<main class={['dashboard-grid', activePage !== 'setup' ? 'single-page-grid' : undefined]}>
-			{#if activePage === 'setup' || activePage === 'approvals'}
+			{#if activePage === 'approvals'}
 			<section id="approvals" class="panel approvals-panel" aria-labelledby="approvals-title">
 				<div class="panel-heading">
 					<div>

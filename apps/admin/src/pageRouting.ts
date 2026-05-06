@@ -11,8 +11,18 @@ export interface BillingPanelInput {
 	billingPlan?: string;
 }
 
-export function pageFromHash(hash: string, isOrgAdmin: boolean): Page {
+export interface SetupStatusInput {
+	hasActiveDevice: boolean;
+	hasActiveAgent: boolean;
+}
+
+export function defaultPageForSetupStatus(input: SetupStatusInput): Page {
+	return input.hasActiveDevice && input.hasActiveAgent ? 'approvals' : 'setup';
+}
+
+export function pageFromHash(hash: string, isOrgAdmin: boolean, defaultPage: Page = 'setup'): Page {
 	const page = hash.replace(/^#/, '');
+	if (page === '') return defaultPage;
 	if (page === 'admin') return isOrgAdmin ? 'admin' : 'setup';
 	if (page === 'organization') return 'organization';
 	if (page === 'approvals') return 'approvals';

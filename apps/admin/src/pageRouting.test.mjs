@@ -43,9 +43,18 @@ test('pageFromHash gates direct admin hashes for non-admin users', () => {
 });
 
 test('pageFromHash keeps setup anchors on the setup page', () => {
-	assert.equal(routing.pageFromHash('#devices', true), 'setup');
-	assert.equal(routing.pageFromHash('#agents', true), 'setup');
+	assert.equal(routing.pageFromHash('#setup', true, 'approvals'), 'setup');
+	assert.equal(routing.pageFromHash('#devices', true, 'approvals'), 'setup');
+	assert.equal(routing.pageFromHash('#agents', true, 'approvals'), 'setup');
 	assert.equal(routing.pageFromHash('', true), 'setup');
+	assert.equal(routing.pageFromHash('', true, 'approvals'), 'approvals');
+});
+
+test('defaultPageForSetupStatus sends complete setups to approvals', () => {
+	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: false, hasActiveAgent: false }), 'setup');
+	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: true, hasActiveAgent: false }), 'setup');
+	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: false, hasActiveAgent: true }), 'setup');
+	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: true, hasActiveAgent: true }), 'approvals');
 });
 
 test('refreshLoadKeys avoids duplicate page-specific fetches', () => {
