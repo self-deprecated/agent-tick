@@ -56,6 +56,10 @@ devbox run server
 
 `AGENT_TICK_PUBLIC_URL` is important for phone pairing. It is embedded in dashboard QR codes so the phone talks to the LAN or public URL instead of `localhost`.
 
+For local integration testing you can also set outbound sink variables such as `AGENT_TICK_WEBHOOK_URLS`, `AGENT_TICK_SLACK_WEBHOOK_URLS`, `AGENT_TICK_SLACK_BOT_TOKEN` + `AGENT_TICK_SLACK_DM_USER_IDS`, `AGENT_TICK_TEAMS_WEBHOOK_URLS`, and the SMTP variables `AGENT_TICK_EMAIL_SMTP_ADDR`, `AGENT_TICK_EMAIL_SMTP_USERNAME`, `AGENT_TICK_EMAIL_SMTP_PASSWORD`, `AGENT_TICK_EMAIL_FROM`, `AGENT_TICK_EMAIL_TO`.
+
+See [docs/integrations.md](./docs/integrations.md) for end-to-end examples, including GitHub Actions and MCP adapter patterns.
+
 ## Dashboard
 
 The dashboard is a Svelte 5 + TypeScript app in `apps/admin`. Build and validate it with:

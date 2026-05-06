@@ -22,6 +22,8 @@ Create `docker-compose.yml`:
 services:
   server:
     image: ${AGENT_TICK_IMAGE}
+    env_file:
+      - .env
     environment:
       AGENT_TICK_MODE: ${AGENT_TICK_MODE}
       AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL}
@@ -56,6 +58,25 @@ AGENT_TICK_PORT=8787
 ```
 
 Open the dashboard and enter your `AGENT_TICK_TOKEN` to sign in.
+
+## Extra Notification Sinks
+
+New approval requests can also fan out to extra sinks in parallel with mobile push. Configure any of these environment variables on the server container:
+
+```env
+AGENT_TICK_WEBHOOK_URLS=https://hooks.example.com/agent-tick
+AGENT_TICK_SLACK_WEBHOOK_URLS=https://hooks.slack.com/services/...
+AGENT_TICK_SLACK_BOT_TOKEN=xoxb-...
+AGENT_TICK_SLACK_DM_USER_IDS=U01234567,U08999999
+AGENT_TICK_TEAMS_WEBHOOK_URLS=https://example.webhook.office.com/webhookb2/...
+AGENT_TICK_EMAIL_SMTP_ADDR=smtp.example.com:587
+AGENT_TICK_EMAIL_SMTP_USERNAME=agent-tick
+AGENT_TICK_EMAIL_SMTP_PASSWORD=change-me
+AGENT_TICK_EMAIL_FROM=tick@example.com
+AGENT_TICK_EMAIL_TO=ops@example.com,oncall@example.com
+```
+
+Set only the variables you need. If you use the compose file above, keep `env_file: .env` so optional sink variables are passed into the container too. See [docs/integrations.md](./docs/integrations.md) for payload details and GitHub Actions / MCP connector examples.
 
 ## Container Image
 

@@ -133,6 +133,7 @@ See also: setup, agent-token`,
 				return err
 			}
 			api.SetPublicURL(publicURL)
+			api.SetRequestNotifier(approval.NewRequestNotifierFromEnv(publicURL))
 			api.RequireSignatures(requireSignature)
 			log.Printf("agent-tick listening on %s", addr)
 			return http.ListenAndServe(addr, api.Handler())

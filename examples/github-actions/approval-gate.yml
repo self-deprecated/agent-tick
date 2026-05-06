@@ -1,0 +1,28 @@
+name: approval-gate-example
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gated-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install agent-tick
+        run: |
+          curl -sSL https://raw.githubusercontent.com/self-deprecated/agent-tick/main/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Wait for human approval
+        env:
+          AGENT_TICK_SERVER: ${{ secrets.AGENT_TICK_SERVER }}
+          AGENT_TICK_TOKEN: ${{ secrets.AGENT_TICK_TOKEN }}
+        run: |
+          agent-tick request \
+            --title "Deploy production?" \
+            --body "${{ github.repository }} @ ${{ github.sha }}" \
+            --command "gh workflow run deploy"
+
+      - name: Deploy
+        run: ./scripts/deploy.sh

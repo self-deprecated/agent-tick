@@ -83,6 +83,8 @@ Team-aware servers can attach approval policies to projects or agent tokens. Sim
 
 An agent calls `agent-tick request`, `agent-tick guard`, or `agent-tick steer`. The CLI sends the request to the server and polls for a response. The server pushes the request to your paired phone. You approve, deny, or select a constrained steering option. The server returns the decision to the CLI, and the agent continues.
 
+The server can also fan out new requests to extra notification sinks such as generic webhooks, Slack, Slack DM, Microsoft Teams, and SMTP email while keeping the existing mobile push flow.
+
 ## Agent Skill
 
 This repo includes a Codex-compatible skill at `skills/agent-tick`. Install it into your agent's skills directory so the agent knows when to call `agent-tick guard`, `agent-tick request`, and `agent-tick setup`.
@@ -94,4 +96,5 @@ agent-tick is licensed under the [Business Source License 1.1](./LICENSE) (BSL 1
 ---
 
 - [SELFHOSTING.md](./SELFHOSTING.md) — run your own Agent Tick server
+- [docs/integrations.md](./docs/integrations.md) — Slack, Teams, webhooks, email, GitHub Actions, and MCP patterns
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — contributing and building from source
