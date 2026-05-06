@@ -4,7 +4,7 @@ Agent Tick already supports the CLI, `guard`, `steer`, JSON `adapter`, and the C
 
 ## Outbound notification sinks
 
-These sinks notify other systems when a new approval request is created. They do **not** replace the existing mobile push flow; they run alongside it.
+These sinks notify other systems when a new approval request is created. They do **not** replace the existing mobile push flow; they run alongside it. Delivery is best-effort and bounded; under sustained saturation the server logs and drops excess sink fanout instead of blocking request creation indefinitely.
 
 ### Generic webhooks
 
@@ -66,7 +66,7 @@ AGENT_TICK_EMAIL_FROM=tick@example.com
 AGENT_TICK_EMAIL_TO=ops@example.com,oncall@example.com
 ```
 
-If your SMTP relay allows unauthenticated local delivery, omit the username/password.
+If your SMTP relay allows unauthenticated local delivery, omit the username/password. If you do set SMTP credentials, the relay must support STARTTLS; Agent Tick will not send SMTP AUTH over plaintext.
 
 ## Connector examples
 

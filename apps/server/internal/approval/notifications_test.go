@@ -1,7 +1,12 @@
 package approval
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/smtp"
@@ -50,8 +55,11 @@ func TestNewRequestNotifierFromEnvRequiresCompleteSMTPConfig(t *testing.T) {
 	if notifier.requestTimeout != defaultNotificationTimeout {
 		t.Fatalf("requestTimeout = %v, want %v", notifier.requestTimeout, defaultNotificationTimeout)
 	}
-	if notifier.client == nil || notifier.client.Timeout != defaultNotificationTimeout {
-		t.Fatalf("client timeout = %#v, want %v", notifier.client, defaultNotificationTimeout)
+	if notifier.client == nil || notifier.client.Timeout != 0 {
+		t.Fatalf("client timeout = %#v, want zero client timeout with per-request context", notifier.client)
+	}
+	if notifier.deliverySlots == nil || cap(notifier.deliverySlots) != defaultNotificationConcurrency {
+		t.Fatalf("deliverySlots = %#v, want capacity %d", notifier.deliverySlots, defaultNotificationConcurrency)
 	}
 }
 
@@ -82,6 +90,43 @@ func TestRequestNotifierAsyncRejectsWhenQueueIsFull(t *testing.T) {
 	notifier.deliverySlots <- struct{}{}
 	if err := notifier.NotifyRequestCreatedAsync(sampleNotificationRequest()); err == nil || !strings.Contains(err.Error(), "queue is full") {
 		t.Fatalf("NotifyRequestCreatedAsync() error = %v, want queue full error", err)
+	}
+}
+
+func TestRequestNotifierAsyncSuccessReleasesSlot(t *testing.T) {
+	delivered := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		delivered <- struct{}{}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	notifier := &RequestNotifier{
+		client:         server.Client(),
+		requestTimeout: time.Second,
+		deliverySlots:  make(chan struct{}, 1),
+		webhookURLs:    []string{server.URL},
+	}
+	if err := notifier.NotifyRequestCreatedAsync(sampleNotificationRequest()); err != nil {
+		t.Fatalf("NotifyRequestCreatedAsync() error = %v", err)
+	}
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for async webhook delivery")
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		select {
+		case notifier.deliverySlots <- struct{}{}:
+			<-notifier.deliverySlots
+			return
+		default:
+			if time.Now().After(deadline) {
+				t.Fatal("delivery slot was not released after async delivery")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 }
 
@@ -258,6 +303,219 @@ func TestTruncateNotificationPreservesUTF8(t *testing.T) {
 	}
 	if truncated != "ééé…" {
 		t.Fatalf("truncateNotification() = %q, want %q", truncated, "ééé…")
+	}
+}
+
+func TestAPINotifyRequestCreatedLogsQueueFull(t *testing.T) {
+	var logs bytes.Buffer
+	oldWriter := log.Writer()
+	oldFlags := log.Flags()
+	oldPrefix := log.Prefix()
+	log.SetOutput(&logs)
+	log.SetFlags(0)
+	log.SetPrefix("")
+	defer func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+		log.SetPrefix(oldPrefix)
+	}()
+
+	notifier := &RequestNotifier{
+		deliverySlots: make(chan struct{}, 1),
+		webhookURLs:   []string{"https://example.test"},
+	}
+	notifier.deliverySlots <- struct{}{}
+
+	api := &API{}
+	api.SetRequestNotifier(notifier)
+	api.notifyRequestCreated(sampleNotificationRequest())
+
+	if !strings.Contains(logs.String(), "queue is full") {
+		t.Fatalf("notifyRequestCreated logs = %q, want queue-full message", logs.String())
+	}
+}
+
+func TestSendMailWithTimeoutSucceedsWithoutAuth(t *testing.T) {
+	message := buildSMTPMessage("tick@example.com", []string{"ops@example.com"}, sampleNotificationRequest(), "https://tick.example.com/#approvals")
+	addr, done := startFakeSMTPServer(t, func(conn net.Conn) error {
+		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		if err := writeSMTPLine(rw.Writer, "220 smtp.example.test ESMTP"); err != nil {
+			return err
+		}
+		line, err := readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "EHLO ") && !strings.HasPrefix(line, "HELO ") {
+			return fmt.Errorf("greeting command = %q, want EHLO/HELO", line)
+		}
+		if err := writeSMTPLines(rw.Writer, "250-smtp.example.test", "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "MAIL FROM:") {
+			return fmt.Errorf("MAIL command = %q", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "RCPT TO:") {
+			return fmt.Errorf("RCPT command = %q", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "250 OK"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if line != "DATA" {
+			return fmt.Errorf("DATA command = %q, want DATA", line)
+		}
+		if err := writeSMTPLine(rw.Writer, "354 End data with <CR><LF>.<CR><LF>"); err != nil {
+			return err
+		}
+		data, err := readSMTPData(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(data, "Subject: [Agent Tick] Deploy production?") {
+			return fmt.Errorf("smtp data missing subject: %q", data)
+		}
+		if err := writeSMTPLine(rw.Writer, "250 queued"); err != nil {
+			return err
+		}
+		line, err = readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if line != "QUIT" {
+			return fmt.Errorf("QUIT command = %q, want QUIT", line)
+		}
+		return writeSMTPLine(rw.Writer, "221 bye")
+	})
+
+	if err := sendMailWithTimeout(addr, nil, "tick@example.com", []string{"ops@example.com"}, []byte(message), time.Second); err != nil {
+		t.Fatalf("sendMailWithTimeout() error = %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("fake smtp server error = %v", err)
+	}
+}
+
+func TestSendMailWithTimeoutRequiresSTARTTLSForAuth(t *testing.T) {
+	auth := smtp.PlainAuth("", "agent-tick", "secret", "127.0.0.1")
+	addr, done := startFakeSMTPServer(t, func(conn net.Conn) error {
+		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		if err := writeSMTPLine(rw.Writer, "220 smtp.example.test ESMTP"); err != nil {
+			return err
+		}
+		line, err := readSMTPLine(rw.Reader)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(line, "EHLO ") && !strings.HasPrefix(line, "HELO ") {
+			return fmt.Errorf("greeting command = %q, want EHLO/HELO", line)
+		}
+		if err := writeSMTPLines(rw.Writer, "250-smtp.example.test", "250-AUTH PLAIN", "250 OK"); err != nil {
+			return err
+		}
+		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		_, _ = rw.Reader.ReadString('\n')
+		return nil
+	})
+
+	err := sendMailWithTimeout(addr, auth, "tick@example.com", []string{"ops@example.com"}, []byte("test"), time.Second)
+	if err == nil || !strings.Contains(err.Error(), "STARTTLS") {
+		t.Fatalf("sendMailWithTimeout() error = %v, want STARTTLS requirement", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("fake smtp server error = %v", err)
+	}
+}
+
+func TestSendMailWithTimeoutHonorsDeadline(t *testing.T) {
+	addr, done := startFakeSMTPServer(t, func(conn net.Conn) error {
+		time.Sleep(150 * time.Millisecond)
+		return nil
+	})
+
+	started := time.Now()
+	err := sendMailWithTimeout(addr, nil, "tick@example.com", []string{"ops@example.com"}, []byte("test"), 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("sendMailWithTimeout() error = nil, want timeout")
+	}
+	if elapsed := time.Since(started); elapsed > 120*time.Millisecond {
+		t.Fatalf("sendMailWithTimeout() elapsed = %v, want under 120ms", elapsed)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("fake smtp server error = %v", err)
+	}
+}
+
+func startFakeSMTPServer(t *testing.T, handler func(net.Conn) error) (string, <-chan error) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen() error = %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		defer ln.Close()
+		conn, err := ln.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		defer conn.Close()
+		done <- handler(conn)
+	}()
+	return ln.Addr().String(), done
+}
+
+func writeSMTPLine(w *bufio.Writer, line string) error {
+	_, err := w.WriteString(line + "\r\n")
+	if err != nil {
+		return err
+	}
+	return w.Flush()
+}
+
+func writeSMTPLines(w *bufio.Writer, lines ...string) error {
+	for _, line := range lines {
+		if err := writeSMTPLine(w, line); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readSMTPLine(r *bufio.Reader) (string, error) {
+	line, err := r.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
+}
+
+func readSMTPData(r *bufio.Reader) (string, error) {
+	var builder strings.Builder
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil {
+			return builder.String(), err
+		}
+		if line == ".\r\n" {
+			return builder.String(), nil
+		}
+		builder.WriteString(line)
 	}
 }
 

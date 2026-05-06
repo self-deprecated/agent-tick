@@ -60,7 +60,7 @@ type requestCreatedWebhookPayload struct {
 
 func NewRequestNotifierFromEnv(publicURL string) *RequestNotifier {
 	notifier := &RequestNotifier{
-		client:           &http.Client{Timeout: defaultNotificationTimeout},
+		client:           &http.Client{},
 		publicURL:        strings.TrimRight(strings.TrimSpace(publicURL), "/"),
 		requestTimeout:   defaultNotificationTimeout,
 		deliverySlots:    make(chan struct{}, defaultNotificationConcurrency),
@@ -105,7 +105,12 @@ func (n *RequestNotifier) NotifyRequestCreatedAsync(request ApprovalRequest) err
 		return nil
 	}
 	if n.deliverySlots == nil {
-		return n.NotifyRequestCreated(request)
+		go func() {
+			if err := n.NotifyRequestCreated(request); err != nil {
+				log.Printf("notify external sinks for request %s: %v", request.ID, err)
+			}
+		}()
+		return nil
 	}
 	select {
 	case n.deliverySlots <- struct{}{}:
@@ -241,8 +246,8 @@ func sendMailWithTimeout(addr string, auth smtp.Auth, from string, to []string, 
 		return err
 	}
 	defer conn.Close()
-	if timeout > 0 {
-		_ = conn.SetDeadline(time.Now().Add(timeout))
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
 	}
 
 	client, err := smtp.NewClient(conn, host)
@@ -251,12 +256,13 @@ func sendMailWithTimeout(addr string, auth smtp.Auth, from string, to []string, 
 	}
 	defer client.Close()
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
+	if auth != nil {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			return errors.New("smtp AUTH requires STARTTLS")
+		}
 		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
 			return err
 		}
-	}
-	if auth != nil {
 		if ok, _ := client.Extension("AUTH"); !ok {
 			return errors.New("smtp server does not support AUTH")
 		}
