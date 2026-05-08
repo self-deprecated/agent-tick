@@ -1,11 +1,11 @@
 ---
 name: agent-tick
-description: Request out-of-band human approval or constrained steering through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, ask for user steering without freeform text, or when the user explicitly asks to gate work through Agent Tick. This skill covers `agent-tick setup`, `agent-tick request`, `agent-tick steer`, `agent-tick guard`, and `agent-tick adapter`.
+description: Request out-of-band human approval through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, or when the user explicitly asks to gate work through Agent Tick. This skill covers the current TypeScript CLI commands: `agent-tick setup`, `agent-tick request`, `agent-tick abandon`, and `agent-tick guard`.
 ---
 
 # Agent Tick
 
-Agent Tick is a CLI-based approval and steering gate. It sends an approval or constrained steering request to the user's phone and waits before proceeding.
+Agent Tick is a CLI-based approval gate. It sends an approval request to the user's Agent Tick server/mobile flow and waits before proceeding.
 
 ## First Check
 
@@ -15,7 +15,7 @@ Before using Agent Tick, check whether the CLI exists:
 command -v agent-tick
 ```
 
-If it is missing, tell the user to install the `agent-tick` CLI from the project's GitHub Releases and stop. Do not bypass approval just because the CLI is unavailable.
+If it is missing, tell the user to install or build the `agent-tick` CLI for this project and stop. Do not bypass approval just because the CLI is unavailable.
 
 If the user gives a setup command from the dashboard, run it exactly once:
 
@@ -63,76 +63,43 @@ agent-tick request \
 
 Treat denial as a hard stop unless the user gives a new instruction.
 
-## Constrained Steering / Follow-up Selection
+## JSON Output
 
-Use `agent-tick steer` when the user should select from agent-generated follow-up options and must not type a freeform response:
-
-```sh
-agent-tick steer \
-  --title "How should I continue?" \
-  --option run-tests:"Run tests and fix failures" \
-  --option update-docs:"Update README/docs"
-```
-
-The phone always includes a built-in `none` / “Do nothing / skip” option. The CLI prints only the selected option ID, or `none` on skip, timeout, expiry, abandonment, or delivery failure. Never treat `none` as permission to do risky work.
-
-Option IDs must be stable local tokens (`[A-Za-z0-9_-]{1,64}`); put human-readable text in labels. The user cannot send text back through `steer`.
-
-## Include Context
-
-For long details, write the extra context to a temporary file and attach it:
+Use `--json` when another script needs machine-readable events from `request` or `abandon`:
 
 ```sh
 agent-tick request \
-  --title "Apply large patch?" \
-  --body "Review the attached patch summary before approval." \
-  --context-file /tmp/agent-tick-context.txt
+  --json \
+  --title "Proceed with deployment?" \
+  --body "Deploy commit abc123 to production."
 ```
 
-Keep `--body` short enough to scan on a phone. Put verbose logs, diffs, plans, and command output in `--context-file`.
-
-## Project Grouping
-
-Agent Tick groups mobile requests by machine and project directory by default. Use `--project` for a friendlier display name and `--project-dir` when the request should be grouped under a directory other than the current working directory:
-
-```sh
-agent-tick request --project "API Server" --project-dir /repo/apps/server --title "Run migration?"
-```
-
-These flags are also available on `guard`, `steer`, and `adapter`.
+The current CLI does not support JSON stdin adapter, MCP, constrained steering, context-file, project-routing, requester override, or metadata flags. Do not use undocumented commands or flags.
 
 ## Timeouts
 
-The CLI waits up to 10 minutes by default. For slower decisions, set a longer timeout:
+The CLI waits up to 30 minutes by default. For slower decisions, set a longer timeout:
 
 ```sh
 agent-tick guard --timeout 30m -- ./long-running-operation
 ```
 
-Do not retry repeatedly after timeouts unless the user asks. Repeated retries can spam the user's phone.
+Use `--timeout 0` on `request` to create a request without waiting.
 
-## Stdio Adapter
+Do not retry repeatedly after timeouts unless the user asks. Repeated retries can spam the user's approval channel.
 
-Use `agent-tick adapter` when another tool emits a JSON approval request on stdin:
+## Abandoning A Request
 
-```sh
-printf '{"title":"Run command?","command":"npm install"}' | agent-tick adapter
-```
-
-Use this for integrations that already produce structured request JSON.
-
-Claude Code `AskUserQuestion` hooks can also go through Agent Tick by piping the hook payload into the repo script:
+Use `agent-tick abandon` to cancel a pending request by ID:
 
 ```sh
-scripts/claude-code-ask-user-question-hook.sh
+agent-tick abandon req_...
 ```
-
-That script turns Claude Code's question array into an Agent Tick `questionnaire` request and returns Claude-compatible `updatedInput.answers`.
 
 ## Safety Rules
 
 - Do not use Agent Tick to approve its own setup command.
-- Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in approval or steering titles, bodies, option labels, or context files.
-- Do not continue a gated action after denial, timeout, CLI failure, or a non-zero `agent-tick` exit. For `agent-tick steer`, treat `none` as no steering selected.
+- Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in approval titles, bodies, or command summaries.
+- Do not continue a gated action after denial, timeout, CLI failure, or a non-zero `agent-tick` exit.
 - Do not replace Agent Tick with a normal prompt when the user asked for Agent Tick approval.
 - Use one approval for one meaningful action. Batch only when the full batch is clearly described.

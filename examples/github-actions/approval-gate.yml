@@ -9,6 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The current Agent Tick CLI must be installed on PATH before this action runs.
       - name: Wait for human approval
         uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
         with:
@@ -17,8 +18,6 @@ jobs:
           title: Deploy production?
           body: ${{ github.repository }} @ ${{ github.sha }}
           command: gh workflow run deploy
-          metadata: >-
-            {"githubRunId":"${{ github.run_id }}","githubWorkflow":"${{ github.workflow }}"}
 
       - name: Deploy
         run: ./scripts/deploy.sh

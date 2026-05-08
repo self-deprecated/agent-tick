@@ -19,45 +19,9 @@ inputs:
     required: false
     default: ""
   timeout:
-    description: How long to wait for a response
+    description: How long to wait for a response, for example 30s, 10m, or 1h
     required: false
     default: 10m
-  expires-in:
-    description: Request expiry duration
-    required: false
-    default: 5m
-  requester:
-    description: Requester name shown in Agent Tick
-    required: false
-    default: github-actions
-  agent-id:
-    description: Agent identifier shown in Agent Tick
-    required: false
-    default: github-actions
-  project:
-    description: Optional project display name
-    required: false
-    default: ""
-  project-dir:
-    description: Optional project directory grouping override
-    required: false
-    default: ""
-  project-id:
-    description: Optional project routing hint
-    required: false
-    default: ""
-  team:
-    description: Optional team routing hint
-    required: false
-    default: ""
-  approval-policy:
-    description: Optional approval policy routing hint
-    required: false
-    default: ""
-  metadata:
-    description: Optional JSON object of scalar metadata values
-    required: false
-    default: ""
 outputs:
   request-id:
     description: Created Agent Tick request ID
@@ -71,13 +35,14 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install agent-tick
+    - name: Check agent-tick CLI
       shell: bash
       run: |
         set -euo pipefail
         if ! command -v agent-tick >/dev/null 2>&1; then
-          curl -sSL https://raw.githubusercontent.com/self-deprecated/agent-tick/main/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "agent-tick must be installed and available on PATH before using this action." >&2
+          echo "The TypeScript CLI package is not currently published for automatic installation." >&2
+          exit 127
         fi
     - name: Wait for approval
       id: request
@@ -89,27 +54,12 @@ runs:
         INPUT_BODY: ${{ inputs.body }}
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_TIMEOUT: ${{ inputs.timeout }}
-        INPUT_EXPIRES_IN: ${{ inputs.expires-in }}
-        INPUT_REQUESTER: ${{ inputs.requester }}
-        INPUT_AGENT_ID: ${{ inputs.agent-id }}
-        INPUT_PROJECT: ${{ inputs.project }}
-        INPUT_PROJECT_DIR: ${{ inputs.project-dir }}
-        INPUT_PROJECT_ID: ${{ inputs.project-id }}
-        INPUT_TEAM: ${{ inputs.team }}
-        INPUT_APPROVAL_POLICY: ${{ inputs.approval-policy }}
-        INPUT_METADATA: ${{ inputs.metadata }}
       run: |
         set -euo pipefail
         events_file="${RUNNER_TEMP}/agent-tick-events.jsonl"
-        args=(request --json-events --server "$INPUT_SERVER" --token "$INPUT_TOKEN" --title "$INPUT_TITLE" --timeout "$INPUT_TIMEOUT" --expires-in "$INPUT_EXPIRES_IN" --requester "$INPUT_REQUESTER" --agent-id "$INPUT_AGENT_ID")
+        args=(request --json --server "$INPUT_SERVER" --token "$INPUT_TOKEN" --title "$INPUT_TITLE" --timeout "$INPUT_TIMEOUT")
         if [[ -n "$INPUT_BODY" ]]; then args+=(--body "$INPUT_BODY"); fi
         if [[ -n "$INPUT_COMMAND" ]]; then args+=(--command "$INPUT_COMMAND"); fi
-        if [[ -n "$INPUT_PROJECT" ]]; then args+=(--project "$INPUT_PROJECT"); fi
-        if [[ -n "$INPUT_PROJECT_DIR" ]]; then args+=(--project-dir "$INPUT_PROJECT_DIR"); fi
-        if [[ -n "$INPUT_PROJECT_ID" ]]; then args+=(--project-id "$INPUT_PROJECT_ID"); fi
-        if [[ -n "$INPUT_TEAM" ]]; then args+=(--team "$INPUT_TEAM"); fi
-        if [[ -n "$INPUT_APPROVAL_POLICY" ]]; then args+=(--approval-policy "$INPUT_APPROVAL_POLICY"); fi
-        if [[ -n "$INPUT_METADATA" ]]; then args+=(--metadata "$INPUT_METADATA"); fi
 
         set +e
         agent-tick "${args[@]}" >"$events_file"
@@ -122,12 +72,15 @@ runs:
         import sys
 
         lines = [line.strip() for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip()]
-        created = json.loads(lines[0]) if lines else {}
-        terminal = json.loads(lines[-1]) if lines else {}
-        response = terminal.get("response") or {}
+        events = [json.loads(line) for line in lines]
+        created_event = next((event for event in events if event.get("event") == "created"), {})
+        final_event = events[-1] if events else {}
+        created_request = created_event.get("request") or {}
+        final_request = final_event.get("request") or created_request
+        response = final_request.get("response") or {}
         with open(sys.argv[2], "a", encoding="utf-8") as fh:
-            fh.write(f"request-id={created.get('requestId', '')}\n")
-            fh.write(f"status={terminal.get('status', '')}\n")
+            fh.write(f"request-id={created_request.get('id', '')}\n")
+            fh.write(f"status={final_request.get('status', '')}\n")
             fh.write(f"choice-id={response.get('choiceId', '')}\n")
         PY
         exit "$status_code"
