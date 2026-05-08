@@ -211,14 +211,14 @@ The binary name remains:
 agent-tick
 ```
 
-Install/run examples:
+Current workspace-run examples:
 
 ```sh
-npx agent-tick request --title "Deploy to production?"
-npm install -g agent-tick
-agent-tick request --title "Deploy to production?"
-pnpm dlx agent-tick request --title "Deploy to production?"
+corepack pnpm --filter agent-tick build
+corepack pnpm --filter agent-tick exec agent-tick request --title "Deploy to production?"
 ```
+
+The CLI package is currently private; npm, global, and `npx` install examples should be restored only when publishing is intentionally enabled.
 
 The CLI package must stay lean:
 
@@ -901,8 +901,8 @@ Deliverables:
 
 Acceptance criteria:
 
-- `pnpm --filter agent-tick-cli build` produces executable CLI
-- local `npx`/linked CLI can create a request against the TypeScript server
+- `pnpm --filter agent-tick build` produces executable CLI
+- local workspace/linked CLI can create a request against the TypeScript server
 - CLI package does not depend on server/db/admin/mobile packages
 
 ### Phase 6: Admin app integration

@@ -6,7 +6,7 @@ The project is now TypeScript-first:
 
 - Dockerized Node/Fastify server
 - Svelte dashboard served by the server
-- npm-installable `agent-tick` CLI for agents
+- `agent-tick` CLI package for agents (currently workspace-built; npm publishing is deferred)
 - Expo mobile app
 - SQLite persistence
 - optional Clerk human authentication for multi-user mode
@@ -25,20 +25,23 @@ Open the dashboard:
 http://localhost:8787
 ```
 
-Create an agent token in the dashboard, then configure the CLI:
+Create an agent token in the dashboard, then configure the workspace-built CLI:
 
 ```sh
-npx agent-tick setup --server http://localhost:8787 --token agent_...
+corepack pnpm --filter agent-tick build
+corepack pnpm --filter agent-tick exec agent-tick setup --server http://localhost:8787 --token agent_...
 ```
 
 Send an approval request:
 
 ```sh
-npx agent-tick request \
+corepack pnpm --filter agent-tick exec agent-tick request \
   --title "Run command?" \
   --body "codex wants to run npm install" \
   --command "npm install"
 ```
+
+The CLI package is currently private in this repository, so `npx agent-tick`/global npm installs are not documented as available until publishing is intentionally enabled.
 
 Approve or reject it in the dashboard.
 

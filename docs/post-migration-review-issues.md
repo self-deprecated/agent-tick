@@ -146,9 +146,11 @@ Recommended action: periodically inspect image contents and size as new workspac
 
 ### Published install story is inconsistent
 
-README/SELFHOSTING mention `npx agent-tick`, but `packages/cli/package.json` is marked `"private": true`.
+Status: addressed by updating README/SELFHOSTING/planning docs to use the workspace-built CLI and avoid implying npm/`npx` availability while the package is private.
 
-Recommended action: either prepare/publish the CLI package or change docs to avoid implying npm availability.
+`packages/cli/package.json` is marked `"private": true`.
+
+Recommended action: either prepare/publish the CLI package later or keep docs on workspace/local installation paths.
 
 ## Lower priority / polish
 

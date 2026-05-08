@@ -42,11 +42,14 @@ Start it:
 docker compose up -d
 ```
 
-Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. Create an agent token and configure your agent machine:
+Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. Create an agent token and configure your agent machine with a workspace-built CLI:
 
 ```sh
-npx agent-tick setup --server https://tick.example.com --token agent_...
+corepack pnpm --filter agent-tick build
+corepack pnpm --filter agent-tick exec agent-tick setup --server https://tick.example.com --token agent_...
 ```
+
+The CLI package is currently private in this repository; npm/`npx` installation should only be documented after publishing is intentionally enabled.
 
 ## Clerk multi-user mode
 
