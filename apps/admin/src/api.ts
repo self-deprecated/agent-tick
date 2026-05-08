@@ -216,6 +216,7 @@ export interface MembershipRequestRecord {
 	requestId: string;
 	inviteId: string;
 	organizationId: string;
+	organizationName?: string;
 	userId: string;
 	userName?: string;
 	userEmail?: string;

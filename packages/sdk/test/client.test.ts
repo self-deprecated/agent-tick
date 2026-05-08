@@ -207,9 +207,10 @@ describe('AgentTickClient', () => {
           });
         }
         if (url.includes('/v1/invites/invite_secret')) return jsonResponse({ organizationName: 'Production', role: 'admin', approvalRequired: true });
-        if (url.includes('/v1/organization-membership-requests/mreq_123/approve')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'approved', acceptedAt: '2026-01-01T00:00:00.000Z' });
-        if (url.includes('/v1/organization-membership-requests/mreq_123/reject')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'rejected', acceptedAt: '2026-01-01T00:00:00.000Z' });
-        if (url.endsWith('/v1/organization-membership-requests')) return jsonResponse([{ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'pending_approval', acceptedAt: '2026-01-01T00:00:00.000Z' }]);
+        if (url.includes('/v1/organization-membership-requests/mreq_123/approve')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'approved', acceptedAt: '2026-01-01T00:00:00.000Z' });
+        if (url.includes('/v1/organization-membership-requests/mreq_123/reject')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'rejected', acceptedAt: '2026-01-01T00:00:00.000Z' });
+        if (url.endsWith('/v1/me/organization-membership-requests')) return jsonResponse([{ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'pending_approval', acceptedAt: '2026-01-01T00:00:00.000Z' }]);
+        if (url.endsWith('/v1/organization-membership-requests')) return jsonResponse([{ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'pending_approval', acceptedAt: '2026-01-01T00:00:00.000Z' }]);
         if (url.includes('/revoke')) return jsonResponse({ ...invite, revokedAt: '2026-01-01T00:00:00.000Z' });
         return url.endsWith('/v1/organization-invites') && init?.method === 'POST' ? jsonResponse(invite) : jsonResponse([invite]);
       }
@@ -219,7 +220,8 @@ describe('AgentTickClient', () => {
     await expect(client.listOrganizationInvites()).resolves.toEqual([expect.objectContaining({ inviteId: 'inv_123', domain: 'example.com' })]);
     await expect(client.previewInvite('invite_secret')).resolves.toEqual({ organizationName: 'Production', role: 'admin', approvalRequired: true });
     await expect(client.acceptInvite('invite_secret')).resolves.toMatchObject({ status: 'pending_approval', membership: { role: 'admin' } });
-    await expect(client.listMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123' })]);
+    await expect(client.listMyMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123', organizationName: 'Production' })]);
+    await expect(client.listMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123', organizationName: 'Production' })]);
     await expect(client.approveMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'approved' });
     await expect(client.rejectMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'rejected' });
     await expect(client.revokeOrganizationInvite('inv_123')).resolves.toMatchObject({ revokedAt: expect.any(String) });
@@ -228,6 +230,7 @@ describe('AgentTickClient', () => {
       ['GET', 'https://tick.example.com/v1/organization-invites', 'org_selected', undefined],
       ['GET', 'https://tick.example.com/v1/invites/invite_secret', null, undefined],
       ['POST', 'https://tick.example.com/v1/invites/invite_secret/accept', null, {}],
+      ['GET', 'https://tick.example.com/v1/me/organization-membership-requests', null, undefined],
       ['GET', 'https://tick.example.com/v1/organization-membership-requests', 'org_selected', undefined],
       ['POST', 'https://tick.example.com/v1/organization-membership-requests/mreq_123/approve', 'org_selected', {}],
       ['POST', 'https://tick.example.com/v1/organization-membership-requests/mreq_123/reject', 'org_selected', {}],

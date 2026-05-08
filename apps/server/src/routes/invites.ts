@@ -45,6 +45,11 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
     return invite;
   });
 
+  app.get('/v1/me/organization-membership-requests', async (request) => {
+    const auth = await requireHuman(request, config, store);
+    return store.listOrganizationMembershipRequestsForUser(auth.userId ?? 'usr_default');
+  });
+
   app.get('/v1/organization-membership-requests', async (request) => {
     const auth = await requirePrivilegedHuman(request, config, store);
     requireOrganizationAdmin(auth);

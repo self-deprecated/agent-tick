@@ -269,11 +269,19 @@ describe('server skeleton', () => {
 
     const pending = await app.inject({ method: 'GET', url: '/v1/organization-membership-requests', headers: { 'x-agent-tick-organization-id': organizationId } });
     expect(pending.statusCode).toBe(200);
-    expect(pending.json()).toEqual([expect.objectContaining({ userId: bob.userId, requestedRole: 'admin', requestedTeamIds: [team.json().teamId], status: 'pending_approval' })]);
+    expect(pending.json()).toEqual([expect.objectContaining({ userId: bob.userId, organizationName: 'Production', requestedRole: 'admin', requestedTeamIds: [team.json().teamId], status: 'pending_approval' })]);
+
+    const pendingForBob = await app.inject({ method: 'GET', url: '/v1/me/organization-membership-requests', headers: { authorization: `Bearer ${bobDevice!.token}` } });
+    expect(pendingForBob.statusCode).toBe(200);
+    expect(pendingForBob.json()).toEqual([expect.objectContaining({ requestId: pending.json()[0].requestId, organizationName: 'Production', status: 'pending_approval' })]);
 
     const approved = await app.inject({ method: 'POST', url: `/v1/organization-membership-requests/${pending.json()[0].requestId}/approve`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
     expect(approved.statusCode).toBe(200);
     expect(approved.json()).toMatchObject({ status: 'approved', decidedByUserId: 'usr_default' });
+
+    const pendingForBobAfterApproval = await app.inject({ method: 'GET', url: '/v1/me/organization-membership-requests', headers: { authorization: `Bearer ${bobDevice!.token}` } });
+    expect(pendingForBobAfterApproval.statusCode).toBe(200);
+    expect(pendingForBobAfterApproval.json()).toEqual([]);
 
     expect(db.organizationMembershipForUser(bob.userId, organizationId)).toMatchObject({ role: 'admin' });
     expect(db.listTeamMembers(team.json().teamId)).toEqual(expect.arrayContaining([expect.objectContaining({ userId: bob.userId, role: 'member' })]));

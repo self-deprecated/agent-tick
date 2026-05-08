@@ -116,6 +116,7 @@ export const OrganizationMembershipRequestRecordSchema = z.object({
   requestId: z.string(),
   inviteId: z.string(),
   organizationId: z.string(),
+  organizationName: z.string().optional(),
   userId: z.string(),
   userEmail: z.string().email().optional(),
   userName: z.string().optional(),

@@ -218,6 +218,10 @@ export class AgentTickClient {
     return this.#request('POST', `/v1/organization-invites/${encodeURIComponent(inviteId)}/revoke`, OrganizationInviteRecordSchema, { body: {} });
   }
 
+  listMyMembershipRequests(): Promise<OrganizationMembershipRequestRecord[]> {
+    return this.#request('GET', '/v1/me/organization-membership-requests', OrganizationMembershipRequestRecordSchema.array(), { includeOrganization: false });
+  }
+
   listMembershipRequests(): Promise<OrganizationMembershipRequestRecord[]> {
     return this.#request('GET', '/v1/organization-membership-requests', OrganizationMembershipRequestRecordSchema.array());
   }

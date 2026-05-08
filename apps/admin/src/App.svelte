@@ -32,6 +32,7 @@
 	let organizationInvites = $state<OrganizationInviteRecord[]>([]);
 	let organizationMembers = $state<OrganizationMembership[]>([]);
 	let membershipRequests = $state<OrganizationMembershipRequestRecord[]>([]);
+	let myMembershipRequests = $state<OrganizationMembershipRequestRecord[]>([]);
 	let projects = $state<ProjectRecord[]>([]);
 	let teams = $state<TeamRecord[]>([]);
 	let teamMembers = $state<Record<string, TeamMembership[]>>({});
@@ -128,6 +129,7 @@
 		organizationInvites = [];
 		organizationMembers = [];
 		membershipRequests = [];
+		myMembershipRequests = [];
 		projects = [];
 		teams = [];
 		teamMembers = {};
@@ -141,7 +143,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests(), refreshMyMembershipRequests()]);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -215,6 +217,14 @@
 		}
 	}
 
+	async function refreshMyMembershipRequests(): Promise<void> {
+		try {
+			myMembershipRequests = await client({ includeOrganization: false }).listMyMembershipRequests();
+		} catch {
+			myMembershipRequests = [];
+		}
+	}
+
 	async function createInvite(): Promise<void> {
 		error = '';
 		createdInvite = undefined;
@@ -258,7 +268,7 @@
 		error = '';
 		try {
 			await client().approveMembershipRequest(requestId);
-			await Promise.all([refreshMembershipRequests(), refreshOrganizationMembers(), refreshAuditEvents(), refreshOrganizations()]);
+			await Promise.all([refreshMembershipRequests(), refreshMyMembershipRequests(), refreshOrganizationMembers(), refreshAuditEvents(), refreshOrganizations()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -268,7 +278,7 @@
 		error = '';
 		try {
 			await client().rejectMembershipRequest(requestId);
-			await Promise.all([refreshMembershipRequests(), refreshOrganizationMembers(), refreshAuditEvents()]);
+			await Promise.all([refreshMembershipRequests(), refreshMyMembershipRequests(), refreshOrganizationMembers(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -546,6 +556,26 @@
 				<input id="new-organization" bind:value={newOrganizationName} placeholder="Organization name" />
 				<button type="submit">Create organization</button>
 			</form>
+		</section>
+	{/if}
+
+	{#if runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn) && myMembershipRequests.length > 0}
+		<section class="card stack">
+			<div class="section-heading">
+				<h2>Your organization requests</h2>
+				<button onclick={refreshMyMembershipRequests}>Refresh requests</button>
+			</div>
+			<ul class="item-list">
+				{#each myMembershipRequests as request}
+					<li class="item-card" class:is-muted={request.status !== 'pending_approval'}>
+						<div>
+							<strong>{request.organizationName ?? request.organizationId}</strong>
+							<p class="subtle">{request.status === 'pending_approval' ? 'Pending admin approval' : request.status} · requested {request.requestedRole} · {new Date(request.acceptedAt).toLocaleString()}</p>
+							{#if request.status === 'pending_approval'}<p>Your access will appear in the organization selector after an admin approves this request.</p>{/if}
+						</div>
+					</li>
+				{/each}
+			</ul>
 		</section>
 	{/if}
 

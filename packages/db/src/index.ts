@@ -140,6 +140,7 @@ export interface OrganizationMembershipRequestRecord {
   requestId: string;
   inviteId: string;
   organizationId: string;
+  organizationName: string | undefined;
   userId: string;
   userEmail: string | undefined;
   userName: string | undefined;
@@ -655,9 +656,10 @@ export class AgentTickStore {
   listOrganizationMembershipRequests(organizationId: string, status = 'pending_approval'): OrganizationMembershipRequestRecord[] {
     const rows = this.db
       .prepare(`
-        SELECT a.request_id, a.invite_id, a.organization_id, a.user_id, u.email AS user_email, u.name AS user_name,
+        SELECT a.request_id, a.invite_id, a.organization_id, o.name AS organization_name, a.user_id, u.email AS user_email, u.name AS user_name,
                i.label AS invite_label, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
         FROM organization_invite_acceptances a
+        JOIN organizations o ON o.id = a.organization_id
         JOIN users u ON u.id = a.user_id
         JOIN organization_invites i ON i.invite_id = a.invite_id
         WHERE a.organization_id = ? AND a.status = ?
@@ -667,12 +669,29 @@ export class AgentTickStore {
     return rows.map(mapOrganizationMembershipRequestRow);
   }
 
+  listOrganizationMembershipRequestsForUser(userId: string): OrganizationMembershipRequestRecord[] {
+    const rows = this.db
+      .prepare(`
+        SELECT a.request_id, a.invite_id, a.organization_id, o.name AS organization_name, a.user_id, u.email AS user_email, u.name AS user_name,
+               i.label AS invite_label, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+        FROM organization_invite_acceptances a
+        JOIN organizations o ON o.id = a.organization_id
+        JOIN users u ON u.id = a.user_id
+        JOIN organization_invites i ON i.invite_id = a.invite_id
+        WHERE a.user_id = ? AND a.status IN ('pending_approval', 'rejected')
+        ORDER BY a.accepted_at DESC
+      `)
+      .all(userId) as OrganizationMembershipRequestRow[];
+    return rows.map(mapOrganizationMembershipRequestRow);
+  }
+
   getOrganizationMembershipRequest(requestId: string, organizationId: string): OrganizationMembershipRequestRecord | null {
     const row = this.db
       .prepare(`
-        SELECT a.request_id, a.invite_id, a.organization_id, a.user_id, u.email AS user_email, u.name AS user_name,
+        SELECT a.request_id, a.invite_id, a.organization_id, o.name AS organization_name, a.user_id, u.email AS user_email, u.name AS user_name,
                i.label AS invite_label, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
         FROM organization_invite_acceptances a
+        JOIN organizations o ON o.id = a.organization_id
         JOIN users u ON u.id = a.user_id
         JOIN organization_invites i ON i.invite_id = a.invite_id
         WHERE a.request_id = ? AND a.organization_id = ?
@@ -1400,6 +1419,7 @@ function mapOrganizationMembershipRequestRow(row: OrganizationMembershipRequestR
     requestId: row.request_id,
     inviteId: row.invite_id,
     organizationId: row.organization_id,
+    organizationName: row.organization_name ?? undefined,
     userId: row.user_id,
     userEmail: row.user_email?.trim() || undefined,
     userName: row.user_name?.trim() || undefined,
@@ -1779,6 +1799,7 @@ interface OrganizationMembershipRequestRow {
   request_id: string;
   invite_id: string;
   organization_id: string;
+  organization_name: string | null;
   user_id: string;
   user_email: string | null;
   user_name: string | null;
