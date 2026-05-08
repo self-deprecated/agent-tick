@@ -5,7 +5,7 @@ export default defineConfig({
 	plugins: [svelte()],
 	build: {
 		emptyOutDir: true,
-		outDir: '../server/internal/approval/admin_static',
+		outDir: '../server-ts/public/admin',
 		sourcemap: false
 	},
 	server: {
