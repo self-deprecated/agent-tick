@@ -187,8 +187,8 @@ Implemented so far:
 - Clerk-mode device registration and push token APIs.
 - Short-lived opaque event tickets for event streams, SSE audit-event streaming, SDK stream URL/EventSource helpers, and startup/hourly cleanup for expired tickets and pairing codes.
 - Mobile Clerk runtime discovery, ClerkProvider sign-in/account-creation wiring with email-code verification, and OAuth SSO provider buttons using Expo AuthSession/WebBrowser.
-- Mobile local organization selection for Clerk-mode multi-org users.
-- Best-effort Clerk-mode mobile device unregister on sign-out/server switch.
+- Mobile local organization selection for Clerk-mode multi-org users, with server-scoped local storage for selected organization/device state.
+- Best-effort Clerk-mode mobile device unregister on sign-out/server switch, plus local state cleanup for server changes.
 - Mobile heartbeat and availability APIs.
 - Mobile uses the shared SDK for organization discovery, approval list/respond, presence, and device pair/register/unregister/push flows.
 - Audit-event table, event recording, route, SDK method, and dashboard display.

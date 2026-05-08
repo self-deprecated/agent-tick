@@ -56,16 +56,20 @@ import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
 import { AgentTickClient, type OrganizationMembership } from "@agent-tick/sdk";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
-import { clerkTokenCacheKey, fetchRuntimeAuthConfig, normalizeServerURL, type RuntimeAuthConfig } from "./mobileAuth";
+import {
+  clerkTokenCacheKey,
+  fetchRuntimeAuthConfig,
+  legacyMobileSessionStorageKeys,
+  mobileSessionStorageKeyList,
+  mobileSessionStorageKeys,
+  normalizeServerURL,
+  serverURLStorageKey,
+  type RuntimeAuthConfig,
+} from "./mobileAuth";
 
 type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
 const defaultServer = "http://localhost:8787";
-const serverURLKey = "agent-tick.serverURL";
-const tokenKey = "agent-tick.token";
-const deviceIDKey = "agent-tick.deviceID";
-const organizationIDKey = "agent-tick.organizationID";
-const pushStatusKey = "agent-tick.pushStatus";
 const approvalCategoryID = "approval-request";
 
 type ClerkTokenProvider = () => Promise<string | null>;
@@ -97,7 +101,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const loadBootstrap = async () => {
-      const savedServerURL = (await AsyncStorage.getItem(serverURLKey)) ?? defaultServer;
+      const savedServerURL = (await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer;
       let authConfig: RuntimeAuthConfig | null = null;
       try {
         authConfig = await fetchRuntimeAuthConfig(savedServerURL);
@@ -262,23 +266,26 @@ function AgentTickApp({
 
     const restoreSettings = async () => {
       try {
+        const savedServerURL = (await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer;
+        const scopedKeys = mobileSessionStorageKeys(savedServerURL);
         const entries = await AsyncStorage.multiGet([
-          serverURLKey,
-          tokenKey,
-          deviceIDKey,
-          organizationIDKey,
-          pushStatusKey,
+          scopedKeys.token,
+          scopedKeys.deviceID,
+          scopedKeys.organizationID,
+          scopedKeys.pushStatus,
+          legacyMobileSessionStorageKeys.token,
+          legacyMobileSessionStorageKeys.deviceID,
+          legacyMobileSessionStorageKeys.organizationID,
+          legacyMobileSessionStorageKeys.pushStatus,
         ]);
-        const savedServerURL = entries.find(([key]) => key === serverURLKey)?.[1];
-        const savedToken = entries.find(([key]) => key === tokenKey)?.[1];
-        const savedDeviceID = entries.find(([key]) => key === deviceIDKey)?.[1];
-        const savedOrganizationID = entries.find(([key]) => key === organizationIDKey)?.[1];
-        const savedPushStatus = entries.find(([key]) => key === pushStatusKey)?.[1];
+        const entryValue = (key: string) => entries.find(([entryKey]) => entryKey === key)?.[1];
+        const savedToken = entryValue(scopedKeys.token) ?? entryValue(legacyMobileSessionStorageKeys.token);
+        const savedDeviceID = entryValue(scopedKeys.deviceID) ?? entryValue(legacyMobileSessionStorageKeys.deviceID);
+        const savedOrganizationID = entryValue(scopedKeys.organizationID) ?? entryValue(legacyMobileSessionStorageKeys.organizationID);
+        const savedPushStatus = entryValue(scopedKeys.pushStatus) ?? entryValue(legacyMobileSessionStorageKeys.pushStatus);
 
         if (!cancelled) {
-          if (savedServerURL) {
-            setServerURL(savedServerURL);
-          }
+          setServerURL(savedServerURL);
           if (savedToken) {
             setToken(savedToken);
           }
@@ -371,13 +378,14 @@ function AgentTickApp({
       return;
     }
 
+    const scopedKeys = mobileSessionStorageKeys(serverURL);
     void AsyncStorage.multiSet([
-      [serverURLKey, serverURL],
-      [tokenKey, token],
-      [deviceIDKey, deviceID],
-      [organizationIDKey, selectedOrganizationID],
-      [pushStatusKey, pushStatus],
-    ]);
+      [serverURLStorageKey, serverURL],
+      [scopedKeys.token, token],
+      [scopedKeys.deviceID, deviceID],
+      [scopedKeys.organizationID, selectedOrganizationID],
+      [scopedKeys.pushStatus, pushStatus],
+    ]).then(() => AsyncStorage.multiRemove(Object.values(legacyMobileSessionStorageKeys)));
   }, [deviceID, pushStatus, selectedOrganizationID, serverURL, settingsLoaded, token]);
 
   const refreshOrganizations = useCallback(async () => {
@@ -795,6 +803,13 @@ function AgentTickApp({
     }
   };
 
+  const clearStoredSessionForServer = useCallback(async (activeServerURL = serverURL) => {
+    await AsyncStorage.multiRemove([
+      ...mobileSessionStorageKeyList(activeServerURL),
+      ...Object.values(legacyMobileSessionStorageKeys),
+    ]);
+  }, [serverURL]);
+
   const bestEffortUnregisterDevice = useCallback(async (options: {
     activeDeviceID?: string;
     activeServerURL?: string;
@@ -820,6 +835,7 @@ function AgentTickApp({
 
   const forgetDevice = useCallback(async () => {
     await bestEffortUnregisterDevice();
+    await clearStoredSessionForServer();
     setDeviceID("");
     setToken("");
     setPushStatus("idle");
@@ -829,7 +845,7 @@ function AgentTickApp({
     setHistory([]);
     setConnectionStatus("disconnected");
     if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.();
-  }, [bestEffortUnregisterDevice, onForgetClerkSession, runtimeAuthConfig?.authProvider]);
+  }, [bestEffortUnregisterDevice, clearStoredSessionForServer, onForgetClerkSession, runtimeAuthConfig?.authProvider]);
 
   const selectOrganization = useCallback((organizationID: string) => {
     if (organizationID === selectedOrganizationID) return;
@@ -856,6 +872,8 @@ function AgentTickApp({
           authProvider: runtimeAuthConfig?.authProvider,
         });
       }
+      void clearStoredSessionForServer(previousServerURL);
+      void clearStoredSessionForServer(nextServerURL);
       setDeviceID("");
       setToken("");
       setPushStatus("idle");
@@ -867,7 +885,7 @@ function AgentTickApp({
       setConnectionStatus("checking");
     }
     setServerURL(value);
-  }, [bestEffortUnregisterDevice, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
+  }, [bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
 
   const handlePairingScan = async (result: BarcodeScanningResult) => {
     if (pairingInFlight.current) {
