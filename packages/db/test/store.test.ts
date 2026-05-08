@@ -221,6 +221,7 @@ describe('AgentTickStore', () => {
     const devices = store.listDevicesForUser('usr_default');
     expect(devices.find((device) => device.deviceId === first.deviceId)?.expoPushToken).toBeUndefined();
     expect(devices.find((device) => device.deviceId === second.deviceId)?.expoPushToken).toBe('ExponentPushToken[abc]');
+    expect(store.listPushDevicesForOrganization(DEFAULT_ORGANIZATION_ID)).toEqual([expect.objectContaining({ deviceId: second.deviceId, expoPushToken: 'ExponentPushToken[abc]' })]);
   });
 
   it('abandons pending approval requests', () => {

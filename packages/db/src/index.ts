@@ -1065,6 +1065,13 @@ export class AgentTickStore {
     return rows.map(mapDeviceRow);
   }
 
+  listPushDevicesForOrganization(organizationId: string): DeviceRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM devices WHERE organization_id = ? AND expo_push_token IS NOT NULL AND unregistered_at IS NULL ORDER BY updated_at DESC')
+      .all(organizationId) as DeviceRow[];
+    return rows.map(mapDeviceRow);
+  }
+
   getDeviceForUser(deviceId: string, userId: string): DeviceRecord | null {
     const row = this.db.prepare('SELECT * FROM devices WHERE device_id = ? AND user_id = ?').get(deviceId, userId) as DeviceRow | undefined;
     return row ? mapDeviceRow(row) : null;
@@ -1297,6 +1304,7 @@ function mapDeviceRow(row: DeviceRow): DeviceRecord {
 function mapApprovalRow(row: ApprovalRow, policyProgress?: ApprovalPolicyProgress): ApprovalRequest {
   return ApprovalRequestSchema.parse({
     id: row.id,
+    organizationId: row.organization_id,
     userId: row.user_id ?? undefined,
     requester: {
       name: row.requester_name,

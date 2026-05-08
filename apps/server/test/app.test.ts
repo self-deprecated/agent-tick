@@ -232,6 +232,31 @@ describe('server skeleton', () => {
     expect(forbidden.statusCode).toBe(403);
   });
 
+  it('notifies registered push devices when an approval request is created', async () => {
+    const notified: string[] = [];
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single' }),
+      store: testStore(),
+      notifier: {
+        async notifyApprovalCreated(request) {
+          notified.push(request.id);
+        }
+      }
+    });
+
+    const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${tokenResponse.json().token}` },
+      payload: { requester: { name: 'agent' }, title: 'Deploy?' }
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(notified).toEqual([createResponse.json().id]);
+  });
+
   it('creates an agent token and uses it to create an approval request', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
 

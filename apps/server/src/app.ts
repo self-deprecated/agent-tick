@@ -17,13 +17,15 @@ import { registerPolicyRoutes } from './routes/policies.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerTeamRoutes } from './routes/teams.js';
+import { createExpoPushNotifier, type ApprovalNotifier } from './services/notifications.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
   store: AgentTickStore;
+  notifier?: ApprovalNotifier;
 }
 
-export async function buildApp({ config, store }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, store, notifier = createExpoPushNotifier({ store }) }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: true,
     genReqId: (request) => request.headers['x-request-id']?.toString() ?? crypto.randomUUID()
@@ -55,7 +57,7 @@ export async function buildApp({ config, store }: BuildAppOptions): Promise<Fast
   await registerOrganizationRoutes(app, { config, store });
   await registerInviteRoutes(app, { config, store });
   await registerAgentTokenRoutes(app, { config, store });
-  await registerApprovalRoutes(app, { config, store });
+  await registerApprovalRoutes(app, { config, store, notifier });
   await registerDeviceRoutes(app, { config, store });
   await registerPairingRoutes(app, { config, store });
   await registerPresenceRoutes(app, { config, store });

@@ -3,14 +3,16 @@ import type { FastifyInstance } from 'fastify';
 import { CreateApprovalRequestSchema, RespondApprovalRequestSchema } from '@agent-tick/shared';
 import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
+import type { ApprovalNotifier } from '../services/notifications.js';
 import { requireAuth, requireHuman } from '../auth/context.js';
 
 export interface ApprovalRoutesOptions {
   config: ServerConfig;
   store: AgentTickStore;
+  notifier?: ApprovalNotifier;
 }
 
-export async function registerApprovalRoutes(app: FastifyInstance, { config, store }: ApprovalRoutesOptions): Promise<void> {
+export async function registerApprovalRoutes(app: FastifyInstance, { config, store, notifier }: ApprovalRoutesOptions): Promise<void> {
   app.get('/v1/approval-requests', async (request) => {
     const auth = await requireAuth(request, config, store);
     return store.listApprovalRequests(auth.organizationId, auth.userId);
@@ -19,7 +21,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
   app.post('/v1/approval-requests', async (request) => {
     const auth = await requireAuth(request, config, store);
     const input = CreateApprovalRequestSchema.parse(request.body);
-    return store.createApprovalRequest({
+    const approval = store.createApprovalRequest({
       ...input,
       requester: {
         ...input.requester,
@@ -34,6 +36,8 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
       ...(auth.agentId ? { agentId: auth.agentId } : {}),
       ...(auth.isHuman && auth.userId ? { userId: auth.userId } : {})
     });
+    notifier?.notifyApprovalCreated(approval).catch((error) => request.log.error({ err: error, approvalId: approval.id }, 'approval notification failed'));
+    return approval;
   });
 
   app.get('/v1/approval-requests/:id', async (request, reply) => {

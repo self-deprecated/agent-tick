@@ -264,6 +264,7 @@ export type ApprovalPolicyProgress = z.infer<typeof ApprovalPolicyProgressSchema
 
 export const ApprovalRequestSchema = z.object({
   id: z.string(),
+  organizationId: z.string().optional(),
   userId: z.string().optional(),
   requester: RequesterSchema,
   requestType: z.string().default('approval'),
