@@ -318,6 +318,16 @@
 		}
 	}
 
+	async function removeTeamMember(teamId: string, userId: string): Promise<void> {
+		error = '';
+		try {
+			await client().removeTeamMember(teamId, userId);
+			await Promise.all([refreshTeamMembers(teamId), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
 	async function refreshPolicies(): Promise<void> {
 		try {
 			policies = await client().listPolicies();
@@ -612,7 +622,16 @@
 								<p class="subtle">{team.teamId} · {team.slug}{team.archivedAt ? ` · archived ${new Date(team.archivedAt).toLocaleString()}` : ''}</p>
 								{#if team.description}<p>{team.description}</p>{/if}
 								{#if teamMembers[team.teamId]?.length}
-									<p class="subtle">Members: {teamMembers[team.teamId].map((member) => `${member.userId} (${member.role})`).join(', ')}</p>
+									<div class="member-list">
+										{#each teamMembers[team.teamId] as member}
+											<span class="member-pill">
+												{member.userId} ({member.role})
+												{#if member.role !== 'owner'}
+													<button class="link-button danger-text" onclick={() => void removeTeamMember(team.teamId, member.userId)}>Remove</button>
+												{/if}
+											</span>
+										{/each}
+									</div>
 								{/if}
 							</div>
 						</li>
@@ -947,6 +966,35 @@
 		display: flex;
 		gap: 8px;
 		align-items: flex-start;
+	}
+
+	.member-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 8px;
+	}
+
+	.member-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 8px;
+		border: 1px solid #334155;
+		border-radius: 999px;
+		color: #cbd5e1;
+		font-size: 0.85rem;
+	}
+
+	.link-button {
+		padding: 0;
+		background: transparent;
+		color: #38bdf8;
+		font: inherit;
+	}
+
+	.danger-text {
+		color: #fb7185;
 	}
 
 	.item-card.is-muted {

@@ -238,6 +238,10 @@ export class AgentTickClient {
     });
   }
 
+  removeTeamMember(teamId: string, userId: string): Promise<TeamMembership> {
+    return this.#request('DELETE', `/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`, TeamMembershipSchema);
+  }
+
   listPolicies(): Promise<PolicyRecord[]> {
     return this.#request('GET', '/v1/policies', PolicyRecordSchema.array());
   }

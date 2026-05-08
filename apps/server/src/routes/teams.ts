@@ -47,4 +47,17 @@ export async function registerTeamRoutes(app: FastifyInstance, { config, store }
       role: input.role
     });
   });
+
+  app.delete('/v1/teams/:id/members/:userId', async (request, reply) => {
+    const auth = await requirePrivilegedHuman(request, config, store);
+    const { id, userId } = request.params as { id: string; userId: string };
+    const removed = store.removeTeamMember({
+      organizationId: auth.organizationId,
+      actorUserId: auth.userId ?? 'usr_default',
+      teamId: id,
+      userId
+    });
+    if (!removed) return reply.status(404).send({ error: { code: 'not_found', message: 'Team member not found', requestId: request.id } });
+    return removed;
+  });
 }

@@ -180,6 +180,13 @@ export interface UpsertTeamMemberInput {
   role?: string;
 }
 
+export interface RemoveTeamMemberInput {
+  organizationId: string;
+  actorUserId: string;
+  teamId: string;
+  userId: string;
+}
+
 export interface PolicyRecord {
   policyId: string;
   organizationId: string;
@@ -614,6 +621,23 @@ export class AgentTickStore {
       .run(input.teamId, input.organizationId, input.userId, role, now, now);
     this.writeAuditEvent(input.organizationId, input.actorUserId, 'team_member.upserted', input.teamId, { userId: input.userId, role }, now);
     return this.listTeamMembers(input.teamId).find((member) => member.userId === input.userId) ?? missingTeam(input.teamId);
+  }
+
+  removeTeamMember(input: RemoveTeamMemberInput, now = new Date().toISOString()): TeamMembershipRecord | null {
+    if (!this.teamBelongsToOrganization(input.teamId, input.organizationId)) {
+      throw httpError(404, 'not_found', 'Team not found');
+    }
+    const members = this.listTeamMembers(input.teamId);
+    const member = members.find((entry) => entry.userId === input.userId);
+    if (!member) return null;
+    if (member.role === 'owner' && members.filter((entry) => entry.role === 'owner').length <= 1) {
+      throw httpError(400, 'bad_request', 'Cannot remove the last team owner');
+    }
+    this.db
+      .prepare('DELETE FROM team_memberships WHERE team_id = ? AND organization_id = ? AND user_id = ?')
+      .run(input.teamId, input.organizationId, input.userId);
+    this.writeAuditEvent(input.organizationId, input.actorUserId, 'team_member.removed', input.teamId, { userId: input.userId, role: member.role }, now);
+    return member;
   }
 
   listPolicies(organizationId = DEFAULT_ORGANIZATION_ID): PolicyRecord[] {

@@ -154,6 +154,14 @@ describe('server skeleton', () => {
     expect(addedTeamMember.statusCode).toBe(200);
     expect(addedTeamMember.json()).toMatchObject({ teamId: team.json().teamId, userId: 'usr_teammate', role: 'lead' });
 
+    const removedTeamMember = await app.inject({
+      method: 'DELETE',
+      url: `/v1/teams/${team.json().teamId}/members/usr_teammate`,
+      headers: { 'x-agent-tick-organization-id': organizationId }
+    });
+    expect(removedTeamMember.statusCode).toBe(200);
+    expect(removedTeamMember.json()).toMatchObject({ teamId: team.json().teamId, userId: 'usr_teammate', role: 'lead' });
+
     const policy = await app.inject({
       method: 'POST',
       url: '/v1/policies',

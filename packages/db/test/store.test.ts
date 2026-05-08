@@ -70,6 +70,10 @@ describe('AgentTickStore', () => {
     expect(accepted).toMatchObject({ status: 'joined', membership: { organizationId: created.organizationId, userId: bob.userId, role: 'admin' } });
     const teamMember = store.upsertTeamMember({ organizationId: created.organizationId, actorUserId: 'usr_default', teamId: team.teamId, userId: bob.userId, role: 'lead' });
     expect(teamMember).toMatchObject({ teamId: team.teamId, userId: bob.userId, role: 'lead' });
+    const removedTeamMember = store.removeTeamMember({ organizationId: created.organizationId, actorUserId: 'usr_default', teamId: team.teamId, userId: bob.userId });
+    expect(removedTeamMember).toMatchObject({ teamId: team.teamId, userId: bob.userId, role: 'lead' });
+    expect(store.listTeamMembers(team.teamId).map((member) => member.userId)).not.toContain(bob.userId);
+    expect(() => store!.removeTeamMember({ organizationId: created.organizationId, actorUserId: 'usr_default', teamId: team.teamId, userId: 'usr_default' })).toThrow(/last team owner/i);
   });
 
   it('creates and verifies agent tokens by hash', () => {
