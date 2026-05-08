@@ -114,6 +114,17 @@ export async function requirePrivilegedHuman(request: FastifyRequest, config: Se
   return auth;
 }
 
+export async function requireOrganizationAdmin(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
+  const auth = await requirePrivilegedHuman(request, config, store);
+  if (auth.role !== 'owner' && auth.role !== 'admin') {
+    const error = new Error('Organization owner or admin role required') as Error & { statusCode: number; code: string };
+    error.statusCode = 403;
+    error.code = 'forbidden';
+    throw error;
+  }
+  return auth;
+}
+
 function applySelectedOrganization(request: FastifyRequest, store: AgentTickStore, auth: AuthContext): AuthContext {
   if (!auth.isHuman || !auth.userId) return auth;
   const selected = selectedOrganization(request);

@@ -84,9 +84,11 @@ Recommended action: update the hook to the current `request`/`guard` flow or rem
 
 ### Management route authorization may be too broad
 
-`requirePrivilegedHuman` currently excludes mobile device auth but does not require an owner/admin organization role.
+Status: addressed for agent token, project, team, policy, and audit routes by requiring organization owner/admin roles.
 
-Potentially affected route groups include:
+`requirePrivilegedHuman` still only excludes mobile device auth; management routes that require owner/admin authorization should use the stricter organization-admin guard.
+
+Audited route groups include:
 
 - Agent token management
 - Projects
@@ -94,9 +96,9 @@ Potentially affected route groups include:
 - Policies
 - Audit listing
 
-Billing and invites have stronger explicit admin/owner checks, but several other management routes may be accessible to any active human member unless the store method adds its own role check.
+Billing and invites already had stronger explicit admin/owner checks.
 
-Recommended action: audit every management route and decide which require owner/admin roles versus any active member.
+Recommended action: keep using the stricter organization-admin guard for future management routes unless a route is intentionally self-service/member-readable.
 
 ## Medium priority
 

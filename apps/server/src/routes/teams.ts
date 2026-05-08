@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { CreateTeamSchema, UpsertTeamMemberSchema } from '@agent-tick/shared';
 import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
-import { requirePrivilegedHuman } from '../auth/context.js';
+import { requireOrganizationAdmin } from '../auth/context.js';
 
 export interface TeamRoutesOptions {
   config: ServerConfig;
@@ -11,12 +11,12 @@ export interface TeamRoutesOptions {
 
 export async function registerTeamRoutes(app: FastifyInstance, { config, store }: TeamRoutesOptions): Promise<void> {
   app.get('/v1/teams', async (request) => {
-    const auth = await requirePrivilegedHuman(request, config, store);
+    const auth = await requireOrganizationAdmin(request, config, store);
     return store.listTeams(auth.organizationId);
   });
 
   app.post('/v1/teams', async (request) => {
-    const auth = await requirePrivilegedHuman(request, config, store);
+    const auth = await requireOrganizationAdmin(request, config, store);
     const input = CreateTeamSchema.parse(request.body);
     return store.createTeam({
       organizationId: auth.organizationId,
@@ -28,7 +28,7 @@ export async function registerTeamRoutes(app: FastifyInstance, { config, store }
   });
 
   app.get('/v1/teams/:id/members', async (request, reply) => {
-    await requirePrivilegedHuman(request, config, store);
+    await requireOrganizationAdmin(request, config, store);
     const { id } = request.params as { id: string };
     const members = store.listTeamMembers(id);
     if (members.length === 0) return reply.status(404).send({ error: { code: 'not_found', message: 'Team not found', requestId: request.id } });
@@ -36,7 +36,7 @@ export async function registerTeamRoutes(app: FastifyInstance, { config, store }
   });
 
   app.post('/v1/teams/:id/members', async (request) => {
-    const auth = await requirePrivilegedHuman(request, config, store);
+    const auth = await requireOrganizationAdmin(request, config, store);
     const { id } = request.params as { id: string };
     const input = UpsertTeamMemberSchema.parse(request.body);
     return store.upsertTeamMember({
@@ -49,7 +49,7 @@ export async function registerTeamRoutes(app: FastifyInstance, { config, store }
   });
 
   app.delete('/v1/teams/:id/members/:userId', async (request, reply) => {
-    const auth = await requirePrivilegedHuman(request, config, store);
+    const auth = await requireOrganizationAdmin(request, config, store);
     const { id, userId } = request.params as { id: string; userId: string };
     const removed = store.removeTeamMember({
       organizationId: auth.organizationId,

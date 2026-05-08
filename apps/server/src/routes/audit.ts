@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
-import { requirePrivilegedHuman } from '../auth/context.js';
+import { requireOrganizationAdmin } from '../auth/context.js';
 
 export interface AuditRoutesOptions {
   config: ServerConfig;
@@ -10,7 +10,7 @@ export interface AuditRoutesOptions {
 
 export async function registerAuditRoutes(app: FastifyInstance, { config, store }: AuditRoutesOptions): Promise<void> {
   app.get('/v1/audit-events', async (request) => {
-    const auth = await requirePrivilegedHuman(request, config, store);
+    const auth = await requireOrganizationAdmin(request, config, store);
     const limit = limitFromQuery(request.query);
     return store.listAuditEvents(auth.organizationId, limit);
   });

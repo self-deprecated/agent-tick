@@ -277,6 +277,40 @@ describe('server skeleton', () => {
     expect(forbidden.statusCode).toBe(403);
   });
 
+  it('requires organization admin roles for management routes', async () => {
+    const db = testStore();
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: db });
+
+    const now = '2026-05-08T00:00:00.000Z';
+    const memberOrganizationId = 'org_member_only';
+    db.db.prepare('INSERT INTO organizations(id, name, created_at, updated_at) VALUES (?, ?, ?, ?)').run(memberOrganizationId, 'Member Org', now, now);
+    db.db
+      .prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+      .run(memberOrganizationId, 'usr_default', 'member', now, now);
+
+    const headers = { 'x-agent-tick-organization-id': memberOrganizationId };
+    const managementRequests = [
+      { method: 'GET', url: '/v1/agent-tokens' },
+      { method: 'POST', url: '/v1/agent-tokens', payload: { name: 'release agent' } },
+      { method: 'GET', url: '/v1/projects' },
+      { method: 'POST', url: '/v1/projects', payload: { name: 'Release' } },
+      { method: 'GET', url: '/v1/teams' },
+      { method: 'POST', url: '/v1/teams', payload: { name: 'Release Team' } },
+      { method: 'GET', url: '/v1/policies' },
+      { method: 'POST', url: '/v1/policies', payload: { name: 'Release policy' } },
+      { method: 'GET', url: '/v1/audit-events' }
+    ] as const;
+
+    for (const managementRequest of managementRequests) {
+      const response = await app.inject({ ...managementRequest, headers });
+      expect(response.statusCode, `${managementRequest.method} ${managementRequest.url}`).toBe(403);
+      expect(response.json()).toMatchObject({ error: { code: 'forbidden', message: 'Organization owner or admin role required' } });
+    }
+
+    const ownerAgentTokens = await app.inject({ method: 'GET', url: '/v1/agent-tokens' });
+    expect(ownerAgentTokens.statusCode).toBe(200);
+  });
+
   it('keeps invite acceptances pending until an organization admin approves them', async () => {
     const db = testStore();
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: db });
