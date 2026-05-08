@@ -220,6 +220,7 @@ export interface MembershipRequestRecord {
 	userId: string;
 	userName?: string;
 	userEmail?: string;
+	inviteRevokedAt?: string;
 	requestedRole: OrganizationRole;
 	requestedTeamIds?: string[];
 	status: string;

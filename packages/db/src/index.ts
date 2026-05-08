@@ -145,6 +145,7 @@ export interface OrganizationMembershipRequestRecord {
   userEmail: string | undefined;
   userName: string | undefined;
   inviteLabel: string | undefined;
+  inviteRevokedAt: string | undefined;
   requestedRole: string;
   requestedTeamIds: string[];
   status: string;
@@ -657,7 +658,7 @@ export class AgentTickStore {
     const rows = this.db
       .prepare(`
         SELECT a.request_id, a.invite_id, a.organization_id, o.name AS organization_name, a.user_id, u.email AS user_email, u.name AS user_name,
-               i.label AS invite_label, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+               i.label AS invite_label, i.revoked_at AS invite_revoked_at, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
         FROM organization_invite_acceptances a
         JOIN organizations o ON o.id = a.organization_id
         JOIN users u ON u.id = a.user_id
@@ -673,7 +674,7 @@ export class AgentTickStore {
     const rows = this.db
       .prepare(`
         SELECT a.request_id, a.invite_id, a.organization_id, o.name AS organization_name, a.user_id, u.email AS user_email, u.name AS user_name,
-               i.label AS invite_label, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+               i.label AS invite_label, i.revoked_at AS invite_revoked_at, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
         FROM organization_invite_acceptances a
         JOIN organizations o ON o.id = a.organization_id
         JOIN users u ON u.id = a.user_id
@@ -689,7 +690,7 @@ export class AgentTickStore {
     const row = this.db
       .prepare(`
         SELECT a.request_id, a.invite_id, a.organization_id, o.name AS organization_name, a.user_id, u.email AS user_email, u.name AS user_name,
-               i.label AS invite_label, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+               i.label AS invite_label, i.revoked_at AS invite_revoked_at, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
         FROM organization_invite_acceptances a
         JOIN organizations o ON o.id = a.organization_id
         JOIN users u ON u.id = a.user_id
@@ -1424,6 +1425,7 @@ function mapOrganizationMembershipRequestRow(row: OrganizationMembershipRequestR
     userEmail: row.user_email?.trim() || undefined,
     userName: row.user_name?.trim() || undefined,
     inviteLabel: row.invite_label ?? undefined,
+    inviteRevokedAt: row.invite_revoked_at ?? undefined,
     requestedRole: row.requested_role,
     requestedTeamIds: parseJSON<string[]>(row.requested_team_ids_json, []),
     status: row.status,
@@ -1804,6 +1806,7 @@ interface OrganizationMembershipRequestRow {
   user_email: string | null;
   user_name: string | null;
   invite_label: string | null;
+  invite_revoked_at: string | null;
   requested_role: string;
   requested_team_ids_json: string;
   status: string;

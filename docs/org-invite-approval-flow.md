@@ -461,7 +461,7 @@ For a new account created from the invite page, the app should automatically acc
 
 ## Implementation slices
 
-Current status: TypeScript support exists for approval-required invites, exact-email and domain invite restrictions, redacted public invite previews, pending membership rows, pending/rejected self-status visibility, active-only authorization/listing, invite team assignment on approval, pending request list/approve/reject endpoints, SDK methods, audit events, backend tests, and dashboard invite/pending-member management. Billing and email-delivery polish remain.
+Current status: TypeScript support exists for approval-required invites, exact-email and domain invite restrictions, redacted public invite previews, pending membership rows, pending/rejected self-status visibility, revoked-invite visibility on pending requests, active-only authorization/listing, invite team assignment on approval, pending request list/approve/reject endpoints, SDK methods, audit events, backend tests, and dashboard invite/pending-member management. Billing and email-delivery polish remain.
 
 ### Slice 1: Core backend
 
@@ -488,7 +488,6 @@ Current status: TypeScript support exists for approval-required invites, exact-e
 ### Slice 3: Reusable invite polish
 
 - Invite list counts.
-- Revoke flows and explicit pending-request behavior for revoked invites.
 - Better expired/max-use messaging.
 - Long-lived invite warnings.
 

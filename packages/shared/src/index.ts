@@ -121,6 +121,7 @@ export const OrganizationMembershipRequestRecordSchema = z.object({
   userEmail: z.string().email().optional(),
   userName: z.string().optional(),
   inviteLabel: z.string().optional(),
+  inviteRevokedAt: z.string().optional(),
   requestedRole: OrganizationRoleSchema.or(z.string()),
   requestedTeamIds: z.array(z.string()).optional(),
   status: z.enum(['pending_approval', 'approved', 'rejected']).or(z.string()),

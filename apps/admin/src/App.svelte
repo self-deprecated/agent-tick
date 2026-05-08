@@ -647,7 +647,7 @@
 						<li class="item-card">
 							<div>
 								<strong>{request.userName ?? request.userEmail ?? request.userId}</strong>
-								<p class="subtle">{request.requestId} · requested {request.requestedRole} · invite {request.inviteLabel ?? request.inviteId}{request.requestedTeamIds?.length ? ` · teams ${request.requestedTeamIds.map(teamLabel).join(', ')}` : ''} · {new Date(request.acceptedAt).toLocaleString()}</p>
+								<p class="subtle">{request.requestId} · requested {request.requestedRole} · invite {request.inviteLabel ?? request.inviteId}{request.requestedTeamIds?.length ? ` · teams ${request.requestedTeamIds.map(teamLabel).join(', ')}` : ''}{request.inviteRevokedAt ? ` · invite revoked ${new Date(request.inviteRevokedAt).toLocaleString()}` : ''} · {new Date(request.acceptedAt).toLocaleString()}</p>
 								{#if request.userEmail}<p>{request.userEmail}</p>{/if}
 							</div>
 							<div class="actions">

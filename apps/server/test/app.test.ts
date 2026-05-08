@@ -263,17 +263,19 @@ describe('server skeleton', () => {
     expect(accepted.json()).toMatchObject({ status: 'pending_approval', membership: { organizationId, role: 'admin', status: 'pending_approval' } });
 
     expect(db.organizationMembershipForUser(bob.userId, organizationId)).toBeNull();
+    const revokedPendingInvite = await app.inject({ method: 'POST', url: `/v1/organization-invites/${invite.json().inviteId}/revoke`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
+    expect(revokedPendingInvite.statusCode).toBe(200);
     const membersWhilePending = await app.inject({ method: 'GET', url: `/v1/organizations/${organizationId}/members` });
     expect(membersWhilePending.statusCode).toBe(200);
     expect(membersWhilePending.json().map((member: { userId: string }) => member.userId)).not.toContain(bob.userId);
 
     const pending = await app.inject({ method: 'GET', url: '/v1/organization-membership-requests', headers: { 'x-agent-tick-organization-id': organizationId } });
     expect(pending.statusCode).toBe(200);
-    expect(pending.json()).toEqual([expect.objectContaining({ userId: bob.userId, organizationName: 'Production', requestedRole: 'admin', requestedTeamIds: [team.json().teamId], status: 'pending_approval' })]);
+    expect(pending.json()).toEqual([expect.objectContaining({ userId: bob.userId, organizationName: 'Production', requestedRole: 'admin', requestedTeamIds: [team.json().teamId], inviteRevokedAt: expect.any(String), status: 'pending_approval' })]);
 
     const pendingForBob = await app.inject({ method: 'GET', url: '/v1/me/organization-membership-requests', headers: { authorization: `Bearer ${bobDevice!.token}` } });
     expect(pendingForBob.statusCode).toBe(200);
-    expect(pendingForBob.json()).toEqual([expect.objectContaining({ requestId: pending.json()[0].requestId, organizationName: 'Production', status: 'pending_approval' })]);
+    expect(pendingForBob.json()).toEqual([expect.objectContaining({ requestId: pending.json()[0].requestId, organizationName: 'Production', inviteRevokedAt: expect.any(String), status: 'pending_approval' })]);
 
     const approved = await app.inject({ method: 'POST', url: `/v1/organization-membership-requests/${pending.json()[0].requestId}/approve`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
     expect(approved.statusCode).toBe(200);

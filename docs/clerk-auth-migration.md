@@ -180,7 +180,7 @@ Implemented so far:
 - Local organization creation, selection, membership validation, and member listing.
 - Project, team, policy foundations, and basic quorum approval policy handling with dashboard management.
 - Team member add/update/remove APIs and dashboard management for local organization members.
-- Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens, email/domain restrictions, pending membership self-status, pending membership approval/rejection, invite team assignment, and dashboard invite/member-request management.
+- Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens, email/domain restrictions, pending membership self-status, revoked-invite request visibility, pending membership approval/rejection, invite team assignment, and dashboard invite/member-request management.
 - Approval request create/list/get/respond/abandon/wait APIs with local-organization scoping on detail and mutation routes.
 - Agent token create/list/revoke APIs, including optional project/team/default-policy scoping and owning-agent abandon checks.
 - Single-mode mobile pairing and device-token auth.

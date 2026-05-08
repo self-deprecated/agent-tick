@@ -76,9 +76,10 @@ describe('AgentTickStore', () => {
     expect(accepted).toMatchObject({ status: 'pending_approval', membership: { organizationId: created.organizationId, userId: bob.userId, role: 'admin', status: 'pending_approval' } });
     expect(store.organizationMembershipForUser(bob.userId, created.organizationId)).toBeNull();
     expect(store.listOrganizationsForUser(bob.userId).map((membership) => membership.organizationId)).not.toContain(created.organizationId);
+    store.revokeOrganizationInvite(invite.inviteId, created.organizationId, 'usr_default', '2026-05-09T00:00:00.000Z');
     const [pendingRequest] = store.listOrganizationMembershipRequests(created.organizationId);
-    expect(pendingRequest).toMatchObject({ inviteId: invite.inviteId, organizationName: 'Production', userId: bob.userId, requestedRole: 'admin', requestedTeamIds: [team.teamId], status: 'pending_approval' });
-    expect(store.listOrganizationMembershipRequestsForUser(bob.userId)).toEqual([expect.objectContaining({ requestId: pendingRequest!.requestId, organizationName: 'Production', status: 'pending_approval' })]);
+    expect(pendingRequest).toMatchObject({ inviteId: invite.inviteId, organizationName: 'Production', userId: bob.userId, requestedRole: 'admin', requestedTeamIds: [team.teamId], inviteRevokedAt: '2026-05-09T00:00:00.000Z', status: 'pending_approval' });
+    expect(store.listOrganizationMembershipRequestsForUser(bob.userId)).toEqual([expect.objectContaining({ requestId: pendingRequest!.requestId, organizationName: 'Production', inviteRevokedAt: '2026-05-09T00:00:00.000Z', status: 'pending_approval' })]);
     const approvedRequest = store.approveOrganizationMembershipRequest(pendingRequest!.requestId, created.organizationId, 'usr_default');
     expect(approvedRequest).toMatchObject({ requestId: pendingRequest!.requestId, status: 'approved', decidedByUserId: 'usr_default' });
     expect(store.listOrganizationMembershipRequestsForUser(bob.userId)).toEqual([]);
