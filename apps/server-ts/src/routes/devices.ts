@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
-import { requireHuman } from '../auth/context.js';
+import { requireHuman, requirePrivilegedHuman } from '../auth/context.js';
 
 const RegisterDeviceSchema = z.object({
   deviceName: z.string().min(1),
@@ -23,7 +23,7 @@ export interface DeviceRoutesOptions {
 
 export async function registerDeviceRoutes(app: FastifyInstance, { config, store }: DeviceRoutesOptions): Promise<void> {
   app.get('/v1/devices', async (request) => {
-    const auth = await requireHuman(request, config, store);
+    const auth = await requirePrivilegedHuman(request, config, store);
     return store.listDevicesForUser(auth.userId ?? 'usr_default');
   });
 

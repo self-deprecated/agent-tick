@@ -2,7 +2,7 @@ import { PairDeviceRequestSchema } from '@agent-tick/shared';
 import type { FastifyInstance } from 'fastify';
 import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
-import { requireHuman } from '../auth/context.js';
+import { requirePrivilegedHuman } from '../auth/context.js';
 
 export interface PairingRoutesOptions {
   config: ServerConfig;
@@ -11,7 +11,7 @@ export interface PairingRoutesOptions {
 
 export async function registerPairingRoutes(app: FastifyInstance, { config, store }: PairingRoutesOptions): Promise<void> {
   app.post('/v1/pairing-tokens', async (request, reply) => {
-    const auth = await requireHuman(request, config, store);
+    const auth = await requirePrivilegedHuman(request, config, store);
     if (config.mode !== 'single') {
       return reply.status(404).send({ error: { code: 'not_found', message: 'Pairing tokens are only available in single mode', requestId: request.id } });
     }

@@ -185,6 +185,14 @@ describe('server skeleton', () => {
       headers: { authorization: `Bearer ${pair.json().token}` }
     });
     expect(list.statusCode).toBe(200);
+
+    const createAgentToken = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-tokens',
+      headers: { authorization: `Bearer ${pair.json().token}` },
+      payload: { name: 'bad' }
+    });
+    expect(createAgentToken.statusCode).toBe(403);
   });
 
   it('registers devices for the authenticated human user', async () => {

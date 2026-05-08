@@ -100,6 +100,17 @@ export async function requireHuman(request: FastifyRequest, config: ServerConfig
   return auth;
 }
 
+export async function requirePrivilegedHuman(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
+  const auth = await requireHuman(request, config, store);
+  if (auth.source === 'device') {
+    const error = new Error('Dashboard or Clerk session required') as Error & { statusCode: number; code: string };
+    error.statusCode = 403;
+    error.code = 'forbidden';
+    throw error;
+  }
+  return auth;
+}
+
 function applySelectedOrganization(request: FastifyRequest, store: AgentTickStore, auth: AuthContext): AuthContext {
   if (!auth.isHuman || !auth.userId) return auth;
   const selected = selectedOrganization(request);
