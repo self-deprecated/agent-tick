@@ -965,7 +965,7 @@ Deliverables:
 - event ticket endpoint
 - event stream endpoint or polling improvements
 - mobile/admin event subscription
-- notification service ported/rethought
+- notification service ported/rethought; current TypeScript server supports Expo push and an optional approval notification webhook
 - retention cleanup service/script
 
 Acceptance criteria:

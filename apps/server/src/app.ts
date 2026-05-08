@@ -19,7 +19,7 @@ import { registerPresenceRoutes } from './routes/presence.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerTeamRoutes } from './routes/teams.js';
 import { createInviteEmailSender, type InviteEmailSender } from './services/inviteEmail.js';
-import { createExpoPushNotifier, type ApprovalNotifier } from './services/notifications.js';
+import { createApprovalNotifier, type ApprovalNotifier } from './services/notifications.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -28,7 +28,7 @@ export interface BuildAppOptions {
   inviteEmailSender?: InviteEmailSender;
 }
 
-export async function buildApp({ config, store, notifier = createExpoPushNotifier({ store }), inviteEmailSender = createInviteEmailSender(config) }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, store, notifier = createApprovalNotifier({ store, config }), inviteEmailSender = createInviteEmailSender(config) }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: true,
     genReqId: (request) => request.headers['x-request-id']?.toString() ?? crypto.randomUUID()

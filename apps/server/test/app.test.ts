@@ -71,6 +71,7 @@ describe('server skeleton', () => {
     const config = loadConfig({
       AGENT_TICK_MODE: 'single',
       AGENT_TICK_MAX_ACTIVE_MEMBERS: '10',
+      AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL: 'https://hooks.example.com/approvals',
       AGENT_TICK_APPROVAL_RETENTION_DAYS: '90',
       AGENT_TICK_AUDIT_RETENTION_DAYS: '365',
       AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS: '30',
@@ -78,6 +79,7 @@ describe('server skeleton', () => {
       AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES: '15'
     });
     expect(config.maxActiveMembers).toBe(10);
+    expect(config.approvalNotificationWebhookURL).toBe('https://hooks.example.com/approvals');
     expect(config.approvalRetentionDays).toBe(90);
     expect(config.auditRetentionDays).toBe(365);
     expect(config.unregisteredDeviceRetentionDays).toBe(30);

@@ -184,7 +184,7 @@ Implemented so far:
 - Approval request create/list/get/respond/abandon/wait APIs with local-organization scoping on detail and mutation routes.
 - Agent token create/list/revoke APIs, including optional project/team/default-policy scoping and owning-agent abandon checks.
 - Single-mode mobile pairing and device-token auth.
-- Clerk-mode device registration and push token APIs.
+- Clerk-mode device registration and push token APIs, plus optional approval notification webhooks in addition to mobile push.
 - Short-lived opaque event tickets for event streams, SSE audit-event streaming, SDK stream URL/EventSource helpers, and startup/hourly cleanup for expired tickets and pairing codes.
 - Configurable startup/hourly retention cleanup for old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites without acceptance history.
 - Mobile Clerk runtime discovery, ClerkProvider sign-in/account-creation wiring with email-code verification, and OAuth SSO provider buttons using Expo AuthSession/WebBrowser.
@@ -212,7 +212,7 @@ Product rebuilds to evaluate/port from the prototype:
 
 - Richer team role/eligibility management beyond basic add/update/remove and team-scoped approval eligibility.
 - Policy templates and richer multi-step eligibility/routing policy engine.
-- Notification delivery service beyond stored push tokens.
+- Notification delivery polish beyond mobile push and the current generic approval webhook.
 - MCP/adapter/guard integrations that still fit the npm CLI model.
 - Hosted-service billing portals, plan sync, and operator tooling beyond the current local seat guard.
 - SMTP/provider-specific invite email templates and retry tooling beyond the current webhook handoff.
