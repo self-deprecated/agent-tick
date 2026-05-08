@@ -1,14 +1,26 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { AgentTickApiError, AgentTickClient, type AgentCredential, type ApprovalRequest, type AuthConfig, type PairingToken } from '@agent-tick/sdk';
+	import {
+		AgentTickApiError,
+		AgentTickClient,
+		type AgentCredential,
+		type ApprovalRequest,
+		type AuthConfig,
+		type OrganizationMembership,
+		type PairingToken
+	} from '@agent-tick/sdk';
 	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
 	import type { AdminConfig } from './app';
 
 	const adminTokenStorageKey = 'agent_tick_admin_token';
+	const organizationStorageKey = 'agent_tick_organization_id';
 
 	let { config: initialConfig }: { config: AdminConfig } = $props();
 	let runtimeConfig = $state<AuthConfig | undefined>();
 	let approvals = $state<ApprovalRequest[]>([]);
+	let organizations = $state<OrganizationMembership[]>([]);
+	let selectedOrganizationId = $state('');
+	let newOrganizationName = $state('');
 	let createdCredential = $state<AgentCredential | undefined>();
 	let pairingToken = $state<PairingToken | undefined>();
 	let adminToken = $state('');
@@ -19,18 +31,20 @@
 	let clerkSignedIn = $state(false);
 	let signInElement = $state<HTMLDivElement | undefined>();
 
-	function client(): AgentTickClient {
+	function client(options: { includeOrganization?: boolean } = {}): AgentTickClient {
 		return new AgentTickClient({
 			baseUrl: window.location.origin,
 			tokenProvider: async () => {
 				if (runtimeConfig?.authProvider === 'clerk') return (await clerk?.session?.getToken()) ?? null;
 				return adminToken || null;
-			}
+			},
+			organizationIdProvider: options.includeOrganization === false ? undefined : () => selectedOrganizationId || null
 		});
 	}
 
 	onMount(() => {
 		adminToken = localStorage.getItem(adminTokenStorageKey) ?? '';
+		selectedOrganizationId = localStorage.getItem(organizationStorageKey) ?? '';
 		void load();
 	});
 
@@ -42,7 +56,7 @@
 			if (runtimeConfig.authProvider === 'clerk') {
 				await initialiseClerk(runtimeConfig);
 			} else {
-				await refreshApprovals();
+				await refreshWorkspace();
 			}
 		} catch (err) {
 			error = messageForError(err);
@@ -60,23 +74,67 @@
 		clerkSignedIn = nextClerk.isSignedIn;
 		nextClerk.addListener(() => {
 			clerkSignedIn = nextClerk.isSignedIn;
-			if (nextClerk.isSignedIn) void refreshApprovals();
+			if (nextClerk.isSignedIn) void refreshWorkspace();
 		});
 		await tick();
 		if (!nextClerk.isSignedIn && signInElement) {
 			nextClerk.mountSignIn(signInElement);
 		} else if (nextClerk.isSignedIn) {
-			await refreshApprovals();
+			await refreshWorkspace();
 		}
 	}
 
 	async function signOut(): Promise<void> {
 		await clerk?.signOut();
 		approvals = [];
+		organizations = [];
+		selectedOrganizationId = '';
 		createdCredential = undefined;
 		clerkSignedIn = false;
 		await tick();
 		if (clerk && signInElement) clerk.mountSignIn(signInElement);
+	}
+
+	async function refreshWorkspace(): Promise<void> {
+		await refreshOrganizations();
+		await refreshApprovals();
+	}
+
+	async function refreshOrganizations(): Promise<void> {
+		const memberships = await client({ includeOrganization: false }).listOrganizations();
+		organizations = memberships;
+		const savedOrganizationId = localStorage.getItem(organizationStorageKey) ?? '';
+		const currentIsValid = memberships.some((membership) => membership.organizationId === selectedOrganizationId);
+		const savedIsValid = memberships.some((membership) => membership.organizationId === savedOrganizationId);
+		const nextOrganizationId = currentIsValid
+			? selectedOrganizationId
+			: savedIsValid
+				? savedOrganizationId
+				: (memberships[0]?.organizationId ?? '');
+		selectedOrganizationId = nextOrganizationId;
+		if (nextOrganizationId) localStorage.setItem(organizationStorageKey, nextOrganizationId);
+		else localStorage.removeItem(organizationStorageKey);
+	}
+
+	async function selectOrganization(organizationId: string): Promise<void> {
+		selectedOrganizationId = organizationId;
+		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
+		else localStorage.removeItem(organizationStorageKey);
+		await refreshApprovals();
+	}
+
+	async function createOrganization(): Promise<void> {
+		const name = newOrganizationName.trim();
+		if (!name) return;
+		error = '';
+		try {
+			const membership = await client({ includeOrganization: false }).createOrganization({ name });
+			newOrganizationName = '';
+			await refreshOrganizations();
+			await selectOrganization(membership.organizationId);
+		} catch (err) {
+			error = messageForError(err);
+		}
 	}
 
 	async function refreshApprovals(): Promise<void> {
@@ -93,7 +151,7 @@
 		adminToken = adminToken.trim();
 		if (adminToken) localStorage.setItem(adminTokenStorageKey, adminToken);
 		else localStorage.removeItem(adminTokenStorageKey);
-		await refreshApprovals();
+		await refreshWorkspace();
 	}
 
 	async function createPairingToken(): Promise<void> {
@@ -178,6 +236,30 @@
 					{/if}
 				</div>
 			{/if}
+		</section>
+	{/if}
+
+	{#if runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn)}
+		<section class="card grid">
+			<div class="stack">
+				<h2>Organization</h2>
+				{#if organizations.length > 0}
+					<label for="organization-select">Active local organization</label>
+					<select id="organization-select" bind:value={selectedOrganizationId} onchange={(event) => void selectOrganization(event.currentTarget.value)}>
+						{#each organizations as membership}
+							<option value={membership.organizationId}>{membership.name} ({membership.role})</option>
+						{/each}
+					</select>
+					<p class="subtle">Requests, agent tokens, and devices use this local Agent Tick organization. Clerk organizations are not used for authorization.</p>
+				{:else}
+					<p class="subtle">No local organization memberships loaded yet.</p>
+				{/if}
+			</div>
+			<form class="stack" onsubmit={(event) => { event.preventDefault(); void createOrganization(); }}>
+				<label for="new-organization">Create local organization</label>
+				<input id="new-organization" bind:value={newOrganizationName} placeholder="Organization name" />
+				<button type="submit">Create organization</button>
+			</form>
 		</section>
 	{/if}
 
@@ -309,7 +391,8 @@
 		margin-top: 0;
 	}
 
-	input {
+	input,
+	select {
 		min-width: 260px;
 		padding: 10px 12px;
 		border: 1px solid #334155;
@@ -414,7 +497,8 @@
 			flex-direction: column;
 		}
 
-		input {
+		input,
+		select {
 			min-width: 0;
 		}
 	}
