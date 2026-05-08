@@ -126,6 +126,23 @@ describe('server skeleton', () => {
     expect(projects.statusCode).toBe(200);
     expect(projects.json()).toEqual([expect.objectContaining({ projectId: project.json().projectId })]);
 
+    const team = await app.inject({
+      method: 'POST',
+      url: '/v1/teams',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { name: 'Platform' }
+    });
+    expect(team.statusCode).toBe(200);
+    expect(team.json()).toMatchObject({ organizationId, name: 'Platform', slug: 'platform', userId: 'usr_default', role: 'owner' });
+
+    const teams = await app.inject({ method: 'GET', url: '/v1/teams', headers: { 'x-agent-tick-organization-id': organizationId } });
+    expect(teams.statusCode).toBe(200);
+    expect(teams.json()).toEqual([expect.objectContaining({ teamId: team.json().teamId })]);
+
+    const teamMembers = await app.inject({ method: 'GET', url: `/v1/teams/${team.json().teamId}/members`, headers: { 'x-agent-tick-organization-id': organizationId } });
+    expect(teamMembers.statusCode).toBe(200);
+    expect(teamMembers.json()).toEqual([expect.objectContaining({ teamId: team.json().teamId, userId: 'usr_default' })]);
+
     const forbidden = await app.inject({ method: 'GET', url: '/v1/me', headers: { 'x-agent-tick-organization-id': 'org_missing' } });
     expect(forbidden.statusCode).toBe(403);
   });

@@ -93,6 +93,36 @@ describe('AgentTickClient', () => {
     ]);
   });
 
+  it('calls team endpoints with validated payloads', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        const team = {
+          teamId: 'team_123',
+          organizationId: 'org_123',
+          name: 'Platform',
+          slug: 'platform',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z'
+        };
+        if (String(input).endsWith('/v1/teams') && init?.method === 'POST') return jsonResponse({ ...team, userId: 'usr_123', role: 'owner' });
+        if (String(input).endsWith('/members')) return jsonResponse([{ ...team, userId: 'usr_123', role: 'owner' }]);
+        return jsonResponse([team]);
+      }
+    });
+
+    await expect(client.createTeam({ name: 'Platform' })).resolves.toMatchObject({ teamId: 'team_123', role: 'owner' });
+    await expect(client.listTeams()).resolves.toEqual([expect.objectContaining({ teamId: 'team_123' })]);
+    await expect(client.listTeamMembers('team_123')).resolves.toEqual([expect.objectContaining({ userId: 'usr_123' })]);
+    expect(requests).toEqual([
+      { method: 'POST', url: 'https://tick.example.com/v1/teams', body: { name: 'Platform' } },
+      { method: 'GET', url: 'https://tick.example.com/v1/teams', body: undefined },
+      { method: 'GET', url: 'https://tick.example.com/v1/teams/team_123/members', body: undefined }
+    ]);
+  });
+
   it('calls organization member endpoint', async () => {
     const seen: { url?: string; method?: string } = {};
     const client = new AgentTickClient({

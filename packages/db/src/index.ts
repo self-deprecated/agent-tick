@@ -99,6 +99,30 @@ export interface CreateProjectInput {
   description?: string;
 }
 
+export interface TeamRecord {
+  teamId: string;
+  organizationId: string;
+  name: string;
+  slug: string;
+  description: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | undefined;
+}
+
+export interface TeamMembershipRecord extends TeamRecord {
+  userId: string;
+  role: string;
+}
+
+export interface CreateTeamInput {
+  organizationId: string;
+  userId: string;
+  name: string;
+  slug?: string;
+  description?: string;
+}
+
 export interface DeviceRegistrationInput {
   userId: string;
   organizationId: string;
@@ -342,6 +366,43 @@ export class AgentTickStore {
   getProject(projectId: string): ProjectRecord | null {
     const row = this.db.prepare('SELECT * FROM projects WHERE project_id = ?').get(projectId) as ProjectRow | undefined;
     return row ? mapProjectRow(row) : null;
+  }
+
+  listTeams(organizationId = DEFAULT_ORGANIZATION_ID): TeamRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM teams WHERE organization_id = ? ORDER BY archived_at IS NOT NULL, name COLLATE NOCASE ASC')
+      .all(organizationId) as TeamRow[];
+    return rows.map(mapTeamRow);
+  }
+
+  createTeam(input: CreateTeamInput, now = new Date().toISOString()): TeamMembershipRecord {
+    const teamId = newID('team');
+    const cleanName = input.name.trim();
+    const slug = uniqueTeamSlug(this.db, input.organizationId, input.slug ?? cleanName);
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare('INSERT INTO teams(team_id, organization_id, name, slug, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(teamId, input.organizationId, cleanName, slug, input.description?.trim() || null, now, now);
+      this.db
+        .prepare('INSERT INTO team_memberships(team_id, organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(teamId, input.organizationId, input.userId, 'owner', now, now);
+    });
+    tx();
+    this.writeAuditEvent(input.organizationId, input.userId, 'team.created', teamId, { name: cleanName, slug }, now);
+    return this.listTeamMembers(teamId)[0] ?? missingTeam(teamId);
+  }
+
+  listTeamMembers(teamId: string): TeamMembershipRecord[] {
+    const rows = this.db
+      .prepare(`
+        SELECT t.team_id, t.organization_id, t.name, t.slug, t.description, t.created_at, t.updated_at, t.archived_at, m.user_id, m.role
+        FROM team_memberships m
+        JOIN teams t ON t.team_id = m.team_id
+        WHERE m.team_id = ?
+        ORDER BY m.created_at ASC
+      `)
+      .all(teamId) as TeamMembershipRow[];
+    return rows.map(mapTeamMembershipRow);
   }
 
   createAgentToken(input: CreateAgentTokenInput, now = new Date().toISOString()): AgentCredential {
@@ -690,6 +751,27 @@ function mapProjectRow(row: ProjectRow): ProjectRecord {
   };
 }
 
+function mapTeamRow(row: TeamRow): TeamRecord {
+  return {
+    teamId: row.team_id,
+    organizationId: row.organization_id,
+    name: row.name,
+    slug: row.slug,
+    description: row.description ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? undefined
+  };
+}
+
+function mapTeamMembershipRow(row: TeamMembershipRow): TeamMembershipRecord {
+  return {
+    ...mapTeamRow(row),
+    userId: row.user_id,
+    role: row.role
+  };
+}
+
 function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
   return {
     agentId: row.agent_id,
@@ -816,6 +898,17 @@ function uniqueProjectSlug(db: Database.Database, organizationId: string, input:
   return candidate;
 }
 
+function uniqueTeamSlug(db: Database.Database, organizationId: string, input: string): string {
+  const base = slugify(input);
+  let candidate = base;
+  let suffix = 2;
+  while (db.prepare('SELECT 1 FROM teams WHERE organization_id = ? AND slug = ?').get(organizationId, candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
 function httpError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
   const error = new Error(message) as Error & { statusCode: number; code: string };
   error.statusCode = statusCode;
@@ -837,6 +930,10 @@ function missingOrganization(id: string): never {
 
 function missingProject(id: string): never {
   throw new Error(`project ${id} was not created`);
+}
+
+function missingTeam(id: string): never {
+  throw new Error(`team ${id} was not created`);
 }
 
 function missingAvailability(userId: string): never {
@@ -870,6 +967,22 @@ interface ProjectRow {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+}
+
+interface TeamRow {
+  team_id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+interface TeamMembershipRow extends TeamRow {
+  user_id: string;
+  role: string;
 }
 
 interface OrganizationMembershipRow {
@@ -1016,6 +1129,32 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE INDEX IF NOT EXISTS projects_org_idx ON projects(organization_id, archived_at, name);
+
+CREATE TABLE IF NOT EXISTS teams (
+  team_id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE(organization_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS teams_org_idx ON teams(organization_id, archived_at, name);
+
+CREATE TABLE IF NOT EXISTS team_memberships (
+  team_id TEXT NOT NULL REFERENCES teams(team_id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  role TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (team_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS team_memberships_user_idx ON team_memberships(organization_id, user_id);
 
 CREATE TABLE IF NOT EXISTS agent_tokens (
   agent_id TEXT PRIMARY KEY,

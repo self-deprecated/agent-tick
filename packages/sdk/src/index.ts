@@ -9,6 +9,7 @@ import {
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
   CreateOrganizationSchema,
+  CreateTeamSchema,
   DeviceCredentialSchema,
   DeviceRecordSchema,
   EventTicketResponseSchema,
@@ -22,6 +23,8 @@ import {
   RegisterDeviceSchema,
   RespondApprovalRequestSchema,
   CreateProjectSchema,
+  TeamMembershipSchema,
+  TeamRecordSchema,
   UpdateDevicePushTokenSchema,
   WaitApprovalResponseSchema,
   type AgentCredential,
@@ -34,6 +37,7 @@ import {
   type CreateApprovalRequest,
   type CreateOrganization,
   type CreateProject,
+  type CreateTeam,
   type DeviceCredential,
   type DeviceRecord,
   type EventTicketResponse,
@@ -46,6 +50,8 @@ import {
   type RegisterDevice,
   type RegisterDeviceResponse,
   type RespondApprovalRequest,
+  type TeamMembership,
+  type TeamRecord,
   type UpdateDevicePushToken,
   type WaitApprovalResponse
 } from '@agent-tick/shared';
@@ -176,6 +182,20 @@ export class AgentTickClient {
     });
   }
 
+  listTeams(): Promise<TeamRecord[]> {
+    return this.#request('GET', '/v1/teams', TeamRecordSchema.array());
+  }
+
+  createTeam(input: CreateTeam): Promise<TeamMembership> {
+    return this.#request('POST', '/v1/teams', TeamMembershipSchema, {
+      body: CreateTeamSchema.parse(input)
+    });
+  }
+
+  listTeamMembers(teamId: string): Promise<TeamMembership[]> {
+    return this.#request('GET', `/v1/teams/${encodeURIComponent(teamId)}/members`, TeamMembershipSchema.array());
+  }
+
   createEventTicket(): Promise<EventTicketResponse> {
     return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
   }
@@ -272,6 +292,7 @@ export type {
   CreateApprovalRequest,
   CreateOrganization,
   CreateProject,
+  CreateTeam,
   DeviceCredential,
   DeviceRecord,
   EventTicketResponse,
@@ -284,6 +305,8 @@ export type {
   RegisterDevice,
   RegisterDeviceResponse,
   RespondApprovalRequest,
+  TeamMembership,
+  TeamRecord,
   UpdateDevicePushToken,
   WaitApprovalResponse
 };

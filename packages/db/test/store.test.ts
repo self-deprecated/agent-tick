@@ -35,6 +35,12 @@ describe('AgentTickStore', () => {
     expect(project).toMatchObject({ organizationId: created.organizationId, name: 'Mobile App', slug: 'mobile-app' });
     expect(store.createProject({ organizationId: created.organizationId, userId: 'usr_default', name: 'Mobile App' }).slug).toBe('mobile-app-2');
     expect(store.listProjects(created.organizationId).map((entry) => entry.projectId)).toContain(project.projectId);
+
+    const team = store.createTeam({ organizationId: created.organizationId, userId: 'usr_default', name: 'Platform' });
+    expect(team).toMatchObject({ organizationId: created.organizationId, name: 'Platform', slug: 'platform', userId: 'usr_default', role: 'owner' });
+    expect(store.createTeam({ organizationId: created.organizationId, userId: 'usr_default', name: 'Platform' }).slug).toBe('platform-2');
+    expect(store.listTeams(created.organizationId).map((entry) => entry.teamId)).toContain(team.teamId);
+    expect(store.listTeamMembers(team.teamId)).toEqual([team]);
   });
 
   it('creates and verifies agent tokens by hash', () => {

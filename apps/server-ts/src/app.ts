@@ -14,6 +14,7 @@ import { registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPairingRoutes } from './routes/pairing.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerProjectRoutes } from './routes/projects.js';
+import { registerTeamRoutes } from './routes/teams.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -55,6 +56,7 @@ export async function buildApp({ config, store }: BuildAppOptions): Promise<Fast
   await registerPairingRoutes(app, { config, store });
   await registerPresenceRoutes(app, { config, store });
   await registerProjectRoutes(app, { config, store });
+  await registerTeamRoutes(app, { config, store });
   await registerAuditRoutes(app, { config, store });
   await registerEventRoutes(app, { config, store });
 
