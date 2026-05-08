@@ -181,6 +181,23 @@ describe('AgentTickStore', () => {
     expect(store.pairDeviceWithCode(pairing.token, 'Replay', 'ios')).toBeNull();
   });
 
+  it('cleans expired event tickets and pairing codes', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    store.createEventTicket({ source: 'agent', organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_expired', ttlSeconds: 1 }, '2026-05-08T00:00:00.000Z');
+    store.createEventTicket({ source: 'agent', organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_active', ttlSeconds: 60 }, '2026-05-08T00:00:00.000Z');
+    store.createPairingToken('usr_default', DEFAULT_ORGANIZATION_ID, '2026-05-08T00:00:00.000Z', 1);
+    store.createPairingToken('usr_default', DEFAULT_ORGANIZATION_ID, '2026-05-08T00:00:00.000Z', 60);
+
+    const result = store.cleanupExpiredSecrets('2026-05-08T00:00:06.000Z');
+
+    expect(result).toEqual({ eventTickets: 1, pairingCodes: 1 });
+    expect(store.db.prepare('SELECT COUNT(*) AS count FROM event_tickets').get()).toEqual({ count: 1 });
+    expect(store.db.prepare('SELECT COUNT(*) AS count FROM pairing_codes').get()).toEqual({ count: 1 });
+  });
+
   it('registers devices and moves duplicate push tokens', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

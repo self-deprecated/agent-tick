@@ -185,7 +185,7 @@ Implemented so far:
 - Agent token create/list/revoke APIs, including optional project/team/default-policy scoping and owning-agent abandon checks.
 - Single-mode mobile pairing and device-token auth.
 - Clerk-mode device registration and push token APIs.
-- Short-lived opaque event tickets for event streams.
+- Short-lived opaque event tickets for event streams, with startup/hourly cleanup for expired tickets and pairing codes.
 - Mobile Clerk runtime discovery and ClerkProvider sign-in wiring.
 - Mobile local organization selection for Clerk-mode multi-org users.
 - Best-effort Clerk-mode mobile device unregister on sign-out/server switch.
@@ -216,6 +216,6 @@ Operational hardening:
 
 - Rate limits on auth-sensitive endpoints.
 - Continue audit/authorization coverage review for all mutable routes.
-- Retention/cleanup for expired event tickets and pairing codes.
+- Broader retention/cleanup policy for old approvals, audit events, devices, and expired invites.
 - Docker release workflow and published npm CLI package.
 - Broaden mobile Jest/Expo coverage now that the pnpm harness runs in the workspace test suite.

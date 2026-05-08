@@ -290,6 +290,11 @@ export interface AuditEventRecord {
   createdAt: string;
 }
 
+export interface CleanupExpiredSecretsResult {
+  eventTickets: number;
+  pairingCodes: number;
+}
+
 export class AgentTickStore {
   readonly db: Database.Database;
 
@@ -328,6 +333,15 @@ export class AgentTickStore {
         .run(DEFAULT_ORGANIZATION_ID, DEFAULT_USER_ID, 'owner', now, now);
     });
     tx();
+  }
+
+  cleanupExpiredSecrets(now = new Date().toISOString()): CleanupExpiredSecretsResult {
+    const tx = this.db.transaction(() => {
+      const eventTickets = this.db.prepare('DELETE FROM event_tickets WHERE expires_at <= ?').run(now).changes;
+      const pairingCodes = this.db.prepare('DELETE FROM pairing_codes WHERE expires_at <= ? OR used_at IS NOT NULL').run(now).changes;
+      return { eventTickets, pairingCodes };
+    });
+    return tx();
   }
 
   loginOrCreateClerkIdentity(profile: ClerkIdentityProfile, now = new Date().toISOString()): HumanIdentityResult {
@@ -921,9 +935,9 @@ export class AgentTickStore {
     return device;
   }
 
-  createPairingToken(userId: string, organizationId: string, now = new Date().toISOString()): PairingTokenRecord {
+  createPairingToken(userId: string, organizationId: string, now = new Date().toISOString(), ttlSeconds = 10 * 60): PairingTokenRecord {
     const token = `pair_${randomToken()}`;
-    const expiresAt = new Date(new Date(now).getTime() + 10 * 60_000).toISOString();
+    const expiresAt = new Date(new Date(now).getTime() + ttlSeconds * 1000).toISOString();
     this.db
       .prepare('INSERT INTO pairing_codes(token_hash, user_id, organization_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(hashToken(token), userId, organizationId, expiresAt, now);
