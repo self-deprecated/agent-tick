@@ -1,13 +1,8 @@
-import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
+import { CreateAgentTokenSchema } from '@agent-tick/shared';
 import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requirePrivilegedHuman } from '../auth/context.js';
-
-const CreateAgentTokenSchema = z.object({
-  name: z.string().min(1),
-  scopes: z.array(z.string()).optional()
-});
 
 export interface AgentTokenRoutesOptions {
   config: ServerConfig;
@@ -27,6 +22,9 @@ export async function registerAgentTokenRoutes(app: FastifyInstance, { config, s
       name: input.name,
       organizationId: auth.organizationId,
       ...(input.scopes ? { scopes: input.scopes } : {}),
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+      ...(input.teamId ? { teamId: input.teamId } : {}),
+      ...(input.defaultApprovalPolicy ? { defaultApprovalPolicy: input.defaultApprovalPolicy } : {}),
       ...(auth.userId ? { ownerUserId: auth.userId } : {})
     });
   });

@@ -23,6 +23,9 @@ export interface AgentTokenRecord {
   scopes: string[];
   organizationId: string;
   ownerUserId: string | undefined;
+  projectId: string | undefined;
+  teamId: string | undefined;
+  defaultApprovalPolicy: string | undefined;
   lastRequestAt: string | undefined;
   createdAt: string;
   revokedAt: string | undefined;
@@ -39,6 +42,9 @@ export interface AgentTokenAuth {
   scopes: string[];
   organizationId: string;
   ownerUserId: string | undefined;
+  projectId: string | undefined;
+  teamId: string | undefined;
+  defaultApprovalPolicy: string | undefined;
 }
 
 export interface CreateAgentTokenInput {
@@ -46,6 +52,9 @@ export interface CreateAgentTokenInput {
   scopes?: string[];
   organizationId?: string;
   ownerUserId?: string;
+  projectId?: string;
+  teamId?: string;
+  defaultApprovalPolicy?: string;
 }
 
 export interface CreateApprovalInput extends CreateApprovalRequest {
@@ -628,19 +637,43 @@ export class AgentTickStore {
     return Boolean(this.db.prepare('SELECT 1 FROM teams WHERE team_id = ? AND organization_id = ?').get(teamId, organizationId));
   }
 
+  policyBelongsToOrganization(policyId: string, organizationId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM policies WHERE policy_id = ? AND organization_id = ?').get(policyId, organizationId));
+  }
+
   createAgentToken(input: CreateAgentTokenInput, now = new Date().toISOString()): AgentCredential {
     const agentId = newID('agt');
     const token = `agent_${randomToken()}`;
     const scopes = input.scopes?.length ? input.scopes : ['approval:create'];
     const organizationId = input.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    if (input.projectId && !this.projectBelongsToOrganization(input.projectId, organizationId)) {
+      throw httpError(400, 'bad_request', 'Project is not in the selected organization');
+    }
+    if (input.teamId && !this.teamBelongsToOrganization(input.teamId, organizationId)) {
+      throw httpError(400, 'bad_request', 'Team is not in the selected organization');
+    }
+    if (input.defaultApprovalPolicy && !this.policyBelongsToOrganization(input.defaultApprovalPolicy, organizationId)) {
+      throw httpError(400, 'bad_request', 'Policy is not in the selected organization');
+    }
     this.db
       .prepare(
         `INSERT INTO agent_tokens(
-          agent_id, organization_id, owner_user_id, name, token_hash, scopes_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+          agent_id, organization_id, owner_user_id, project_id, team_id, default_approval_policy, name, token_hash, scopes_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(agentId, organizationId, input.ownerUserId ?? null, input.name.trim(), hashToken(token), JSON.stringify(scopes), now);
-    this.writeAuditEvent(organizationId, input.ownerUserId ?? agentId, 'agent_token.created', agentId, { name: input.name.trim(), scopes }, now);
+      .run(
+        agentId,
+        organizationId,
+        input.ownerUserId ?? null,
+        input.projectId ?? null,
+        input.teamId ?? null,
+        input.defaultApprovalPolicy ?? null,
+        input.name.trim(),
+        hashToken(token),
+        JSON.stringify(scopes),
+        now
+      );
+    this.writeAuditEvent(organizationId, input.ownerUserId ?? agentId, 'agent_token.created', agentId, { name: input.name.trim(), scopes, projectId: input.projectId, teamId: input.teamId }, now);
     return {
       agentId,
       name: input.name.trim(),
@@ -648,6 +681,9 @@ export class AgentTickStore {
       scopes,
       organizationId,
       ownerUserId: input.ownerUserId,
+      projectId: input.projectId,
+      teamId: input.teamId,
+      defaultApprovalPolicy: input.defaultApprovalPolicy,
       lastRequestAt: undefined,
       createdAt: now,
       revokedAt: undefined
@@ -688,7 +724,10 @@ export class AgentTickStore {
       name: row.name,
       scopes: parseJSON<string[]>(row.scopes_json, []),
       organizationId: row.organization_id,
-      ownerUserId: row.owner_user_id ?? undefined
+      ownerUserId: row.owner_user_id ?? undefined,
+      projectId: row.project_id ?? undefined,
+      teamId: row.team_id ?? undefined,
+      defaultApprovalPolicy: row.default_approval_policy ?? undefined
     };
   }
 
@@ -1033,6 +1072,9 @@ function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
     scopes: parseJSON<string[]>(row.scopes_json, []),
     organizationId: row.organization_id,
     ownerUserId: row.owner_user_id ?? undefined,
+    projectId: row.project_id ?? undefined,
+    teamId: row.team_id ?? undefined,
+    defaultApprovalPolicy: row.default_approval_policy ?? undefined,
     lastRequestAt: row.last_request_at ?? undefined,
     createdAt: row.created_at,
     revokedAt: row.revoked_at ?? undefined
@@ -1293,6 +1335,9 @@ interface AgentTokenRow {
   agent_id: string;
   organization_id: string;
   owner_user_id: string | null;
+  project_id: string | null;
+  team_id: string | null;
+  default_approval_policy: string | null;
   name: string;
   token_hash: string;
   scopes_json: string;
@@ -1489,6 +1534,9 @@ CREATE TABLE IF NOT EXISTS agent_tokens (
   agent_id TEXT PRIMARY KEY,
   organization_id TEXT NOT NULL REFERENCES organizations(id),
   owner_user_id TEXT REFERENCES users(id),
+  project_id TEXT REFERENCES projects(project_id),
+  team_id TEXT REFERENCES teams(team_id),
+  default_approval_policy TEXT REFERENCES policies(policy_id),
   name TEXT NOT NULL,
   token_hash TEXT NOT NULL UNIQUE,
   scopes_json TEXT NOT NULL,

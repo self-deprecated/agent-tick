@@ -47,6 +47,9 @@
 	let pairingToken = $state<PairingToken | undefined>();
 	let adminToken = $state('');
 	let agentName = $state('Local agent');
+	let agentProjectId = $state('');
+	let agentTeamId = $state('');
+	let agentPolicyId = $state('');
 	let loading = $state(false);
 	let error = $state('');
 	let clerk = $state<ClerkJS | undefined>();
@@ -337,7 +340,12 @@
 		error = '';
 		createdCredential = undefined;
 		try {
-			createdCredential = await client().createAgentToken({ name: agentName });
+			createdCredential = await client().createAgentToken({
+				name: agentName,
+				...(agentProjectId ? { projectId: agentProjectId } : {}),
+				...(agentTeamId ? { teamId: agentTeamId } : {}),
+				...(agentPolicyId ? { defaultApprovalPolicy: agentPolicyId } : {})
+			});
 			await Promise.all([refreshAgentTokens(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
@@ -611,9 +619,34 @@
 
 	<section class="card stack">
 		<h2>Create an agent token</h2>
-		<form class="row" onsubmit={(event) => { event.preventDefault(); void createAgentToken(); }}>
-			<input bind:value={agentName} aria-label="Agent name" />
-			<button type="submit">Create token</button>
+		<form class="stack" onsubmit={(event) => { event.preventDefault(); void createAgentToken(); }}>
+			<div class="row">
+				<input bind:value={agentName} aria-label="Agent name" />
+				<button type="submit">Create token</button>
+			</div>
+			<div class="row">
+				<label for="agent-project" class="inline-label">Project</label>
+				<select id="agent-project" bind:value={agentProjectId}>
+					<option value="">Any project</option>
+					{#each projects as project}
+						<option value={project.projectId}>{project.name} ({project.slug})</option>
+					{/each}
+				</select>
+				<label for="agent-team" class="inline-label">Team</label>
+				<select id="agent-team" bind:value={agentTeamId}>
+					<option value="">Any team</option>
+					{#each teams as team}
+						<option value={team.teamId}>{team.name} ({team.slug})</option>
+					{/each}
+				</select>
+				<label for="agent-policy" class="inline-label">Policy</label>
+				<select id="agent-policy" bind:value={agentPolicyId}>
+					<option value="">Default policy</option>
+					{#each policies as policy}
+						<option value={policy.policyId}>{policy.name}</option>
+					{/each}
+				</select>
+			</div>
 		</form>
 		{#if createdCredential}
 			<div class="token">
@@ -629,7 +662,12 @@
 					<li class="item-card" class:is-muted={Boolean(token.revokedAt)}>
 						<div>
 							<strong>{token.name}</strong>
-							<p class="subtle">{token.agentId} · {token.scopes.join(', ')} · {token.revokedAt ? `revoked ${new Date(token.revokedAt).toLocaleString()}` : 'active'}</p>
+							<p class="subtle">
+								{token.agentId} · {token.scopes.join(', ')} · {token.revokedAt ? `revoked ${new Date(token.revokedAt).toLocaleString()}` : 'active'}
+								{token.projectId ? ` · project ${projectLabel(token.projectId)}` : ''}
+								{token.teamId ? ` · team ${teamLabel(token.teamId)}` : ''}
+								{token.defaultApprovalPolicy ? ` · policy ${token.defaultApprovalPolicy}` : ''}
+							</p>
 						</div>
 						{#if !token.revokedAt}<button class="danger" onclick={() => void revokeAgentToken(token.agentId)}>Revoke</button>{/if}
 					</li>

@@ -181,7 +181,7 @@ Implemented so far:
 - Project, team, and basic policy foundations with dashboard management.
 - Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens and dashboard management.
 - Approval request create/list/get/respond/abandon/wait APIs.
-- Agent token create/list/revoke APIs.
+- Agent token create/list/revoke APIs, including optional project/team/default-policy scoping.
 - Single-mode mobile pairing and device-token auth.
 - Clerk-mode device registration and push token APIs.
 - Short-lived opaque event tickets for event streams.
@@ -206,7 +206,6 @@ High priority:
 Product rebuilds to evaluate/port from the prototype:
 
 - Full team membership management beyond owner bootstrap.
-- Project-scoped agent registration and routing.
 - Policy templates and multi-approval policy engine.
 - Notification delivery service beyond stored push tokens.
 - MCP/adapter/guard integrations that still fit the npm CLI model.

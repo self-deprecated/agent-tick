@@ -13,6 +13,9 @@ export interface AuthContext {
   organizationId: string;
   role?: string;
   agentId?: string;
+  projectId?: string;
+  teamId?: string;
+  defaultApprovalPolicy?: string;
   deviceId?: string;
   provider?: 'clerk';
   providerIssuer?: string;
@@ -40,7 +43,10 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
       source: 'agent',
       isHuman: false,
       agentId: agent.agentId,
-      organizationId: agent.organizationId
+      organizationId: agent.organizationId,
+      ...(agent.projectId ? { projectId: agent.projectId } : {}),
+      ...(agent.teamId ? { teamId: agent.teamId } : {}),
+      ...(agent.defaultApprovalPolicy ? { defaultApprovalPolicy: agent.defaultApprovalPolicy } : {})
     };
   }
 

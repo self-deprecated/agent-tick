@@ -282,7 +282,10 @@ export type WaitApprovalResponse = z.infer<typeof WaitApprovalResponseSchema>;
 
 export const CreateAgentTokenSchema = z.object({
   name: z.string().min(1),
-  scopes: z.array(z.string()).optional()
+  scopes: z.array(z.string()).optional(),
+  projectId: z.string().optional(),
+  teamId: z.string().optional(),
+  defaultApprovalPolicy: z.string().optional()
 });
 export type CreateAgentToken = z.input<typeof CreateAgentTokenSchema>;
 
@@ -292,6 +295,9 @@ export const AgentTokenRecordSchema = z.object({
   scopes: z.array(z.string()),
   organizationId: z.string(),
   ownerUserId: z.string().optional(),
+  projectId: z.string().optional(),
+  teamId: z.string().optional(),
+  defaultApprovalPolicy: z.string().optional(),
   lastRequestAt: z.string().optional(),
   createdAt: z.string(),
   revokedAt: z.string().optional()

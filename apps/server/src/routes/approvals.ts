@@ -21,6 +21,15 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
     const input = CreateApprovalRequestSchema.parse(request.body);
     return store.createApprovalRequest({
       ...input,
+      requester: {
+        ...input.requester,
+        ...(auth.projectId && !input.requester.projectId ? { projectId: auth.projectId } : {})
+      },
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(auth.teamId ? { teamId: auth.teamId } : {}),
+        ...(auth.defaultApprovalPolicy ? { defaultApprovalPolicy: auth.defaultApprovalPolicy } : {})
+      },
       organizationId: auth.organizationId,
       ...(auth.agentId ? { agentId: auth.agentId } : {}),
       ...(auth.isHuman && auth.userId ? { userId: auth.userId } : {})

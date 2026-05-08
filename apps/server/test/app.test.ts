@@ -156,6 +156,24 @@ describe('server skeleton', () => {
     expect(policies.statusCode).toBe(200);
     expect(policies.json()).toEqual([expect.objectContaining({ policyId: policy.json().policyId })]);
 
+    const scopedAgent = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-tokens',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { name: 'scoped agent', projectId: project.json().projectId, teamId: team.json().teamId, defaultApprovalPolicy: policy.json().policyId }
+    });
+    expect(scopedAgent.statusCode).toBe(200);
+    expect(scopedAgent.json()).toMatchObject({ organizationId, projectId: project.json().projectId, teamId: team.json().teamId, defaultApprovalPolicy: policy.json().policyId });
+
+    const scopedApproval = await app.inject({
+      method: 'POST',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${scopedAgent.json().token}` },
+      payload: { requester: { name: 'scoped agent' }, title: 'Deploy scoped project?' }
+    });
+    expect(scopedApproval.statusCode).toBe(200);
+    expect(scopedApproval.json()).toMatchObject({ requester: { projectId: project.json().projectId }, metadata: { teamId: team.json().teamId, defaultApprovalPolicy: policy.json().policyId } });
+
     const invite = await app.inject({
       method: 'POST',
       url: '/v1/organization-invites',
