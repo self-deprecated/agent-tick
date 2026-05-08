@@ -129,7 +129,7 @@ export const CreateApprovalRequestSchema = z.object({
   risk: z.string().optional(),
   metadata: z.record(z.string(), z.string()).optional()
 });
-export type CreateApprovalRequest = z.infer<typeof CreateApprovalRequestSchema>;
+export type CreateApprovalRequest = z.input<typeof CreateApprovalRequestSchema>;
 
 export const RespondApprovalRequestSchema = z.object({
   choiceId: z.string().optional(),
@@ -138,7 +138,7 @@ export const RespondApprovalRequestSchema = z.object({
 }).refine((value) => Boolean(value.choiceId || value.message || value.answers), {
   message: 'response must include a choiceId, message, or answers'
 });
-export type RespondApprovalRequest = z.infer<typeof RespondApprovalRequestSchema>;
+export type RespondApprovalRequest = z.input<typeof RespondApprovalRequestSchema>;
 
 export const WaitApprovalResponseSchema = z.object({
   request: ApprovalRequestSchema,

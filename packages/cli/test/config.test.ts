@@ -1,0 +1,48 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
+import { parseDurationMs } from '../src/index.js';
+
+const tmpRoots: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tmpRoots.map((dir) => fs.rm(dir, { recursive: true, force: true })));
+  tmpRoots.length = 0;
+});
+
+describe('CLI config', () => {
+  it('uses AGENT_TICK_CONFIG when set', () => {
+    expect(clientConfigPath({ AGENT_TICK_CONFIG: '/tmp/agent-tick.json' })).toBe('/tmp/agent-tick.json');
+  });
+
+  it('saves and loads client config', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-cli-'));
+    tmpRoots.push(root);
+    const configPath = path.join(root, 'config.json');
+    const env = { AGENT_TICK_CONFIG: configPath };
+
+    await saveClientConfig({ server: 'https://tick.example.com/', token: ' agent_123 ' }, env);
+
+    await expect(loadClientConfig(env)).resolves.toEqual({ server: 'https://tick.example.com', token: 'agent_123' });
+  });
+
+  it('resolves env token before saved config', async () => {
+    const config = await resolveServerAndToken(
+      { server: undefined, token: undefined },
+      { AGENT_TICK_SERVER: 'https://env.example.com', AGENT_TICK_TOKEN: 'agent_env' }
+    );
+    expect(config).toEqual({ server: 'https://env.example.com', token: 'agent_env' });
+  });
+});
+
+describe('parseDurationMs', () => {
+  it('parses duration suffixes', () => {
+    expect(parseDurationMs('10ms')).toBe(10);
+    expect(parseDurationMs('2s')).toBe(2000);
+    expect(parseDurationMs('3m')).toBe(180000);
+    expect(parseDurationMs('1h')).toBe(3600000);
+    expect(parseDurationMs('0')).toBe(0);
+  });
+});
