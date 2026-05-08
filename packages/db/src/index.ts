@@ -80,6 +80,25 @@ export interface OrganizationMembershipRecord extends OrganizationRecord {
   role: string;
 }
 
+export interface ProjectRecord {
+  projectId: string;
+  organizationId: string;
+  name: string;
+  slug: string;
+  description: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | undefined;
+}
+
+export interface CreateProjectInput {
+  organizationId: string;
+  userId: string;
+  name: string;
+  slug?: string;
+  description?: string;
+}
+
 export interface DeviceRegistrationInput {
   userId: string;
   organizationId: string;
@@ -300,6 +319,29 @@ export class AgentTickStore {
       createdAt: now,
       updatedAt: now
     };
+  }
+
+  listProjects(organizationId = DEFAULT_ORGANIZATION_ID): ProjectRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM projects WHERE organization_id = ? ORDER BY archived_at IS NOT NULL, name COLLATE NOCASE ASC')
+      .all(organizationId) as ProjectRow[];
+    return rows.map(mapProjectRow);
+  }
+
+  createProject(input: CreateProjectInput, now = new Date().toISOString()): ProjectRecord {
+    const projectId = newID('prj');
+    const cleanName = input.name.trim();
+    const slug = uniqueProjectSlug(this.db, input.organizationId, input.slug ?? cleanName);
+    this.db
+      .prepare('INSERT INTO projects(project_id, organization_id, name, slug, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(projectId, input.organizationId, cleanName, slug, input.description?.trim() || null, now, now);
+    this.writeAuditEvent(input.organizationId, input.userId, 'project.created', projectId, { name: cleanName, slug }, now);
+    return this.getProject(projectId) ?? missingProject(projectId);
+  }
+
+  getProject(projectId: string): ProjectRecord | null {
+    const row = this.db.prepare('SELECT * FROM projects WHERE project_id = ?').get(projectId) as ProjectRow | undefined;
+    return row ? mapProjectRow(row) : null;
   }
 
   createAgentToken(input: CreateAgentTokenInput, now = new Date().toISOString()): AgentCredential {
@@ -635,6 +677,19 @@ function mapOrganizationMembershipRow(row: OrganizationMembershipRow): Organizat
   };
 }
 
+function mapProjectRow(row: ProjectRow): ProjectRecord {
+  return {
+    projectId: row.project_id,
+    organizationId: row.organization_id,
+    name: row.name,
+    slug: row.slug,
+    description: row.description ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? undefined
+  };
+}
+
 function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
   return {
     agentId: row.agent_id,
@@ -742,6 +797,25 @@ function parseJSON<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
+function slugify(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'project';
+}
+
+function uniqueProjectSlug(db: Database.Database, organizationId: string, input: string): string {
+  const base = slugify(input);
+  let candidate = base;
+  let suffix = 2;
+  while (db.prepare('SELECT 1 FROM projects WHERE organization_id = ? AND slug = ?').get(organizationId, candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
 function httpError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
   const error = new Error(message) as Error & { statusCode: number; code: string };
   error.statusCode = statusCode;
@@ -759,6 +833,10 @@ function missingDevice(id: string): never {
 
 function missingOrganization(id: string): never {
   throw new Error(`organization ${id} was not created`);
+}
+
+function missingProject(id: string): never {
+  throw new Error(`project ${id} was not created`);
 }
 
 function missingAvailability(userId: string): never {
@@ -781,6 +859,17 @@ interface AuditEventRow {
   target_id: string;
   payload_json: string;
   created_at: string;
+}
+
+interface ProjectRow {
+  project_id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
 }
 
 interface OrganizationMembershipRow {
@@ -913,6 +1002,20 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (organization_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS projects (
+  project_id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE(organization_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS projects_org_idx ON projects(organization_id, archived_at, name);
 
 CREATE TABLE IF NOT EXISTS agent_tokens (
   agent_id TEXT PRIMARY KEY,

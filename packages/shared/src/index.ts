@@ -63,6 +63,25 @@ export const CreateOrganizationSchema = z.object({
 });
 export type CreateOrganization = z.input<typeof CreateOrganizationSchema>;
 
+export const ProjectRecordSchema = z.object({
+  projectId: z.string(),
+  organizationId: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  description: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  archivedAt: z.string().optional()
+});
+export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
+
+export const CreateProjectSchema = z.object({
+  name: z.string().min(1),
+  slug: z.string().min(1).optional(),
+  description: z.string().optional()
+});
+export type CreateProject = z.input<typeof CreateProjectSchema>;
+
 export const MeResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email().optional(),

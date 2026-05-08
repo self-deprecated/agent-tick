@@ -67,6 +67,32 @@ describe('AgentTickClient', () => {
     expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/audit-events?limit=10' });
   });
 
+  it('calls project endpoints with validated payloads', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        const project = {
+          projectId: 'prj_123',
+          organizationId: 'org_123',
+          name: 'Mobile App',
+          slug: 'mobile-app',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z'
+        };
+        return String(input).endsWith('/v1/projects') && init?.method === 'POST' ? jsonResponse(project) : jsonResponse([project]);
+      }
+    });
+
+    await expect(client.createProject({ name: 'Mobile App' })).resolves.toMatchObject({ projectId: 'prj_123', slug: 'mobile-app' });
+    await expect(client.listProjects()).resolves.toEqual([expect.objectContaining({ projectId: 'prj_123' })]);
+    expect(requests).toEqual([
+      { method: 'POST', url: 'https://tick.example.com/v1/projects', body: { name: 'Mobile App' } },
+      { method: 'GET', url: 'https://tick.example.com/v1/projects', body: undefined }
+    ]);
+  });
+
   it('calls organization member endpoint', async () => {
     const seen: { url?: string; method?: string } = {};
     const client = new AgentTickClient({

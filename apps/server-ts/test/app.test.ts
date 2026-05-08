@@ -113,6 +113,19 @@ describe('server skeleton', () => {
     expect(members.statusCode).toBe(200);
     expect(members.json()).toEqual([expect.objectContaining({ organizationId, userId: 'usr_default', role: 'owner' })]);
 
+    const project = await app.inject({
+      method: 'POST',
+      url: '/v1/projects',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { name: 'Mobile App' }
+    });
+    expect(project.statusCode).toBe(200);
+    expect(project.json()).toMatchObject({ organizationId, name: 'Mobile App', slug: 'mobile-app' });
+
+    const projects = await app.inject({ method: 'GET', url: '/v1/projects', headers: { 'x-agent-tick-organization-id': organizationId } });
+    expect(projects.statusCode).toBe(200);
+    expect(projects.json()).toEqual([expect.objectContaining({ projectId: project.json().projectId })]);
+
     const forbidden = await app.inject({ method: 'GET', url: '/v1/me', headers: { 'x-agent-tick-organization-id': 'org_missing' } });
     expect(forbidden.statusCode).toBe(403);
   });
