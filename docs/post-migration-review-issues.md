@@ -164,9 +164,11 @@ Recommended action: add provider-specific notification docs only with matching i
 
 ### Additive database migration helpers remain
 
-The database layer still includes additive `ensureColumn(...)` compatibility logic. This is not harmful, but it slightly conflicts with the “fresh TypeScript app, no prototype migration path” messaging.
+Status: accepted as normal TypeScript schema-evolution support, not as a Go/prototype compatibility path.
 
-Recommended action: decide whether to keep this as normal schema evolution support or simplify fresh-app initialization.
+The database layer still includes additive `ensureColumn(...)` logic. This is useful for self-hosted upgrades of the TypeScript service even though there is no Go-era/prototype migration promise.
+
+Recommended action: keep future schema changes explicit and covered by tests.
 
 ### Event tickets are reusable until expiry
 
@@ -178,17 +180,23 @@ Recommended action: keep clients creating a fresh ticket for every EventSource c
 
 ### Rate limiting is in-memory and per-process
 
+Status: accepted for current self-hosted/single-node scope; distributed backing is deferred until hosted/multi-instance deployment work.
+
 This is fine for self-hosted/single-node deployments, but hosted/multi-instance deployments need distributed backing.
 
 Recommended action: add Redis or another distributed rate-limit backend before multi-instance hosted deployment.
 
 ### Admin bundle has a large Clerk chunk warning
 
+Status: accepted as a known build warning for now; the production build and Svelte checks pass.
+
 The admin production build passes, but Vite warns about a large Clerk chunk of roughly 1.46 MB.
 
 Recommended action: perform bundle analysis and consider further code splitting if admin load time becomes an issue.
 
 ### Local ignored artifacts exist
+
+Status: no repository action required.
 
 Local ignored artifacts such as `agent-tick.db`, WAL/SHM files, `node_modules`, and build outputs may exist in working directories. They are ignored/untracked and are not a repository cleanliness issue.
 
