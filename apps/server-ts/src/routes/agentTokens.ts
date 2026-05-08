@@ -16,12 +16,12 @@ export interface AgentTokenRoutesOptions {
 
 export async function registerAgentTokenRoutes(app: FastifyInstance, { config, store }: AgentTokenRoutesOptions): Promise<void> {
   app.get('/v1/agent-tokens', async (request) => {
-    const auth = requireHuman(request, config, store);
+    const auth = await requireHuman(request, config, store);
     return store.listAgentTokens(auth.organizationId);
   });
 
   app.post('/v1/agent-tokens', async (request) => {
-    const auth = requireHuman(request, config, store);
+    const auth = await requireHuman(request, config, store);
     const input = CreateAgentTokenSchema.parse(request.body);
     return store.createAgentToken({
       name: input.name,

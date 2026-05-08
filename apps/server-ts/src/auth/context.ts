@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import { DEFAULT_ORGANIZATION_ID, DEFAULT_USER_ID, type AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
+import { verifyClerkSession } from './clerk.js';
 
-export type AuthSource = 'loopback' | 'admin' | 'agent';
+export type AuthSource = 'loopback' | 'admin' | 'agent' | 'clerk';
 
 export interface AuthContext {
   source: AuthSource;
@@ -12,9 +13,13 @@ export interface AuthContext {
   organizationId: string;
   role?: string;
   agentId?: string;
+  provider?: 'clerk';
+  providerIssuer?: string;
+  providerSubject?: string;
+  sessionId?: string;
 }
 
-export function authenticateRequest(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): AuthContext | null {
+export async function authenticateRequest(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext | null> {
   const bearer = bearerToken(request.headers.authorization);
   if (bearer?.startsWith('agent_')) {
     const agent = store.verifyAgentToken(bearer);
@@ -50,11 +55,15 @@ export function authenticateRequest(request: FastifyRequest, config: ServerConfi
     }
   }
 
+  if (config.mode === 'clerk' && bearer) {
+    return verifyClerkSession(bearer, config, store);
+  }
+
   return null;
 }
 
-export function requireAuth(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): AuthContext {
-  const auth = authenticateRequest(request, config, store);
+export async function requireAuth(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
+  const auth = await authenticateRequest(request, config, store);
   if (!auth) {
     const error = new Error('Authentication required') as Error & { statusCode: number; code: string };
     error.statusCode = 401;
@@ -64,8 +73,8 @@ export function requireAuth(request: FastifyRequest, config: ServerConfig, store
   return auth;
 }
 
-export function requireHuman(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): AuthContext {
-  const auth = requireAuth(request, config, store);
+export async function requireHuman(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
+  const auth = await requireAuth(request, config, store);
   if (!auth.isHuman) {
     const error = new Error('Human authentication required') as Error & { statusCode: number; code: string };
     error.statusCode = 403;

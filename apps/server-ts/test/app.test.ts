@@ -66,6 +66,30 @@ describe('server skeleton', () => {
     expect(JSON.stringify(response.json())).not.toContain('sk_test_secret');
   });
 
+  it('requires Clerk keys in clerk mode config', () => {
+    expect(() => loadConfig({ AGENT_TICK_MODE: 'clerk' })).toThrow(/CLERK_PUBLISHABLE_KEY/);
+  });
+
+  it('rejects invalid Clerk bearer tokens in clerk mode', async () => {
+    app = await buildApp({
+      config: loadConfig({
+        AGENT_TICK_MODE: 'clerk',
+        AGENT_TICK_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
+        AGENT_TICK_CLERK_SECRET_KEY: 'sk_test_secret'
+      }),
+      store: testStore()
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/me',
+      headers: { authorization: 'Bearer invalid.jwt.token' }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ error: { code: 'not_authenticated' } });
+  });
+
   it('returns structured 404 errors for API misses', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
     const response = await app.inject({ method: 'GET', url: '/v1/missing' });

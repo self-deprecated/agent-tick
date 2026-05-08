@@ -12,12 +12,12 @@ export interface ApprovalRoutesOptions {
 
 export async function registerApprovalRoutes(app: FastifyInstance, { config, store }: ApprovalRoutesOptions): Promise<void> {
   app.get('/v1/approval-requests', async (request) => {
-    const auth = requireAuth(request, config, store);
+    const auth = await requireAuth(request, config, store);
     return store.listApprovalRequests(auth.organizationId);
   });
 
   app.post('/v1/approval-requests', async (request) => {
-    const auth = requireAuth(request, config, store);
+    const auth = await requireAuth(request, config, store);
     const input = CreateApprovalRequestSchema.parse(request.body);
     return store.createApprovalRequest({
       ...input,
@@ -28,7 +28,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
   });
 
   app.get('/v1/approval-requests/:id', async (request, reply) => {
-    requireAuth(request, config, store);
+    await requireAuth(request, config, store);
     const { id } = request.params as { id: string };
     const approval = store.getApprovalRequest(id);
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
@@ -36,7 +36,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
   });
 
   app.post('/v1/approval-requests/:id/responses', async (request, reply) => {
-    const auth = requireHuman(request, config, store);
+    const auth = await requireHuman(request, config, store);
     const { id } = request.params as { id: string };
     const input = RespondApprovalRequestSchema.parse(request.body);
     const approval = store.respondToApprovalRequest(id, input, auth.userId ?? 'usr_default');
@@ -45,7 +45,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
   });
 
   app.get('/v1/approval-requests/:id/wait', async (request, reply) => {
-    requireAuth(request, config, store);
+    await requireAuth(request, config, store);
     const { id } = request.params as { id: string };
     const timeoutMs = timeoutFromQuery(request.query);
     const deadline = Date.now() + timeoutMs;

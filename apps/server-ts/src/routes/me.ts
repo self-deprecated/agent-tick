@@ -10,7 +10,7 @@ export interface MeRoutesOptions {
 
 export async function registerMeRoutes(app: FastifyInstance, { config, store }: MeRoutesOptions): Promise<void> {
   app.get('/v1/me', async (request) => {
-    const auth = requireHuman(request, config, store);
+    const auth = await requireHuman(request, config, store);
     return {
       userId: auth.userId ?? 'usr_default',
       authProvider: config.authProvider,

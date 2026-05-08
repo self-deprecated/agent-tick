@@ -54,6 +54,20 @@ export interface CreateApprovalInput extends CreateApprovalRequest {
   userId?: string;
 }
 
+export interface ClerkIdentityProfile {
+  issuer: string;
+  subject: string;
+  email: string;
+  emailVerified: boolean;
+  name: string;
+}
+
+export interface HumanIdentityResult {
+  userId: string;
+  organizationId: string;
+  role: string;
+}
+
 export class AgentTickStore {
   readonly db: Database.Database;
 
@@ -92,6 +106,54 @@ export class AgentTickStore {
         .run(DEFAULT_ORGANIZATION_ID, DEFAULT_USER_ID, 'owner', now, now);
     });
     tx();
+  }
+
+  loginOrCreateClerkIdentity(profile: ClerkIdentityProfile, now = new Date().toISOString()): HumanIdentityResult {
+    if (!profile.emailVerified || !profile.email.trim()) {
+      throw httpError(403, 'forbidden', 'A verified primary email is required');
+    }
+    const email = profile.email.trim().toLowerCase();
+    const existing = this.db
+      .prepare('SELECT user_id FROM auth_identities WHERE provider = ? AND issuer = ? AND subject = ?')
+      .get('clerk', profile.issuer, profile.subject) as { user_id: string } | undefined;
+
+    if (existing) {
+      this.db
+        .prepare('UPDATE auth_identities SET email = ?, email_verified = ?, name = ?, last_seen_at = ?, updated_at = ? WHERE provider = ? AND issuer = ? AND subject = ?')
+        .run(email, profile.emailVerified ? 1 : 0, profile.name, now, now, 'clerk', profile.issuer, profile.subject);
+      this.db.prepare('UPDATE users SET email = ?, email_verified = ?, name = ?, updated_at = ? WHERE id = ?')
+        .run(email, profile.emailVerified ? 1 : 0, profile.name, now, existing.user_id);
+      const membership = this.defaultMembershipForUser(existing.user_id);
+      return { userId: existing.user_id, organizationId: membership.organizationId, role: membership.role };
+    }
+
+    const collision = this.db.prepare('SELECT id FROM users WHERE email = ?').get(email) as { id: string } | undefined;
+    if (collision) {
+      throw httpError(409, 'identity_link_required', 'A local user with this email already exists; explicit identity linking is required');
+    }
+
+    const userId = newID('usr');
+    const organizationId = newID('org');
+    const tx = this.db.transaction(() => {
+      this.db.prepare('INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(userId, email, profile.emailVerified ? 1 : 0, profile.name, now, now);
+      this.db.prepare('INSERT INTO auth_identities(provider, issuer, subject, user_id, email, email_verified, name, first_seen_at, last_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run('clerk', profile.issuer, profile.subject, userId, email, profile.emailVerified ? 1 : 0, profile.name, now, now, now);
+      this.db.prepare('INSERT INTO organizations(id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+        .run(organizationId, `${profile.name || email}'s Organization`, now, now);
+      this.db.prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+        .run(organizationId, userId, 'owner', now, now);
+    });
+    tx();
+    return { userId, organizationId, role: 'owner' };
+  }
+
+  defaultMembershipForUser(userId: string): HumanIdentityResult {
+    const row = this.db
+      .prepare(`SELECT organization_id, role FROM organization_memberships WHERE user_id = ? ORDER BY created_at ASC LIMIT 1`)
+      .get(userId) as { organization_id: string; role: string } | undefined;
+    if (!row) return { userId, organizationId: DEFAULT_ORGANIZATION_ID, role: 'owner' };
+    return { userId, organizationId: row.organization_id, role: row.role };
   }
 
   createAgentToken(input: CreateAgentTokenInput, now = new Date().toISOString()): AgentCredential {
@@ -296,6 +358,13 @@ function parseJSON<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
+function httpError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
+  const error = new Error(message) as Error & { statusCode: number; code: string };
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
+}
+
 function missingApproval(id: string): never {
   throw new Error(`approval request ${id} was not created`);
 }
@@ -352,6 +421,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users(email) WHERE email <> '';
 
 CREATE TABLE IF NOT EXISTS auth_identities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

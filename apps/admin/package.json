@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@agent-tick/sdk": "workspace:*",
-    "@agent-tick/shared": "workspace:*"
+    "@agent-tick/shared": "workspace:*",
+    "@clerk/clerk-js": "^6.10.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.1.0",

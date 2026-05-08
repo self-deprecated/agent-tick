@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { AgentTickApiError, AgentTickClient, type AgentCredential, type ApprovalRequest, type AuthConfig } from '@agent-tick/sdk';
+	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
 	import type { AdminConfig } from './app';
 
 	const adminTokenStorageKey = 'agent_tick_admin_token';
@@ -13,11 +14,17 @@
 	let agentName = $state('Local agent');
 	let loading = $state(false);
 	let error = $state('');
+	let clerk = $state<ClerkJS | undefined>();
+	let clerkSignedIn = $state(false);
+	let signInElement = $state<HTMLDivElement | undefined>();
 
 	function client(): AgentTickClient {
 		return new AgentTickClient({
 			baseUrl: window.location.origin,
-			tokenProvider: () => adminToken || null
+			tokenProvider: async () => {
+				if (runtimeConfig?.authProvider === 'clerk') return (await clerk?.session?.getToken()) ?? null;
+				return adminToken || null;
+			}
 		});
 	}
 
@@ -31,12 +38,44 @@
 		error = '';
 		try {
 			runtimeConfig = await client().getAuthConfig();
-			await refreshApprovals();
+			if (runtimeConfig.authProvider === 'clerk') {
+				await initialiseClerk(runtimeConfig);
+			} else {
+				await refreshApprovals();
+			}
 		} catch (err) {
 			error = messageForError(err);
 		} finally {
 			loading = false;
 		}
+	}
+
+	async function initialiseClerk(nextConfig: AuthConfig): Promise<void> {
+		if (!nextConfig.clerkPublishableKey) throw new Error('Missing Clerk publishable key from server auth config');
+		const { Clerk } = await import('@clerk/clerk-js');
+		const nextClerk = new Clerk(nextConfig.clerkPublishableKey);
+		await nextClerk.load();
+		clerk = nextClerk;
+		clerkSignedIn = nextClerk.isSignedIn;
+		nextClerk.addListener(() => {
+			clerkSignedIn = nextClerk.isSignedIn;
+			if (nextClerk.isSignedIn) void refreshApprovals();
+		});
+		await tick();
+		if (!nextClerk.isSignedIn && signInElement) {
+			nextClerk.mountSignIn(signInElement);
+		} else if (nextClerk.isSignedIn) {
+			await refreshApprovals();
+		}
+	}
+
+	async function signOut(): Promise<void> {
+		await clerk?.signOut();
+		approvals = [];
+		createdCredential = undefined;
+		clerkSignedIn = false;
+		await tick();
+		if (clerk && signInElement) clerk.mountSignIn(signInElement);
 	}
 
 	async function refreshApprovals(): Promise<void> {
@@ -118,7 +157,15 @@
 					<button type="submit">Save token</button>
 				</form>
 			{:else}
-				<p class="warning">Clerk sign-in is planned next. This preview dashboard currently exercises single mode.</p>
+				<div class="stack">
+					{#if clerkSignedIn}
+						<p class="subtle">Signed in with Clerk.</p>
+						<button onclick={signOut}>Sign out</button>
+					{:else}
+						<p class="warning">Sign in with Clerk to manage Agent Tick approvals.</p>
+						<div class="clerk-card" bind:this={signInElement}></div>
+					{/if}
+				</div>
 			{/if}
 		</section>
 	{/if}
@@ -127,6 +174,7 @@
 		<p class="error">{error}</p>
 	{/if}
 
+	{#if runtimeConfig?.authProvider !== 'clerk' || clerkSignedIn}
 	<section class="card stack">
 		<h2>Create an agent token</h2>
 		<form class="row" onsubmit={(event) => { event.preventDefault(); void createAgentToken(); }}>
@@ -172,6 +220,7 @@
 			</ul>
 		{/if}
 	</section>
+	{/if}
 </main>
 
 <style>

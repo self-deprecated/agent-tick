@@ -12,6 +12,7 @@ const ConfigSchema = z.object({
   adminDistDir: z.string().optional(),
   clerkPublishableKey: z.string().optional(),
   clerkSecretKey: z.string().optional(),
+  clerkJwtKey: z.string().optional(),
   clerkAuthorizedParties: z.array(z.string()).default([])
 });
 
@@ -31,8 +32,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     adminDistDir: env.AGENT_TICK_ADMIN_DIST,
     clerkPublishableKey: env.AGENT_TICK_CLERK_PUBLISHABLE_KEY,
     clerkSecretKey: env.AGENT_TICK_CLERK_SECRET_KEY,
+    clerkJwtKey: env.AGENT_TICK_CLERK_JWT_KEY,
     clerkAuthorizedParties: splitCSV(env.AGENT_TICK_CLERK_AUTHORIZED_PARTIES)
   });
+
+  if (parsed.mode === 'clerk' && (!parsed.clerkPublishableKey || !parsed.clerkSecretKey)) {
+    throw new Error('AGENT_TICK_MODE=clerk requires AGENT_TICK_CLERK_PUBLISHABLE_KEY and AGENT_TICK_CLERK_SECRET_KEY');
+  }
 
   return {
     ...parsed,

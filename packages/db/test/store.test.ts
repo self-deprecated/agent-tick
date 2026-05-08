@@ -32,6 +32,48 @@ describe('AgentTickStore', () => {
     expect(store.verifyAgentToken('agent_wrong')).toBeNull();
   });
 
+  it('maps Clerk identities to local users by issuer and subject', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const first = store.loginOrCreateClerkIdentity({
+      issuer: 'https://example.clerk.accounts.dev',
+      subject: 'user_123',
+      email: 'Alice@Example.com',
+      emailVerified: true,
+      name: 'Alice'
+    });
+    const second = store.loginOrCreateClerkIdentity({
+      issuer: 'https://example.clerk.accounts.dev',
+      subject: 'user_123',
+      email: 'alice@example.com',
+      emailVerified: true,
+      name: 'Alice Updated'
+    });
+
+    expect(first.userId).toMatch(/^usr_/);
+    expect(second.userId).toBe(first.userId);
+    expect(second.organizationId).toBe(first.organizationId);
+  });
+
+  it('requires explicit linking on Clerk email collisions', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+    store.db.prepare('UPDATE users SET email = ? WHERE id = ?').run('alice@example.com', 'usr_default');
+
+    expect(() =>
+      store!.loginOrCreateClerkIdentity({
+        issuer: 'https://other.clerk.accounts.dev',
+        subject: 'user_456',
+        email: 'alice@example.com',
+        emailVerified: true,
+        name: 'Alice'
+      })
+    ).toThrow(/identity linking/i);
+  });
+
   it('creates and responds to approval requests', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();
