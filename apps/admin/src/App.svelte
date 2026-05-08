@@ -4,7 +4,9 @@
 		AgentTickApiError,
 		AgentTickClient,
 		type AgentCredential,
+		type AgentTokenRecord,
 		type ApprovalRequest,
+		type AuditEventRecord,
 		type AuthConfig,
 		type OrganizationMembership,
 		type PairingToken
@@ -18,6 +20,8 @@
 	let { config: initialConfig }: { config: AdminConfig } = $props();
 	let runtimeConfig = $state<AuthConfig | undefined>();
 	let approvals = $state<ApprovalRequest[]>([]);
+	let agentTokens = $state<AgentTokenRecord[]>([]);
+	let auditEvents = $state<AuditEventRecord[]>([]);
 	let organizations = $state<OrganizationMembership[]>([]);
 	let selectedOrganizationId = $state('');
 	let newOrganizationName = $state('');
@@ -87,6 +91,8 @@
 	async function signOut(): Promise<void> {
 		await clerk?.signOut();
 		approvals = [];
+		agentTokens = [];
+		auditEvents = [];
 		organizations = [];
 		selectedOrganizationId = '';
 		createdCredential = undefined;
@@ -97,7 +103,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await refreshApprovals();
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents()]);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -120,7 +126,7 @@
 		selectedOrganizationId = organizationId;
 		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
 		else localStorage.removeItem(organizationStorageKey);
-		await refreshApprovals();
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents()]);
 	}
 
 	async function createOrganization(): Promise<void> {
@@ -147,6 +153,22 @@
 		}
 	}
 
+	async function refreshAgentTokens(): Promise<void> {
+		try {
+			agentTokens = await client().listAgentTokens();
+		} catch {
+			agentTokens = [];
+		}
+	}
+
+	async function refreshAuditEvents(): Promise<void> {
+		try {
+			auditEvents = await client().listAuditEvents({ limit: 10 });
+		} catch {
+			auditEvents = [];
+		}
+	}
+
 	async function saveAdminToken(): Promise<void> {
 		adminToken = adminToken.trim();
 		if (adminToken) localStorage.setItem(adminTokenStorageKey, adminToken);
@@ -169,6 +191,18 @@
 		createdCredential = undefined;
 		try {
 			createdCredential = await client().createAgentToken({ name: agentName });
+			await Promise.all([refreshAgentTokens(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	async function revokeAgentToken(agentId: string): Promise<void> {
+		error = '';
+		try {
+			await client().revokeAgentToken(agentId);
+			if (createdCredential?.agentId === agentId) createdCredential = undefined;
+			await Promise.all([refreshAgentTokens(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -178,7 +212,7 @@
 		error = '';
 		try {
 			await client().respondToApproval(id, { choiceId });
-			await refreshApprovals();
+			await Promise.all([refreshApprovals(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -296,6 +330,19 @@
 				<p class="subtle">Use it with: <code>agent-tick setup --server {window.location.origin} --token {createdCredential.token}</code></p>
 			</div>
 		{/if}
+		{#if agentTokens.length > 0}
+			<ul class="item-list">
+				{#each agentTokens as token}
+					<li class="item-card" class:is-muted={Boolean(token.revokedAt)}>
+						<div>
+							<strong>{token.name}</strong>
+							<p class="subtle">{token.agentId} · {token.scopes.join(', ')} · {token.revokedAt ? `revoked ${new Date(token.revokedAt).toLocaleString()}` : 'active'}</p>
+						</div>
+						{#if !token.revokedAt}<button class="danger" onclick={() => void revokeAgentToken(token.agentId)}>Revoke</button>{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	</section>
 
 	<section class="card stack">
@@ -322,6 +369,28 @@
 								<button class="reject" onclick={() => respond(approval.id, 'reject')}>Reject</button>
 							</div>
 						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
+
+	<section class="card stack">
+		<div class="section-heading">
+			<h2>Audit events</h2>
+			<button onclick={refreshAuditEvents}>Refresh audit</button>
+		</div>
+		{#if auditEvents.length === 0}
+			<p class="subtle">No audit events yet.</p>
+		{:else}
+			<ul class="item-list">
+				{#each auditEvents as event}
+					<li class="item-card audit-card">
+						<div>
+							<strong>{event.eventType}</strong>
+							<p class="subtle">{new Date(event.createdAt).toLocaleString()} · {event.userId} · {event.targetId}</p>
+							<code>{JSON.stringify(event.payload)}</code>
+						</div>
 					</li>
 				{/each}
 			</ul>
@@ -453,7 +522,8 @@
 		padding: 12px;
 	}
 
-	.approvals {
+	.approvals,
+	.item-list {
 		list-style: none;
 		padding: 0;
 		margin: 0;
@@ -461,7 +531,8 @@
 		gap: 12px;
 	}
 
-	.approvals li {
+	.approvals li,
+	.item-card {
 		display: flex;
 		justify-content: space-between;
 		gap: 20px;
@@ -477,6 +548,14 @@
 		align-items: flex-start;
 	}
 
+	.item-card.is-muted {
+		opacity: 0.62;
+	}
+
+	.audit-card {
+		align-items: stretch;
+	}
+
 	.approve {
 		background: #22c55e;
 		color: #052e16;
@@ -487,12 +566,18 @@
 		color: #4c0519;
 	}
 
+	.danger {
+		background: #f97316;
+		color: #431407;
+	}
+
 	@media (max-width: 760px) {
 		.hero,
 		.section-heading,
 		.row,
 		.grid,
-		.approvals li {
+		.approvals li,
+		.item-card {
 			align-items: stretch;
 			flex-direction: column;
 		}
