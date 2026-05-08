@@ -10,7 +10,8 @@
 		type AuthConfig,
 		type OrganizationMembership,
 		type PairingToken,
-		type ProjectRecord
+		type ProjectRecord,
+		type TeamRecord
 	} from '@agent-tick/sdk';
 	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
 	import type { AdminConfig } from './app';
@@ -25,9 +26,11 @@
 	let auditEvents = $state<AuditEventRecord[]>([]);
 	let organizations = $state<OrganizationMembership[]>([]);
 	let projects = $state<ProjectRecord[]>([]);
+	let teams = $state<TeamRecord[]>([]);
 	let selectedOrganizationId = $state('');
 	let newOrganizationName = $state('');
 	let newProjectName = $state('');
+	let newTeamName = $state('');
 	let createdCredential = $state<AgentCredential | undefined>();
 	let pairingToken = $state<PairingToken | undefined>();
 	let adminToken = $state('');
@@ -98,6 +101,7 @@
 		auditEvents = [];
 		organizations = [];
 		projects = [];
+		teams = [];
 		selectedOrganizationId = '';
 		createdCredential = undefined;
 		clerkSignedIn = false;
@@ -107,7 +111,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams()]);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -130,7 +134,7 @@
 		selectedOrganizationId = organizationId;
 		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
 		else localStorage.removeItem(organizationStorageKey);
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams()]);
 	}
 
 	async function createOrganization(): Promise<void> {
@@ -181,6 +185,27 @@
 			await client().createProject({ name });
 			newProjectName = '';
 			await Promise.all([refreshProjects(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	async function refreshTeams(): Promise<void> {
+		try {
+			teams = await client().listTeams();
+		} catch {
+			teams = [];
+		}
+	}
+
+	async function createTeam(): Promise<void> {
+		const name = newTeamName.trim();
+		if (!name) return;
+		error = '';
+		try {
+			await client().createTeam({ name });
+			newTeamName = '';
+			await Promise.all([refreshTeams(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -346,6 +371,31 @@
 								<strong>{project.name}</strong>
 								<p class="subtle">{project.projectId} · {project.slug}{project.archivedAt ? ` · archived ${new Date(project.archivedAt).toLocaleString()}` : ''}</p>
 								{#if project.description}<p>{project.description}</p>{/if}
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+		<section class="card stack">
+			<div class="section-heading">
+				<h2>Teams</h2>
+				<button onclick={refreshTeams}>Refresh teams</button>
+			</div>
+			<form class="row" onsubmit={(event) => { event.preventDefault(); void createTeam(); }}>
+				<input bind:value={newTeamName} aria-label="Team name" placeholder="Team name" />
+				<button type="submit">Create team</button>
+			</form>
+			{#if teams.length === 0}
+				<p class="subtle">No teams yet. Teams will back policy routing and quorum approval rules.</p>
+			{:else}
+				<ul class="item-list">
+					{#each teams as team}
+						<li class="item-card" class:is-muted={Boolean(team.archivedAt)}>
+							<div>
+								<strong>{team.name}</strong>
+								<p class="subtle">{team.teamId} · {team.slug}{team.archivedAt ? ` · archived ${new Date(team.archivedAt).toLocaleString()}` : ''}</p>
+								{#if team.description}<p>{team.description}</p>{/if}
 							</div>
 						</li>
 					{/each}
