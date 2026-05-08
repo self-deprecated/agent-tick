@@ -9,7 +9,8 @@
 		type AuditEventRecord,
 		type AuthConfig,
 		type OrganizationMembership,
-		type PairingToken
+		type PairingToken,
+		type ProjectRecord
 	} from '@agent-tick/sdk';
 	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
 	import type { AdminConfig } from './app';
@@ -23,8 +24,10 @@
 	let agentTokens = $state<AgentTokenRecord[]>([]);
 	let auditEvents = $state<AuditEventRecord[]>([]);
 	let organizations = $state<OrganizationMembership[]>([]);
+	let projects = $state<ProjectRecord[]>([]);
 	let selectedOrganizationId = $state('');
 	let newOrganizationName = $state('');
+	let newProjectName = $state('');
 	let createdCredential = $state<AgentCredential | undefined>();
 	let pairingToken = $state<PairingToken | undefined>();
 	let adminToken = $state('');
@@ -94,6 +97,7 @@
 		agentTokens = [];
 		auditEvents = [];
 		organizations = [];
+		projects = [];
 		selectedOrganizationId = '';
 		createdCredential = undefined;
 		clerkSignedIn = false;
@@ -103,7 +107,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects()]);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -126,7 +130,7 @@
 		selectedOrganizationId = organizationId;
 		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
 		else localStorage.removeItem(organizationStorageKey);
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects()]);
 	}
 
 	async function createOrganization(): Promise<void> {
@@ -158,6 +162,27 @@
 			agentTokens = await client().listAgentTokens();
 		} catch {
 			agentTokens = [];
+		}
+	}
+
+	async function refreshProjects(): Promise<void> {
+		try {
+			projects = await client().listProjects();
+		} catch {
+			projects = [];
+		}
+	}
+
+	async function createProject(): Promise<void> {
+		const name = newProjectName.trim();
+		if (!name) return;
+		error = '';
+		try {
+			await client().createProject({ name });
+			newProjectName = '';
+			await Promise.all([refreshProjects(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
 		}
 	}
 
@@ -299,6 +324,34 @@
 
 	{#if error}
 		<p class="error">{error}</p>
+	{/if}
+
+	{#if runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn)}
+		<section class="card stack">
+			<div class="section-heading">
+				<h2>Projects</h2>
+				<button onclick={refreshProjects}>Refresh projects</button>
+			</div>
+			<form class="row" onsubmit={(event) => { event.preventDefault(); void createProject(); }}>
+				<input bind:value={newProjectName} aria-label="Project name" placeholder="Project name" />
+				<button type="submit">Create project</button>
+			</form>
+			{#if projects.length === 0}
+				<p class="subtle">No projects yet. Projects let agent tokens and approvals carry local workspace context.</p>
+			{:else}
+				<ul class="item-list">
+					{#each projects as project}
+						<li class="item-card" class:is-muted={Boolean(project.archivedAt)}>
+							<div>
+								<strong>{project.name}</strong>
+								<p class="subtle">{project.projectId} · {project.slug}{project.archivedAt ? ` · archived ${new Date(project.archivedAt).toLocaleString()}` : ''}</p>
+								{#if project.description}<p>{project.description}</p>{/if}
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
 	{/if}
 
 	{#if runtimeConfig?.authProvider !== 'clerk' || clerkSignedIn}
