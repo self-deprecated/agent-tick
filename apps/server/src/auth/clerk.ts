@@ -3,6 +3,15 @@ import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import type { AuthContext } from './context.js';
 
+const CLERK_PROFILE_CACHE_TTL_MS = 60_000;
+const clerkProfileCache = new Map<string, { expiresAt: number; profile: ClerkProfile }>();
+
+type ClerkProfile = { email: string; emailVerified: boolean; name: string };
+
+export function clearClerkProfileCacheForTests(): void {
+  clerkProfileCache.clear();
+}
+
 export async function verifyClerkSession(token: string, config: ServerConfig, store: AgentTickStore): Promise<AuthContext | null> {
   if (config.mode !== 'clerk' || !looksLikeJWT(token)) return null;
 
@@ -44,15 +53,21 @@ export async function verifyClerkSession(token: string, config: ServerConfig, st
   };
 }
 
-async function fetchClerkProfile(userId: string, config: ServerConfig): Promise<{ email: string; emailVerified: boolean; name: string }> {
+async function fetchClerkProfile(userId: string, config: ServerConfig): Promise<ClerkProfile> {
   if (!config.clerkSecretKey) throw new Error('Clerk secret key is required');
+  const cacheKey = `${config.clerkSecretKey}:${userId}`;
+  const cached = clerkProfileCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.profile;
+
   const clerk = createClerkClient({ secretKey: config.clerkSecretKey });
   const user = await clerk.users.getUser(userId);
   const primaryEmail = user.emailAddresses.find((email) => email.id === user.primaryEmailAddressId) ?? user.emailAddresses[0];
   const email = primaryEmail?.emailAddress ?? '';
   const emailVerified = primaryEmail?.verification?.status === 'verified';
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || email || user.id;
-  return { email, emailVerified, name };
+  const profile = { email, emailVerified, name };
+  clerkProfileCache.set(cacheKey, { expiresAt: Date.now() + CLERK_PROFILE_CACHE_TTL_MS, profile });
+  return profile;
 }
 
 function stringClaim(payload: unknown, claim: string): string | null {

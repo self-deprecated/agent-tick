@@ -125,15 +125,16 @@ Recommended action: keep expiration behavior covered in DB/server tests as appro
 
 ### Clerk profile lookup happens on every authenticated request
 
-`verifyClerkSession()` verifies the token and then fetches the Clerk user profile for every authenticated request.
+Status: addressed with a short-lived in-process Clerk profile cache while still verifying every session token.
 
-Risks:
+`verifyClerkSession()` verifies the token for every authenticated request, then uses the cache for Clerk user profile fields when possible.
 
-- Added latency
-- Dependency on Clerk API availability for every request
-- Clerk API rate-limit exposure
+Risks still to consider for hosted deployments:
 
-Recommended action: add a short-lived local profile cache keyed by Clerk subject/user ID, while still verifying session tokens locally.
+- Cache is per process
+- Cache misses still depend on Clerk API availability
+
+Recommended action: revisit cache TTL/invalidation needs before hosted multi-instance deployment.
 
 ### Docker runtime image can be slimmer
 
