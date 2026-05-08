@@ -4,6 +4,8 @@ node_modules/
 .expo/
 dist/
 coverage/
+package-lock.json
+devbox.lock
 apps/server/public/admin/*
 !apps/server/public/admin/.gitkeep
 agent-tick.json

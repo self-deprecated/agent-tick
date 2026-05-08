@@ -4,11 +4,11 @@
 
 Decision: pivot to a TypeScript-first architecture before implementing Clerk.
 
-This project is still in the shaping phase and has no production users. We can therefore optimize for the desired long-term architecture instead of preserving every current Go implementation detail or database migration path.
+This project is a fresh TypeScript service with no production users. We optimize for the desired architecture and do not preserve Go implementation details, prototype database shapes, or other legacy compatibility paths.
 
 ## Executive summary
 
-Replace the current Go CLI/server with:
+The active implementation is:
 
 - a TypeScript Node server distributed primarily as a Docker image
 - a lean npm-installable agent CLI
@@ -24,13 +24,13 @@ Keep:
 - Agent Tick-owned users, organizations, teams, projects, policies, devices, agent tokens, approvals, billing limits, and audit logs
 - Clerk as human identity provider only
 
-Drop/rethink:
+Drop:
 
 - Go as the main implementation language
 - the server command inside the agent CLI
 - local multi-user email/password auth
 - Go-specific Clerk middleware/integration work
-- database compatibility with the current prototype schema unless a table/shape is clearly worth copying
+- database compatibility with the current prototype schema
 
 ## Why this pivot makes sense
 
@@ -50,7 +50,7 @@ A TypeScript-first architecture reduces language boundaries across the project. 
 - Do not make Clerk required for single-user self-hosted mode.
 - Do not move Agent Tick authorization or app data into Clerk.
 - Do not adopt Clerk Organizations as the Agent Tick organization source of truth in the first pass.
-- Do not require database migrations from the current prototype unless we later decide to support early testers.
+- Do not require database migrations from prototype schemas.
 - Do not put SQLite/server-only dependencies in mobile/admin/CLI packages.
 
 ## Target repository layout
@@ -808,18 +808,18 @@ Compose should no longer reference the Go binary.
 
 ## Rewrite phases
 
-### Phase 0: Confirm decisions and freeze Go implementation
+### Phase 0: Confirm fresh TypeScript target
 
 Deliverables:
 
 - this plan committed
 - agree on Fastify, pnpm, SQLite driver, auth modes, and CLI distribution
-- stop adding significant new features to the Go server unless needed as reference
+- remove the Go server/CLI from the active product path
 
 Acceptance criteria:
 
-- team agrees TypeScript server/CLI is the new target
-- Clerk implementation work targets TypeScript, not Go
+- TypeScript server/CLI is the only target
+- Clerk implementation work targets TypeScript only
 
 ### Phase 1: Monorepo foundation
 
@@ -974,67 +974,48 @@ Acceptance criteria:
 - Clerk JWTs are not placed directly in event query strings
 - cleanup can run automatically or as an operator command; current TypeScript server runs configurable startup/hourly cleanup for old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites without acceptance history
 
-### Phase 10: Port remaining product features intentionally
+### Phase 10: Build remaining product features intentionally
 
-Inventory each current Go feature and decide keep/drop/redesign.
+No legacy CLI/server compatibility is required. Add only product-relevant features for the current TypeScript architecture.
 
-Likely keep:
+Already rebuilt or newly implemented:
 
 - approval choices/freeform responses
 - project/team/policy concepts, including team-scoped approval responder eligibility
 - agent token management
-- invites, if multi-user onboarding still needs them with Clerk
+- organization invites and approval-required onboarding
 - audit logs
 - mobile push notification registration
-- MCP/adapter/guard flows if agent use cases need them
+- ticketed event streams for dashboard refresh
+- configurable cleanup, local seat limits, and notification webhooks
 
-Likely drop from CLI/server split:
+Possible future product work:
 
-- `server` command in agent CLI
+- `agent-tick guard`, MCP, adapter, or steer flows if they fit the npm CLI model
+- richer policy templates and multi-step routing
+- hosted billing/operator tooling beyond the local self-hosted guard
+
+Explicitly not supported:
+
+- `agent-tick server` in the agent CLI
 - local multi-user password login
-- Go maintenance command shape
+- prototype database migrations
+- Go maintenance command shape or Go WebSocket compatibility
 
 Acceptance criteria:
 
 - all features needed for the next product milestone exist in TS
-- obsolete Go-era flows are removed from docs/UI
+- obsolete Go-era flows are absent from docs/UI/tooling
 
 ### Phase 11: Delete Go implementation
 
-Deliverables:
-
-- remove Go `apps/server` or move to archived branch
-- keep `apps/server` as the TypeScript server path
-- remove Go Dockerfile/build docs
-- update `docker-compose.yml`
-- update `SELFHOSTING.md`
-- update Clerk migration doc to remove Go-specific implementation steps
+Status: complete for the active tree.
 
 Acceptance criteria:
 
 - repository builds without Go installed
 - server Docker image builds from TypeScript workspace
 - CLI installs/runs through npm package build
-
-## Current Go feature inventory
-
-Use the Go implementation as reference, not as a strict compatibility target.
-
-| Current area | New plan |
-| --- | --- |
-| `agent-tick server` | Remove from agent CLI; server has its own package/container entrypoint. |
-| `agent-tick setup` | Keep in npm CLI for saving server URL/agent token. |
-| `agent-tick request` | Keep; core agent workflow. |
-| `agent-tick guard` | Keep if guard workflow remains important. |
-| `agent-tick abandon` | Keep if long-running agent requests need cleanup. |
-| `agent-tick steer` | Re-evaluate; port later if still needed. |
-| `agent-tick pair` | Re-evaluate; pairing should mostly live in dashboard/mobile. |
-| `agent-tick agent-token` | Remove from agent CLI; manage through dashboard/API/operator tooling. |
-| `agent-tick maintenance` | Replace with server startup cleanup, scheduled cleanup, or server maintenance script. |
-| local email/password users | Drop. Clerk is multi-user human auth. |
-| session cookie + CSRF | Drop unless needed for a future non-Clerk auth provider. |
-| admin static embedding in Go | Replace with server serving built admin assets from filesystem/container. |
-| Go WebSocket auth | Replace with event tickets/polling-first design. |
 
 ## Testing strategy
 

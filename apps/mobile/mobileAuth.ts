@@ -2,13 +2,6 @@ export type MobileAuthProvider = "local" | "clerk";
 
 export const serverURLStorageKey = "agent-tick.serverURL";
 
-export const legacyMobileSessionStorageKeys = {
-  token: "agent-tick.token",
-  deviceID: "agent-tick.deviceID",
-  organizationID: "agent-tick.organizationID",
-  pushStatus: "agent-tick.pushStatus",
-};
-
 export type RuntimeAuthConfig = {
   mode: "single" | "clerk" | string;
   authProvider: MobileAuthProvider | string;

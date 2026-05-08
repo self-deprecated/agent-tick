@@ -114,4 +114,4 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, optional approval notification webhooks, and configurable retention cleanup.
 
-Some earlier Go-era features are intentionally being reintroduced only when they are needed: advanced policy templates, extra notification sinks, richer mobile Clerk flows, and hosted billing/operator tooling.
+Agent Tick is a fresh TypeScript service; no Go-era CLI/server compatibility or prototype database migration path is supported. Future work should add only product-relevant features for the current architecture.

@@ -59,7 +59,6 @@ import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
   clerkTokenCacheKey,
   fetchRuntimeAuthConfig,
-  legacyMobileSessionStorageKeys,
   mobileSessionStorageKeyList,
   mobileSessionStorageKeys,
   normalizeServerURL,
@@ -273,16 +272,12 @@ function AgentTickApp({
           scopedKeys.deviceID,
           scopedKeys.organizationID,
           scopedKeys.pushStatus,
-          legacyMobileSessionStorageKeys.token,
-          legacyMobileSessionStorageKeys.deviceID,
-          legacyMobileSessionStorageKeys.organizationID,
-          legacyMobileSessionStorageKeys.pushStatus,
         ]);
         const entryValue = (key: string) => entries.find(([entryKey]) => entryKey === key)?.[1];
-        const savedToken = entryValue(scopedKeys.token) ?? entryValue(legacyMobileSessionStorageKeys.token);
-        const savedDeviceID = entryValue(scopedKeys.deviceID) ?? entryValue(legacyMobileSessionStorageKeys.deviceID);
-        const savedOrganizationID = entryValue(scopedKeys.organizationID) ?? entryValue(legacyMobileSessionStorageKeys.organizationID);
-        const savedPushStatus = entryValue(scopedKeys.pushStatus) ?? entryValue(legacyMobileSessionStorageKeys.pushStatus);
+        const savedToken = entryValue(scopedKeys.token);
+        const savedDeviceID = entryValue(scopedKeys.deviceID);
+        const savedOrganizationID = entryValue(scopedKeys.organizationID);
+        const savedPushStatus = entryValue(scopedKeys.pushStatus);
 
         if (!cancelled) {
           setServerURL(savedServerURL);
@@ -385,7 +380,7 @@ function AgentTickApp({
       [scopedKeys.deviceID, deviceID],
       [scopedKeys.organizationID, selectedOrganizationID],
       [scopedKeys.pushStatus, pushStatus],
-    ]).then(() => AsyncStorage.multiRemove(Object.values(legacyMobileSessionStorageKeys)));
+    ]);
   }, [deviceID, pushStatus, selectedOrganizationID, serverURL, settingsLoaded, token]);
 
   const refreshOrganizations = useCallback(async () => {
@@ -804,10 +799,7 @@ function AgentTickApp({
   };
 
   const clearStoredSessionForServer = useCallback(async (activeServerURL = serverURL) => {
-    await AsyncStorage.multiRemove([
-      ...mobileSessionStorageKeyList(activeServerURL),
-      ...Object.values(legacyMobileSessionStorageKeys),
-    ]);
+    await AsyncStorage.multiRemove(mobileSessionStorageKeyList(activeServerURL));
   }, [serverURL]);
 
   const bestEffortUnregisterDevice = useCallback(async (options: {

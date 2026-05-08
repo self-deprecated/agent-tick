@@ -82,7 +82,7 @@ corepack pnpm --filter agent-tick-admin dev
 corepack pnpm --filter agent-tick build
 ```
 
-The mobile Jest suite is still being reworked for the pnpm/Expo workspace; the root test command currently runs all non-mobile tests and mobile typechecking.
+The root test command runs server/package/admin tests and the mobile Jest suite through the pnpm workspace.
 
 ## License
 

@@ -11,7 +11,7 @@
     "android:dev-client": "expo start --dev-client --android",
     "ios": "expo start --ios",
     "ios:dev-client": "expo start --dev-client --ios",
-    "update:development": "npx eas-cli update --channel development",
+    "update:development": "pnpm dlx eas-cli update --channel development",
     "typecheck": "tsc --noEmit",
     "test": "jest"
   },

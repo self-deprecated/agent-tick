@@ -4,7 +4,7 @@
 
 Move multi-user human authentication to Clerk while preserving the single-user self-hosted flow.
 
-Clerk authenticates people. Agent Tick continues to own authorization and product data: local users, local organizations, memberships, teams, projects, policies, approvals, agent tokens, devices, billing limits, and audit logs.
+Clerk authenticates people. Agent Tick continues to own authorization and product data: local users, local organizations, memberships, teams, projects, policies, approvals, agent tokens, devices, billing limits, and audit logs. This is a fresh TypeScript service; no Go-era or prototype compatibility path is required.
 
 This document now tracks the TypeScript-first implementation. See also `docs/typescript-first-rewrite-plan.md`.
 
@@ -208,7 +208,7 @@ High priority:
 - Wire mobile EventSource/SSE listeners if polling becomes insufficient in React Native.
 - Broaden signed-out invite continuation coverage with deep-link/OAuth provider-specific tests.
 
-Product rebuilds to evaluate/port from the prototype:
+Future product work to evaluate for the current architecture:
 
 - Richer team role/eligibility management beyond basic add/update/remove and team-scoped approval eligibility.
 - Policy templates and richer multi-step eligibility/routing policy engine.

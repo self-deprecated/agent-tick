@@ -1,82 +1,74 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.14.2/.schema/devbox.schema.json",
   "packages": [
-    "go@latest",
-    "nodejs_22@latest",
-    "goreleaser@latest",
+    "nodejs_24@latest",
     "python313@latest",
     "python313Packages.pyyaml@latest"
   ],
   "shell": {
     "scripts": {
-      "test": [
-        "cd apps/server && go test ./..."
-      ],
-      "vet": [
-        "cd apps/server && go vet ./..."
+      "install": [
+        "corepack pnpm install"
       ],
       "typecheck": [
-        "cd apps/mobile && npm run typecheck"
+        "corepack pnpm typecheck"
+      ],
+      "test": [
+        "corepack pnpm test"
+      ],
+      "build": [
+        "corepack pnpm build"
+      ],
+      "check": [
+        "corepack pnpm typecheck && corepack pnpm test && corepack pnpm build && corepack pnpm --filter agent-tick-admin check && python scripts/validate-mobile-eas-config.py"
+      ],
+      "server": [
+        "corepack pnpm --filter @agent-tick/server dev"
       ],
       "admin:dev": [
-        "cd apps/admin && npm run dev"
+        "corepack pnpm --filter agent-tick-admin dev"
       ],
       "admin:check": [
-        "cd apps/admin && npm run check && npm run build"
+        "corepack pnpm --filter agent-tick-admin check && corepack pnpm --filter agent-tick-admin build"
+      ],
+      "cli:build": [
+        "corepack pnpm --filter agent-tick build"
+      ],
+      "cli:request": [
+        "node packages/cli/dist/index.js request --title 'Run command?' --body 'Agent Tick test approval from the CLI' --command 'npm install'"
+      ],
+      "mobile:typecheck": [
+        "corepack pnpm --filter @agent-tick/mobile typecheck"
+      ],
+      "mobile:test": [
+        "corepack pnpm --filter @agent-tick/mobile test --runInBand"
       ],
       "mobile:validate-config": [
         "python scripts/validate-mobile-eas-config.py"
       ],
-      "mobile:test": [
-        "cd apps/mobile && npm test -- --runInBand"
-      ],
       "skill:validate": [
         "python /home/jmo/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/agent-tick"
       ],
-      "check": [
-        "cd apps/admin && npm run check && npm run build && cd ../server && go test ./... && go vet ./... && cd ../.. && python scripts/validate-mobile-eas-config.py && cd apps/mobile && npm run typecheck && npm test -- --runInBand"
-      ],
-      "server": [
-        "cd apps/server && go run ./cmd/agent-tick server"
-      ],
-      "demo-request": [
-        "cd apps/server && go run ./cmd/agent-tick request --title 'Run command?' --body 'Agent Tick test approval from the CLI' --command 'npm install'"
-      ],
-      "pair": [
-        "cd apps/server && go run ./cmd/agent-tick pair"
-      ],
-      "agent-token": [
-        "cd apps/server && go run ./cmd/agent-tick agent-token"
-      ],
-      "adapter-demo": [
-        "cd apps/server && printf '{\"title\":\"Run command?\",\"command\":\"npm install\"}' | go run ./cmd/agent-tick adapter"
-      ],
-      "build:server": [
-        "sh scripts/build-server-release.sh"
-      ],
-      "build:local": [
-        "mkdir -p \"$HOME/.local/bin\" && cd apps/admin && npm run build && cd ../server && go build -trimpath -o \"$HOME/.local/bin/agent-tick\" ./cmd/agent-tick && chmod 755 \"$HOME/.local/bin/agent-tick\""
-      ],
       "mobile": [
-        "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start -- --host localhost --port 8081"
+        "cd apps/mobile && EXPO_NO_TELEMETRY=1 corepack pnpm start -- --host localhost --port 8081"
       ],
       "mobile:lan": [
-        "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start -- --host lan --port 8081"
+        "cd apps/mobile && EXPO_NO_TELEMETRY=1 corepack pnpm start -- --host lan --port 8081"
       ],
       "mobile:dev-client": [
-        "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start:dev-client -- --host localhost --port 8081"
+        "cd apps/mobile && EXPO_NO_TELEMETRY=1 corepack pnpm start:dev-client -- --host localhost --port 8081"
       ],
       "mobile:dev-client:lan": [
-        "cd apps/mobile && EXPO_NO_TELEMETRY=1 npm run start:dev-client:lan -- --port 8081"
+        "cd apps/mobile && EXPO_NO_TELEMETRY=1 corepack pnpm start:dev-client:lan -- --port 8081"
       ],
       "mobile:dev-build:ios": [
-        "cd apps/mobile && npx eas-cli build --profile development --platform ios"
+        "cd apps/mobile && corepack pnpm dlx eas-cli build --profile development --platform ios"
       ],
       "mobile:dev-build:android": [
-        "cd apps/mobile && npx eas-cli build --profile development --platform android"
+        "cd apps/mobile && corepack pnpm dlx eas-cli build --profile development --platform android"
       ],
       "mobile:update:development": [
-        "cd apps/mobile && npx eas-cli update --channel development"
+        "cd apps/mobile && corepack pnpm dlx eas-cli update --channel development"
       ]
     }
   }

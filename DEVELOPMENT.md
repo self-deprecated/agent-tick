@@ -29,7 +29,7 @@ corepack pnpm typecheck
 corepack pnpm test
 ```
 
-The root test command runs all non-mobile tests and mobile typechecking. The Expo/Jest suite still needs a follow-up pnpm-compatible test harness pass.
+The root test command runs server/package/admin tests and the mobile Jest suite through the pnpm workspace.
 
 ## Server
 
@@ -113,10 +113,11 @@ AGENT_TICK_IMAGE=agent-tick:dev docker compose up -d
 
 ## Mobile
 
-Typecheck:
+Validate the mobile app:
 
 ```sh
 corepack pnpm --filter @agent-tick/mobile typecheck
+corepack pnpm --filter @agent-tick/mobile test --runInBand
 ```
 
-The mobile app has foundation code for runtime `/v1/auth/config` discovery and Clerk token-cache namespacing. Full Clerk UI/device registration wiring is still in progress.
+The mobile app discovers runtime auth config, namespaces local session state by server URL, supports Clerk sign-in/account creation/OAuth buttons, and registers/unregisters devices for push flows.
