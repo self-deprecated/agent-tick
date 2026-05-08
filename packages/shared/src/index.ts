@@ -375,3 +375,33 @@ export const EventTicketResponseSchema = z.object({
   expiresAt: z.string()
 });
 export type EventTicketResponse = z.infer<typeof EventTicketResponseSchema>;
+
+export const HeartbeatRequestSchema = z.record(z.string(), z.unknown()).default({});
+export type HeartbeatRequest = z.input<typeof HeartbeatRequestSchema>;
+
+export const HeartbeatResponseSchema = z.object({
+  status: z.literal('ok'),
+  userId: z.string().optional(),
+  organizationId: z.string().optional(),
+  state: z.string().optional(),
+  lastSeenAt: z.string().optional(),
+  updatedAt: z.string().optional()
+});
+export type HeartbeatResponse = z.infer<typeof HeartbeatResponseSchema>;
+
+export const AvailabilityStateSchema = z.enum(['available', 'busy', 'do-not-disturb', 'off-call']).or(z.string().min(1));
+export type AvailabilityState = z.infer<typeof AvailabilityStateSchema>;
+
+export const SetAvailabilitySchema = z.object({
+  state: AvailabilityStateSchema
+});
+export type SetAvailability = z.input<typeof SetAvailabilitySchema>;
+
+export const AvailabilityRecordSchema = z.object({
+  userId: z.string(),
+  organizationId: z.string(),
+  state: z.string(),
+  lastSeenAt: z.string().optional(),
+  updatedAt: z.string()
+});
+export type AvailabilityRecord = z.infer<typeof AvailabilityRecordSchema>;

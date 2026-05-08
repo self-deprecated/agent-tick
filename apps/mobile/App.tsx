@@ -302,15 +302,6 @@ function AgentTickApp({
     return token;
   }, [clerkTokenProvider, runtimeAuthConfig?.authProvider, token]);
 
-  const authHeaders = useCallback(async (options: { includeOrganization?: boolean } = {}) => {
-    const authToken = await currentAuthToken();
-    return {
-      "Content-Type": "application/json",
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...(options.includeOrganization === false || !selectedOrganizationID ? {} : { "X-Agent-Tick-Organization-ID": selectedOrganizationID }),
-    };
-  }, [currentAuthToken, selectedOrganizationID]);
-
   const sdk = useMemo(
     () =>
       new AgentTickClient({
@@ -450,13 +441,11 @@ function AgentTickApp({
       return;
     }
     try {
-      const response = await fetch(`${serverURL.replace(/\/$/, "")}/v1/organizations`, {
-        headers: await authHeaders({ includeOrganization: false }),
+      const organizationClient = new AgentTickClient({
+        baseUrl: serverURL,
+        tokenProvider: async () => (await currentAuthToken()) || null,
       });
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-      const memberships = (await response.json()) as OrganizationMembership[];
+      const memberships = await organizationClient.listOrganizations();
       setOrganizations(memberships);
       setSelectedOrganizationID((current) => {
         if (current && memberships.some((membership) => membership.organizationId === current)) {
@@ -467,7 +456,7 @@ function AgentTickApp({
     } catch {
       setOrganizations([]);
     }
-  }, [authHeaders, runtimeAuthConfig?.authProvider, serverURL]);
+  }, [currentAuthToken, runtimeAuthConfig?.authProvider, serverURL]);
 
   useEffect(() => {
     if (!settingsLoaded || runtimeAuthConfig?.authProvider !== "clerk") {
@@ -536,20 +525,12 @@ function AgentTickApp({
       return;
     }
     const heartbeat = () => {
-      void authHeaders()
-        .then((headers) =>
-          fetch(`${serverURL.replace(/\/$/, "")}/v1/heartbeat`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ deviceId: deviceID, client: "mobile" }),
-          }),
-        )
-        .catch(() => undefined);
+      void sdk.sendHeartbeat({ deviceId: deviceID, client: "mobile" }).catch(() => undefined);
     };
     heartbeat();
     const timer = setInterval(heartbeat, 60_000);
     return () => clearInterval(timer);
-  }, [authHeaders, deviceID, runtimeAuthConfig?.authProvider, serverURL, settingsLoaded, token]);
+  }, [deviceID, runtimeAuthConfig?.authProvider, sdk, settingsLoaded, token]);
 
   useEffect(() => {
     // Polling remains the mobile baseline. Clerk-mode event streams use short-lived
@@ -694,17 +675,9 @@ function AgentTickApp({
   const updateAvailability = async (state: AvailabilityState) => {
     setAvailability(state);
     try {
-      const response = await fetch(`${serverURL.replace(/\/$/, "")}/v1/availability`, {
-        method: "POST",
-        headers: await authHeaders(),
-        body: JSON.stringify({ state }),
-      });
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-      const record = (await response.json()) as { state?: AvailabilityState };
+      const record = await sdk.setAvailability({ state });
       if (record.state) {
-        setAvailability(record.state);
+        setAvailability(record.state as AvailabilityState);
       }
     } catch (err) {
       Alert.alert(

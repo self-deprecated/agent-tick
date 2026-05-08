@@ -7,6 +7,7 @@ import {
   ApprovalRequestSchema,
   AuditEventRecordSchema,
   AuthConfigSchema,
+  AvailabilityRecordSchema,
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
   CreateOrganizationInviteSchema,
@@ -16,6 +17,8 @@ import {
   DeviceRecordSchema,
   EventTicketResponseSchema,
   HealthResponseSchema,
+  HeartbeatRequestSchema,
+  HeartbeatResponseSchema,
   InvitePreviewSchema,
   MeResponseSchema,
   OrganizationInviteRecordSchema,
@@ -28,6 +31,7 @@ import {
   RegisterDeviceSchema,
   RespondApprovalRequestSchema,
   CreateProjectSchema,
+  SetAvailabilitySchema,
   CreatePolicySchema,
   TeamMembershipSchema,
   TeamRecordSchema,
@@ -41,6 +45,7 @@ import {
   type ApprovalRequest,
   type AuditEventRecord,
   type AuthConfig,
+  type AvailabilityRecord,
   type CreateAgentToken,
   type CreateApprovalRequest,
   type CreateOrganization,
@@ -52,6 +57,8 @@ import {
   type DeviceRecord,
   type EventTicketResponse,
   type HealthResponse,
+  type HeartbeatRequest,
+  type HeartbeatResponse,
   type InvitePreview,
   type MeResponse,
   type OrganizationInviteRecord,
@@ -63,6 +70,7 @@ import {
   type RegisterDevice,
   type RegisterDeviceResponse,
   type RespondApprovalRequest,
+  type SetAvailability,
   type TeamMembership,
   type TeamRecord,
   type UpdateDevicePushToken,
@@ -129,6 +137,18 @@ export class AgentTickClient {
     if (options.limit !== undefined) params.set('limit', String(options.limit));
     const suffix = params.size ? `?${params.toString()}` : '';
     return this.#request('GET', `/v1/audit-events${suffix}`, AuditEventRecordSchema.array());
+  }
+
+  sendHeartbeat(input: HeartbeatRequest = {}): Promise<HeartbeatResponse> {
+    return this.#request('POST', '/v1/heartbeat', HeartbeatResponseSchema, {
+      body: HeartbeatRequestSchema.parse(input)
+    });
+  }
+
+  setAvailability(input: SetAvailability): Promise<AvailabilityRecord> {
+    return this.#request('POST', '/v1/availability', AvailabilityRecordSchema, {
+      body: SetAvailabilitySchema.parse(input)
+    });
   }
 
   createApprovalRequest(input: CreateApprovalRequest): Promise<ApprovalRequest> {
@@ -345,6 +365,7 @@ export type {
   ApprovalRequest,
   AuditEventRecord,
   AuthConfig,
+  AvailabilityRecord,
   CreateAgentToken,
   CreateApprovalRequest,
   CreateOrganization,
@@ -356,6 +377,8 @@ export type {
   DeviceRecord,
   EventTicketResponse,
   HealthResponse,
+  HeartbeatRequest,
+  HeartbeatResponse,
   InvitePreview,
   MeResponse,
   OrganizationInviteRecord,
@@ -367,6 +390,7 @@ export type {
   RegisterDevice,
   RegisterDeviceResponse,
   RespondApprovalRequest,
+  SetAvailability,
   TeamMembership,
   TeamRecord,
   UpdateDevicePushToken,

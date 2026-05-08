@@ -67,6 +67,25 @@ describe('AgentTickClient', () => {
     expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/audit-events?limit=10' });
   });
 
+  it('calls presence endpoints with validated payloads', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (String(input).endsWith('/v1/heartbeat')) return jsonResponse({ status: 'ok', state: 'available' });
+        return jsonResponse({ userId: 'usr_123', organizationId: 'org_123', state: 'busy', updatedAt: '2026-01-01T00:00:00.000Z' });
+      }
+    });
+
+    await expect(client.sendHeartbeat({ client: 'mobile' })).resolves.toMatchObject({ status: 'ok', state: 'available' });
+    await expect(client.setAvailability({ state: 'busy' })).resolves.toMatchObject({ state: 'busy' });
+    expect(requests).toEqual([
+      { method: 'POST', url: 'https://tick.example.com/v1/heartbeat', body: { client: 'mobile' } },
+      { method: 'POST', url: 'https://tick.example.com/v1/availability', body: { state: 'busy' } }
+    ]);
+  });
+
   it('calls project endpoints with validated payloads', async () => {
     const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
     const client = new AgentTickClient({
