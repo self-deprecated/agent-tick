@@ -68,6 +68,8 @@ describe('AgentTickStore', () => {
     const bob = store.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
     const accepted = store.acceptInvite(invite.token!, bob.userId);
     expect(accepted).toMatchObject({ status: 'joined', membership: { organizationId: created.organizationId, userId: bob.userId, role: 'admin' } });
+    const teamMember = store.upsertTeamMember({ organizationId: created.organizationId, actorUserId: 'usr_default', teamId: team.teamId, userId: bob.userId, role: 'lead' });
+    expect(teamMember).toMatchObject({ teamId: team.teamId, userId: bob.userId, role: 'lead' });
   });
 
   it('creates and verifies agent tokens by hash', () => {

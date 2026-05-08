@@ -172,6 +172,14 @@ export interface CreateTeamInput {
   description?: string;
 }
 
+export interface UpsertTeamMemberInput {
+  organizationId: string;
+  actorUserId: string;
+  teamId: string;
+  userId: string;
+  role?: string;
+}
+
 export interface PolicyRecord {
   policyId: string;
   organizationId: string;
@@ -587,6 +595,25 @@ export class AgentTickStore {
       `)
       .all(teamId) as TeamMembershipRow[];
     return rows.map(mapTeamMembershipRow);
+  }
+
+  upsertTeamMember(input: UpsertTeamMemberInput, now = new Date().toISOString()): TeamMembershipRecord {
+    if (!this.teamBelongsToOrganization(input.teamId, input.organizationId)) {
+      throw httpError(404, 'not_found', 'Team not found');
+    }
+    if (!this.organizationMembershipForUser(input.userId, input.organizationId)) {
+      throw httpError(400, 'bad_request', 'User is not a member of the selected organization');
+    }
+    const role = input.role?.trim() || 'member';
+    this.db
+      .prepare(`
+        INSERT INTO team_memberships(team_id, organization_id, user_id, role, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at
+      `)
+      .run(input.teamId, input.organizationId, input.userId, role, now, now);
+    this.writeAuditEvent(input.organizationId, input.actorUserId, 'team_member.upserted', input.teamId, { userId: input.userId, role }, now);
+    return this.listTeamMembers(input.teamId).find((member) => member.userId === input.userId) ?? missingTeam(input.teamId);
   }
 
   listPolicies(organizationId = DEFAULT_ORGANIZATION_ID): PolicyRecord[] {

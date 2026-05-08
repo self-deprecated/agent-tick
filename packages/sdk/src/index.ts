@@ -32,6 +32,7 @@ import {
   TeamMembershipSchema,
   TeamRecordSchema,
   UpdateDevicePushTokenSchema,
+  UpsertTeamMemberSchema,
   WaitApprovalResponseSchema,
   type AcceptInviteResponse,
   type AgentCredential,
@@ -65,6 +66,7 @@ import {
   type TeamMembership,
   type TeamRecord,
   type UpdateDevicePushToken,
+  type UpsertTeamMember,
   type WaitApprovalResponse
 } from '@agent-tick/shared';
 
@@ -230,6 +232,12 @@ export class AgentTickClient {
     return this.#request('GET', `/v1/teams/${encodeURIComponent(teamId)}/members`, TeamMembershipSchema.array());
   }
 
+  upsertTeamMember(teamId: string, input: UpsertTeamMember): Promise<TeamMembership> {
+    return this.#request('POST', `/v1/teams/${encodeURIComponent(teamId)}/members`, TeamMembershipSchema, {
+      body: UpsertTeamMemberSchema.parse(input)
+    });
+  }
+
   listPolicies(): Promise<PolicyRecord[]> {
     return this.#request('GET', '/v1/policies', PolicyRecordSchema.array());
   }
@@ -358,5 +366,6 @@ export type {
   TeamMembership,
   TeamRecord,
   UpdateDevicePushToken,
+  UpsertTeamMember,
   WaitApprovalResponse
 };

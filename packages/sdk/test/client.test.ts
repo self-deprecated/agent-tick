@@ -108,6 +108,7 @@ describe('AgentTickClient', () => {
           updatedAt: '2026-01-01T00:00:00.000Z'
         };
         if (String(input).endsWith('/v1/teams') && init?.method === 'POST') return jsonResponse({ ...team, userId: 'usr_123', role: 'owner' });
+        if (String(input).endsWith('/members') && init?.method === 'POST') return jsonResponse({ ...team, userId: 'usr_123', role: 'lead' });
         if (String(input).endsWith('/members')) return jsonResponse([{ ...team, userId: 'usr_123', role: 'owner' }]);
         return jsonResponse([team]);
       }
@@ -116,10 +117,12 @@ describe('AgentTickClient', () => {
     await expect(client.createTeam({ name: 'Platform' })).resolves.toMatchObject({ teamId: 'team_123', role: 'owner' });
     await expect(client.listTeams()).resolves.toEqual([expect.objectContaining({ teamId: 'team_123' })]);
     await expect(client.listTeamMembers('team_123')).resolves.toEqual([expect.objectContaining({ userId: 'usr_123' })]);
+    await expect(client.upsertTeamMember('team_123', { userId: 'usr_456', role: 'lead' })).resolves.toMatchObject({ userId: 'usr_123' });
     expect(requests).toEqual([
       { method: 'POST', url: 'https://tick.example.com/v1/teams', body: { name: 'Platform' } },
       { method: 'GET', url: 'https://tick.example.com/v1/teams', body: undefined },
-      { method: 'GET', url: 'https://tick.example.com/v1/teams/team_123/members', body: undefined }
+      { method: 'GET', url: 'https://tick.example.com/v1/teams/team_123/members', body: undefined },
+      { method: 'POST', url: 'https://tick.example.com/v1/teams/team_123/members', body: { userId: 'usr_456', role: 'lead' } }
     ]);
   });
 

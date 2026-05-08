@@ -143,6 +143,17 @@ describe('server skeleton', () => {
     expect(teamMembers.statusCode).toBe(200);
     expect(teamMembers.json()).toEqual([expect.objectContaining({ teamId: team.json().teamId, userId: 'usr_default' })]);
 
+    store!.db.prepare('INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('usr_teammate', 'teammate@example.com', 1, 'Teammate', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
+    store!.db.prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(organizationId, 'usr_teammate', 'member', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
+    const addedTeamMember = await app.inject({
+      method: 'POST',
+      url: `/v1/teams/${team.json().teamId}/members`,
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { userId: 'usr_teammate', role: 'lead' }
+    });
+    expect(addedTeamMember.statusCode).toBe(200);
+    expect(addedTeamMember.json()).toMatchObject({ teamId: team.json().teamId, userId: 'usr_teammate', role: 'lead' });
+
     const policy = await app.inject({
       method: 'POST',
       url: '/v1/policies',

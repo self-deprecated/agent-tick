@@ -179,6 +179,7 @@ Implemented so far:
 - Verified primary email requirement and safe email-collision behavior.
 - Local organization creation, selection, membership validation, and member listing.
 - Project, team, and basic policy foundations with dashboard management.
+- Team member add/update APIs and dashboard management for local organization members.
 - Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens and dashboard management.
 - Approval request create/list/get/respond/abandon/wait APIs.
 - Agent token create/list/revoke APIs, including optional project/team/default-policy scoping.
@@ -205,7 +206,7 @@ High priority:
 
 Product rebuilds to evaluate/port from the prototype:
 
-- Full team membership management beyond owner bootstrap.
+- Team membership removal and richer role/eligibility management.
 - Policy templates and multi-approval policy engine.
 - Notification delivery service beyond stored push tokens.
 - MCP/adapter/guard integrations that still fit the npm CLI model.

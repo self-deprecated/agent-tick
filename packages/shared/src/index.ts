@@ -144,6 +144,12 @@ export const TeamMembershipSchema = TeamRecordSchema.extend({
 });
 export type TeamMembership = z.infer<typeof TeamMembershipSchema>;
 
+export const UpsertTeamMemberSchema = z.object({
+  userId: z.string().min(1),
+  role: TeamRoleSchema.default('member')
+});
+export type UpsertTeamMember = z.input<typeof UpsertTeamMemberSchema>;
+
 export const CreateTeamSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).optional(),

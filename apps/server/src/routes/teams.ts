@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { CreateTeamSchema } from '@agent-tick/shared';
+import { CreateTeamSchema, UpsertTeamMemberSchema } from '@agent-tick/shared';
 import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requirePrivilegedHuman } from '../auth/context.js';
@@ -33,5 +33,18 @@ export async function registerTeamRoutes(app: FastifyInstance, { config, store }
     const members = store.listTeamMembers(id);
     if (members.length === 0) return reply.status(404).send({ error: { code: 'not_found', message: 'Team not found', requestId: request.id } });
     return members;
+  });
+
+  app.post('/v1/teams/:id/members', async (request) => {
+    const auth = await requirePrivilegedHuman(request, config, store);
+    const { id } = request.params as { id: string };
+    const input = UpsertTeamMemberSchema.parse(request.body);
+    return store.upsertTeamMember({
+      organizationId: auth.organizationId,
+      actorUserId: auth.userId ?? 'usr_default',
+      teamId: id,
+      userId: input.userId,
+      role: input.role
+    });
   });
 }

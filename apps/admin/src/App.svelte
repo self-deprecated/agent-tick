@@ -13,6 +13,7 @@
 		type PairingToken,
 		type PolicyRecord,
 		type ProjectRecord,
+		type TeamMembership,
 		type TeamRecord
 	} from '@agent-tick/sdk';
 	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
@@ -28,8 +29,10 @@
 	let auditEvents = $state<AuditEventRecord[]>([]);
 	let organizations = $state<OrganizationMembership[]>([]);
 	let organizationInvites = $state<OrganizationInviteRecord[]>([]);
+	let organizationMembers = $state<OrganizationMembership[]>([]);
 	let projects = $state<ProjectRecord[]>([]);
 	let teams = $state<TeamRecord[]>([]);
+	let teamMembers = $state<Record<string, TeamMembership[]>>({});
 	let policies = $state<PolicyRecord[]>([]);
 	let selectedOrganizationId = $state('');
 	let newOrganizationName = $state('');
@@ -39,6 +42,9 @@
 	let createdInvite = $state<OrganizationInviteRecord | undefined>();
 	let newProjectName = $state('');
 	let newTeamName = $state('');
+	let selectedTeamForMember = $state('');
+	let selectedUserForTeam = $state('');
+	let newTeamMemberRole = $state('member');
 	let newPolicyName = $state('');
 	let newPolicyRequiredApprovals = $state(1);
 	let newPolicyProjectId = $state('');
@@ -116,8 +122,10 @@
 		auditEvents = [];
 		organizations = [];
 		organizationInvites = [];
+		organizationMembers = [];
 		projects = [];
 		teams = [];
+		teamMembers = {};
 		policies = [];
 		selectedOrganizationId = '';
 		createdCredential = undefined;
@@ -128,7 +136,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers()]);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -152,7 +160,8 @@
 		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
 		else localStorage.removeItem(organizationStorageKey);
 		createdInvite = undefined;
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites()]);
+		teamMembers = {};
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers()]);
 	}
 
 	async function createOrganization(): Promise<void> {
@@ -174,6 +183,18 @@
 			organizationInvites = await client().listOrganizationInvites();
 		} catch {
 			organizationInvites = [];
+		}
+	}
+
+	async function refreshOrganizationMembers(): Promise<void> {
+		if (!selectedOrganizationId) {
+			organizationMembers = [];
+			return;
+		}
+		try {
+			organizationMembers = await client().listOrganizationMembers(selectedOrganizationId);
+		} catch {
+			organizationMembers = [];
 		}
 	}
 
@@ -254,8 +275,20 @@
 	async function refreshTeams(): Promise<void> {
 		try {
 			teams = await client().listTeams();
+			if (!selectedTeamForMember && teams[0]) selectedTeamForMember = teams[0].teamId;
+			await Promise.all(teams.map((team) => refreshTeamMembers(team.teamId)));
 		} catch {
 			teams = [];
+			teamMembers = {};
+		}
+	}
+
+	async function refreshTeamMembers(teamId: string): Promise<void> {
+		try {
+			const members = await client().listTeamMembers(teamId);
+			teamMembers = { ...teamMembers, [teamId]: members };
+		} catch {
+			teamMembers = { ...teamMembers, [teamId]: [] };
 		}
 	}
 
@@ -264,9 +297,22 @@
 		if (!name) return;
 		error = '';
 		try {
-			await client().createTeam({ name });
+			const team = await client().createTeam({ name });
 			newTeamName = '';
+			selectedTeamForMember = team.teamId;
 			await Promise.all([refreshTeams(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	async function addTeamMember(): Promise<void> {
+		if (!selectedTeamForMember || !selectedUserForTeam) return;
+		error = '';
+		try {
+			await client().upsertTeamMember(selectedTeamForMember, { userId: selectedUserForTeam, role: newTeamMemberRole as 'owner' | 'lead' | 'member' | 'viewer' });
+			newTeamMemberRole = 'member';
+			await Promise.all([refreshTeamMembers(selectedTeamForMember), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -537,6 +583,27 @@
 			{#if teams.length === 0}
 				<p class="subtle">No teams yet. Teams will back policy routing and quorum approval rules.</p>
 			{:else}
+				<form class="row" onsubmit={(event) => { event.preventDefault(); void addTeamMember(); }}>
+					<label for="team-member-team" class="inline-label">Team</label>
+					<select id="team-member-team" bind:value={selectedTeamForMember}>
+						{#each teams as team}
+							<option value={team.teamId}>{team.name}</option>
+						{/each}
+					</select>
+					<label for="team-member-user" class="inline-label">Member</label>
+					<select id="team-member-user" bind:value={selectedUserForTeam}>
+						<option value="">Choose organization member</option>
+						{#each organizationMembers as member}
+							<option value={member.userId}>{member.name || member.userId} ({member.role})</option>
+						{/each}
+					</select>
+					<select bind:value={newTeamMemberRole} aria-label="Team role">
+						<option value="member">member</option>
+						<option value="lead">lead</option>
+						<option value="viewer">viewer</option>
+					</select>
+					<button type="submit">Add member</button>
+				</form>
 				<ul class="item-list">
 					{#each teams as team}
 						<li class="item-card" class:is-muted={Boolean(team.archivedAt)}>
@@ -544,6 +611,9 @@
 								<strong>{team.name}</strong>
 								<p class="subtle">{team.teamId} · {team.slug}{team.archivedAt ? ` · archived ${new Date(team.archivedAt).toLocaleString()}` : ''}</p>
 								{#if team.description}<p>{team.description}</p>{/if}
+								{#if teamMembers[team.teamId]?.length}
+									<p class="subtle">Members: {teamMembers[team.teamId].map((member) => `${member.userId} (${member.role})`).join(', ')}</p>
+								{/if}
 							</div>
 						</li>
 					{/each}
