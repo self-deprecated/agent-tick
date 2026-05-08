@@ -7,6 +7,7 @@ import type { ServerConfig } from './config.js';
 import { registerAgentTokenRoutes } from './routes/agentTokens.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerAuditRoutes } from './routes/audit.js';
+import { registerBillingRoutes } from './routes/billing.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerEventRoutes } from './routes/events.js';
 import { registerInviteRoutes } from './routes/invites.js';
@@ -57,6 +58,7 @@ export async function buildApp({ config, store, notifier = createExpoPushNotifie
   await registerOrganizationRoutes(app, { config, store });
   await registerInviteRoutes(app, { config, store });
   await registerAgentTokenRoutes(app, { config, store });
+  await registerBillingRoutes(app, { config, store });
   await registerApprovalRoutes(app, { config, store, notifier });
   await registerDeviceRoutes(app, { config, store });
   await registerPairingRoutes(app, { config, store });

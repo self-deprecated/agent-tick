@@ -8,6 +8,7 @@ import {
   AuditEventRecordSchema,
   AuthConfigSchema,
   AvailabilityRecordSchema,
+  BillingStatusSchema,
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
   CreateOrganizationInviteSchema,
@@ -47,6 +48,7 @@ import {
   type AuditEventRecord,
   type AuthConfig,
   type AvailabilityRecord,
+  type BillingStatus,
   type CreateAgentToken,
   type CreateApprovalRequest,
   type CreateOrganization,
@@ -140,6 +142,10 @@ export class AgentTickClient {
     if (options.limit !== undefined) params.set('limit', String(options.limit));
     const suffix = params.size ? `?${params.toString()}` : '';
     return this.#request('GET', `/v1/audit-events${suffix}`, AuditEventRecordSchema.array());
+  }
+
+  getBillingStatus(): Promise<BillingStatus> {
+    return this.#request('GET', '/v1/billing', BillingStatusSchema);
   }
 
   sendHeartbeat(input: HeartbeatRequest = {}): Promise<HeartbeatResponse> {
@@ -400,6 +406,7 @@ export type {
   AuditEventRecord,
   AuthConfig,
   AvailabilityRecord,
+  BillingStatus,
   CreateAgentToken,
   CreateApprovalRequest,
   CreateOrganization,

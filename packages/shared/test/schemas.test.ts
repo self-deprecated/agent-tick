@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiErrorEnvelopeSchema, AuthConfigSchema, CreateApprovalRequestSchema, UpdateDevicePushTokenSchema } from '../src/index.js';
+import { ApiErrorEnvelopeSchema, AuthConfigSchema, BillingStatusSchema, CreateApprovalRequestSchema, UpdateDevicePushTokenSchema } from '../src/index.js';
 
 describe('shared schemas', () => {
   it('validates public auth config', () => {
@@ -16,6 +16,17 @@ describe('shared schemas', () => {
       publicURL: 'https://tick.example.com',
       clerkPublishableKey: 'pk_test_123'
     });
+  });
+
+  it('validates billing seat usage', () => {
+    expect(
+      BillingStatusSchema.parse({
+        organizationId: 'org_123',
+        plan: 'self-hosted',
+        limits: { seats: 3 },
+        usage: { activeMembers: 2, pendingMembers: 1 }
+      })
+    ).toEqual({ organizationId: 'org_123', plan: 'self-hosted', limits: { seats: 3 }, usage: { activeMembers: 2, pendingMembers: 1 } });
   });
 
   it('rejects empty approval titles', () => {

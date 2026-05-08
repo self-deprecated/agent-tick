@@ -13,7 +13,8 @@ const ConfigSchema = z.object({
   clerkPublishableKey: z.string().optional(),
   clerkSecretKey: z.string().optional(),
   clerkJwtKey: z.string().optional(),
-  clerkAuthorizedParties: z.array(z.string()).default([])
+  clerkAuthorizedParties: z.array(z.string()).default([]),
+  maxActiveMembers: z.coerce.number().int().positive().optional()
 });
 
 export type ServerConfig = Omit<z.infer<typeof ConfigSchema>, 'adminDistDir'> & {
@@ -33,7 +34,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     clerkPublishableKey: env.AGENT_TICK_CLERK_PUBLISHABLE_KEY,
     clerkSecretKey: env.AGENT_TICK_CLERK_SECRET_KEY,
     clerkJwtKey: env.AGENT_TICK_CLERK_JWT_KEY,
-    clerkAuthorizedParties: splitCSV(env.AGENT_TICK_CLERK_AUTHORIZED_PARTIES)
+    clerkAuthorizedParties: splitCSV(env.AGENT_TICK_CLERK_AUTHORIZED_PARTIES),
+    maxActiveMembers: env.AGENT_TICK_MAX_ACTIVE_MEMBERS?.trim() || undefined
   });
 
   if (parsed.mode === 'clerk' && (!parsed.clerkPublishableKey || !parsed.clerkSecretKey)) {

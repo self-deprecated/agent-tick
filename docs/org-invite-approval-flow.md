@@ -153,7 +153,7 @@ Pending members:
 - cannot receive team approval push notifications
 - should not count as eligible approvers
 
-Seat billing can either count pending members separately or exclude them from active seats. The first implementation should avoid treating rejected/removed users as active seats.
+Seat billing counts active members separately from pending approvals. The TypeScript server exposes `/v1/billing` with active and pending member usage, and the optional `AGENT_TICK_MAX_ACTIVE_MEMBERS` setting enforces an active-seat ceiling when an invite is auto-approved or when an admin approves a pending request. Rejected/removed users are not active seats.
 
 ## Invite behavior
 
@@ -461,7 +461,7 @@ For a new account created from the invite page, the app should automatically acc
 
 ## Implementation slices
 
-Current status: TypeScript support exists for approval-required invites, exact-email and domain invite restrictions, redacted public invite previews, dashboard invite preview/continuation, pending membership rows, pending/rejected self-status visibility, revoked-invite visibility on pending requests, active-only authorization/listing, invite team assignment on approval, pending request list/approve/reject endpoints, SDK methods, audit events, backend tests, and dashboard invite/pending-member management. Billing and email-delivery polish remain.
+Current status: TypeScript support exists for approval-required invites, exact-email and domain invite restrictions, redacted public invite previews, dashboard invite preview/continuation, pending membership rows, pending/rejected self-status visibility, revoked-invite visibility on pending requests, active-only authorization/listing, invite team assignment on approval, pending request list/approve/reject endpoints, SDK methods, audit events, backend tests, dashboard invite/pending-member management, and local active/pending seat usage with optional active-seat enforcement. Email-delivery polish remains.
 
 ### Slice 1: Core backend
 
@@ -493,8 +493,9 @@ Current status: TypeScript support exists for approval-required invites, exact-e
 
 ### Slice 4: Restrictions and billing
 
-- Seat-limit checks at approval time.
-- Billing usage separation for active vs pending users.
+- [x] Seat-limit checks at approval time.
+- [x] Seat-limit checks for owner-created auto-approved invites.
+- [x] Billing usage separation for active vs pending users.
 
 ### Slice 5: Email delivery
 

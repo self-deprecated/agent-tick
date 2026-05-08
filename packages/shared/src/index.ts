@@ -131,6 +131,25 @@ export const OrganizationMembershipRequestRecordSchema = z.object({
 });
 export type OrganizationMembershipRequestRecord = z.infer<typeof OrganizationMembershipRequestRecordSchema>;
 
+export const BillingLimitsSchema = z.object({
+  seats: z.number().int().positive().optional()
+});
+export type BillingLimits = z.infer<typeof BillingLimitsSchema>;
+
+export const BillingUsageSchema = z.object({
+  activeMembers: z.number().int().min(0),
+  pendingMembers: z.number().int().min(0)
+});
+export type BillingUsage = z.infer<typeof BillingUsageSchema>;
+
+export const BillingStatusSchema = z.object({
+  organizationId: z.string(),
+  plan: z.string(),
+  limits: BillingLimitsSchema,
+  usage: BillingUsageSchema
+});
+export type BillingStatus = z.infer<typeof BillingStatusSchema>;
+
 export const ProjectRecordSchema = z.object({
   projectId: z.string(),
   organizationId: z.string(),

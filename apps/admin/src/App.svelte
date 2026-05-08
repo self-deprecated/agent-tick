@@ -9,6 +9,7 @@
 		type ApprovalRequest,
 		type AuditEventRecord,
 		type AuthConfig,
+		type BillingStatus,
 		type InvitePreview,
 		type OrganizationInviteRecord,
 		type OrganizationMembership,
@@ -32,6 +33,7 @@
 	let approvals = $state<ApprovalRequest[]>([]);
 	let agentTokens = $state<AgentTokenRecord[]>([]);
 	let auditEvents = $state<AuditEventRecord[]>([]);
+	let billingStatus = $state<BillingStatus | undefined>();
 	let organizations = $state<OrganizationMembership[]>([]);
 	let organizationInvites = $state<OrganizationInviteRecord[]>([]);
 	let organizationMembers = $state<OrganizationMembership[]>([]);
@@ -205,6 +207,7 @@
 		approvals = [];
 		agentTokens = [];
 		auditEvents = [];
+		billingStatus = undefined;
 		organizations = [];
 		organizationInvites = [];
 		organizationMembers = [];
@@ -223,7 +226,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests(), refreshMyMembershipRequests()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshBilling(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests(), refreshMyMembershipRequests()]);
 		void ensureEventStream();
 	}
 
@@ -314,7 +317,7 @@
 		else localStorage.removeItem(organizationStorageKey);
 		createdInvite = undefined;
 		teamMembers = {};
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshBilling(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests()]);
 		void ensureEventStream();
 	}
 
@@ -349,6 +352,18 @@
 			organizationMembers = await client().listOrganizationMembers(selectedOrganizationId);
 		} catch {
 			organizationMembers = [];
+		}
+	}
+
+	async function refreshBilling(): Promise<void> {
+		if (!selectedOrganizationId) {
+			billingStatus = undefined;
+			return;
+		}
+		try {
+			billingStatus = await client().getBillingStatus();
+		} catch {
+			billingStatus = undefined;
 		}
 	}
 
@@ -415,7 +430,7 @@
 		error = '';
 		try {
 			await client().approveMembershipRequest(requestId);
-			await Promise.all([refreshMembershipRequests(), refreshMyMembershipRequests(), refreshOrganizationMembers(), refreshAuditEvents(), refreshOrganizations()]);
+			await Promise.all([refreshMembershipRequests(), refreshMyMembershipRequests(), refreshOrganizationMembers(), refreshBilling(), refreshAuditEvents(), refreshOrganizations()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -425,7 +440,7 @@
 		error = '';
 		try {
 			await client().rejectMembershipRequest(requestId);
-			await Promise.all([refreshMembershipRequests(), refreshMyMembershipRequests(), refreshOrganizationMembers(), refreshAuditEvents()]);
+			await Promise.all([refreshMembershipRequests(), refreshMyMembershipRequests(), refreshOrganizationMembers(), refreshBilling(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -563,6 +578,10 @@
 	function teamLabel(teamId: string): string {
 		const team = teams.find((entry) => entry.teamId === teamId);
 		return team ? `${team.name} (${team.slug})` : teamId;
+	}
+
+	function seatUsageLabel(status: BillingStatus): string {
+		return status.limits.seats ? `${status.usage.activeMembers}/${status.limits.seats} active seats` : `${status.usage.activeMembers} active seats (no configured limit)`;
 	}
 
 	async function refreshAuditEvents(): Promise<void> {
@@ -720,6 +739,9 @@
 						{/each}
 					</select>
 					<p class="subtle">Requests, agent tokens, and devices use this local Agent Tick organization. Clerk organizations are not used for authorization.</p>
+					{#if billingStatus?.organizationId === selectedOrganizationId}
+						<p class="subtle"><strong>Billing seats:</strong> {seatUsageLabel(billingStatus)} · {billingStatus.usage.pendingMembers} pending approval{billingStatus.usage.pendingMembers === 1 ? '' : 's'}.</p>
+					{/if}
 				{:else}
 					<p class="subtle">No local organization memberships loaded yet.</p>
 				{/if}

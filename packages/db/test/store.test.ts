@@ -119,6 +119,29 @@ describe('AgentTickStore', () => {
     expect(() => store!.createOrganizationInvite({ organizationId: created.organizationId, userId: 'usr_default', role: 'viewer', email: 'carol@example.com', domain: 'example.com' })).toThrow(/either exact email or domain/i);
   });
 
+  it('tracks active/pending seat usage and enforces activation limits', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const created = store.createOrganizationForUser('usr_default', 'Limited');
+    expect(store.organizationSeatUsage(created.organizationId)).toEqual({ activeMembers: 1, pendingMembers: 0 });
+
+    const pendingInvite = store.createOrganizationInvite({ organizationId: created.organizationId, userId: 'usr_default', role: 'member' });
+    const bob = store.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
+    const accepted = store.acceptInvite(pendingInvite.token!, bob.userId);
+    expect(accepted).toMatchObject({ status: 'pending_approval' });
+    expect(store.organizationSeatUsage(created.organizationId)).toEqual({ activeMembers: 1, pendingMembers: 1 });
+    const [request] = store.listOrganizationMembershipRequests(created.organizationId);
+    expect(() => store!.approveOrganizationMembershipRequest(request!.requestId, created.organizationId, 'usr_default', '2026-05-09T00:00:00.000Z', { maxActiveMembers: 1 })).toThrow(/seat limit/i);
+    expect(store.organizationMembershipForUser(bob.userId, created.organizationId)).toBeNull();
+
+    const autoInvite = store.createOrganizationInvite({ organizationId: created.organizationId, userId: 'usr_default', role: 'member', approvalRequired: false });
+    const alice = store.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_alice', email: 'alice@example.com', emailVerified: true, name: 'Alice' });
+    expect(() => store!.acceptInvite(autoInvite.token!, alice.userId, '2026-05-09T00:00:00.000Z', { maxActiveMembers: 1 })).toThrow(/seat limit/i);
+    expect(store.organizationMembershipForUserAnyStatus(alice.userId, created.organizationId)).toBeNull();
+  });
+
   it('creates and verifies agent tokens by hash', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

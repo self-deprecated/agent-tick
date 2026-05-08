@@ -67,6 +67,24 @@ describe('AgentTickClient', () => {
     expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/audit-events?limit=10' });
   });
 
+  it('calls billing endpoint with organization selection', async () => {
+    const seen: { url?: string; method?: string; organizationId?: string | null } = {};
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      organizationIdProvider: () => 'org_123',
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        seen.url = String(input);
+        seen.method = init?.method;
+        seen.organizationId = headers.get('X-Agent-Tick-Organization-ID');
+        return jsonResponse({ organizationId: 'org_123', plan: 'self-hosted', limits: { seats: 3 }, usage: { activeMembers: 2, pendingMembers: 1 } });
+      }
+    });
+
+    await expect(client.getBillingStatus()).resolves.toEqual({ organizationId: 'org_123', plan: 'self-hosted', limits: { seats: 3 }, usage: { activeMembers: 2, pendingMembers: 1 } });
+    expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/billing', organizationId: 'org_123' });
+  });
+
   it('builds event stream URLs from short-lived tickets', async () => {
     const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
     const client = new AgentTickClient({

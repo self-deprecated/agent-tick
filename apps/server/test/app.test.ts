@@ -66,6 +66,11 @@ describe('server skeleton', () => {
     expect(JSON.stringify(response.json())).not.toContain('sk_test_secret');
   });
 
+  it('parses optional active-member seat limits', () => {
+    expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_MAX_ACTIVE_MEMBERS: '10' }).maxActiveMembers).toBe(10);
+    expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_MAX_ACTIVE_MEMBERS: '' }).maxActiveMembers).toBeUndefined();
+  });
+
   it('requires Clerk keys in clerk mode config', () => {
     expect(() => loadConfig({ AGENT_TICK_MODE: 'clerk' })).toThrow(/CLERK_PUBLISHABLE_KEY/);
   });
@@ -290,6 +295,41 @@ describe('server skeleton', () => {
     const membersAfterApproval = await app.inject({ method: 'GET', url: `/v1/organizations/${organizationId}/members` });
     expect(membersAfterApproval.statusCode).toBe(200);
     expect(membersAfterApproval.json()).toEqual(expect.arrayContaining([expect.objectContaining({ userId: bob.userId, role: 'admin', status: 'active' })]));
+  });
+
+  it('reports billing seat usage and enforces active-member limits for invite approvals', async () => {
+    const db = testStore();
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_MAX_ACTIVE_MEMBERS: '1' }), store: db });
+
+    const createOrg = await app.inject({ method: 'POST', url: '/v1/organizations', payload: { name: 'Limited' } });
+    const organizationId = createOrg.json().organizationId as string;
+    const invite = await app.inject({
+      method: 'POST',
+      url: '/v1/organization-invites',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { label: 'Bob', role: 'member' }
+    });
+    const bob = db.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
+    const pairing = db.createPairingToken(bob.userId, bob.organizationId);
+    const bobDevice = db.pairDeviceWithCode(pairing.token, 'Bob phone', 'ios');
+
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/v1/invites/${encodeURIComponent(invite.json().token)}/accept`,
+      headers: { authorization: `Bearer ${bobDevice!.token}` },
+      payload: {}
+    });
+    expect(accepted.statusCode).toBe(200);
+
+    const billing = await app.inject({ method: 'GET', url: '/v1/billing', headers: { 'x-agent-tick-organization-id': organizationId } });
+    expect(billing.statusCode).toBe(200);
+    expect(billing.json()).toEqual({ organizationId, plan: 'self-hosted', limits: { seats: 1 }, usage: { activeMembers: 1, pendingMembers: 1 } });
+
+    const pending = await app.inject({ method: 'GET', url: '/v1/organization-membership-requests', headers: { 'x-agent-tick-organization-id': organizationId } });
+    const approved = await app.inject({ method: 'POST', url: `/v1/organization-membership-requests/${pending.json()[0].requestId}/approve`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
+    expect(approved.statusCode).toBe(409);
+    expect(approved.json()).toMatchObject({ error: { code: 'conflict', message: expect.stringMatching(/seat limit/i) } });
+    expect(db.organizationMembershipForUser(bob.userId, organizationId)).toBeNull();
   });
 
   it('notifies registered push devices when an approval request is created', async () => {

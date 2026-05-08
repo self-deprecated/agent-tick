@@ -14,6 +14,9 @@ AGENT_TICK_PORT=8787
 
 # Optional but recommended outside localhost.
 AGENT_TICK_ADMIN_TOKEN=change-me
+
+# Optional local active-member seat guard. Omit for unlimited self-hosted seats.
+# AGENT_TICK_MAX_ACTIVE_MEMBERS=10
 ```
 
 Start it:
@@ -30,7 +33,7 @@ npx agent-tick setup --server https://tick.example.com --token agent_...
 
 ## Clerk multi-user mode
 
-Clerk authenticates dashboard/mobile humans. Agent Tick still owns local users, organizations, devices, agent tokens, approvals, and audit data.
+Clerk authenticates dashboard/mobile humans. Agent Tick still owns local users, organizations, devices, agent tokens, approvals, billing seat limits, and audit data.
 
 Create a Clerk application, configure your dashboard origin in Clerk, then set:
 
@@ -42,6 +45,12 @@ AGENT_TICK_PORT=8787
 AGENT_TICK_CLERK_PUBLISHABLE_KEY=pk_...
 AGENT_TICK_CLERK_SECRET_KEY=sk_...
 AGENT_TICK_CLERK_AUTHORIZED_PARTIES=https://tick.example.com
+```
+
+Optional local active-member seat guard (also available in single mode):
+
+```env
+AGENT_TICK_MAX_ACTIVE_MEMBERS=10
 ```
 
 Optional networkless verification key:
@@ -82,6 +91,6 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 ## Current implementation scope
 
-The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, and organization invites.
+The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, and optional active-member seat enforcement.
 
-Some earlier Go-era features are intentionally being reintroduced only when they are needed: advanced policy templates, invite approvals, extra notification sinks, full mobile Clerk UI, and event streaming.
+Some earlier Go-era features are intentionally being reintroduced only when they are needed: advanced policy templates, extra notification sinks, richer mobile Clerk flows, and hosted billing/operator tooling.

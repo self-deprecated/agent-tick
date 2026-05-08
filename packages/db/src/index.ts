@@ -136,6 +136,15 @@ export interface AcceptInviteResult {
   membership: OrganizationMembershipRecord;
 }
 
+export interface MembershipActivationLimits {
+  maxActiveMembers?: number;
+}
+
+export interface OrganizationSeatUsage {
+  activeMembers: number;
+  pendingMembers: number;
+}
+
 export interface OrganizationMembershipRequestRecord {
   requestId: string;
   inviteId: string;
@@ -452,6 +461,24 @@ export class AgentTickStore {
     return rows.map(mapOrganizationMembershipRow);
   }
 
+  organizationSeatUsage(organizationId: string): OrganizationSeatUsage {
+    const rows = this.db
+      .prepare("SELECT status, COUNT(*) AS count FROM organization_memberships WHERE organization_id = ? AND status IN ('active', 'pending_approval') GROUP BY status")
+      .all(organizationId) as Array<{ status: string; count: number }>;
+    return {
+      activeMembers: rows.find((row) => row.status === 'active')?.count ?? 0,
+      pendingMembers: rows.find((row) => row.status === 'pending_approval')?.count ?? 0
+    };
+  }
+
+  private assertSeatAvailableForActivation(organizationId: string, maxActiveMembers: number | undefined): void {
+    if (maxActiveMembers === undefined) return;
+    const limit = Math.trunc(maxActiveMembers);
+    if (limit < 1) return;
+    const activeMembers = this.organizationSeatUsage(organizationId).activeMembers;
+    if (activeMembers >= limit) throw httpError(409, 'conflict', 'Organization active member seat limit reached');
+  }
+
   organizationMembershipForUser(userId: string, organizationId: string): HumanIdentityResult | null {
     const row = this.db
       .prepare("SELECT organization_id, role FROM organization_memberships WHERE user_id = ? AND organization_id = ? AND status = 'active'")
@@ -578,7 +605,7 @@ export class AgentTickStore {
     };
   }
 
-  acceptInvite(token: string, userId: string, now = new Date().toISOString()): AcceptInviteResult | null {
+  acceptInvite(token: string, userId: string, now = new Date().toISOString(), limits: MembershipActivationLimits = {}): AcceptInviteResult | null {
     const invite = this.findUsableInvite(token, now);
     if (!invite) return null;
     const user = this.db.prepare('SELECT email FROM users WHERE id = ?').get(userId) as { email: string } | undefined;
@@ -618,6 +645,7 @@ export class AgentTickStore {
         `)
         .run(invite.invite_id, now).changes;
       if (consumed !== 1) return false;
+      if (!approvalRequired) this.assertSeatAvailableForActivation(invite.organization_id, limits.maxActiveMembers);
 
       this.db
         .prepare('INSERT INTO organization_invite_acceptances(request_id, invite_id, organization_id, user_id, requested_role, requested_team_ids_json, status, accepted_at, decided_by_user_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -701,12 +729,13 @@ export class AgentTickStore {
     return row ? mapOrganizationMembershipRequestRow(row) : null;
   }
 
-  approveOrganizationMembershipRequest(requestId: string, organizationId: string, actorUserId: string, now = new Date().toISOString()): OrganizationMembershipRequestRecord | null {
+  approveOrganizationMembershipRequest(requestId: string, organizationId: string, actorUserId: string, now = new Date().toISOString(), limits: MembershipActivationLimits = {}): OrganizationMembershipRequestRecord | null {
     const existing = this.getOrganizationMembershipRequest(requestId, organizationId);
     if (!existing || existing.status !== 'pending_approval') return null;
     let changed = false;
     try {
       changed = this.db.transaction(() => {
+        this.assertSeatAvailableForActivation(organizationId, limits.maxActiveMembers);
         const acceptance = this.db
           .prepare("UPDATE organization_invite_acceptances SET status = 'approved', decided_by_user_id = ?, decided_at = ? WHERE request_id = ? AND organization_id = ? AND status = 'pending_approval'")
           .run(actorUserId, now, requestId, organizationId).changes;
@@ -725,7 +754,8 @@ export class AgentTickStore {
         }
         return true;
       })();
-    } catch {
+    } catch (error) {
+      if (typeof (error as { statusCode?: unknown }).statusCode === 'number') throw error;
       return null;
     }
     if (!changed) return null;

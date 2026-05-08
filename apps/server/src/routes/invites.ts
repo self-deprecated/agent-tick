@@ -60,7 +60,7 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
     const auth = await requirePrivilegedHuman(request, config, store);
     requireOrganizationAdmin(auth);
     const { id } = request.params as { id: string };
-    const result = store.approveOrganizationMembershipRequest(id, auth.organizationId, auth.userId ?? 'usr_default');
+    const result = store.approveOrganizationMembershipRequest(id, auth.organizationId, auth.userId ?? 'usr_default', new Date().toISOString(), activationLimits(config));
     if (!result) return reply.status(404).send({ error: { code: 'not_found', message: 'Membership request not found', requestId: request.id } });
     return result;
   });
@@ -84,10 +84,14 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
   app.post('/v1/invites/:token/accept', async (request, reply) => {
     const auth = await requireHuman(request, config, store);
     const { token } = request.params as { token: string };
-    const accepted = store.acceptInvite(token, auth.userId ?? 'usr_default');
+    const accepted = store.acceptInvite(token, auth.userId ?? 'usr_default', new Date().toISOString(), activationLimits(config));
     if (!accepted) return reply.status(404).send({ error: { code: 'not_found', message: 'Invite not found or expired', requestId: request.id } });
     return accepted;
   });
+}
+
+function activationLimits(config: ServerConfig): { maxActiveMembers?: number } {
+  return config.maxActiveMembers === undefined ? {} : { maxActiveMembers: config.maxActiveMembers };
 }
 
 function requireOrganizationAdmin(auth: AuthContext): void {

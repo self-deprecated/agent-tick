@@ -192,6 +192,7 @@ Implemented so far:
 - Mobile heartbeat and availability APIs.
 - Mobile uses the shared SDK for organization discovery, approval list/respond, presence, and device pair/register/unregister/push flows.
 - Audit-event table, event recording, route, SDK method, and dashboard display.
+- Local billing seat usage for active vs pending members, optional `AGENT_TICK_MAX_ACTIVE_MEMBERS` enforcement, SDK method, and dashboard display.
 - SDK token provider and organization provider support.
 - Svelte dashboard Clerk sign-in, invite preview/continuation, local organization selector, token management, audit view, pairing code UI, and ticketed EventSource refreshes.
 - Docker image build for the TypeScript server plus static Svelte admin assets.
@@ -211,7 +212,7 @@ Product rebuilds to evaluate/port from the prototype:
 - Policy templates and richer multi-step eligibility/routing policy engine.
 - Notification delivery service beyond stored push tokens.
 - MCP/adapter/guard integrations that still fit the npm CLI model.
-- Billing/hosted-service limits and operator tooling.
+- Hosted-service billing portals, plan sync, and operator tooling beyond the current local seat guard.
 
 Operational hardening:
 
