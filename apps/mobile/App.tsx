@@ -1,8 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ClerkProvider, useAuth, useSignIn } from "@clerk/expo";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
+import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -52,6 +54,7 @@ import {
 } from "./approvalRequests";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
+import { clerkTokenCacheKey, fetchRuntimeAuthConfig, type RuntimeAuthConfig } from "./mobileAuth";
 
 type DeviceCredential = {
   deviceId: string;
@@ -67,6 +70,16 @@ const deviceIDKey = "agent-tick.deviceID";
 const pushStatusKey = "agent-tick.pushStatus";
 const approvalCategoryID = "approval-request";
 
+type ClerkTokenProvider = () => Promise<string | null>;
+
+type AgentTickAppProps = {
+  initialServerURL?: string;
+  initialAuthConfig?: RuntimeAuthConfig | null;
+  clerkTokenProvider?: ClerkTokenProvider;
+  clerkSignedIn?: boolean;
+  onRuntimeAuthConfig?: (serverURL: string, config: RuntimeAuthConfig | null) => void;
+};
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: true,
@@ -77,8 +90,163 @@ Notifications.setNotificationHandler({
 });
 
 export default function App() {
+  const [bootstrap, setBootstrap] = useState<{
+    serverURL: string;
+    authConfig: RuntimeAuthConfig | null;
+    loaded: boolean;
+  }>({ serverURL: defaultServer, authConfig: null, loaded: false });
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadBootstrap = async () => {
+      const savedServerURL = (await AsyncStorage.getItem(serverURLKey)) ?? defaultServer;
+      let authConfig: RuntimeAuthConfig | null = null;
+      try {
+        authConfig = await fetchRuntimeAuthConfig(savedServerURL);
+      } catch {
+        authConfig = null;
+      }
+      if (!cancelled) setBootstrap({ serverURL: savedServerURL, authConfig, loaded: true });
+    };
+    void loadBootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleRuntimeAuthConfig = useCallback((serverURL: string, authConfig: RuntimeAuthConfig | null) => {
+    setBootstrap({ serverURL, authConfig, loaded: true });
+  }, []);
+
+  if (!bootstrap.loaded) {
+    return <LoadingScreen />;
+  }
+
+  if (bootstrap.authConfig?.authProvider === "clerk" && bootstrap.authConfig.clerkPublishableKey) {
+    const cacheKey = clerkTokenCacheKey(bootstrap.serverURL, bootstrap.authConfig.clerkPublishableKey);
+    return (
+      <ClerkProvider publishableKey={bootstrap.authConfig.clerkPublishableKey} tokenCache={secureTokenCache(cacheKey)}>
+        <ClerkBoundApp
+          initialServerURL={bootstrap.serverURL}
+          initialAuthConfig={bootstrap.authConfig}
+          onRuntimeAuthConfig={handleRuntimeAuthConfig}
+        />
+      </ClerkProvider>
+    );
+  }
+
+  return (
+    <AgentTickApp
+      initialServerURL={bootstrap.serverURL}
+      initialAuthConfig={bootstrap.authConfig}
+      onRuntimeAuthConfig={handleRuntimeAuthConfig}
+    />
+  );
+}
+
+function ClerkBoundApp(props: AgentTickAppProps) {
+  const { getToken, isSignedIn, signOut } = useAuth();
+  if (!isSignedIn) {
+    return <ClerkSignInScreen serverURL={props.initialServerURL ?? defaultServer} />;
+  }
+  return (
+    <AgentTickApp
+      {...props}
+      clerkSignedIn={isSignedIn}
+      clerkTokenProvider={() => getToken()}
+      onForgetClerkSession={() => void signOut()}
+    />
+  );
+}
+
+function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
+  const { signIn, fetchStatus } = useSignIn();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const submitting = fetchStatus === "fetching";
+
+  const submit = async () => {
+    if (submitting) return;
+    setError(null);
+    try {
+      const result = await signIn.create({ identifier: email.trim(), password });
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+      if (signIn.status === "complete") {
+        const finalizeResult = await signIn.finalize();
+        if (finalizeResult.error) throw new Error(finalizeResult.error.message);
+        return;
+      }
+      setError(`Additional Clerk step required: ${signIn.status}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not sign in with Clerk");
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.shell}>
+      <StatusBar style="dark" />
+      <View style={styles.emptyState}>
+        <Text style={styles.title}>Sign in with Clerk</Text>
+        <Text style={styles.subtitle}>{serverURL}</Text>
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          placeholder="Email"
+          style={styles.input}
+        />
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Password"
+          secureTextEntry
+          style={styles.input}
+        />
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        <Pressable style={styles.primaryButton} onPress={() => void submit()} disabled={submitting}>
+          <Text style={styles.primaryButtonText}>{submitting ? "Signing in…" : "Sign in"}</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <SafeAreaView style={styles.shell}>
+      <StatusBar style="dark" />
+      <View style={styles.emptyState}>
+        <ActivityIndicator />
+        <Text style={styles.subtitle}>Loading Agent Tick…</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function secureTokenCache(namespace: string) {
+  return {
+    getToken: (key: string) => SecureStore.getItemAsync(`${namespace}.${key}`),
+    saveToken: (key: string, value: string) => SecureStore.setItemAsync(`${namespace}.${key}`, value),
+    clearToken: (key: string) => {
+      void SecureStore.deleteItemAsync(`${namespace}.${key}`);
+    },
+  };
+}
+
+function AgentTickApp({
+  initialServerURL,
+  initialAuthConfig,
+  clerkTokenProvider,
+  onRuntimeAuthConfig,
+  onForgetClerkSession,
+}: AgentTickAppProps & { onForgetClerkSession?: () => void }) {
   const [screen, setScreen] = useState<Screen>("approvals");
-  const [serverURL, setServerURL] = useState(defaultServer);
+  const [serverURL, setServerURL] = useState(initialServerURL ?? defaultServer);
+  const [runtimeAuthConfig, setRuntimeAuthConfig] = useState<RuntimeAuthConfig | null>(initialAuthConfig ?? null);
   const [token, setToken] = useState("");
   const [deviceID, setDeviceID] = useState("");
   const [pairingCode, setPairingCode] = useState("");
@@ -128,14 +296,29 @@ export default function App() {
     setQuestionnaireAnswers(buildQuestionnaireAnswers(selected));
   }, [selected?.id]);
 
+  const currentAuthToken = useCallback(async () => {
+    if (runtimeAuthConfig?.authProvider === "clerk") {
+      return (await clerkTokenProvider?.()) ?? "";
+    }
+    return token;
+  }, [clerkTokenProvider, runtimeAuthConfig?.authProvider, token]);
+
+  const authHeaders = useCallback(async () => {
+    const authToken = await currentAuthToken();
+    return {
+      "Content-Type": "application/json",
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    };
+  }, [currentAuthToken]);
+
   const api = useCallback(
     async <T,>(path: string, init?: RequestInit): Promise<T> => {
       const trimmed = serverURL.replace(/\/$/, "");
+      const headers = await authHeaders();
       const response = await fetch(`${trimmed}${path}`, {
         ...init,
         headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...headers,
           ...init?.headers,
         },
       });
@@ -145,7 +328,7 @@ export default function App() {
       }
       return (await response.json()) as T;
     },
-    [serverURL, token],
+    [authHeaders, serverURL],
   );
 
   useEffect(() => {
@@ -223,6 +406,35 @@ export default function App() {
       return;
     }
 
+    let cancelled = false;
+    const loadRuntimeAuthConfig = async () => {
+      try {
+        const nextConfig = await fetchRuntimeAuthConfig(serverURL);
+        if (cancelled) return;
+        setRuntimeAuthConfig(nextConfig);
+        onRuntimeAuthConfig?.(serverURL, nextConfig);
+        if (nextConfig.authProvider === "clerk") {
+          setToken("");
+          setDeviceID("");
+        }
+      } catch {
+        if (!cancelled) {
+          setRuntimeAuthConfig(null);
+          onRuntimeAuthConfig?.(serverURL, null);
+        }
+      }
+    };
+    void loadRuntimeAuthConfig();
+    return () => {
+      cancelled = true;
+    };
+  }, [onRuntimeAuthConfig, serverURL, settingsLoaded]);
+
+  useEffect(() => {
+    if (!settingsLoaded) {
+      return;
+    }
+
     void AsyncStorage.multiSet([
       [serverURLKey, serverURL],
       [tokenKey, token],
@@ -289,38 +501,29 @@ export default function App() {
   }, [load, settingsLoaded]);
 
   useEffect(() => {
-    if (!settingsLoaded || !token) {
+    if (!settingsLoaded || (runtimeAuthConfig?.authProvider !== "clerk" && !token)) {
       return;
     }
     const heartbeat = () => {
-      void fetch(`${serverURL.replace(/\/$/, "")}/v1/heartbeat`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ deviceId: deviceID, client: "mobile" }),
-      }).catch(() => undefined);
+      void authHeaders()
+        .then((headers) =>
+          fetch(`${serverURL.replace(/\/$/, "")}/v1/heartbeat`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ deviceId: deviceID, client: "mobile" }),
+          }),
+        )
+        .catch(() => undefined);
     };
     heartbeat();
     const timer = setInterval(heartbeat, 60_000);
     return () => clearInterval(timer);
-  }, [deviceID, serverURL, settingsLoaded, token]);
+  }, [authHeaders, deviceID, runtimeAuthConfig?.authProvider, serverURL, settingsLoaded, token]);
 
   useEffect(() => {
-    if (!settingsLoaded || !token) {
-      return;
-    }
-
-    const wsURL = serverURL
-      .replace(/^http:\/\//, "ws://")
-      .replace(/^https:\/\//, "wss://")
-      .replace(/\/$/, "");
-    const socket = new WebSocket(
-      `${wsURL}/v1/events?token=${encodeURIComponent(token)}`,
-    );
-    socket.onmessage = () => void load({ visible: false });
-    return () => socket.close();
+    // Polling remains the mobile baseline. Clerk-mode event streams use short-lived
+    // event tickets server-side; React Native streaming support will be wired in a
+    // follow-up without putting bearer tokens in query strings.
   }, [load, serverURL, settingsLoaded, token]);
 
   const loadHistory = useCallback(async () => {
@@ -383,10 +586,7 @@ export default function App() {
         `${serverURL.replace(/\/$/, "")}/v1/approval-requests/${request.id}/responses`,
         {
           method: "POST",
-          headers: {
-            Authorization: token ? `Bearer ${token}` : "",
-            "Content-Type": "application/json",
-          },
+          headers: await authHeaders(),
           body: JSON.stringify(payload),
         },
       );
@@ -423,10 +623,7 @@ export default function App() {
           `${serverURL.replace(/\/$/, "")}/v1/approval-requests/${requestID}/responses`,
           {
             method: "POST",
-            headers: {
-              Authorization: token ? `Bearer ${token}` : "",
-              "Content-Type": "application/json",
-            },
+            headers: await authHeaders(),
             body: JSON.stringify({ choiceId: choiceID }),
           },
         );
@@ -446,7 +643,7 @@ export default function App() {
         setScreen("approvals");
       }
     },
-    [applyResponseResult, load, removePendingRequest, serverURL, token],
+    [applyResponseResult, authHeaders, load, removePendingRequest, serverURL],
   );
 
   useEffect(() => {
@@ -490,10 +687,7 @@ export default function App() {
     try {
       const response = await fetch(`${serverURL.replace(/\/$/, "")}/v1/availability`, {
         method: "POST",
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-          "Content-Type": "application/json",
-        },
+        headers: await authHeaders(),
         body: JSON.stringify({ state }),
       });
       if (!response.ok) {
@@ -632,7 +826,7 @@ export default function App() {
   ) => {
     const activeDeviceID = overrideDeviceID ?? deviceID;
     const activeToken = overrideToken ?? token;
-    if (!activeDeviceID || !activeToken) {
+    if (runtimeAuthConfig?.authProvider !== "clerk" && (!activeDeviceID || !activeToken)) {
       Alert.alert("Pair first", "Pair this device before registering push notifications.");
       return;
     }
@@ -664,20 +858,33 @@ export default function App() {
         { projectId },
       );
       const trimmed = (overrideServerURL || serverURL).replace(/\/$/, "");
-      const response = await fetch(
-        `${trimmed}/v1/devices/${activeDeviceID}/push-token`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${activeToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ token: pushToken.data }),
-        },
-      );
+      const headers = runtimeAuthConfig?.authProvider === "clerk" ? await authHeaders() : {
+        Authorization: `Bearer ${activeToken}`,
+        "Content-Type": "application/json",
+      };
+      const response = activeDeviceID
+        ? await fetch(
+            `${trimmed}/v1/devices/${activeDeviceID}/push-token`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ token: pushToken.data }),
+            },
+          )
+        : await fetch(`${trimmed}/v1/devices/register`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              deviceName: `${Platform.OS} phone`,
+              platform: Platform.OS,
+              expoPushToken: pushToken.data,
+            }),
+          });
       if (!response.ok) {
         throw new Error(`Server returned ${response.status}`);
       }
+      const responseBody = (await response.json()) as { deviceId?: string };
+      if (responseBody.deviceId) setDeviceID(responseBody.deviceId);
       setPushStatus("registered");
     } catch (err) {
       setPushStatus("failed");
@@ -701,6 +908,21 @@ export default function App() {
     if (payload.pairingCode) {
       setPairingCode(payload.pairingCode);
       await pairWithCode(payload.pairingCode, payload.serverURL, true);
+      return;
+    }
+    if (payload.serverURL && payload.authProvider === "clerk") {
+      try {
+        const config = await fetchRuntimeAuthConfig(payload.serverURL);
+        setRuntimeAuthConfig(config);
+        onRuntimeAuthConfig?.(payload.serverURL, config);
+        Alert.alert("Server saved", "Sign in with Clerk to use this Agent Tick server.");
+        setScreen("approvals");
+      } catch (err) {
+        Alert.alert("Server discovery failed", err instanceof Error ? err.message : "Could not read server auth config");
+      } finally {
+        pairingInFlight.current = false;
+        setScannerLocked(false);
+      }
       return;
     }
     pairingInFlight.current = false;
@@ -760,6 +982,7 @@ export default function App() {
             setToken("");
             setPushStatus("idle");
             setConnectionStatus("disconnected");
+            if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.();
           }}
           onPairDevice={() => void pairDevice()}
           onRegisterPush={() => void registerPushToken()}
@@ -1379,6 +1602,37 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     backgroundColor: "#f7f2e8",
+  },
+  emptyState: {
+    alignItems: "stretch",
+    flex: 1,
+    gap: 12,
+    justifyContent: "center",
+    padding: 24,
+  },
+  title: {
+    color: "#202124",
+    fontSize: 28,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  subtitle: {
+    color: "#6d6657",
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 21,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  input: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#202124",
+    fontSize: 16,
+    minHeight: 48,
+    paddingHorizontal: 12,
   },
   header: {
     alignItems: "center",
