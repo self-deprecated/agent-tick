@@ -11,21 +11,14 @@ export interface MeRoutesOptions {
 export async function registerMeRoutes(app: FastifyInstance, { config, store }: MeRoutesOptions): Promise<void> {
   app.get('/v1/me', async (request) => {
     const auth = await requireHuman(request, config, store);
+    const userId = auth.userId ?? 'usr_default';
     return {
-      userId: auth.userId ?? 'usr_default',
+      userId,
       authProvider: config.authProvider,
       source: auth.source,
       organizationId: auth.organizationId,
       role: auth.role ?? 'owner',
-      memberships: [
-        {
-          organizationId: auth.organizationId,
-          name: 'Personal',
-          userId: auth.userId ?? 'usr_default',
-          role: auth.role ?? 'owner',
-          createdAt: new Date(0).toISOString()
-        }
-      ]
+      memberships: store.listOrganizationsForUser(userId)
     };
   });
 }

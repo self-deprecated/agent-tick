@@ -44,14 +44,24 @@ export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export const OrganizationRoleSchema = z.enum(['owner', 'admin', 'approver', 'member', 'viewer']);
 export type OrganizationRole = z.infer<typeof OrganizationRoleSchema>;
 
-export const OrganizationMembershipSchema = z.object({
+export const OrganizationRecordSchema = z.object({
   organizationId: z.string(),
   name: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string().optional()
+});
+export type OrganizationRecord = z.infer<typeof OrganizationRecordSchema>;
+
+export const OrganizationMembershipSchema = OrganizationRecordSchema.extend({
   userId: z.string(),
-  role: OrganizationRoleSchema.or(z.string()),
-  createdAt: z.string()
+  role: OrganizationRoleSchema.or(z.string())
 });
 export type OrganizationMembership = z.infer<typeof OrganizationMembershipSchema>;
+
+export const CreateOrganizationSchema = z.object({
+  name: z.string().min(1)
+});
+export type CreateOrganization = z.input<typeof CreateOrganizationSchema>;
 
 export const MeResponseSchema = z.object({
   userId: z.string(),

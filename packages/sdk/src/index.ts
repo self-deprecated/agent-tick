@@ -7,8 +7,10 @@ import {
   AuthConfigSchema,
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
+  CreateOrganizationSchema,
   HealthResponseSchema,
   MeResponseSchema,
+  OrganizationMembershipSchema,
   RespondApprovalRequestSchema,
   WaitApprovalResponseSchema,
   type AgentCredential,
@@ -18,8 +20,10 @@ import {
   type AuthConfig,
   type CreateAgentToken,
   type CreateApprovalRequest,
+  type CreateOrganization,
   type HealthResponse,
   type MeResponse,
+  type OrganizationMembership,
   type RespondApprovalRequest,
   type WaitApprovalResponse
 } from '@agent-tick/shared';
@@ -111,6 +115,16 @@ export class AgentTickClient {
     });
   }
 
+  listOrganizations(): Promise<OrganizationMembership[]> {
+    return this.#request('GET', '/v1/organizations', OrganizationMembershipSchema.array());
+  }
+
+  createOrganization(input: CreateOrganization): Promise<OrganizationMembership> {
+    return this.#request('POST', '/v1/organizations', OrganizationMembershipSchema, {
+      body: CreateOrganizationSchema.parse(input)
+    });
+  }
+
   async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown } = {}): Promise<T> {
     const headers = new Headers();
     headers.set('Accept', 'application/json');
@@ -170,8 +184,10 @@ export type {
   AuthConfig,
   CreateAgentToken,
   CreateApprovalRequest,
+  CreateOrganization,
   HealthResponse,
   MeResponse,
+  OrganizationMembership,
   RespondApprovalRequest,
   WaitApprovalResponse
 };

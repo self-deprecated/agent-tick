@@ -98,6 +98,21 @@ describe('server skeleton', () => {
     expect(response.json()).toMatchObject({ error: { code: 'not_found', message: 'Not found' } });
   });
 
+  it('lists and selects local organizations for human requests', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+
+    const createOrg = await app.inject({ method: 'POST', url: '/v1/organizations', payload: { name: 'Production' } });
+    expect(createOrg.statusCode).toBe(200);
+    const organizationId = createOrg.json().organizationId as string;
+
+    const me = await app.inject({ method: 'GET', url: '/v1/me', headers: { 'x-agent-tick-organization-id': organizationId } });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ organizationId, role: 'owner' });
+
+    const forbidden = await app.inject({ method: 'GET', url: '/v1/me', headers: { 'x-agent-tick-organization-id': 'org_missing' } });
+    expect(forbidden.statusCode).toBe(403);
+  });
+
   it('creates an agent token and uses it to create an approval request', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
 

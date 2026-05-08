@@ -8,6 +8,7 @@ import { registerAgentTokenRoutes } from './routes/agentTokens.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerMeRoutes } from './routes/me.js';
+import { registerOrganizationRoutes } from './routes/organizations.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -42,6 +43,7 @@ export async function buildApp({ config, store }: BuildAppOptions): Promise<Fast
   }));
 
   await registerMeRoutes(app, { config, store });
+  await registerOrganizationRoutes(app, { config, store });
   await registerAgentTokenRoutes(app, { config, store });
   await registerApprovalRoutes(app, { config, store });
   await registerDeviceRoutes(app, { config, store });

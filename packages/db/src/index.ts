@@ -68,6 +68,18 @@ export interface HumanIdentityResult {
   role: string;
 }
 
+export interface OrganizationRecord {
+  organizationId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationMembershipRecord extends OrganizationRecord {
+  userId: string;
+  role: string;
+}
+
 export interface DeviceRegistrationInput {
   userId: string;
   organizationId: string;
@@ -176,6 +188,47 @@ export class AgentTickStore {
       .get(userId) as { organization_id: string; role: string } | undefined;
     if (!row) return { userId, organizationId: DEFAULT_ORGANIZATION_ID, role: 'owner' };
     return { userId, organizationId: row.organization_id, role: row.role };
+  }
+
+  listOrganizationsForUser(userId: string): OrganizationMembershipRecord[] {
+    const rows = this.db
+      .prepare(`
+        SELECT o.id AS organization_id, o.name, o.created_at, o.updated_at, m.user_id, m.role
+        FROM organization_memberships m
+        JOIN organizations o ON o.id = m.organization_id
+        WHERE m.user_id = ?
+        ORDER BY o.created_at ASC
+      `)
+      .all(userId) as OrganizationMembershipRow[];
+    return rows.map(mapOrganizationMembershipRow);
+  }
+
+  organizationMembershipForUser(userId: string, organizationId: string): HumanIdentityResult | null {
+    const row = this.db
+      .prepare('SELECT organization_id, role FROM organization_memberships WHERE user_id = ? AND organization_id = ?')
+      .get(userId, organizationId) as { organization_id: string; role: string } | undefined;
+    return row ? { userId, organizationId: row.organization_id, role: row.role } : null;
+  }
+
+  createOrganizationForUser(userId: string, name: string, now = new Date().toISOString()): OrganizationMembershipRecord {
+    const organizationId = newID('org');
+    const cleanName = name.trim();
+    const tx = this.db.transaction(() => {
+      this.db.prepare('INSERT INTO organizations(id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+        .run(organizationId, cleanName, now, now);
+      this.db.prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+        .run(organizationId, userId, 'owner', now, now);
+    });
+    tx();
+    const membership = this.organizationMembershipForUser(userId, organizationId) ?? missingOrganization(organizationId);
+    return {
+      organizationId: membership.organizationId,
+      userId,
+      role: membership.role,
+      name: cleanName,
+      createdAt: now,
+      updatedAt: now
+    };
   }
 
   createAgentToken(input: CreateAgentTokenInput, now = new Date().toISOString()): AgentCredential {
@@ -362,6 +415,17 @@ export function databasePathFromURL(databaseURL: string): string {
   return databaseURL;
 }
 
+function mapOrganizationMembershipRow(row: OrganizationMembershipRow): OrganizationMembershipRecord {
+  return {
+    organizationId: row.organization_id,
+    name: row.name,
+    userId: row.user_id,
+    role: row.role,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
   return {
     agentId: row.agent_id,
@@ -460,6 +524,19 @@ function missingApproval(id: string): never {
 
 function missingDevice(id: string): never {
   throw new Error(`device ${id} was not created`);
+}
+
+function missingOrganization(id: string): never {
+  throw new Error(`organization ${id} was not created`);
+}
+
+interface OrganizationMembershipRow {
+  organization_id: string;
+  name: string;
+  user_id: string;
+  role: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface AgentTokenRow {

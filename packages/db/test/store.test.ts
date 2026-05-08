@@ -18,6 +18,19 @@ describe('AgentTickStore', () => {
     expect(org).toEqual({ id: DEFAULT_ORGANIZATION_ID, name: 'Personal' });
   });
 
+  it('creates local organizations for a user and lists memberships', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const created = store.createOrganizationForUser('usr_default', 'Production');
+    const memberships = store.listOrganizationsForUser('usr_default');
+
+    expect(created).toMatchObject({ name: 'Production', userId: 'usr_default', role: 'owner' });
+    expect(memberships.map((membership) => membership.organizationId)).toContain(created.organizationId);
+    expect(store.organizationMembershipForUser('usr_default', created.organizationId)).toMatchObject({ role: 'owner' });
+  });
+
   it('creates and verifies agent tokens by hash', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

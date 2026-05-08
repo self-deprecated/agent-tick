@@ -35,28 +35,29 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
 
   if (config.mode === 'single') {
     if (bearer && config.adminToken && timingSafeEqualString(bearer, config.adminToken)) {
-      return {
+      return applySelectedOrganization(request, store, {
         source: 'admin',
         isHuman: true,
         userId: DEFAULT_USER_ID,
-        organizationId: selectedOrganization(request) ?? DEFAULT_ORGANIZATION_ID,
+        organizationId: DEFAULT_ORGANIZATION_ID,
         role: 'owner'
-      };
+      });
     }
 
     if (!config.adminToken && isLoopback(request.ip)) {
-      return {
+      return applySelectedOrganization(request, store, {
         source: 'loopback',
         isHuman: true,
         userId: DEFAULT_USER_ID,
-        organizationId: selectedOrganization(request) ?? DEFAULT_ORGANIZATION_ID,
+        organizationId: DEFAULT_ORGANIZATION_ID,
         role: 'owner'
-      };
+      });
     }
   }
 
   if (config.mode === 'clerk' && bearer) {
-    return verifyClerkSession(bearer, config, store);
+    const clerkAuth = await verifyClerkSession(bearer, config, store);
+    return clerkAuth ? applySelectedOrganization(request, store, clerkAuth) : null;
   }
 
   return null;
@@ -82,6 +83,24 @@ export async function requireHuman(request: FastifyRequest, config: ServerConfig
     throw error;
   }
   return auth;
+}
+
+function applySelectedOrganization(request: FastifyRequest, store: AgentTickStore, auth: AuthContext): AuthContext {
+  if (!auth.isHuman || !auth.userId) return auth;
+  const selected = selectedOrganization(request);
+  if (!selected || selected === auth.organizationId) return auth;
+  const membership = store.organizationMembershipForUser(auth.userId, selected);
+  if (!membership) {
+    const error = new Error('User is not a member of the selected organization') as Error & { statusCode: number; code: string };
+    error.statusCode = 403;
+    error.code = 'forbidden';
+    throw error;
+  }
+  return {
+    ...auth,
+    organizationId: membership.organizationId,
+    role: membership.role
+  };
 }
 
 function bearerToken(header: string | undefined): string | null {
