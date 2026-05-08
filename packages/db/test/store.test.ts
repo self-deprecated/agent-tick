@@ -135,9 +135,12 @@ describe('AgentTickStore', () => {
     const revoked = store.revokeAgentToken(credential.agentId, DEFAULT_ORGANIZATION_ID, '2026-05-08T00:00:00.000Z');
     expect(revoked).toMatchObject({ agentId: credential.agentId, revokedAt: '2026-05-08T00:00:00.000Z' });
     expect(store.verifyAgentToken(credential.token)).toBeNull();
-    expect(store.listAuditEvents(DEFAULT_ORGANIZATION_ID).map((event) => event.eventType)).toEqual(
+    const auditEvents = store.listAuditEvents(DEFAULT_ORGANIZATION_ID);
+    expect(auditEvents.map((event) => event.eventType)).toEqual(
       expect.arrayContaining(['agent_token.revoked', 'agent_token.created'])
     );
+    const createdEventId = auditEvents.find((event) => event.eventType === 'agent_token.created')?.eventId ?? 0;
+    expect(store.listAuditEventsAfter(DEFAULT_ORGANIZATION_ID, createdEventId).map((event) => event.eventType)).toEqual(['agent_token.revoked']);
   });
 
   it('maps Clerk identities to local users by issuer and subject', () => {

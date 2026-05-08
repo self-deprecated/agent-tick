@@ -1372,6 +1372,15 @@ export class AgentTickStore {
     return rows.map(mapAuditEventRow);
   }
 
+  listAuditEventsAfter(organizationId: string, afterEventId = 0, limit = 100): AuditEventRecord[] {
+    const safeAfter = Math.max(Math.trunc(afterEventId), 0);
+    const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+    const rows = this.db
+      .prepare('SELECT * FROM audit_events WHERE organization_id = ? AND event_id > ? ORDER BY event_id ASC LIMIT ?')
+      .all(organizationId, safeAfter, safeLimit) as AuditEventRow[];
+    return rows.map(mapAuditEventRow);
+  }
+
   writeAuditEvent(organizationId: string, userId: string, eventType: string, targetId: string, payload: unknown, now = new Date().toISOString()): void {
     this.db
       .prepare('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')

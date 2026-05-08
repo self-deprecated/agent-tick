@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentTickApiError, AgentTickClient } from '../src/index.js';
+import { AgentTickApiError, AgentTickClient, type EventSourceConstructor } from '../src/index.js';
 
 describe('AgentTickClient', () => {
   it('attaches bearer and organization headers', async () => {
@@ -65,6 +65,53 @@ describe('AgentTickClient', () => {
       expect.objectContaining({ eventType: 'agent_token.created', targetId: 'agt_123' })
     ]);
     expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/audit-events?limit=10' });
+  });
+
+  it('builds event stream URLs from short-lived tickets', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com/base/',
+      tokenProvider: () => 'human-token',
+      organizationIdProvider: () => 'org_123',
+      fetch: async (input, init) => {
+        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        return jsonResponse({ ticket: 'evt_123', expiresAt: '2026-01-01T00:01:00.000Z' });
+      }
+    });
+
+    await expect(client.createEventStreamURL({ lastEventId: 42 })).resolves.toBe('https://tick.example.com/v1/events?ticket=evt_123&lastEventId=42');
+    expect(requests).toEqual([
+      { method: 'POST', url: 'https://tick.example.com/v1/events/ticket', body: {} }
+    ]);
+  });
+
+  it('opens event streams with an injectable EventSource constructor', async () => {
+    const opened: string[] = [];
+    class FakeEventSource {
+      constructor(url: string | URL) {
+        opened.push(String(url));
+      }
+      close() {}
+      addEventListener() {}
+      removeEventListener() {}
+      dispatchEvent() { return true; }
+      onerror = null;
+      onmessage = null;
+      onopen = null;
+      readyState = 0;
+      url = '';
+      withCredentials = false;
+      CONNECTING = 0;
+      OPEN = 1;
+      CLOSED = 2;
+    }
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async () => jsonResponse({ ticket: 'evt_stream', expiresAt: '2026-01-01T00:01:00.000Z' })
+    });
+
+    await client.openEventStream({ EventSource: FakeEventSource as unknown as EventSourceConstructor, lastEventId: 7 });
+    expect(opened).toEqual(['https://tick.example.com/v1/events?ticket=evt_stream&lastEventId=7']);
   });
 
   it('calls presence endpoints with validated payloads', async () => {

@@ -377,10 +377,12 @@ describe('server skeleton', () => {
     expect(ticketResponse.statusCode).toBe(200);
     expect(ticketResponse.json().ticket).toMatch(/^evt_/);
 
-    const events = await app.inject({ method: 'GET', url: `/v1/events?ticket=${encodeURIComponent(ticketResponse.json().ticket)}` });
+    const events = await app.inject({ method: 'GET', url: `/v1/events?ticket=${encodeURIComponent(ticketResponse.json().ticket)}&lastEventId=0&once=1` });
     expect(events.statusCode).toBe(200);
     expect(events.headers['content-type']).toContain('text/event-stream');
     expect(events.body).toContain('event: ready');
+    expect(events.body).toContain('event: audit');
+    expect(events.body).toContain('agent_token.created');
 
     const invalid = await app.inject({ method: 'GET', url: '/v1/events?ticket=bad' });
     expect(invalid.statusCode).toBe(401);

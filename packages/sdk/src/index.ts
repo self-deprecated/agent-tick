@@ -82,6 +82,7 @@ import {
 
 export type TokenProvider = () => Promise<string | null | undefined> | string | null | undefined;
 export type OrganizationIdProvider = () => Promise<string | null | undefined> | string | null | undefined;
+export type EventSourceConstructor = new (url: string | URL, eventSourceInitDict?: EventSourceInit) => EventSource;
 
 export interface AgentTickClientOptions {
   baseUrl: string;
@@ -292,6 +293,21 @@ export class AgentTickClient {
 
   createEventTicket(): Promise<EventTicketResponse> {
     return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
+  }
+
+  async createEventStreamURL(options: { lastEventId?: number } = {}): Promise<string> {
+    const ticket = await this.createEventTicket();
+    const url = new URL('/v1/events', this.#baseUrl);
+    url.searchParams.set('ticket', ticket.ticket);
+    if (options.lastEventId !== undefined) url.searchParams.set('lastEventId', String(Math.max(Math.trunc(options.lastEventId), 0)));
+    return url.toString();
+  }
+
+  async openEventStream(options: { lastEventId?: number; EventSource?: EventSourceConstructor } = {}): Promise<EventSource> {
+    const EventSourceCtor = options.EventSource ?? globalThis.EventSource;
+    if (!EventSourceCtor) throw new Error('EventSource is not available in this runtime');
+    const url = await this.createEventStreamURL(options.lastEventId === undefined ? {} : { lastEventId: options.lastEventId });
+    return new EventSourceCtor(url);
   }
 
   createPairingToken(): Promise<PairingToken> {
