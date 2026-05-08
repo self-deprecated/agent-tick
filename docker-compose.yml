@@ -3,7 +3,7 @@ services:
     image: ${AGENT_TICK_IMAGE:-agent-tick/server:local}
     build:
       context: .
-      dockerfile: apps/server-ts/Dockerfile
+      dockerfile: apps/server/Dockerfile
     environment:
       AGENT_TICK_MODE: ${AGENT_TICK_MODE:-single}
       AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL:-http://localhost:${AGENT_TICK_PORT:-8787}}

@@ -71,21 +71,14 @@ packages/
   config/             # optional shared env/config parsing helpers
 ```
 
-Recommended transition layout:
+Transition status:
 
 ```text
 apps/
-  server/             # existing Go implementation, kept temporarily as reference
-  server-ts/          # new TypeScript server during rewrite
+  server/             # TypeScript Fastify API server + static dashboard host
 ```
 
-After the TypeScript vertical slice is working:
-
-1. delete or archive the Go implementation
-2. move `apps/server-ts` to `apps/server`
-3. update Docker, compose, and docs to point at the TypeScript server
-
-This avoids fighting existing Go build files while still letting us copy useful API behavior, SQL ideas, and tests intentionally.
+The Go implementation has been removed from the active tree. The TypeScript server now lives at `apps/server`, and Docker, Compose, CI, and docs point at that path.
 
 ## Tooling decisions
 
@@ -663,7 +656,7 @@ Those belong to the server container/dashboard/operator tooling, not the agent C
 Suggested internal layout:
 
 ```text
-apps/server-ts/src/
+apps/server/src/
   index.ts                 # process entrypoint
   config.ts                # env parsing and validation
   app.ts                   # Fastify app factory
@@ -837,14 +830,14 @@ Deliverables:
 - package boundaries
 - lint/format scripts if desired
 - empty `packages/shared`, `packages/sdk`, `packages/db`, `packages/cli`
-- `apps/server-ts` Fastify skeleton
+- `apps/server` Fastify skeleton
 
 Acceptance criteria:
 
 - `pnpm install` works
 - `pnpm typecheck` works
 - `pnpm test` runs
-- `apps/server-ts` can return `GET /healthz`
+- `apps/server` can return `GET /healthz`
 
 ### Phase 2: Shared schemas and SDK skeleton
 
@@ -908,7 +901,7 @@ Deliverables:
 Acceptance criteria:
 
 - `pnpm --filter agent-tick-cli build` produces executable CLI
-- local `npx`/linked CLI can create a request against server-ts
+- local `npx`/linked CLI can create a request against the TypeScript server
 - CLI package does not depend on server/db/admin/mobile packages
 
 ### Phase 6: Admin app integration
@@ -1010,7 +1003,7 @@ Acceptance criteria:
 Deliverables:
 
 - remove Go `apps/server` or move to archived branch
-- move `apps/server-ts` to `apps/server`
+- keep `apps/server` as the TypeScript server path
 - remove Go Dockerfile/build docs
 - update `docker-compose.yml`
 - update `SELFHOSTING.md`
@@ -1170,7 +1163,7 @@ Mitigation:
 3. SQLite layer: `better-sqlite3` + explicit repositories is recommended.
 4. CLI parser: `commander` is sufficient unless we want a richer command framework.
 5. Event strategy: polling-first, event tickets later is recommended.
-6. Whether to start in `apps/server-ts` or delete Go upfront. Recommended: start in `apps/server-ts`, then replace.
+6. Whether to start in a temporary TypeScript server directory or delete Go upfront. Completed: the active server path is now `apps/server`.
 
 ## Definition of done for the rewrite
 

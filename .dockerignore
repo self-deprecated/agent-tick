@@ -5,7 +5,7 @@ node_modules/
 **/node_modules/
 **/dist/
 apps/mobile/.expo/
-apps/server-ts/public/admin/assets/
+apps/server/public/admin/
 agent-tick.db
 agent-tick.db-shm
 agent-tick.db-wal

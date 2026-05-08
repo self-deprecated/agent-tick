@@ -4,8 +4,8 @@ node_modules/
 .expo/
 dist/
 coverage/
-apps/server-ts/public/admin/*
-!apps/server-ts/public/admin/.gitkeep
+apps/server/public/admin/*
+!apps/server/public/admin/.gitkeep
 agent-tick.json
 agent-tick.json.tmp
 agent-tick.db

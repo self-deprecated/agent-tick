@@ -7,14 +7,14 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/db/package.json packages/db/package.json
-COPY apps/server-ts/package.json apps/server-ts/package.json
+COPY apps/server/package.json apps/server/package.json
 COPY apps/admin/package.json apps/admin/package.json
 COPY apps/admin/svelte.config.js apps/admin/vite.config.ts apps/admin/tsconfig.json apps/admin/index.html apps/admin/
 
 RUN pnpm install --frozen-lockfile
 
 COPY packages packages
-COPY apps/server-ts apps/server-ts
+COPY apps/server apps/server
 COPY apps/admin apps/admin
 
 RUN pnpm --filter @agent-tick/shared build \
@@ -35,11 +35,11 @@ WORKDIR /app
 COPY --from=build /src/package.json /src/pnpm-lock.yaml /src/pnpm-workspace.yaml ./
 COPY --from=build /src/node_modules ./node_modules
 COPY --from=build /src/packages ./packages
-COPY --from=build /src/apps/server-ts ./apps/server-ts
+COPY --from=build /src/apps/server ./apps/server
 
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 
 EXPOSE 8787
 
-CMD ["node", "apps/server-ts/dist/index.js"]
+CMD ["node", "apps/server/dist/index.js"]

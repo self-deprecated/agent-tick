@@ -55,7 +55,7 @@ Start it with Docker Compose. The dashboard fetches `/v1/auth/config`, loads Cle
 ## Local image build
 
 ```sh
-docker build -f apps/server-ts/Dockerfile -t agent-tick:dev .
+docker build -f apps/server/Dockerfile -t agent-tick:dev .
 
 AGENT_TICK_IMAGE=agent-tick:dev \
 AGENT_TICK_MODE=single \
@@ -82,6 +82,6 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 ## Current implementation scope
 
-The TypeScript rewrite currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, and Clerk-mode device registration foundations.
+The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, and organization invites.
 
 Some earlier Go-era features are intentionally being reintroduced only when they are needed: advanced policy templates, invite approvals, extra notification sinks, full mobile Clerk UI, and event streaming.
