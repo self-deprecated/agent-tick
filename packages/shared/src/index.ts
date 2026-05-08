@@ -63,6 +63,47 @@ export const CreateOrganizationSchema = z.object({
 });
 export type CreateOrganization = z.input<typeof CreateOrganizationSchema>;
 
+export const OrganizationInviteRecordSchema = z.object({
+  inviteId: z.string(),
+  organizationId: z.string(),
+  label: z.string().optional(),
+  role: OrganizationRoleSchema.or(z.string()),
+  email: z.string().email().optional(),
+  expiresAt: z.string().optional(),
+  maxUses: z.number().int().positive().optional(),
+  usedCount: z.number().int().min(0),
+  revokedAt: z.string().optional(),
+  createdAt: z.string(),
+  url: z.string().optional(),
+  token: z.string().optional()
+});
+export type OrganizationInviteRecord = z.infer<typeof OrganizationInviteRecordSchema>;
+
+export const CreateOrganizationInviteSchema = z.object({
+  label: z.string().optional(),
+  role: OrganizationRoleSchema.default('member'),
+  email: z.string().email().optional(),
+  expiresAt: z.string().optional(),
+  maxUses: z.number().int().positive().max(100).default(1)
+});
+export type CreateOrganizationInvite = z.input<typeof CreateOrganizationInviteSchema>;
+
+export const InvitePreviewSchema = z.object({
+  organizationId: z.string(),
+  organizationName: z.string(),
+  label: z.string().optional(),
+  role: OrganizationRoleSchema.or(z.string()),
+  email: z.string().email().optional(),
+  expiresAt: z.string().optional()
+});
+export type InvitePreview = z.infer<typeof InvitePreviewSchema>;
+
+export const AcceptInviteResponseSchema = z.object({
+  status: z.enum(['joined', 'already_member']),
+  membership: OrganizationMembershipSchema
+});
+export type AcceptInviteResponse = z.infer<typeof AcceptInviteResponseSchema>;
+
 export const ProjectRecordSchema = z.object({
   projectId: z.string(),
   organizationId: z.string(),

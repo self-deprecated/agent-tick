@@ -179,6 +179,7 @@ Implemented so far:
 - Verified primary email requirement and safe email-collision behavior.
 - Local organization creation, selection, membership validation, and member listing.
 - Project, team, and basic policy foundations with dashboard management.
+- Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens and dashboard management.
 - Approval request create/list/get/respond/abandon/wait APIs.
 - Agent token create/list/revoke APIs.
 - Single-mode mobile pairing and device-token auth.
@@ -200,7 +201,7 @@ High priority:
 - Harden mobile Clerk UX beyond the first email/password sign-in path, including OAuth/deep-link flows where needed.
 - Use the shared SDK more consistently from the mobile app.
 - Add event-ticket based streaming clients if polling becomes insufficient.
-- Add invite flows for adding humans to local organizations.
+- Add approval-request membership flows if invites should require owner/admin approval before joining.
 
 Product rebuilds to evaluate/port from the prototype:
 

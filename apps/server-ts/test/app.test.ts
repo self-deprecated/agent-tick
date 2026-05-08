@@ -156,6 +156,29 @@ describe('server skeleton', () => {
     expect(policies.statusCode).toBe(200);
     expect(policies.json()).toEqual([expect.objectContaining({ policyId: policy.json().policyId })]);
 
+    const invite = await app.inject({
+      method: 'POST',
+      url: '/v1/organization-invites',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { label: 'Teammate', role: 'admin', email: 'teammate@example.com' }
+    });
+    expect(invite.statusCode).toBe(200);
+    expect(invite.json()).toMatchObject({ organizationId, role: 'admin', usedCount: 0 });
+    expect(invite.json().token).toMatch(/^invite_/);
+
+    const invites = await app.inject({ method: 'GET', url: '/v1/organization-invites', headers: { 'x-agent-tick-organization-id': organizationId } });
+    expect(invites.statusCode).toBe(200);
+    expect(invites.json()).toEqual([expect.objectContaining({ inviteId: invite.json().inviteId })]);
+    expect(JSON.stringify(invites.json())).not.toContain(invite.json().token);
+
+    const preview = await app.inject({ method: 'GET', url: `/v1/invites/${encodeURIComponent(invite.json().token)}` });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({ organizationId, organizationName: 'Production', role: 'admin' });
+
+    const revoked = await app.inject({ method: 'POST', url: `/v1/organization-invites/${invite.json().inviteId}/revoke`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json()).toMatchObject({ inviteId: invite.json().inviteId, revokedAt: expect.any(String) });
+
     const forbidden = await app.inject({ method: 'GET', url: '/v1/me', headers: { 'x-agent-tick-organization-id': 'org_missing' } });
     expect(forbidden.statusCode).toBe(403);
   });

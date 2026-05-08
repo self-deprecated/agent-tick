@@ -1,6 +1,7 @@
 import type { ZodType } from 'zod';
 import {
   AgentCredentialSchema,
+  AcceptInviteResponseSchema,
   AgentTokenRecordSchema,
   ApiErrorEnvelopeSchema,
   ApprovalRequestSchema,
@@ -8,13 +9,16 @@ import {
   AuthConfigSchema,
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
+  CreateOrganizationInviteSchema,
   CreateOrganizationSchema,
   CreateTeamSchema,
   DeviceCredentialSchema,
   DeviceRecordSchema,
   EventTicketResponseSchema,
   HealthResponseSchema,
+  InvitePreviewSchema,
   MeResponseSchema,
+  OrganizationInviteRecordSchema,
   OrganizationMembershipSchema,
   PairDeviceRequestSchema,
   PairingTokenSchema,
@@ -29,6 +33,7 @@ import {
   TeamRecordSchema,
   UpdateDevicePushTokenSchema,
   WaitApprovalResponseSchema,
+  type AcceptInviteResponse,
   type AgentCredential,
   type AgentTokenRecord,
   type ApiErrorEnvelope,
@@ -38,6 +43,7 @@ import {
   type CreateAgentToken,
   type CreateApprovalRequest,
   type CreateOrganization,
+  type CreateOrganizationInvite,
   type CreatePolicy,
   type CreateProject,
   type CreateTeam,
@@ -45,7 +51,9 @@ import {
   type DeviceRecord,
   type EventTicketResponse,
   type HealthResponse,
+  type InvitePreview,
   type MeResponse,
+  type OrganizationInviteRecord,
   type OrganizationMembership,
   type PairDeviceRequest,
   type PairingToken,
@@ -172,6 +180,28 @@ export class AgentTickClient {
     });
   }
 
+  listOrganizationInvites(): Promise<OrganizationInviteRecord[]> {
+    return this.#request('GET', '/v1/organization-invites', OrganizationInviteRecordSchema.array());
+  }
+
+  createOrganizationInvite(input: CreateOrganizationInvite): Promise<OrganizationInviteRecord> {
+    return this.#request('POST', '/v1/organization-invites', OrganizationInviteRecordSchema, {
+      body: CreateOrganizationInviteSchema.parse(input)
+    });
+  }
+
+  revokeOrganizationInvite(inviteId: string): Promise<OrganizationInviteRecord> {
+    return this.#request('POST', `/v1/organization-invites/${encodeURIComponent(inviteId)}/revoke`, OrganizationInviteRecordSchema, { body: {} });
+  }
+
+  previewInvite(token: string): Promise<InvitePreview> {
+    return this.#request('GET', `/v1/invites/${encodeURIComponent(token)}`, InvitePreviewSchema, { includeOrganization: false });
+  }
+
+  acceptInvite(token: string): Promise<AcceptInviteResponse> {
+    return this.#request('POST', `/v1/invites/${encodeURIComponent(token)}/accept`, AcceptInviteResponseSchema, { body: {}, includeOrganization: false });
+  }
+
   listOrganizationMembers(organizationId: string): Promise<OrganizationMembership[]> {
     return this.#request('GET', `/v1/organizations/${encodeURIComponent(organizationId)}/members`, OrganizationMembershipSchema.array());
   }
@@ -244,14 +274,14 @@ export class AgentTickClient {
     return this.#request('POST', `/v1/devices/${encodeURIComponent(id)}/unregister`, DeviceRecordSchema, { body: {} });
   }
 
-  async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown } = {}): Promise<T> {
+  async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown; includeOrganization?: boolean } = {}): Promise<T> {
     const headers = new Headers();
     headers.set('Accept', 'application/json');
 
     const token = (await this.#tokenProvider?.())?.trim();
     if (token) headers.set('Authorization', `Bearer ${token}`);
 
-    const organizationId = (await this.#organizationIdProvider?.())?.trim();
+    const organizationId = options.includeOrganization === false ? '' : (await this.#organizationIdProvider?.())?.trim();
     if (organizationId) headers.set('X-Agent-Tick-Organization-ID', organizationId);
 
     const init: RequestInit = { method, headers };
@@ -296,6 +326,7 @@ function normalizeBaseUrl(baseUrl: string): string {
 }
 
 export type {
+  AcceptInviteResponse,
   AgentCredential,
   AgentTokenRecord,
   ApiErrorEnvelope,
@@ -305,6 +336,7 @@ export type {
   CreateAgentToken,
   CreateApprovalRequest,
   CreateOrganization,
+  CreateOrganizationInvite,
   CreatePolicy,
   CreateProject,
   CreateTeam,
@@ -312,7 +344,9 @@ export type {
   DeviceRecord,
   EventTicketResponse,
   HealthResponse,
+  InvitePreview,
   MeResponse,
+  OrganizationInviteRecord,
   OrganizationMembership,
   PairDeviceRequest,
   PairingToken,

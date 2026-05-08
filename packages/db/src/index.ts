@@ -80,6 +80,46 @@ export interface OrganizationMembershipRecord extends OrganizationRecord {
   role: string;
 }
 
+export interface OrganizationInviteRecord {
+  inviteId: string;
+  organizationId: string;
+  label: string | undefined;
+  role: string;
+  email: string | undefined;
+  expiresAt: string | undefined;
+  maxUses: number | undefined;
+  usedCount: number;
+  revokedAt: string | undefined;
+  createdAt: string;
+  token?: string;
+  url?: string;
+}
+
+export interface CreateOrganizationInviteInput {
+  organizationId: string;
+  userId: string;
+  label?: string;
+  role?: string;
+  email?: string;
+  expiresAt?: string;
+  maxUses?: number;
+  publicURL?: string;
+}
+
+export interface InvitePreviewRecord {
+  organizationId: string;
+  organizationName: string;
+  label: string | undefined;
+  role: string;
+  email: string | undefined;
+  expiresAt: string | undefined;
+}
+
+export interface AcceptInviteResult {
+  status: 'joined' | 'already_member';
+  membership: OrganizationMembershipRecord;
+}
+
 export interface ProjectRecord {
   projectId: string;
   organizationId: string;
@@ -368,6 +408,116 @@ export class AgentTickStore {
       createdAt: now,
       updatedAt: now
     };
+  }
+
+  listOrganizationInvites(organizationId: string): OrganizationInviteRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM organization_invites WHERE organization_id = ? ORDER BY created_at DESC')
+      .all(organizationId) as OrganizationInviteRow[];
+    return rows.map(mapOrganizationInviteRow);
+  }
+
+  createOrganizationInvite(input: CreateOrganizationInviteInput, now = new Date().toISOString()): OrganizationInviteRecord {
+    const inviteId = newID('inv');
+    const token = `invite_${randomToken()}`;
+    const role = input.role?.trim() || 'member';
+    const maxUses = Math.min(Math.max(Math.trunc(input.maxUses ?? 1), 1), 100);
+    this.db
+      .prepare('INSERT INTO organization_invites(invite_id, organization_id, created_by_user_id, label, role, token_hash, email, expires_at, max_uses, used_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(
+        inviteId,
+        input.organizationId,
+        input.userId,
+        input.label?.trim() || null,
+        role,
+        hashToken(token),
+        input.email?.trim().toLowerCase() || null,
+        input.expiresAt ?? null,
+        maxUses,
+        0,
+        now
+      );
+    this.writeAuditEvent(input.organizationId, input.userId, 'organization_invite.created', inviteId, { role, email: input.email?.trim().toLowerCase() }, now);
+    const invite = this.getOrganizationInvite(inviteId) ?? missingInvite(inviteId);
+    return {
+      ...invite,
+      token,
+      ...(input.publicURL ? { url: `${input.publicURL.replace(/\/+$/, '')}/invite/${encodeURIComponent(token)}` } : {})
+    };
+  }
+
+  getOrganizationInvite(inviteId: string): OrganizationInviteRecord | null {
+    const row = this.db.prepare('SELECT * FROM organization_invites WHERE invite_id = ?').get(inviteId) as OrganizationInviteRow | undefined;
+    return row ? mapOrganizationInviteRow(row) : null;
+  }
+
+  revokeOrganizationInvite(inviteId: string, organizationId: string, userId: string, now = new Date().toISOString()): OrganizationInviteRecord | null {
+    const row = this.db
+      .prepare('SELECT * FROM organization_invites WHERE invite_id = ? AND organization_id = ?')
+      .get(inviteId, organizationId) as OrganizationInviteRow | undefined;
+    if (!row) return null;
+    if (!row.revoked_at) {
+      this.db.prepare('UPDATE organization_invites SET revoked_at = ? WHERE invite_id = ? AND organization_id = ?').run(now, inviteId, organizationId);
+      row.revoked_at = now;
+      this.writeAuditEvent(organizationId, userId, 'organization_invite.revoked', inviteId, {}, now);
+    }
+    return mapOrganizationInviteRow(row);
+  }
+
+  previewInvite(token: string, now = new Date().toISOString()): InvitePreviewRecord | null {
+    const row = this.findUsableInvite(token, now);
+    if (!row) return null;
+    return {
+      organizationId: row.organization_id,
+      organizationName: row.organization_name,
+      label: row.label ?? undefined,
+      role: row.role,
+      email: row.email ?? undefined,
+      expiresAt: row.expires_at ?? undefined
+    };
+  }
+
+  acceptInvite(token: string, userId: string, now = new Date().toISOString()): AcceptInviteResult | null {
+    const invite = this.findUsableInvite(token, now);
+    if (!invite) return null;
+    const user = this.db.prepare('SELECT email FROM users WHERE id = ?').get(userId) as { email: string } | undefined;
+    const inviteEmail = invite.email?.trim().toLowerCase();
+    if (inviteEmail && user?.email?.trim().toLowerCase() !== inviteEmail) {
+      throw httpError(403, 'forbidden', 'This invite is restricted to a different email address');
+    }
+
+    const existing = this.organizationMembershipForUser(userId, invite.organization_id);
+    if (existing) {
+      const membership = this.listOrganizationsForUser(userId).find((entry) => entry.organizationId === invite.organization_id) ?? missingOrganization(invite.organization_id);
+      return { status: 'already_member', membership };
+    }
+
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+        .run(invite.organization_id, userId, invite.role, now, now);
+      this.db.prepare('UPDATE organization_invites SET used_count = used_count + 1 WHERE invite_id = ?').run(invite.invite_id);
+    });
+    tx();
+    this.writeAuditEvent(invite.organization_id, userId, 'organization_invite.accepted', invite.invite_id, { role: invite.role }, now);
+    const membership = this.listOrganizationsForUser(userId).find((entry) => entry.organizationId === invite.organization_id) ?? missingOrganization(invite.organization_id);
+    return { status: 'joined', membership };
+  }
+
+  private findUsableInvite(token: string, now: string): OrganizationInviteLookupRow | null {
+    if (!token.startsWith('invite_')) return null;
+    const row = this.db
+      .prepare(`
+        SELECT i.*, o.name AS organization_name
+        FROM organization_invites i
+        JOIN organizations o ON o.id = i.organization_id
+        WHERE i.token_hash = ?
+          AND i.revoked_at IS NULL
+          AND (i.expires_at IS NULL OR i.expires_at > ?)
+          AND (i.max_uses IS NULL OR i.used_count < i.max_uses)
+      `)
+      .get(hashToken(token), now) as OrganizationInviteLookupRow | undefined;
+    return row ?? null;
   }
 
   listProjects(organizationId = DEFAULT_ORGANIZATION_ID): ProjectRecord[] {
@@ -811,6 +961,21 @@ function mapOrganizationMembershipRow(row: OrganizationMembershipRow): Organizat
   };
 }
 
+function mapOrganizationInviteRow(row: OrganizationInviteRow): OrganizationInviteRecord {
+  return {
+    inviteId: row.invite_id,
+    organizationId: row.organization_id,
+    label: row.label ?? undefined,
+    role: row.role,
+    email: row.email ?? undefined,
+    expiresAt: row.expires_at ?? undefined,
+    maxUses: row.max_uses ?? undefined,
+    usedCount: row.used_count,
+    revokedAt: row.revoked_at ?? undefined,
+    createdAt: row.created_at
+  };
+}
+
 function mapProjectRow(row: ProjectRow): ProjectRecord {
   return {
     projectId: row.project_id,
@@ -1029,6 +1194,10 @@ function missingPolicy(id: string): never {
   throw new Error(`policy ${id} was not created`);
 }
 
+function missingInvite(id: string): never {
+  throw new Error(`invite ${id} was not created`);
+}
+
 function missingAvailability(userId: string): never {
   throw new Error(`availability for ${userId} was not saved`);
 }
@@ -1099,6 +1268,25 @@ interface OrganizationMembershipRow {
   role: string;
   created_at: string;
   updated_at: string;
+}
+
+interface OrganizationInviteRow {
+  invite_id: string;
+  organization_id: string;
+  created_by_user_id: string;
+  label: string | null;
+  role: string;
+  token_hash: string;
+  email: string | null;
+  expires_at: string | null;
+  max_uses: number | null;
+  used_count: number;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+interface OrganizationInviteLookupRow extends OrganizationInviteRow {
+  organization_name: string;
 }
 
 interface AgentTokenRow {
@@ -1222,6 +1410,24 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (organization_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS organization_invites (
+  invite_id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  created_by_user_id TEXT NOT NULL REFERENCES users(id),
+  label TEXT,
+  role TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  email TEXT,
+  expires_at TEXT,
+  max_uses INTEGER,
+  used_count INTEGER NOT NULL DEFAULT 0,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS organization_invites_org_idx ON organization_invites(organization_id, revoked_at, created_at);
+CREATE INDEX IF NOT EXISTS organization_invites_token_idx ON organization_invites(token_hash);
 
 CREATE TABLE IF NOT EXISTS projects (
   project_id TEXT PRIMARY KEY,

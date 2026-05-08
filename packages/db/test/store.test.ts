@@ -52,6 +52,22 @@ describe('AgentTickStore', () => {
     });
     expect(policy).toMatchObject({ name: 'Production quorum', projectId: project.projectId, teamId: team.teamId, requiredApprovals: 2, enabled: true });
     expect(store.listPolicies(created.organizationId)).toEqual([policy]);
+
+    const invite = store.createOrganizationInvite({
+      organizationId: created.organizationId,
+      userId: 'usr_default',
+      label: 'Teammate',
+      role: 'admin',
+      email: 'bob@example.com',
+      publicURL: 'https://tick.example.com'
+    });
+    expect(invite.token).toMatch(/^invite_/);
+    expect(invite.url).toBe(`https://tick.example.com/invite/${invite.token}`);
+    expect(JSON.stringify(store.db.prepare('SELECT * FROM organization_invites').all())).not.toContain(invite.token);
+    expect(store.previewInvite(invite.token!)).toMatchObject({ organizationId: created.organizationId, organizationName: 'Production', role: 'admin' });
+    const bob = store.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
+    const accepted = store.acceptInvite(invite.token!, bob.userId);
+    expect(accepted).toMatchObject({ status: 'joined', membership: { organizationId: created.organizationId, userId: bob.userId, role: 'admin' } });
   });
 
   it('creates and verifies agent tokens by hash', () => {

@@ -150,6 +150,55 @@ describe('AgentTickClient', () => {
     ]);
   });
 
+  it('calls organization invite endpoints and omits org selection for token acceptance', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown; organizationId: string | null }> = [];
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      organizationIdProvider: () => 'org_selected',
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        requests.push({
+          url: String(input),
+          method: init?.method,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          organizationId: headers.get('X-Agent-Tick-Organization-ID')
+        });
+        const invite = {
+          inviteId: 'inv_123',
+          organizationId: 'org_123',
+          label: 'Teammate',
+          role: 'admin',
+          usedCount: 0,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          token: 'invite_secret'
+        };
+        const url = String(input);
+        if (url.includes('/v1/invites/invite_secret/accept')) {
+          return jsonResponse({
+            status: 'joined',
+            membership: { organizationId: 'org_123', name: 'Production', userId: 'usr_123', role: 'admin', createdAt: '2026-01-01T00:00:00.000Z' }
+          });
+        }
+        if (url.includes('/v1/invites/invite_secret')) return jsonResponse({ organizationId: 'org_123', organizationName: 'Production', role: 'admin' });
+        if (url.includes('/revoke')) return jsonResponse({ ...invite, revokedAt: '2026-01-01T00:00:00.000Z' });
+        return url.endsWith('/v1/organization-invites') && init?.method === 'POST' ? jsonResponse(invite) : jsonResponse([invite]);
+      }
+    });
+
+    await expect(client.createOrganizationInvite({ label: 'Teammate', role: 'admin' })).resolves.toMatchObject({ inviteId: 'inv_123' });
+    await expect(client.listOrganizationInvites()).resolves.toEqual([expect.objectContaining({ inviteId: 'inv_123' })]);
+    await expect(client.previewInvite('invite_secret')).resolves.toMatchObject({ organizationName: 'Production' });
+    await expect(client.acceptInvite('invite_secret')).resolves.toMatchObject({ status: 'joined', membership: { role: 'admin' } });
+    await expect(client.revokeOrganizationInvite('inv_123')).resolves.toMatchObject({ revokedAt: expect.any(String) });
+    expect(requests.map((request) => [request.method, request.url, request.organizationId, request.body])).toEqual([
+      ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', maxUses: 1 }],
+      ['GET', 'https://tick.example.com/v1/organization-invites', 'org_selected', undefined],
+      ['GET', 'https://tick.example.com/v1/invites/invite_secret', null, undefined],
+      ['POST', 'https://tick.example.com/v1/invites/invite_secret/accept', null, {}],
+      ['POST', 'https://tick.example.com/v1/organization-invites/inv_123/revoke', 'org_selected', {}]
+    ]);
+  });
+
   it('calls organization member endpoint', async () => {
     const seen: { url?: string; method?: string } = {};
     const client = new AgentTickClient({

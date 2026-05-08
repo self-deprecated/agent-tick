@@ -8,6 +8,7 @@
 		type ApprovalRequest,
 		type AuditEventRecord,
 		type AuthConfig,
+		type OrganizationInviteRecord,
 		type OrganizationMembership,
 		type PairingToken,
 		type PolicyRecord,
@@ -26,11 +27,16 @@
 	let agentTokens = $state<AgentTokenRecord[]>([]);
 	let auditEvents = $state<AuditEventRecord[]>([]);
 	let organizations = $state<OrganizationMembership[]>([]);
+	let organizationInvites = $state<OrganizationInviteRecord[]>([]);
 	let projects = $state<ProjectRecord[]>([]);
 	let teams = $state<TeamRecord[]>([]);
 	let policies = $state<PolicyRecord[]>([]);
 	let selectedOrganizationId = $state('');
 	let newOrganizationName = $state('');
+	let newInviteEmail = $state('');
+	let newInviteRole = $state('member');
+	let newInviteLabel = $state('');
+	let createdInvite = $state<OrganizationInviteRecord | undefined>();
 	let newProjectName = $state('');
 	let newTeamName = $state('');
 	let newPolicyName = $state('');
@@ -106,6 +112,7 @@
 		agentTokens = [];
 		auditEvents = [];
 		organizations = [];
+		organizationInvites = [];
 		projects = [];
 		teams = [];
 		policies = [];
@@ -118,7 +125,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites()]);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -141,7 +148,8 @@
 		selectedOrganizationId = organizationId;
 		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
 		else localStorage.removeItem(organizationStorageKey);
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies()]);
+		createdInvite = undefined;
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites()]);
 	}
 
 	async function createOrganization(): Promise<void> {
@@ -156,6 +164,49 @@
 		} catch (err) {
 			error = messageForError(err);
 		}
+	}
+
+	async function refreshInvites(): Promise<void> {
+		try {
+			organizationInvites = await client().listOrganizationInvites();
+		} catch {
+			organizationInvites = [];
+		}
+	}
+
+	async function createInvite(): Promise<void> {
+		error = '';
+		createdInvite = undefined;
+		try {
+			createdInvite = await client().createOrganizationInvite({
+				role: newInviteRole as 'owner' | 'admin' | 'approver' | 'member' | 'viewer',
+				...(newInviteEmail.trim() ? { email: newInviteEmail.trim() } : {}),
+				...(newInviteLabel.trim() ? { label: newInviteLabel.trim() } : {})
+			});
+			newInviteEmail = '';
+			newInviteLabel = '';
+			newInviteRole = 'member';
+			await Promise.all([refreshInvites(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	async function revokeInvite(inviteId: string): Promise<void> {
+		error = '';
+		try {
+			await client().revokeOrganizationInvite(inviteId);
+			if (createdInvite?.inviteId === inviteId) createdInvite = undefined;
+			await Promise.all([refreshInvites(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	async function copyInvite(): Promise<void> {
+		const value = createdInvite?.url ?? createdInvite?.token;
+		if (!value) return;
+		await navigator.clipboard?.writeText(value);
 	}
 
 	async function refreshApprovals(): Promise<void> {
@@ -398,6 +449,49 @@
 	{/if}
 
 	{#if runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn)}
+		<section class="card stack">
+			<div class="section-heading">
+				<h2>Invites</h2>
+				<button onclick={refreshInvites}>Refresh invites</button>
+			</div>
+			<form class="stack" onsubmit={(event) => { event.preventDefault(); void createInvite(); }}>
+				<div class="row">
+					<input bind:value={newInviteEmail} aria-label="Invite email" placeholder="teammate@example.com (optional)" />
+					<input bind:value={newInviteLabel} aria-label="Invite label" placeholder="Label (optional)" />
+					<select bind:value={newInviteRole} aria-label="Invite role">
+						<option value="member">member</option>
+						<option value="approver">approver</option>
+						<option value="admin">admin</option>
+						<option value="viewer">viewer</option>
+					</select>
+					<button type="submit">Create invite</button>
+				</div>
+			</form>
+			{#if createdInvite?.token}
+				<div class="token">
+					<p><strong>Invite created:</strong> {createdInvite.label ?? createdInvite.email ?? createdInvite.role}</p>
+					<code>{createdInvite.url ?? createdInvite.token}</code>
+					<button onclick={copyInvite}>Copy invite</button>
+					<p class="subtle">The plaintext token is shown once. Agent Tick stores only a hash.</p>
+				</div>
+			{/if}
+			{#if organizationInvites.length === 0}
+				<p class="subtle">No active or historical invites yet.</p>
+			{:else}
+				<ul class="item-list">
+					{#each organizationInvites as invite}
+						<li class="item-card" class:is-muted={Boolean(invite.revokedAt)}>
+							<div>
+								<strong>{invite.label ?? invite.email ?? invite.inviteId}</strong>
+								<p class="subtle">{invite.inviteId} · {invite.role} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
+								{#if invite.email}<p>{invite.email}</p>{/if}
+							</div>
+							{#if !invite.revokedAt}<button class="danger" onclick={() => void revokeInvite(invite.inviteId)}>Revoke</button>{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
 		<section class="card stack">
 			<div class="section-heading">
 				<h2>Projects</h2>
