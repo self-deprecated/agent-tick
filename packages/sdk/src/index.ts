@@ -4,6 +4,7 @@ import {
   AgentTokenRecordSchema,
   ApiErrorEnvelopeSchema,
   ApprovalRequestSchema,
+  AuditEventRecordSchema,
   AuthConfigSchema,
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
@@ -25,6 +26,7 @@ import {
   type AgentTokenRecord,
   type ApiErrorEnvelope,
   type ApprovalRequest,
+  type AuditEventRecord,
   type AuthConfig,
   type CreateAgentToken,
   type CreateApprovalRequest,
@@ -96,6 +98,13 @@ export class AgentTickClient {
 
   getMe(): Promise<MeResponse> {
     return this.#request('GET', '/v1/me', MeResponseSchema);
+  }
+
+  listAuditEvents(options: { limit?: number } = {}): Promise<AuditEventRecord[]> {
+    const params = new URLSearchParams();
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return this.#request('GET', `/v1/audit-events${suffix}`, AuditEventRecordSchema.array());
   }
 
   createApprovalRequest(input: CreateApprovalRequest): Promise<ApprovalRequest> {
@@ -243,6 +252,7 @@ export type {
   AgentTokenRecord,
   ApiErrorEnvelope,
   ApprovalRequest,
+  AuditEventRecord,
   AuthConfig,
   CreateAgentToken,
   CreateApprovalRequest,

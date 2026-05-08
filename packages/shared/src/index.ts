@@ -75,6 +75,17 @@ export const MeResponseSchema = z.object({
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 
+export const AuditEventRecordSchema = z.object({
+  eventId: z.number(),
+  organizationId: z.string(),
+  userId: z.string(),
+  eventType: z.string(),
+  targetId: z.string(),
+  payload: z.unknown(),
+  createdAt: z.string()
+});
+export type AuditEventRecord = z.infer<typeof AuditEventRecordSchema>;
+
 export const RequesterSchema = z.object({
   name: z.string().min(1),
   agentId: z.string().min(1),

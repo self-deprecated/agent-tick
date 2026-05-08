@@ -148,6 +148,16 @@ export interface AvailabilityRecord {
   updatedAt: string;
 }
 
+export interface AuditEventRecord {
+  eventId: number;
+  organizationId: string;
+  userId: string;
+  eventType: string;
+  targetId: string;
+  payload: unknown;
+  createdAt: string;
+}
+
 export class AgentTickStore {
   readonly db: Database.Database;
 
@@ -277,6 +287,8 @@ export class AgentTickStore {
         .run(organizationId, cleanName, now, now);
       this.db.prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
         .run(organizationId, userId, 'owner', now, now);
+      this.db.prepare('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(organizationId, userId, 'organization.created', organizationId, JSON.stringify({ name: cleanName }), now);
     });
     tx();
     const membership = this.organizationMembershipForUser(userId, organizationId) ?? missingOrganization(organizationId);
@@ -302,6 +314,7 @@ export class AgentTickStore {
         ) VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(agentId, organizationId, input.ownerUserId ?? null, input.name.trim(), hashToken(token), JSON.stringify(scopes), now);
+    this.writeAuditEvent(organizationId, input.ownerUserId ?? agentId, 'agent_token.created', agentId, { name: input.name.trim(), scopes }, now);
     return {
       agentId,
       name: input.name.trim(),
@@ -330,6 +343,7 @@ export class AgentTickStore {
     if (!row.revoked_at) {
       this.db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE agent_id = ? AND organization_id = ?').run(now, agentId, organizationId);
       row.revoked_at = now;
+      this.writeAuditEvent(organizationId, row.owner_user_id ?? agentId, 'agent_token.revoked', agentId, { name: row.name }, now);
     }
     return mapAgentTokenRow(row);
   }
@@ -410,6 +424,7 @@ export class AgentTickStore {
     const parsed = RespondApprovalRequestSchema.parse(response);
     const current = this.getApprovalRequest(id);
     if (!current) return null;
+    const organization = this.db.prepare('SELECT organization_id FROM approval_requests WHERE id = ?').get(id) as { organization_id: string } | undefined;
     if (current.status !== 'pending') return current;
     if (parsed.choiceId && !current.choices.some((choice) => choice.id === parsed.choiceId)) {
       throw new Error(`unknown choiceId: ${parsed.choiceId}`);
@@ -417,18 +432,19 @@ export class AgentTickStore {
     this.db
       .prepare('UPDATE approval_requests SET status = ?, response_json = ?, responded_at = ? WHERE id = ? AND status = ?')
       .run('responded', JSON.stringify(parsed), now, id, 'pending');
-    this.writeAuditEvent(DEFAULT_ORGANIZATION_ID, responderUserId, 'approval.responded', id, parsed, now);
+    this.writeAuditEvent(organization?.organization_id ?? DEFAULT_ORGANIZATION_ID, responderUserId, 'approval.responded', id, parsed, now);
     return this.getApprovalRequest(id);
   }
 
   abandonApprovalRequest(id: string, actorId: string, now = new Date().toISOString()): ApprovalRequest | null {
     const current = this.getApprovalRequest(id);
     if (!current) return null;
+    const organization = this.db.prepare('SELECT organization_id FROM approval_requests WHERE id = ?').get(id) as { organization_id: string } | undefined;
     if (current.status !== 'pending') return current;
     this.db
       .prepare('UPDATE approval_requests SET status = ?, responded_at = ?, response_json = ? WHERE id = ? AND status = ?')
       .run('abandoned', now, JSON.stringify({ message: 'abandoned' }), id, 'pending');
-    this.writeAuditEvent(DEFAULT_ORGANIZATION_ID, actorId, 'approval.abandoned', id, {}, now);
+    this.writeAuditEvent(organization?.organization_id ?? DEFAULT_ORGANIZATION_ID, actorId, 'approval.abandoned', id, {}, now);
     return this.getApprovalRequest(id);
   }
 
@@ -456,7 +472,9 @@ export class AgentTickStore {
       }
     });
     tx();
-    return this.getDeviceForUser(deviceId, input.userId) ?? missingDevice(deviceId);
+    const device = this.getDeviceForUser(deviceId, input.userId) ?? missingDevice(deviceId);
+    this.writeAuditEvent(input.organizationId, input.userId, existing ? 'device.updated' : 'device.registered', deviceId, { name: input.deviceName.trim(), platform: input.platform }, now);
+    return device;
   }
 
   createPairingToken(userId: string, organizationId: string, now = new Date().toISOString()): PairingTokenRecord {
@@ -483,6 +501,7 @@ export class AgentTickStore {
       this.db.prepare('UPDATE pairing_codes SET used_at = ? WHERE token_hash = ?').run(now, row.token_hash);
     });
     tx();
+    this.writeAuditEvent(row.organization_id, row.user_id, 'device.paired', deviceId, { name: deviceName.trim(), platform }, now);
     return { deviceId, token };
   }
 
@@ -517,12 +536,16 @@ export class AgentTickStore {
       this.db.prepare('UPDATE devices SET expo_push_token = ?, updated_at = ? WHERE device_id = ? AND user_id = ?').run(token || null, now, deviceId, userId);
     });
     tx();
-    return this.getDeviceForUser(deviceId, userId);
+    const device = this.getDeviceForUser(deviceId, userId);
+    if (device) this.writeAuditEvent(device.organizationId, userId, 'device.push_token.updated', deviceId, {}, now);
+    return device;
   }
 
   unregisterDevice(deviceId: string, userId: string, now = new Date().toISOString()): DeviceRecord | null {
     this.db.prepare('UPDATE devices SET unregistered_at = ?, expo_push_token = NULL, updated_at = ? WHERE device_id = ? AND user_id = ?').run(now, now, deviceId, userId);
-    return this.getDeviceForUser(deviceId, userId);
+    const device = this.getDeviceForUser(deviceId, userId);
+    if (device) this.writeAuditEvent(device.organizationId, userId, 'device.unregistered', deviceId, {}, now);
+    return device;
   }
 
   createEventTicket(input: EventTicketInput, now = new Date().toISOString()): EventTicketRecord {
@@ -580,6 +603,14 @@ export class AgentTickStore {
     return row ? mapAvailabilityRow(row) : null;
   }
 
+  listAuditEvents(organizationId: string, limit = 100): AuditEventRecord[] {
+    const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+    const rows = this.db
+      .prepare('SELECT * FROM audit_events WHERE organization_id = ? ORDER BY created_at DESC, event_id DESC LIMIT ?')
+      .all(organizationId, safeLimit) as AuditEventRow[];
+    return rows.map(mapAuditEventRow);
+  }
+
   writeAuditEvent(organizationId: string, userId: string, eventType: string, targetId: string, payload: unknown, now = new Date().toISOString()): void {
     this.db
       .prepare('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -624,6 +655,18 @@ function mapAvailabilityRow(row: AvailabilityRow): AvailabilityRecord {
     state: row.state,
     lastSeenAt: row.last_seen_at ?? undefined,
     updatedAt: row.updated_at
+  };
+}
+
+function mapAuditEventRow(row: AuditEventRow): AuditEventRecord {
+  return {
+    eventId: row.event_id,
+    organizationId: row.organization_id,
+    userId: row.user_id,
+    eventType: row.event_type,
+    targetId: row.target_id,
+    payload: parseJSON<unknown>(row.payload_json, {}),
+    createdAt: row.created_at
   };
 }
 
@@ -728,6 +771,16 @@ interface AvailabilityRow {
   state: string;
   last_seen_at: string | null;
   updated_at: string;
+}
+
+interface AuditEventRow {
+  event_id: number;
+  organization_id: string;
+  user_id: string;
+  event_type: string;
+  target_id: string;
+  payload_json: string;
+  created_at: string;
 }
 
 interface OrganizationMembershipRow {

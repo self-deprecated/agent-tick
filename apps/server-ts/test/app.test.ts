@@ -145,6 +145,10 @@ describe('server skeleton', () => {
       payload: { requester: { name: 'agent' }, title: 'Deploy again?' }
     });
     expect(deniedResponse.statusCode).toBe(401);
+
+    const auditResponse = await app.inject({ method: 'GET', url: '/v1/audit-events?limit=5' });
+    expect(auditResponse.statusCode).toBe(200);
+    expect(auditResponse.json().map((event: { eventType: string }) => event.eventType)).toContain('agent_token.revoked');
   });
 
   it('accepts heartbeat and availability updates', async () => {

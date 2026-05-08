@@ -40,6 +40,33 @@ describe('AgentTickClient', () => {
     });
   });
 
+  it('calls audit event endpoint with limit', async () => {
+    const seen: { url?: string; method?: string } = {};
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        seen.url = String(input);
+        seen.method = init?.method;
+        return jsonResponse([
+          {
+            eventId: 1,
+            organizationId: 'org_123',
+            userId: 'usr_123',
+            eventType: 'agent_token.created',
+            targetId: 'agt_123',
+            payload: { name: 'agent' },
+            createdAt: '2026-01-01T00:00:00.000Z'
+          }
+        ]);
+      }
+    });
+
+    await expect(client.listAuditEvents({ limit: 10 })).resolves.toEqual([
+      expect.objectContaining({ eventType: 'agent_token.created', targetId: 'agt_123' })
+    ]);
+    expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/audit-events?limit=10' });
+  });
+
   it('calls organization member endpoint', async () => {
     const seen: { url?: string; method?: string } = {};
     const client = new AgentTickClient({
