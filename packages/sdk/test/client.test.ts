@@ -40,6 +40,32 @@ describe('AgentTickClient', () => {
     });
   });
 
+  it('calls organization member endpoint', async () => {
+    const seen: { url?: string; method?: string } = {};
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        seen.url = String(input);
+        seen.method = init?.method;
+        return jsonResponse([
+          {
+            organizationId: 'org_123',
+            name: 'Production',
+            userId: 'usr_123',
+            role: 'owner',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z'
+          }
+        ]);
+      }
+    });
+
+    await expect(client.listOrganizationMembers('org_123')).resolves.toEqual([
+      expect.objectContaining({ organizationId: 'org_123', userId: 'usr_123' })
+    ]);
+    expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/organizations/org_123/members' });
+  });
+
   it('calls agent token revoke endpoint', async () => {
     const seen: { url?: string; method?: string; body?: unknown } = {};
     const client = new AgentTickClient({

@@ -249,6 +249,19 @@ export class AgentTickStore {
     return rows.map(mapOrganizationMembershipRow);
   }
 
+  listOrganizationMembers(organizationId: string): OrganizationMembershipRecord[] {
+    const rows = this.db
+      .prepare(`
+        SELECT o.id AS organization_id, o.name, o.created_at, o.updated_at, m.user_id, m.role
+        FROM organization_memberships m
+        JOIN organizations o ON o.id = m.organization_id
+        WHERE m.organization_id = ?
+        ORDER BY m.created_at ASC
+      `)
+      .all(organizationId) as OrganizationMembershipRow[];
+    return rows.map(mapOrganizationMembershipRow);
+  }
+
   organizationMembershipForUser(userId: string, organizationId: string): HumanIdentityResult | null {
     const row = this.db
       .prepare('SELECT organization_id, role FROM organization_memberships WHERE user_id = ? AND organization_id = ?')

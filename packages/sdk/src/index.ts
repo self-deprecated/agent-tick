@@ -149,6 +149,10 @@ export class AgentTickClient {
     });
   }
 
+  listOrganizationMembers(organizationId: string): Promise<OrganizationMembership[]> {
+    return this.#request('GET', `/v1/organizations/${encodeURIComponent(organizationId)}/members`, OrganizationMembershipSchema.array());
+  }
+
   createEventTicket(): Promise<EventTicketResponse> {
     return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
   }

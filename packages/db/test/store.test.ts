@@ -29,6 +29,7 @@ describe('AgentTickStore', () => {
     expect(created).toMatchObject({ name: 'Production', userId: 'usr_default', role: 'owner' });
     expect(memberships.map((membership) => membership.organizationId)).toContain(created.organizationId);
     expect(store.organizationMembershipForUser('usr_default', created.organizationId)).toMatchObject({ role: 'owner' });
+    expect(store.listOrganizationMembers(created.organizationId)).toEqual([created]);
   });
 
   it('creates and verifies agent tokens by hash', () => {

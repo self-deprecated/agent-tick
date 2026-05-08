@@ -109,6 +109,10 @@ describe('server skeleton', () => {
     expect(me.statusCode).toBe(200);
     expect(me.json()).toMatchObject({ organizationId, role: 'owner' });
 
+    const members = await app.inject({ method: 'GET', url: `/v1/organizations/${organizationId}/members` });
+    expect(members.statusCode).toBe(200);
+    expect(members.json()).toEqual([expect.objectContaining({ organizationId, userId: 'usr_default', role: 'owner' })]);
+
     const forbidden = await app.inject({ method: 'GET', url: '/v1/me', headers: { 'x-agent-tick-organization-id': 'org_missing' } });
     expect(forbidden.statusCode).toBe(403);
   });
