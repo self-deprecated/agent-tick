@@ -51,6 +51,24 @@ describe("parsePairingPayload", () => {
     });
   });
 
+  it("parses Clerk mode discovery QR payloads", () => {
+    expect(
+      parsePairingPayload(
+        JSON.stringify({
+          serverURL: "https://tick.example.com",
+          mode: "clerk",
+          authProvider: "clerk",
+          organizationId: "org_123",
+        }),
+      ),
+    ).toEqual({
+      serverURL: "https://tick.example.com",
+      mode: "clerk",
+      authProvider: "clerk",
+      organizationId: "org_123",
+    });
+  });
+
   it("accepts raw pairing codes", () => {
     expect(parsePairingPayload("pair_abc123")).toEqual({
       pairingCode: "pair_abc123",
