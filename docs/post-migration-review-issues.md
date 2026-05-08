@@ -104,14 +104,16 @@ Recommended action: keep using the stricter organization-admin guard for future 
 
 ### CI is less thorough than manual validation
 
-CI currently runs `pnpm typecheck` and `pnpm test`, but manual validation also runs:
+Status: addressed by adding workspace build and Svelte admin checks to CI.
+
+CI previously ran `pnpm typecheck` and `pnpm test`, but manual validation also runs:
 
 - `pnpm build`
 - `pnpm --filter agent-tick-admin check`
 
 Root `pnpm typecheck` does not cover Svelte diagnostics because the admin app uses `check`, not `typecheck`.
 
-Recommended action: add build and Svelte check jobs/steps to CI.
+Recommended action: keep CI aligned with the full manual validation suite when new validation steps are added.
 
 ### Approval expiration is stored but not actively enforced
 

@@ -29,3 +29,9 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Svelte admin check
+        run: pnpm --filter agent-tick-admin check
