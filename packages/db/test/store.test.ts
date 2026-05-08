@@ -87,6 +87,18 @@ describe('AgentTickStore', () => {
     ).toThrow(/identity linking/i);
   });
 
+  it('records heartbeat and availability state', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const heartbeat = store.recordHeartbeat('usr_default', DEFAULT_ORGANIZATION_ID, '2026-05-08T00:00:01.000Z');
+    expect(heartbeat).toMatchObject({ state: 'available', lastSeenAt: '2026-05-08T00:00:01.000Z' });
+
+    const availability = store.setAvailability('usr_default', DEFAULT_ORGANIZATION_ID, 'busy', '2026-05-08T00:00:02.000Z');
+    expect(availability).toMatchObject({ state: 'busy', lastSeenAt: '2026-05-08T00:00:02.000Z' });
+  });
+
   it('creates short-lived event tickets without storing plaintext tickets', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

@@ -11,6 +11,7 @@ import { registerEventRoutes } from './routes/events.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPairingRoutes } from './routes/pairing.js';
+import { registerPresenceRoutes } from './routes/presence.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -50,6 +51,7 @@ export async function buildApp({ config, store }: BuildAppOptions): Promise<Fast
   await registerApprovalRoutes(app, { config, store });
   await registerDeviceRoutes(app, { config, store });
   await registerPairingRoutes(app, { config, store });
+  await registerPresenceRoutes(app, { config, store });
   await registerEventRoutes(app, { config, store });
 
   const adminIndexPath = await registerStaticAdmin(app, config.adminDistDir);

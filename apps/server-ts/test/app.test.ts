@@ -130,6 +130,18 @@ describe('server skeleton', () => {
     expect(createResponse.json()).toMatchObject({ title: 'Deploy?', status: 'pending' });
   });
 
+  it('accepts heartbeat and availability updates', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+
+    const heartbeat = await app.inject({ method: 'POST', url: '/v1/heartbeat', payload: { client: 'mobile' } });
+    expect(heartbeat.statusCode).toBe(200);
+    expect(heartbeat.json()).toMatchObject({ status: 'ok', state: 'available' });
+
+    const availability = await app.inject({ method: 'POST', url: '/v1/availability', payload: { state: 'busy' } });
+    expect(availability.statusCode).toBe(200);
+    expect(availability.json()).toMatchObject({ state: 'busy' });
+  });
+
   it('issues short-lived event tickets instead of using bearer tokens in event query strings', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
     const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });

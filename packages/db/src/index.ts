@@ -140,6 +140,14 @@ export interface DeviceTokenAuth {
   organizationId: string;
 }
 
+export interface AvailabilityRecord {
+  userId: string;
+  organizationId: string;
+  state: string;
+  lastSeenAt: string | undefined;
+  updatedAt: string;
+}
+
 export class AgentTickStore {
   readonly db: Database.Database;
 
@@ -518,6 +526,35 @@ export class AgentTickStore {
     };
   }
 
+  recordHeartbeat(userId: string, organizationId: string, now = new Date().toISOString()): AvailabilityRecord {
+    this.db
+      .prepare(`
+        INSERT INTO user_availability(user_id, organization_id, state, last_seen_at, updated_at)
+        VALUES (?, ?, COALESCE((SELECT state FROM user_availability WHERE user_id = ? AND organization_id = ?), 'available'), ?, ?)
+        ON CONFLICT(user_id, organization_id) DO UPDATE SET last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at
+      `)
+      .run(userId, organizationId, userId, organizationId, now, now);
+    return this.getAvailability(userId, organizationId) ?? missingAvailability(userId);
+  }
+
+  setAvailability(userId: string, organizationId: string, state: string, now = new Date().toISOString()): AvailabilityRecord {
+    this.db
+      .prepare(`
+        INSERT INTO user_availability(user_id, organization_id, state, last_seen_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, organization_id) DO UPDATE SET state = excluded.state, last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at
+      `)
+      .run(userId, organizationId, state, now, now);
+    return this.getAvailability(userId, organizationId) ?? missingAvailability(userId);
+  }
+
+  getAvailability(userId: string, organizationId: string): AvailabilityRecord | null {
+    const row = this.db
+      .prepare('SELECT * FROM user_availability WHERE user_id = ? AND organization_id = ?')
+      .get(userId, organizationId) as AvailabilityRow | undefined;
+    return row ? mapAvailabilityRow(row) : null;
+  }
+
   writeAuditEvent(organizationId: string, userId: string, eventType: string, targetId: string, payload: unknown, now = new Date().toISOString()): void {
     this.db
       .prepare('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -552,6 +589,16 @@ function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
     lastRequestAt: row.last_request_at ?? undefined,
     createdAt: row.created_at,
     revokedAt: row.revoked_at ?? undefined
+  };
+}
+
+function mapAvailabilityRow(row: AvailabilityRow): AvailabilityRecord {
+  return {
+    userId: row.user_id,
+    organizationId: row.organization_id,
+    state: row.state,
+    lastSeenAt: row.last_seen_at ?? undefined,
+    updatedAt: row.updated_at
   };
 }
 
@@ -644,6 +691,18 @@ function missingDevice(id: string): never {
 
 function missingOrganization(id: string): never {
   throw new Error(`organization ${id} was not created`);
+}
+
+function missingAvailability(userId: string): never {
+  throw new Error(`availability for ${userId} was not saved`);
+}
+
+interface AvailabilityRow {
+  user_id: string;
+  organization_id: string;
+  state: string;
+  last_seen_at: string | null;
+  updated_at: string;
 }
 
 interface OrganizationMembershipRow {
@@ -831,6 +890,15 @@ CREATE TABLE IF NOT EXISTS event_tickets (
 );
 
 CREATE INDEX IF NOT EXISTS event_tickets_expires_idx ON event_tickets(expires_at);
+
+CREATE TABLE IF NOT EXISTS user_availability (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  state TEXT NOT NULL,
+  last_seen_at TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, organization_id)
+);
 
 CREATE TABLE IF NOT EXISTS pairing_codes (
   token_hash TEXT PRIMARY KEY,

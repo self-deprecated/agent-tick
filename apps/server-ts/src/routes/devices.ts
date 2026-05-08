@@ -12,8 +12,9 @@ const RegisterDeviceSchema = z.object({
 });
 
 const PushTokenSchema = z.object({
-  expoPushToken: z.string()
-});
+  expoPushToken: z.string().optional(),
+  token: z.string().optional()
+}).refine((value) => Boolean(value.expoPushToken || value.token), { message: 'expoPushToken is required' });
 
 export interface DeviceRoutesOptions {
   config: ServerConfig;
@@ -44,7 +45,7 @@ export async function registerDeviceRoutes(app: FastifyInstance, { config, store
     const auth = await requireHuman(request, config, store);
     const { id } = request.params as { id: string };
     const input = PushTokenSchema.parse(request.body);
-    const device = store.updateDevicePushToken(id, auth.userId ?? 'usr_default', input.expoPushToken);
+    const device = store.updateDevicePushToken(id, auth.userId ?? 'usr_default', input.expoPushToken ?? input.token ?? '');
     if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
     return device;
   });
