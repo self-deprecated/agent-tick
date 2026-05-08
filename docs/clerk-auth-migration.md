@@ -194,6 +194,7 @@ Implemented so far:
 - SDK token provider and organization provider support.
 - Svelte dashboard Clerk sign-in, local organization selector, token management, audit view, and pairing code UI.
 - Docker image build for the TypeScript server plus static Svelte admin assets.
+- Initial in-memory rate limits for auth-sensitive token endpoints.
 
 ## Remaining work
 
@@ -214,7 +215,7 @@ Product rebuilds to evaluate/port from the prototype:
 
 Operational hardening:
 
-- Rate limits on auth-sensitive endpoints.
+- Configurable/distributed rate limits for hosted deployments.
 - Continue audit/authorization coverage review for all mutable routes.
 - Broader retention/cleanup policy for old approvals, audit events, devices, and expired invites.
 - Docker release workflow and published npm CLI package.

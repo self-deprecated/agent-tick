@@ -98,6 +98,18 @@ describe('server skeleton', () => {
     expect(response.json()).toMatchObject({ error: { code: 'not_found', message: 'Not found' } });
   });
 
+  it('rate limits auth-sensitive token endpoints', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+    let response = await app.inject({ method: 'GET', url: '/v1/invites/not-a-real-token' });
+    expect(response.statusCode).toBe(404);
+    for (let index = 0; index < 30; index += 1) {
+      response = await app.inject({ method: 'GET', url: '/v1/invites/not-a-real-token' });
+    }
+    expect(response.statusCode).toBe(429);
+    expect(response.headers['retry-after']).toBeDefined();
+    expect(response.json()).toMatchObject({ error: { code: 'rate_limited' } });
+  });
+
   it('lists and selects local organizations for human requests', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
 

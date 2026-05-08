@@ -40,6 +40,7 @@ export async function buildApp({ config, store }: BuildAppOptions): Promise<Fast
       }
     });
   });
+  registerRateLimitHook(app);
 
   app.get('/healthz', async () => ({ status: 'ok' as const, time: new Date().toISOString() }));
 
@@ -102,6 +103,52 @@ function setFallbackNotFoundHandler(app: FastifyInstance, adminIndexPath: string
 
 function acceptsHTML(accept: string | undefined): boolean {
   return Boolean(accept?.includes('text/html'));
+}
+
+interface RateLimitRule {
+  windowMs: number;
+  max: number;
+}
+
+function registerRateLimitHook(app: FastifyInstance): void {
+  const buckets = new Map<string, { windowStart: number; count: number }>();
+  app.addHook('preHandler', async (request, reply) => {
+    const routePath = request.routeOptions.url ?? request.url.split('?', 1)[0] ?? request.url;
+    const rule = rateLimitRule(request.method, routePath);
+    if (!rule) return;
+
+    const now = Date.now();
+    const key = `${request.ip}:${request.method}:${routePath}`;
+    const existing = buckets.get(key);
+    const bucket = existing && now - existing.windowStart < rule.windowMs ? existing : { windowStart: now, count: 0 };
+    bucket.count += 1;
+    buckets.set(key, bucket);
+
+    if (bucket.count > rule.max) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((rule.windowMs - (now - bucket.windowStart)) / 1000));
+      return reply
+        .header('retry-after', String(retryAfterSeconds))
+        .status(429)
+        .send({ error: { code: 'rate_limited', message: 'Too many requests', requestId: request.id } });
+    }
+
+    if (buckets.size > 1000) pruneRateLimitBuckets(buckets, now, rule.windowMs);
+  });
+}
+
+function rateLimitRule(method: string, routePath: string): RateLimitRule | null {
+  if (method === 'GET' && routePath === '/v1/invites/:token') return { windowMs: 60_000, max: 30 };
+  if (method === 'POST' && routePath === '/v1/invites/:token/accept') return { windowMs: 60_000, max: 30 };
+  if (method === 'POST' && routePath === '/v1/devices/pair') return { windowMs: 60_000, max: 30 };
+  if (method === 'POST' && routePath === '/v1/pairing-tokens') return { windowMs: 60_000, max: 60 };
+  if (method === 'POST' && routePath === '/v1/events/ticket') return { windowMs: 60_000, max: 60 };
+  return null;
+}
+
+function pruneRateLimitBuckets(buckets: Map<string, { windowStart: number; count: number }>, now: number, windowMs: number): void {
+  for (const [key, bucket] of buckets) {
+    if (now - bucket.windowStart >= windowMs) buckets.delete(key);
+  }
 }
 
 function statusCodeForError(error: unknown): number {
