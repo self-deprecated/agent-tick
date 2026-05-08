@@ -7,7 +7,7 @@ Agent Tick is now a TypeScript-first monorepo.
 - `apps/server`: Fastify API server and static dashboard host.
 - `apps/admin`: Svelte 5 + TypeScript dashboard built with Vite.
 - `apps/mobile`: Expo React Native phone app.
-- `packages/cli`: npm CLI package with the `agent-tick` binary.
+- `packages/cli`: private workspace CLI package with the `agent-tick` binary.
 - `packages/sdk`: environment-neutral typed HTTP client.
 - `packages/shared`: Zod schemas, shared API types, constants.
 - `packages/db`: SQLite migrations and repository helpers.
@@ -82,7 +82,7 @@ The build writes to `apps/server/public/admin`, which the server serves in Docke
 
 ## CLI
 
-Build the npm CLI:
+Build the workspace CLI:
 
 ```sh
 corepack pnpm --filter agent-tick build
@@ -95,7 +95,7 @@ node packages/cli/dist/index.js setup --server http://localhost:8787 --token age
 node packages/cli/dist/index.js request --title "Deploy?"
 ```
 
-The CLI intentionally does not start the server. The official server distribution is Docker.
+The CLI intentionally does not start the server. The official server distribution is Docker. The CLI package is currently private in this repository; update README/SELFHOSTING/docs when public npm publishing is intentionally enabled.
 
 ## Docker
 

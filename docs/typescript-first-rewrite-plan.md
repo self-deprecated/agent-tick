@@ -616,7 +616,7 @@ Must not be imported by CLI/admin/mobile.
 
 ### `packages/cli`
 
-Agent-facing npm CLI.
+Agent-facing CLI. It is currently a private workspace package; public npm publishing is deferred until intentionally enabled.
 
 Recommended dependencies:
 
@@ -633,7 +633,7 @@ agent-tick abandon
 agent-tick guard
 ```
 
-Commands to port later if still product-relevant:
+Commands to add later only if still product-relevant, with implementation/tests/docs in the same change:
 
 ```sh
 agent-tick adapter
@@ -991,7 +991,7 @@ Already rebuilt or newly implemented:
 
 Possible future product work:
 
-- `agent-tick guard`, MCP, adapter, or steer flows if they fit the npm CLI model
+- MCP, adapter, or steer flows if they fit the current CLI/product model
 - richer policy templates and multi-step routing
 - hosted billing/operator tooling beyond the local self-hosted guard
 
@@ -1153,7 +1153,7 @@ The rewrite is complete when:
 
 - no Go toolchain is required to build or run the project
 - Docker image runs the TypeScript server and serves the admin SPA
-- npm CLI can create and wait for approval requests
+- workspace CLI can create and wait for approval requests
 - dashboard can approve/reject requests
 - single mode works without Clerk
 - Clerk mode works for dashboard and mobile humans

@@ -213,7 +213,7 @@ Future product work to evaluate for the current architecture:
 - Richer team role/eligibility management beyond basic add/update/remove and team-scoped approval eligibility.
 - Policy templates and richer multi-step eligibility/routing policy engine.
 - Notification delivery polish beyond mobile push and the current generic approval webhook.
-- MCP/adapter/guard integrations that still fit the npm CLI model.
+- MCP/adapter integrations only if they fit the current CLI/product model.
 - Hosted-service billing portals, plan sync, and operator tooling beyond the current local seat guard.
 - SMTP/provider-specific invite email templates and retry tooling beyond the current webhook handoff.
 
@@ -221,5 +221,5 @@ Operational hardening:
 
 - Distributed rate-limit backing for hosted deployments.
 - Continue audit/authorization coverage review for all mutable routes.
-- Docker release workflow and published npm CLI package.
+- Docker release workflow and published CLI package.
 - Broaden mobile Jest/Expo coverage now that the pnpm harness runs in the workspace test suite.

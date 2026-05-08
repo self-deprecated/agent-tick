@@ -2,6 +2,8 @@
 
 Agent Tick currently supports the TypeScript CLI commands `setup`, `request`, `abandon`, and `guard`, plus the admin dashboard and mobile approval flow. This document only describes integrations that work with the current CLI/server surface.
 
+For product-vs-self-hosting setup flows, see [Using Agent Tick](./using-agent-tick.md). The public product site is <https://agenttick.sh>.
+
 ## Outbound notification sinks
 
 ### Approval notification webhook

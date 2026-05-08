@@ -1,5 +1,7 @@
 # Self-Hosting Agent Tick
 
+Use this guide when you want to run Agent Tick yourself. If you want the managed product instead, start at <https://agenttick.sh>.
+
 Agent Tick is Docker-first. The server image runs the TypeScript API server, serves the built Svelte dashboard, and stores SQLite data in `/data/agent-tick.db`.
 
 ## Single-user local mode
@@ -42,14 +44,14 @@ Start it:
 docker compose up -d
 ```
 
-Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. Create an agent token and configure your agent machine with a workspace-built CLI:
+Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. Create an agent token and configure your agent machine with the workspace-built CLI:
 
 ```sh
 corepack pnpm --filter agent-tick build
 corepack pnpm --filter agent-tick exec agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
-The CLI package is currently private in this repository; npm/`npx` installation should only be documented after publishing is intentionally enabled.
+The CLI package is currently private in this repository; npm/`npx` installation should only be documented after publishing is intentionally enabled. The public product site is <https://agenttick.sh>, but self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
 
 ## Clerk multi-user mode
 
@@ -111,7 +113,7 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 ## Security notes
 
-- Run production deployments behind HTTPS.
+- Run production self-hosted deployments behind HTTPS.
 - Set `AGENT_TICK_PUBLIC_URL` to the externally reachable URL.
 - Use `AGENT_TICK_ADMIN_TOKEN` for non-local single-mode dashboards.
 - Agent tokens are opaque `agent_...` credentials; store them like secrets.
@@ -121,6 +123,6 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 ## Current implementation scope
 
-The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, optional approval notification webhooks, configurable in-memory rate limits, and configurable retention cleanup.
+The TypeScript server currently covers the core vertical slice: server health/config, SQLite schema management, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait/abandon, one-use ticketed event streams, dashboard approval UI, workspace-built CLI request/guard flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, Expo push plus optional approval notification webhooks, configurable in-memory rate limits, and configurable retention cleanup.
 
 Agent Tick is a fresh TypeScript service; no Go-era CLI/server compatibility or prototype database migration path is supported. Future work should add only product-relevant features for the current architecture.

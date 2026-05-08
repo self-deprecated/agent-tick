@@ -17,10 +17,10 @@ command -v agent-tick
 
 If it is missing, tell the user to install or build the `agent-tick` CLI for this project and stop. Do not bypass approval just because the CLI is unavailable.
 
-If the user gives a setup command from the dashboard, run it exactly once:
+If the user gives a setup command from the dashboard, run it exactly once. The server may be the hosted product at `https://agenttick.sh` or the user's self-hosted URL:
 
 ```sh
-agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick setup --server https://agenttick.sh --token agent_...
 ```
 
 Do not print, log, summarize, or expose the token value after setup.
