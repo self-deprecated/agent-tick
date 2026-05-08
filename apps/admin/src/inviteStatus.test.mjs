@@ -26,6 +26,8 @@ const { inviteAcceptedMessage } = await loadModule();
 
 test('inviteAcceptedMessage distinguishes approved and pending states', () => {
 	assert.equal(inviteAcceptedMessage('approved'), 'Invite accepted. You now have access to this organization.');
+	assert.equal(inviteAcceptedMessage('joined'), 'Invite accepted. You now have access to this organization.');
+	assert.equal(inviteAcceptedMessage('already_member'), 'Invite accepted. You now have access to this organization.');
 	assert.equal(inviteAcceptedMessage('pending_approval'), 'Request sent. An organization admin needs to approve your access before you can use this organization.');
 	assert.equal(inviteAcceptedMessage('rejected'), 'Your request to join this organization was rejected.');
 	assert.equal(inviteAcceptedMessage('removed'), 'Invite status changed. Refresh your dashboard for the latest access state.');

@@ -10,6 +10,7 @@
 		type AuthConfig,
 		type OrganizationInviteRecord,
 		type OrganizationMembership,
+		type OrganizationMembershipRequestRecord,
 		type PairingToken,
 		type PolicyRecord,
 		type ProjectRecord,
@@ -30,6 +31,7 @@
 	let organizations = $state<OrganizationMembership[]>([]);
 	let organizationInvites = $state<OrganizationInviteRecord[]>([]);
 	let organizationMembers = $state<OrganizationMembership[]>([]);
+	let membershipRequests = $state<OrganizationMembershipRequestRecord[]>([]);
 	let projects = $state<ProjectRecord[]>([]);
 	let teams = $state<TeamRecord[]>([]);
 	let teamMembers = $state<Record<string, TeamMembership[]>>({});
@@ -123,6 +125,7 @@
 		organizations = [];
 		organizationInvites = [];
 		organizationMembers = [];
+		membershipRequests = [];
 		projects = [];
 		teams = [];
 		teamMembers = {};
@@ -136,7 +139,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests()]);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -161,7 +164,7 @@
 		else localStorage.removeItem(organizationStorageKey);
 		createdInvite = undefined;
 		teamMembers = {};
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests()]);
 	}
 
 	async function createOrganization(): Promise<void> {
@@ -198,6 +201,18 @@
 		}
 	}
 
+	async function refreshMembershipRequests(): Promise<void> {
+		if (!selectedOrganizationId) {
+			membershipRequests = [];
+			return;
+		}
+		try {
+			membershipRequests = await client().listMembershipRequests();
+		} catch {
+			membershipRequests = [];
+		}
+	}
+
 	async function createInvite(): Promise<void> {
 		error = '';
 		createdInvite = undefined;
@@ -210,7 +225,7 @@
 			newInviteEmail = '';
 			newInviteLabel = '';
 			newInviteRole = 'member';
-			await Promise.all([refreshInvites(), refreshAuditEvents()]);
+			await Promise.all([refreshInvites(), refreshMembershipRequests(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -231,6 +246,26 @@
 		const value = createdInvite?.url ?? createdInvite?.token;
 		if (!value) return;
 		await navigator.clipboard?.writeText(value);
+	}
+
+	async function approveMembershipRequest(requestId: string): Promise<void> {
+		error = '';
+		try {
+			await client().approveMembershipRequest(requestId);
+			await Promise.all([refreshMembershipRequests(), refreshOrganizationMembers(), refreshAuditEvents(), refreshOrganizations()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	async function rejectMembershipRequest(requestId: string): Promise<void> {
+		error = '';
+		try {
+			await client().rejectMembershipRequest(requestId);
+			await Promise.all([refreshMembershipRequests(), refreshOrganizationMembers(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
 	}
 
 	async function refreshApprovals(): Promise<void> {
@@ -536,7 +571,7 @@
 					<p><strong>Invite created:</strong> {createdInvite.label ?? createdInvite.email ?? createdInvite.role}</p>
 					<code>{createdInvite.url ?? createdInvite.token}</code>
 					<button onclick={copyInvite}>Copy invite</button>
-					<p class="subtle">The plaintext token is shown once. Agent Tick stores only a hash.</p>
+					<p class="subtle">The plaintext token is shown once. Agent Tick stores only a hash. New members remain pending until an admin approves them.</p>
 				</div>
 			{/if}
 			{#if organizationInvites.length === 0}
@@ -547,10 +582,35 @@
 						<li class="item-card" class:is-muted={Boolean(invite.revokedAt)}>
 							<div>
 								<strong>{invite.label ?? invite.email ?? invite.inviteId}</strong>
-								<p class="subtle">{invite.inviteId} · {invite.role} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
+								<p class="subtle">{invite.inviteId} · {invite.role} · {invite.approvalRequired ? 'approval required' : 'auto-approved'} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
 								{#if invite.email}<p>{invite.email}</p>{/if}
 							</div>
 							{#if !invite.revokedAt}<button class="danger" onclick={() => void revokeInvite(invite.inviteId)}>Revoke</button>{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+		<section class="card stack">
+			<div class="section-heading">
+				<h2>Pending members</h2>
+				<button onclick={refreshMembershipRequests}>Refresh pending members</button>
+			</div>
+			{#if membershipRequests.length === 0}
+				<p class="subtle">No pending organization membership requests.</p>
+			{:else}
+				<ul class="item-list">
+					{#each membershipRequests as request}
+						<li class="item-card">
+							<div>
+								<strong>{request.userName ?? request.userEmail ?? request.userId}</strong>
+								<p class="subtle">{request.requestId} · requested {request.requestedRole} · invite {request.inviteLabel ?? request.inviteId} · {new Date(request.acceptedAt).toLocaleString()}</p>
+								{#if request.userEmail}<p>{request.userEmail}</p>{/if}
+							</div>
+							<div class="actions">
+								<button class="approve" onclick={() => void approveMembershipRequest(request.requestId)}>Approve</button>
+								<button class="danger" onclick={() => void rejectMembershipRequest(request.requestId)}>Reject</button>
+							</div>
 						</li>
 					{/each}
 				</ul>

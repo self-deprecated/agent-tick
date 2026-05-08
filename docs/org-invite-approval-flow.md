@@ -461,7 +461,7 @@ For a new account created from the invite page, the app should automatically acc
 
 ## Implementation slices
 
-Current status: core TypeScript backend support exists for approval-required invites, pending membership rows, active-only authorization/listing, pending request list/approve/reject endpoints, SDK methods, audit events, and backend tests. Invite team assignment, pending dashboard UI, richer restrictions, and billing/email polish remain.
+Current status: TypeScript support exists for approval-required invites, pending membership rows, active-only authorization/listing, pending request list/approve/reject endpoints, SDK methods, audit events, backend tests, and a dashboard pending-members approval/rejection panel. Invite team assignment, richer restrictions, billing, and email polish remain.
 
 ### Slice 1: Core backend
 
