@@ -17,9 +17,11 @@ type SSOProvider = {
   strategy: OAuthSSOStrategy;
 };
 
-const ssoProviders = [
+export const ssoProviders = [
   { label: "Continue with Google", strategy: "oauth_google" },
   { label: "Continue with GitHub", strategy: "oauth_github" },
+  { label: "Continue with Microsoft", strategy: "oauth_microsoft" },
+  { label: "Continue with Apple", strategy: "oauth_apple" },
 ] satisfies SSOProvider[];
 
 export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {

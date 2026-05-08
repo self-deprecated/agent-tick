@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { ClerkSignInScreen, clerkAuthErrorMessage } from "./ClerkSignInScreen";
+import { ClerkSignInScreen, clerkAuthErrorMessage, ssoProviders } from "./ClerkSignInScreen";
 
 const mockSignInCreate = jest.fn();
 const mockSignInFinalize = jest.fn();
@@ -80,6 +80,29 @@ describe("ClerkSignInScreen", () => {
 
     await waitFor(() => expect(mockSSOSetActive).toHaveBeenCalledWith({ session: "sess_sso" }));
     expect(mockStartSSOFlow).toHaveBeenCalledWith({ strategy: "oauth_google" });
+  });
+
+  it("offers supported mobile OAuth providers without enterprise identifier requirements", async () => {
+    expect(ssoProviders.map((provider) => provider.strategy)).toEqual([
+      "oauth_google",
+      "oauth_github",
+      "oauth_microsoft",
+      "oauth_apple",
+    ]);
+    expect(ssoProviders.map((provider) => provider.strategy as string)).not.toContain("enterprise_sso");
+
+    mockStartSSOFlow.mockResolvedValue({
+      createdSessionId: "sess_sso",
+      setActive: mockSSOSetActive,
+      authSessionResult: { type: "success", url: "agenttick://sso-callback" },
+    });
+
+    for (const provider of ssoProviders) {
+      const view = render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+      fireEvent.press(screen.getByText(provider.label));
+      await waitFor(() => expect(mockStartSSOFlow).toHaveBeenLastCalledWith({ strategy: provider.strategy }));
+      view.unmount();
+    }
   });
 
   it("shows provider cancellation errors", async () => {

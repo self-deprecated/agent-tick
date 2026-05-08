@@ -204,7 +204,7 @@ Implemented so far:
 
 High priority:
 
-- Broaden mobile provider-specific OAuth/deep-link coverage beyond the built-in Google/GitHub SSO buttons.
+- Broaden mobile provider-specific OAuth/deep-link coverage beyond the built-in Google/GitHub/Microsoft/Apple SSO buttons.
 - Broaden mobile provider/runtime coverage for ticketed EventSource/SSE listeners; the Expo app now feature-detects EventSource, subscribes with short-lived tickets when available, and keeps polling as the fallback.
 - Broaden signed-out invite continuation coverage with deep-link/OAuth provider-specific tests.
 
