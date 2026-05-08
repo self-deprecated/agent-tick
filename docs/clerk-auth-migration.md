@@ -190,6 +190,7 @@ Implemented so far:
 - Mobile local organization selection for Clerk-mode multi-org users.
 - Best-effort Clerk-mode mobile device unregister on sign-out/server switch.
 - Mobile heartbeat and availability APIs.
+- Mobile uses the shared SDK for approval list/respond and device pair/register/unregister/push flows.
 - Audit-event table, event recording, route, SDK method, and dashboard display.
 - SDK token provider and organization provider support.
 - Svelte dashboard Clerk sign-in, local organization selector, token management, audit view, and pairing code UI.
@@ -201,7 +202,7 @@ Implemented so far:
 High priority:
 
 - Harden mobile Clerk UX beyond the first email/password sign-in path, including OAuth/deep-link flows where needed.
-- Use the shared SDK more consistently from the mobile app.
+- Continue replacing remaining bespoke mobile fetch helpers with shared SDK methods.
 - Add event-ticket based streaming clients if polling becomes insufficient.
 - Add approval-request membership flows if invites should require owner/admin approval before joining.
 

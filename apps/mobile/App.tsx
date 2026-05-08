@@ -54,13 +54,8 @@ import {
 } from "./approvalRequests";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
-import type { OrganizationMembership } from "@agent-tick/sdk";
+import { AgentTickClient, type OrganizationMembership } from "@agent-tick/sdk";
 import { clerkTokenCacheKey, fetchRuntimeAuthConfig, normalizeServerURL, type RuntimeAuthConfig } from "./mobileAuth";
-
-type DeviceCredential = {
-  deviceId: string;
-  token: string;
-};
 
 type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
@@ -316,24 +311,14 @@ function AgentTickApp({
     };
   }, [currentAuthToken, selectedOrganizationID]);
 
-  const api = useCallback(
-    async <T,>(path: string, init?: RequestInit): Promise<T> => {
-      const trimmed = serverURL.replace(/\/$/, "");
-      const headers = await authHeaders();
-      const response = await fetch(`${trimmed}${path}`, {
-        ...init,
-        headers: {
-          ...headers,
-          ...init?.headers,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-      return (await response.json()) as T;
-    },
-    [authHeaders, serverURL],
+  const sdk = useMemo(
+    () =>
+      new AgentTickClient({
+        baseUrl: serverURL,
+        tokenProvider: async () => (await currentAuthToken()) || null,
+        organizationIdProvider: () => selectedOrganizationID || null,
+      }),
+    [currentAuthToken, selectedOrganizationID, serverURL],
   );
 
   useEffect(() => {
@@ -498,10 +483,8 @@ function AgentTickApp({
     }
     setError(null);
     try {
-      const pending = await api<ApprovalRequest[]>(
-        "/v1/approval-requests?status=pending",
-      );
-      const pendingRequests = normalizeApprovals(pending);
+      const pending = await sdk.listApprovalRequests();
+      const pendingRequests = normalizeApprovals(pending).filter((request) => request.status === "pending");
       await notifyForNewRequests(
         pendingRequests,
         seenRequestIDs,
@@ -536,7 +519,7 @@ function AgentTickApp({
         setLoading(false);
       }
     }
-  }, [api, notificationTargetID, pushStatus, selectedProjectID]);
+  }, [notificationTargetID, pushStatus, sdk, selectedProjectID]);
 
   useEffect(() => {
     if (!settingsLoaded) {
@@ -578,7 +561,7 @@ function AgentTickApp({
     setHistoryLoading(true);
     setError(null);
     try {
-      const allRequests = await api<ApprovalRequest[]>("/v1/approval-requests");
+      const allRequests = await sdk.listApprovalRequests();
       setHistory(normalizeApprovals(allRequests));
       setConnectionStatus("connected");
     } catch (err) {
@@ -587,7 +570,7 @@ function AgentTickApp({
     } finally {
       setHistoryLoading(false);
     }
-  }, [api]);
+  }, [sdk]);
 
   useEffect(() => {
     if (screen === "history") {
@@ -630,27 +613,16 @@ function AgentTickApp({
     payload: { choiceId?: string; message?: string; answers?: Record<string, string[]> },
   ) => {
     try {
-      const response = await fetch(
-        `${serverURL.replace(/\/$/, "")}/v1/approval-requests/${request.id}/responses`,
-        {
-          method: "POST",
-          headers: await authHeaders(),
-          body: JSON.stringify(payload),
-        },
-      );
-      if (response.status === 409) {
-        void load({ visible: false });
-        return;
-      }
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-      const updated = normalizeApproval(await response.json());
+      const updated = normalizeApproval(await sdk.respondToApproval(request.id, payload));
       applyResponseResult(request.id, updated);
       setReply("");
       setQuestionnaireAnswers({});
       void load({ visible: false });
     } catch (err) {
+      if (apiStatus(err) === 409) {
+        void load({ visible: false });
+        return;
+      }
       Alert.alert(
         "Response failed",
         err instanceof Error ? err.message : "Could not send response",
@@ -667,31 +639,20 @@ function AgentTickApp({
   const respondByID = useCallback(
     async (requestID: string, choiceID: string) => {
       try {
-        const response = await fetch(
-          `${serverURL.replace(/\/$/, "")}/v1/approval-requests/${requestID}/responses`,
-          {
-            method: "POST",
-            headers: await authHeaders(),
-            body: JSON.stringify({ choiceId: choiceID }),
-          },
-        );
-        if (response.status === 409) {
+        const updated = normalizeApproval(await sdk.respondToApproval(requestID, { choiceId: choiceID }));
+        applyResponseResult(requestID, updated);
+        void load({ visible: false });
+      } catch (err) {
+        if (apiStatus(err) === 409) {
           void load({ visible: false });
           return;
         }
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}`);
-        }
-        const updated = normalizeApproval(await response.json());
-        applyResponseResult(requestID, updated);
-        void load({ visible: false });
-      } catch {
         setNotificationTargetID(requestID);
         setSelectedID(requestID);
         setScreen("approvals");
       }
     },
-    [applyResponseResult, authHeaders, load, removePendingRequest, serverURL],
+    [applyResponseResult, load, sdk],
   );
 
   useEffect(() => {
@@ -806,18 +767,11 @@ function AgentTickApp({
     const activeServerURL = (serverOverride || serverURL).replace(/\/$/, "");
 
     try {
-      const response = await fetch(`${activeServerURL}/v1/devices/pair`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: code,
-          deviceName: `${Platform.OS} phone`,
-        }),
+      const pairingClient = new AgentTickClient({ baseUrl: activeServerURL });
+      const credential = await pairingClient.pairDevice({
+        token: code,
+        deviceName: `${Platform.OS} phone`,
       });
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-      const credential = (await response.json()) as DeviceCredential;
 
       if (serverOverride) {
         setServerURL(serverOverride);
@@ -841,19 +795,13 @@ function AgentTickApp({
   };
 
   const loadWithCredentials = async (activeServerURL: string, activeToken: string) => {
-    const response = await fetch(
-      `${activeServerURL}/v1/approval-requests?status=pending`,
-      {
-        headers: {
-          Authorization: `Bearer ${activeToken}`,
-          "Content-Type": "application/json",
-        },
-      },
+    const credentialClient = new AgentTickClient({
+      baseUrl: activeServerURL,
+      tokenProvider: () => activeToken,
+    });
+    const pending = normalizeApprovals(await credentialClient.listApprovalRequests()).filter(
+      (request) => request.status === "pending",
     );
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
-    }
-    const pending = normalizeApprovals(await response.json());
     await notifyForNewRequests(
       pending,
       seenRequestIDs,
@@ -906,33 +854,19 @@ function AgentTickApp({
         { projectId },
       );
       const trimmed = (overrideServerURL || serverURL).replace(/\/$/, "");
-      const headers = runtimeAuthConfig?.authProvider === "clerk" ? await authHeaders() : {
-        Authorization: `Bearer ${activeToken}`,
-        "Content-Type": "application/json",
-      };
-      const response = activeDeviceID
-        ? await fetch(
-            `${trimmed}/v1/devices/${activeDeviceID}/push-token`,
-            {
-              method: "POST",
-              headers,
-              body: JSON.stringify({ token: pushToken.data }),
-            },
-          )
-        : await fetch(`${trimmed}/v1/devices/register`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              deviceName: `${Platform.OS} phone`,
-              platform: Platform.OS,
-              expoPushToken: pushToken.data,
-            }),
-          });
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+      const pushClient = runtimeAuthConfig?.authProvider === "clerk"
+        ? sdk
+        : new AgentTickClient({ baseUrl: trimmed, tokenProvider: () => activeToken });
+      if (activeDeviceID) {
+        await pushClient.updateDevicePushToken(activeDeviceID, { token: pushToken.data });
+      } else {
+        const responseBody = await pushClient.registerDevice({
+          deviceName: `${Platform.OS} phone`,
+          platform: Platform.OS,
+          expoPushToken: pushToken.data,
+        });
+        setDeviceID(responseBody.deviceId);
       }
-      const responseBody = (await response.json()) as { deviceId?: string };
-      if (responseBody.deviceId) setDeviceID(responseBody.deviceId);
       setPushStatus("registered");
     } catch (err) {
       setPushStatus("failed");
@@ -954,22 +888,17 @@ function AgentTickApp({
     const activeAuthProvider = options.authProvider ?? runtimeAuthConfig?.authProvider;
     const trimmed = normalizeServerURL(options.activeServerURL ?? serverURL);
     try {
-      const headers = activeAuthProvider === "clerk"
-        ? await authHeaders({ includeOrganization: false })
-        : {
-            Authorization: `Bearer ${options.activeToken ?? token}`,
-            "Content-Type": "application/json",
-          };
-      if (!headers.Authorization) return;
-      await fetch(`${trimmed}/v1/devices/${encodeURIComponent(activeDeviceID)}/unregister`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({}),
+      const cleanupToken = activeAuthProvider === "clerk" ? await currentAuthToken() : (options.activeToken ?? token);
+      if (!cleanupToken) return;
+      const cleanupClient = new AgentTickClient({
+        baseUrl: trimmed,
+        tokenProvider: () => cleanupToken,
       });
+      await cleanupClient.unregisterDevice(activeDeviceID);
     } catch {
       // Best-effort cleanup only; local credentials are still cleared.
     }
-  }, [authHeaders, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
+  }, [currentAuthToken, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
 
   const forgetDevice = useCallback(async () => {
     await bestEffortUnregisterDevice();
@@ -1214,6 +1143,10 @@ function isUsableProjectID(value: unknown): value is string {
   );
 }
 
+function apiStatus(error: unknown): number | undefined {
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : undefined;
+}
 
 async function refreshNotificationStatus(
   setNotificationStatus: (status: NotificationStatus) => void,

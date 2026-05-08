@@ -21,6 +21,8 @@
       "./jest.setup.js"
     ],
     "moduleNameMapper": {
+      "^@agent-tick/sdk$": "<rootDir>/../../packages/sdk/src/index.ts",
+      "^@agent-tick/shared$": "<rootDir>/../../packages/shared/src/index.ts",
       "^expo/src/winter$": "<rootDir>/__mocks__/expo-winter.js",
       "^expo/virtual/streams$": "<rootDir>/__mocks__/expo-winter.js"
     },
