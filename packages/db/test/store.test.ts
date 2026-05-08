@@ -103,6 +103,20 @@ describe('AgentTickStore', () => {
     expect(store.verifyEventTicket(ticket.ticket, '2026-05-08T00:01:00.000Z')).toBeNull();
   });
 
+  it('pairs single-mode devices with short-lived pairing codes', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const pairing = store.createPairingToken('usr_default', DEFAULT_ORGANIZATION_ID, '2026-05-08T00:00:00.000Z');
+    const credential = store.pairDeviceWithCode(pairing.token, 'iPhone', 'ios', '2026-05-08T00:01:00.000Z');
+
+    expect(credential?.token).toMatch(/^device_/);
+    expect(JSON.stringify(store.db.prepare('SELECT * FROM devices').all())).not.toContain(credential?.token);
+    expect(store.verifyDeviceToken(credential!.token)).toMatchObject({ userId: 'usr_default', organizationId: DEFAULT_ORGANIZATION_ID });
+    expect(store.pairDeviceWithCode(pairing.token, 'Replay', 'ios')).toBeNull();
+  });
+
   it('registers devices and moves duplicate push tokens', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

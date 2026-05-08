@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { AgentTickApiError, AgentTickClient, type AgentCredential, type ApprovalRequest, type AuthConfig } from '@agent-tick/sdk';
+	import { AgentTickApiError, AgentTickClient, type AgentCredential, type ApprovalRequest, type AuthConfig, type PairingToken } from '@agent-tick/sdk';
 	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
 	import type { AdminConfig } from './app';
 
@@ -10,6 +10,7 @@
 	let runtimeConfig = $state<AuthConfig | undefined>();
 	let approvals = $state<ApprovalRequest[]>([]);
 	let createdCredential = $state<AgentCredential | undefined>();
+	let pairingToken = $state<PairingToken | undefined>();
 	let adminToken = $state('');
 	let agentName = $state('Local agent');
 	let loading = $state(false);
@@ -95,6 +96,16 @@
 		await refreshApprovals();
 	}
 
+	async function createPairingToken(): Promise<void> {
+		error = '';
+		pairingToken = undefined;
+		try {
+			pairingToken = await client().createPairingToken();
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
 	async function createAgentToken(): Promise<void> {
 		error = '';
 		createdCredential = undefined;
@@ -175,6 +186,20 @@
 	{/if}
 
 	{#if runtimeConfig?.authProvider !== 'clerk' || clerkSignedIn}
+	{#if runtimeConfig?.mode === 'single'}
+	<section class="card stack">
+		<h2>Pair a phone</h2>
+		<p class="subtle">Create a short-lived code, then enter it in the mobile app Settings screen.</p>
+		<button onclick={createPairingToken}>Create pairing code</button>
+		{#if pairingToken}
+			<div class="token">
+				<code>{pairingToken.token}</code>
+				<p class="subtle">Expires at {new Date(pairingToken.expiresAt).toLocaleString()}</p>
+			</div>
+		{/if}
+	</section>
+	{/if}
+
 	<section class="card stack">
 		<h2>Create an agent token</h2>
 		<form class="row" onsubmit={(event) => { event.preventDefault(); void createAgentToken(); }}>

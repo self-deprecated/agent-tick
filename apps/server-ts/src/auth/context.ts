@@ -4,7 +4,7 @@ import { DEFAULT_ORGANIZATION_ID, DEFAULT_USER_ID, type AgentTickStore } from '@
 import type { ServerConfig } from '../config.js';
 import { verifyClerkSession } from './clerk.js';
 
-export type AuthSource = 'loopback' | 'admin' | 'agent' | 'clerk';
+export type AuthSource = 'loopback' | 'admin' | 'agent' | 'device' | 'clerk';
 
 export interface AuthContext {
   source: AuthSource;
@@ -13,6 +13,7 @@ export interface AuthContext {
   organizationId: string;
   role?: string;
   agentId?: string;
+  deviceId?: string;
   provider?: 'clerk';
   providerIssuer?: string;
   providerSubject?: string;
@@ -29,6 +30,20 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
         isHuman: false,
         agentId: agent.agentId,
         organizationId: agent.organizationId
+      };
+    }
+  }
+
+  if (config.mode === 'single' && bearer?.startsWith('device_')) {
+    const device = store.verifyDeviceToken(bearer);
+    if (device) {
+      return {
+        source: 'device',
+        isHuman: true,
+        userId: device.userId,
+        organizationId: device.organizationId,
+        role: 'owner',
+        deviceId: device.deviceId
       };
     }
   }

@@ -123,6 +123,23 @@ export interface EventTicketAuth {
   expiresAt: string;
 }
 
+export interface PairingTokenRecord {
+  token: string;
+  expiresAt: string;
+}
+
+export interface DeviceCredential {
+  deviceId: string;
+  token: string;
+}
+
+export interface DeviceTokenAuth {
+  source: 'device';
+  deviceId: string;
+  userId: string;
+  organizationId: string;
+}
+
 export class AgentTickStore {
   readonly db: Database.Database;
 
@@ -409,6 +426,47 @@ export class AgentTickStore {
     return this.getDeviceForUser(deviceId, input.userId) ?? missingDevice(deviceId);
   }
 
+  createPairingToken(userId: string, organizationId: string, now = new Date().toISOString()): PairingTokenRecord {
+    const token = `pair_${randomToken()}`;
+    const expiresAt = new Date(new Date(now).getTime() + 10 * 60_000).toISOString();
+    this.db
+      .prepare('INSERT INTO pairing_codes(token_hash, user_id, organization_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(hashToken(token), userId, organizationId, expiresAt, now);
+    return { token, expiresAt };
+  }
+
+  pairDeviceWithCode(pairingCode: string, deviceName: string, platform: string | undefined, now = new Date().toISOString()): DeviceCredential | null {
+    if (!pairingCode.startsWith('pair_')) return null;
+    const row = this.db
+      .prepare('SELECT * FROM pairing_codes WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?')
+      .get(hashToken(pairingCode), now) as PairingCodeRow | undefined;
+    if (!row) return null;
+    const token = `device_${randomToken()}`;
+    const deviceId = newID('dev');
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare('INSERT INTO devices(device_id, user_id, organization_id, name, platform, token_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(deviceId, row.user_id, row.organization_id, deviceName.trim(), platform ?? null, hashToken(token), now, now);
+      this.db.prepare('UPDATE pairing_codes SET used_at = ? WHERE token_hash = ?').run(now, row.token_hash);
+    });
+    tx();
+    return { deviceId, token };
+  }
+
+  verifyDeviceToken(token: string): DeviceTokenAuth | null {
+    if (!token.startsWith('device_')) return null;
+    const row = this.db
+      .prepare('SELECT * FROM devices WHERE token_hash = ? AND unregistered_at IS NULL')
+      .get(hashToken(token)) as DeviceRow | undefined;
+    if (!row) return null;
+    return {
+      source: 'device',
+      deviceId: row.device_id,
+      userId: row.user_id,
+      organizationId: row.organization_id
+    };
+  }
+
   listDevicesForUser(userId: string): DeviceRecord[] {
     const rows = this.db.prepare('SELECT * FROM devices WHERE user_id = ? ORDER BY updated_at DESC').all(userId) as DeviceRow[];
     return rows.map(mapDeviceRow);
@@ -609,6 +667,15 @@ interface AgentTokenRow {
   revoked_at: string | null;
 }
 
+interface PairingCodeRow {
+  token_hash: string;
+  user_id: string;
+  organization_id: string;
+  expires_at: string;
+  created_at: string;
+  used_at: string | null;
+}
+
 interface EventTicketRow {
   ticket_hash: string;
   source: string;
@@ -628,6 +695,7 @@ interface DeviceRow {
   platform: string | null;
   installation_id: string | null;
   expo_push_token: string | null;
+  token_hash: string | null;
   created_at: string;
   updated_at: string;
   unregistered_at: string | null;
@@ -764,6 +832,17 @@ CREATE TABLE IF NOT EXISTS event_tickets (
 
 CREATE INDEX IF NOT EXISTS event_tickets_expires_idx ON event_tickets(expires_at);
 
+CREATE TABLE IF NOT EXISTS pairing_codes (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS pairing_codes_expires_idx ON pairing_codes(expires_at);
+
 CREATE TABLE IF NOT EXISTS devices (
   device_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -772,6 +851,7 @@ CREATE TABLE IF NOT EXISTS devices (
   platform TEXT,
   installation_id TEXT,
   expo_push_token TEXT,
+  token_hash TEXT UNIQUE,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   unregistered_at TEXT

@@ -182,6 +182,25 @@ export type AgentCredential = z.infer<typeof AgentCredentialSchema>;
 export const AbandonApprovalResponseSchema = ApprovalRequestSchema;
 export type AbandonApprovalResponse = z.infer<typeof AbandonApprovalResponseSchema>;
 
+export const PairingTokenSchema = z.object({
+  token: z.string(),
+  expiresAt: z.string()
+});
+export type PairingToken = z.infer<typeof PairingTokenSchema>;
+
+export const PairDeviceRequestSchema = z.object({
+  token: z.string().min(1),
+  deviceName: z.string().min(1),
+  platform: z.string().optional()
+});
+export type PairDeviceRequest = z.input<typeof PairDeviceRequestSchema>;
+
+export const DeviceCredentialSchema = z.object({
+  deviceId: z.string(),
+  token: z.string()
+});
+export type DeviceCredential = z.infer<typeof DeviceCredentialSchema>;
+
 export const EventTicketResponseSchema = z.object({
   ticket: z.string(),
   expiresAt: z.string()

@@ -153,6 +153,28 @@ describe('server skeleton', () => {
     expect(invalid.statusCode).toBe(401);
   });
 
+  it('pairs single-mode devices and accepts device tokens for mobile requests', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+
+    const pairing = await app.inject({ method: 'POST', url: '/v1/pairing-tokens', payload: {} });
+    expect(pairing.statusCode).toBe(200);
+
+    const pair = await app.inject({
+      method: 'POST',
+      url: '/v1/devices/pair',
+      payload: { token: pairing.json().token, deviceName: 'iPhone', platform: 'ios' }
+    });
+    expect(pair.statusCode).toBe(200);
+    expect(pair.json().token).toMatch(/^device_/);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${pair.json().token}` }
+    });
+    expect(list.statusCode).toBe(200);
+  });
+
   it('registers devices for the authenticated human user', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
 

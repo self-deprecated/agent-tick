@@ -12,6 +12,7 @@ import {
   HealthResponseSchema,
   MeResponseSchema,
   OrganizationMembershipSchema,
+  PairingTokenSchema,
   RespondApprovalRequestSchema,
   WaitApprovalResponseSchema,
   type AgentCredential,
@@ -26,6 +27,7 @@ import {
   type HealthResponse,
   type MeResponse,
   type OrganizationMembership,
+  type PairingToken,
   type RespondApprovalRequest,
   type WaitApprovalResponse
 } from '@agent-tick/shared';
@@ -135,6 +137,10 @@ export class AgentTickClient {
     return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
   }
 
+  createPairingToken(): Promise<PairingToken> {
+    return this.#request('POST', '/v1/pairing-tokens', PairingTokenSchema, { body: {} });
+  }
+
   async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown } = {}): Promise<T> {
     const headers = new Headers();
     headers.set('Accept', 'application/json');
@@ -199,6 +205,7 @@ export type {
   HealthResponse,
   MeResponse,
   OrganizationMembership,
+  PairingToken,
   RespondApprovalRequest,
   WaitApprovalResponse
 };
