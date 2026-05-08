@@ -2,8 +2,10 @@
 .git/
 .jj/
 node_modules/
-apps/mobile/node_modules/
+**/node_modules/
+**/dist/
 apps/mobile/.expo/
+apps/server-ts/public/admin/assets/
 agent-tick.db
 agent-tick.db-shm
 agent-tick.db-wal

@@ -1,17 +1,30 @@
 services:
   server:
-    image: ${AGENT_TICK_IMAGE:?set AGENT_TICK_IMAGE}
+    image: ${AGENT_TICK_IMAGE:-agent-tick/server:local}
+    build:
+      context: .
+      dockerfile: apps/server-ts/Dockerfile
     environment:
-      AGENT_TICK_MODE: ${AGENT_TICK_MODE:-user}
-      AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL:?set AGENT_TICK_PUBLIC_URL}
-      AGENT_TICK_TOKEN: ${AGENT_TICK_TOKEN:-}
+      AGENT_TICK_MODE: ${AGENT_TICK_MODE:-single}
+      AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL:-http://localhost:${AGENT_TICK_PORT:-8787}}
+      AGENT_TICK_DATABASE_URL: file:/data/agent-tick.db
+      AGENT_TICK_ADMIN_TOKEN: ${AGENT_TICK_ADMIN_TOKEN:-${AGENT_TICK_TOKEN:-}}
+      AGENT_TICK_CLERK_PUBLISHABLE_KEY: ${AGENT_TICK_CLERK_PUBLISHABLE_KEY:-}
+      AGENT_TICK_CLERK_SECRET_KEY: ${AGENT_TICK_CLERK_SECRET_KEY:-}
+      AGENT_TICK_CLERK_AUTHORIZED_PARTIES: ${AGENT_TICK_CLERK_AUTHORIZED_PARTIES:-}
     ports:
       - "${AGENT_TICK_PORT:-8787}:8787"
     volumes:
       - agent_tick_data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/healthz"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
       interval: 30s
       timeout: 5s
       retries: 5
