@@ -1,6 +1,12 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 
+jest.mock("@clerk/expo", () => ({
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
+  useAuth: () => ({ getToken: jest.fn(), isSignedIn: false, signOut: jest.fn() }),
+  useSignIn: () => ({ fetchStatus: "idle", signIn: { create: jest.fn(), finalize: jest.fn(), status: "needs_identifier" } }),
+}));
+
 jest.mock("expo-camera", () => ({
   CameraView: "CameraView",
   useCameraPermissions: () => [null, jest.fn()],

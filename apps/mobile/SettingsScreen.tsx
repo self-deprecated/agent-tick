@@ -14,6 +14,12 @@ export type NotificationStatus = "checking" | "granted" | "denied" | "undetermin
 export type PushStatus = "idle" | "registered" | "unsupported" | "failed";
 export type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
+type OrganizationMembership = {
+  organizationId: string;
+  name: string;
+  role?: string;
+};
+
 export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   const label =
     status === "connected"
@@ -38,6 +44,7 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
 
 export function SettingsScreen({
   availability,
+  authProvider,
   connectionStatus,
   error,
   loading,
@@ -53,13 +60,17 @@ export function SettingsScreen({
   pairingCode,
   pushStatus,
   deviceID,
+  organizations = [],
+  selectedOrganizationID = "",
   serverURL,
   setPairingCode,
+  setSelectedOrganizationID,
   setServerURL,
   setToken,
   token,
 }: {
   availability?: AvailabilityState;
+  authProvider?: string;
   connectionStatus: ConnectionStatus;
   error: string | null;
   loading: boolean;
@@ -75,14 +86,18 @@ export function SettingsScreen({
   pairingCode: string;
   pushStatus: PushStatus;
   deviceID: string;
+  organizations?: OrganizationMembership[];
+  selectedOrganizationID?: string;
   serverURL: string;
   setPairingCode: (value: string) => void;
+  setSelectedOrganizationID?: (value: string) => void;
   setServerURL: (value: string) => void;
   setToken: (value: string) => void;
   token: string;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const isPaired = !!deviceID;
+  const isClerkMode = authProvider === "clerk";
+  const isPaired = isClerkMode || !!deviceID;
 
   const notificationsSection = (
     <View style={styles.settingsSection}>
@@ -131,9 +146,26 @@ export function SettingsScreen({
             {loading ? <ActivityIndicator color="#202124" /> : null}
           </View>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          <Text style={styles.deviceStatus}>Paired as {deviceID}</Text>
+          <Text style={styles.deviceStatus}>
+            {isClerkMode ? (deviceID ? `Signed in with Clerk · push device ${deviceID}` : "Signed in with Clerk") : `Paired as ${deviceID}`}
+          </Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Server URL</Text>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              inputMode="url"
+              onChangeText={setServerURL}
+              placeholder="http://192.168.1.20:8787"
+              style={styles.input}
+              value={serverURL}
+            />
+          </View>
+          <Pressable onPress={onCheck} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>Check Connection</Text>
+          </Pressable>
           <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>Forget Device</Text>
+            <Text style={styles.secondaryActionText}>{isClerkMode ? "Sign Out" : "Forget Device"}</Text>
           </Pressable>
         </View>
         <View style={styles.settingsSection}>
@@ -141,6 +173,25 @@ export function SettingsScreen({
           <Text style={styles.pairingHint}>
             Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve.
           </Text>
+          {isClerkMode && organizations.length > 0 ? (
+            <View style={styles.organizationList}>
+              {organizations.map((membership) => {
+                const active = membership.organizationId === selectedOrganizationID;
+                return (
+                  <Pressable
+                    key={membership.organizationId}
+                    onPress={() => setSelectedOrganizationID?.(membership.organizationId)}
+                    style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
+                  >
+                    <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{membership.name}</Text>
+                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{membership.role ?? "member"}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : isClerkMode ? (
+            <Text style={styles.pairingHint}>No local Agent Tick organizations loaded yet.</Text>
+          ) : null}
         </View>
         <View style={styles.settingsSection}>
           <Text style={styles.sectionHeading}>Availability</Text>
@@ -389,6 +440,33 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   availabilityButtonTextActive: {
+    color: "#ffffff",
+  },
+  organizationList: {
+    gap: 8,
+  },
+  organizationButton: {
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 3,
+    padding: 12,
+  },
+  organizationButtonActive: {
+    backgroundColor: "#202124",
+    borderColor: "#202124",
+  },
+  organizationName: {
+    color: "#202124",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  organizationMeta: {
+    color: "#5f5a4f",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  organizationNameActive: {
     color: "#ffffff",
   },
   secondaryActionButton: {

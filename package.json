@@ -6,7 +6,7 @@
   "scripts": {
     "build": "corepack pnpm -r --sort build",
     "typecheck": "corepack pnpm -r --sort typecheck",
-    "test": "corepack pnpm -r --sort --filter '!@agent-tick/mobile' test && corepack pnpm --filter @agent-tick/mobile typecheck",
+    "test": "corepack pnpm -r --sort test",
     "dev:server": "corepack pnpm --filter @agent-tick/server dev",
     "dev:admin": "corepack pnpm --filter agent-tick-admin dev"
   },

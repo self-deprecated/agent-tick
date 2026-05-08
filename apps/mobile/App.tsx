@@ -54,7 +54,8 @@ import {
 } from "./approvalRequests";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
-import { clerkTokenCacheKey, fetchRuntimeAuthConfig, type RuntimeAuthConfig } from "./mobileAuth";
+import type { OrganizationMembership } from "@agent-tick/sdk";
+import { clerkTokenCacheKey, fetchRuntimeAuthConfig, normalizeServerURL, type RuntimeAuthConfig } from "./mobileAuth";
 
 type DeviceCredential = {
   deviceId: string;
@@ -67,6 +68,7 @@ const defaultServer = "http://localhost:8787";
 const serverURLKey = "agent-tick.serverURL";
 const tokenKey = "agent-tick.token";
 const deviceIDKey = "agent-tick.deviceID";
+const organizationIDKey = "agent-tick.organizationID";
 const pushStatusKey = "agent-tick.pushStatus";
 const approvalCategoryID = "approval-request";
 
@@ -250,6 +252,8 @@ function AgentTickApp({
   const [token, setToken] = useState("");
   const [deviceID, setDeviceID] = useState("");
   const [pairingCode, setPairingCode] = useState("");
+  const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
+  const [selectedOrganizationID, setSelectedOrganizationID] = useState("");
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
@@ -303,13 +307,14 @@ function AgentTickApp({
     return token;
   }, [clerkTokenProvider, runtimeAuthConfig?.authProvider, token]);
 
-  const authHeaders = useCallback(async () => {
+  const authHeaders = useCallback(async (options: { includeOrganization?: boolean } = {}) => {
     const authToken = await currentAuthToken();
     return {
       "Content-Type": "application/json",
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...(options.includeOrganization === false || !selectedOrganizationID ? {} : { "X-Agent-Tick-Organization-ID": selectedOrganizationID }),
     };
-  }, [currentAuthToken]);
+  }, [currentAuthToken, selectedOrganizationID]);
 
   const api = useCallback(
     async <T,>(path: string, init?: RequestInit): Promise<T> => {
@@ -340,11 +345,13 @@ function AgentTickApp({
           serverURLKey,
           tokenKey,
           deviceIDKey,
+          organizationIDKey,
           pushStatusKey,
         ]);
         const savedServerURL = entries.find(([key]) => key === serverURLKey)?.[1];
         const savedToken = entries.find(([key]) => key === tokenKey)?.[1];
         const savedDeviceID = entries.find(([key]) => key === deviceIDKey)?.[1];
+        const savedOrganizationID = entries.find(([key]) => key === organizationIDKey)?.[1];
         const savedPushStatus = entries.find(([key]) => key === pushStatusKey)?.[1];
 
         if (!cancelled) {
@@ -356,6 +363,9 @@ function AgentTickApp({
           }
           if (savedDeviceID) {
             setDeviceID(savedDeviceID);
+          }
+          if (savedOrganizationID) {
+            setSelectedOrganizationID(savedOrganizationID);
           }
           if (isPushStatus(savedPushStatus)) {
             setPushStatus(savedPushStatus);
@@ -414,8 +424,13 @@ function AgentTickApp({
         setRuntimeAuthConfig(nextConfig);
         onRuntimeAuthConfig?.(serverURL, nextConfig);
         if (nextConfig.authProvider === "clerk") {
-          setToken("");
-          setDeviceID("");
+          setToken((currentToken) => {
+            if (currentToken) setDeviceID("");
+            return "";
+          });
+        } else {
+          setOrganizations([]);
+          setSelectedOrganizationID("");
         }
       } catch {
         if (!cancelled) {
@@ -439,9 +454,42 @@ function AgentTickApp({
       [serverURLKey, serverURL],
       [tokenKey, token],
       [deviceIDKey, deviceID],
+      [organizationIDKey, selectedOrganizationID],
       [pushStatusKey, pushStatus],
     ]);
-  }, [deviceID, pushStatus, serverURL, settingsLoaded, token]);
+  }, [deviceID, pushStatus, selectedOrganizationID, serverURL, settingsLoaded, token]);
+
+  const refreshOrganizations = useCallback(async () => {
+    if (runtimeAuthConfig?.authProvider !== "clerk") {
+      setOrganizations([]);
+      return;
+    }
+    try {
+      const response = await fetch(`${serverURL.replace(/\/$/, "")}/v1/organizations`, {
+        headers: await authHeaders({ includeOrganization: false }),
+      });
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      const memberships = (await response.json()) as OrganizationMembership[];
+      setOrganizations(memberships);
+      setSelectedOrganizationID((current) => {
+        if (current && memberships.some((membership) => membership.organizationId === current)) {
+          return current;
+        }
+        return memberships[0]?.organizationId ?? "";
+      });
+    } catch {
+      setOrganizations([]);
+    }
+  }, [authHeaders, runtimeAuthConfig?.authProvider, serverURL]);
+
+  useEffect(() => {
+    if (!settingsLoaded || runtimeAuthConfig?.authProvider !== "clerk") {
+      return;
+    }
+    void refreshOrganizations();
+  }, [refreshOrganizations, runtimeAuthConfig?.authProvider, settingsLoaded]);
 
   const load = useCallback(async (options?: { visible?: boolean }) => {
     const visible = options?.visible ?? false;
@@ -895,6 +943,85 @@ function AgentTickApp({
     }
   };
 
+  const bestEffortUnregisterDevice = useCallback(async (options: {
+    activeDeviceID?: string;
+    activeServerURL?: string;
+    activeToken?: string;
+    authProvider?: string | null;
+  } = {}) => {
+    const activeDeviceID = options.activeDeviceID ?? deviceID;
+    if (!activeDeviceID) return;
+    const activeAuthProvider = options.authProvider ?? runtimeAuthConfig?.authProvider;
+    const trimmed = normalizeServerURL(options.activeServerURL ?? serverURL);
+    try {
+      const headers = activeAuthProvider === "clerk"
+        ? await authHeaders({ includeOrganization: false })
+        : {
+            Authorization: `Bearer ${options.activeToken ?? token}`,
+            "Content-Type": "application/json",
+          };
+      if (!headers.Authorization) return;
+      await fetch(`${trimmed}/v1/devices/${encodeURIComponent(activeDeviceID)}/unregister`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      });
+    } catch {
+      // Best-effort cleanup only; local credentials are still cleared.
+    }
+  }, [authHeaders, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
+
+  const forgetDevice = useCallback(async () => {
+    await bestEffortUnregisterDevice();
+    setDeviceID("");
+    setToken("");
+    setPushStatus("idle");
+    setOrganizations([]);
+    setSelectedOrganizationID("");
+    setRequests([]);
+    setHistory([]);
+    setConnectionStatus("disconnected");
+    if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.();
+  }, [bestEffortUnregisterDevice, onForgetClerkSession, runtimeAuthConfig?.authProvider]);
+
+  const selectOrganization = useCallback((organizationID: string) => {
+    if (organizationID === selectedOrganizationID) return;
+    if (runtimeAuthConfig?.authProvider === "clerk" && deviceID) {
+      void bestEffortUnregisterDevice();
+      setDeviceID("");
+      setPushStatus("idle");
+    }
+    setSelectedOrganizationID(organizationID);
+    setRequests([]);
+    setHistory([]);
+    setSelectedID(null);
+  }, [bestEffortUnregisterDevice, deviceID, runtimeAuthConfig?.authProvider, selectedOrganizationID]);
+
+  const handleServerURLChange = useCallback((value: string) => {
+    const previousServerURL = normalizeServerURL(serverURL);
+    const nextServerURL = normalizeServerURL(value);
+    if (previousServerURL !== nextServerURL) {
+      if (deviceID) {
+        void bestEffortUnregisterDevice({
+          activeDeviceID: deviceID,
+          activeServerURL: previousServerURL,
+          activeToken: token,
+          authProvider: runtimeAuthConfig?.authProvider,
+        });
+      }
+      setDeviceID("");
+      setToken("");
+      setPushStatus("idle");
+      setOrganizations([]);
+      setSelectedOrganizationID("");
+      setRequests([]);
+      setHistory([]);
+      setSelectedID(null);
+      setConnectionStatus("checking");
+    }
+    setServerURL(value);
+  }, [bestEffortUnregisterDevice, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
+
   const handlePairingScan = async (result: BarcodeScanningResult) => {
     if (pairingInFlight.current) {
       return;
@@ -903,7 +1030,10 @@ function AgentTickApp({
     setScannerLocked(true);
     const payload = parsePairingPayload(result.data);
     if (payload.serverURL) {
-      setServerURL(payload.serverURL);
+      handleServerURLChange(payload.serverURL);
+    }
+    if (payload.organizationId) {
+      setSelectedOrganizationID(payload.organizationId);
     }
     if (payload.pairingCode) {
       setPairingCode(payload.pairingCode);
@@ -915,6 +1045,7 @@ function AgentTickApp({
         const config = await fetchRuntimeAuthConfig(payload.serverURL);
         setRuntimeAuthConfig(config);
         onRuntimeAuthConfig?.(payload.serverURL, config);
+        if (payload.organizationId) setSelectedOrganizationID(payload.organizationId);
         Alert.alert("Server saved", "Sign in with Clerk to use this Agent Tick server.");
         setScreen("approvals");
       } catch (err) {
@@ -977,13 +1108,7 @@ function AgentTickApp({
           notificationStatus={notificationStatus}
           onAvailabilityChange={(state) => void updateAvailability(state as AvailabilityState)}
           onCheck={() => void checkConnection()}
-          onForgetDevice={() => {
-            setDeviceID("");
-            setToken("");
-            setPushStatus("idle");
-            setConnectionStatus("disconnected");
-            if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.();
-          }}
+          onForgetDevice={() => void forgetDevice()}
           onPairDevice={() => void pairDevice()}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
@@ -995,10 +1120,14 @@ function AgentTickApp({
           }}
           pairingCode={pairingCode}
           pushStatus={pushStatus}
+          authProvider={runtimeAuthConfig?.authProvider}
           deviceID={deviceID}
+          organizations={organizations}
+          selectedOrganizationID={selectedOrganizationID}
           serverURL={serverURL}
           setPairingCode={setPairingCode}
-          setServerURL={setServerURL}
+          setSelectedOrganizationID={selectOrganization}
+          setServerURL={handleServerURLChange}
           setToken={setToken}
           token={token}
         />

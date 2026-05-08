@@ -178,12 +178,15 @@ Implemented so far:
 - Clerk Backend User profile sync into local users and `auth_identities`.
 - Verified primary email requirement and safe email-collision behavior.
 - Local organization creation, selection, membership validation, and member listing.
+- Project, team, and basic policy foundations with dashboard management.
 - Approval request create/list/get/respond/abandon/wait APIs.
 - Agent token create/list/revoke APIs.
 - Single-mode mobile pairing and device-token auth.
 - Clerk-mode device registration and push token APIs.
 - Short-lived opaque event tickets for event streams.
 - Mobile Clerk runtime discovery and ClerkProvider sign-in wiring.
+- Mobile local organization selection for Clerk-mode multi-org users.
+- Best-effort Clerk-mode mobile device unregister on sign-out/server switch.
 - Mobile heartbeat and availability APIs.
 - Audit-event table, event recording, route, SDK method, and dashboard display.
 - SDK token provider and organization provider support.
@@ -196,15 +199,13 @@ High priority:
 
 - Harden mobile Clerk UX beyond the first email/password sign-in path, including OAuth/deep-link flows where needed.
 - Use the shared SDK more consistently from the mobile app.
-- Add mobile local organization selection for Clerk-mode multi-org users.
-- Best-effort unregister Clerk-mode mobile devices on sign-out/server switch.
 - Add event-ticket based streaming clients if polling becomes insufficient.
 - Add invite flows for adding humans to local organizations.
 
 Product rebuilds to evaluate/port from the prototype:
 
-- Teams and team memberships.
-- Projects and project-scoped agent registration.
+- Full team membership management beyond owner bootstrap.
+- Project-scoped agent registration and routing.
 - Policy templates and multi-approval policy engine.
 - Notification delivery service beyond stored push tokens.
 - MCP/adapter/guard integrations that still fit the npm CLI model.
@@ -216,4 +217,4 @@ Operational hardening:
 - Audit coverage review for all mutable routes.
 - Retention/cleanup for expired event tickets and pairing codes.
 - Docker release workflow and published npm CLI package.
-- Mobile Jest/Expo test harness repair under pnpm.
+- Broaden mobile Jest/Expo coverage now that the pnpm harness runs in the workspace test suite.

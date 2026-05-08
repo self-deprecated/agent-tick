@@ -85,9 +85,9 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText("Forget Device")).toBeTruthy();
   });
 
-  it("hides server URL input", () => {
+  it("keeps server URL input available for server switching", () => {
     render(<SettingsScreen {...pairedProps} />);
-    expect(screen.queryByPlaceholderText("http://192.168.1.20:8787")).toBeNull();
+    expect(screen.getByPlaceholderText("http://192.168.1.20:8787")).toBeTruthy();
   });
 
   it("hides manual pairing code input", () => {
@@ -100,9 +100,9 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByPlaceholderText("test-token")).toBeNull();
   });
 
-  it("hides Check Connection button", () => {
+  it("keeps Check Connection available", () => {
     render(<SettingsScreen {...pairedProps} />);
-    expect(screen.queryByText("Check Connection")).toBeNull();
+    expect(screen.getByText("Check Connection")).toBeTruthy();
   });
 
   it("hides Scan Pairing QR button as primary action", () => {
@@ -122,5 +122,22 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText(/coarse last-seen/)).toBeTruthy();
     fireEvent.press(screen.getByText("Off-call"));
     expect(onAvailabilityChange).toHaveBeenCalledWith("off-call");
+  });
+
+  it("shows Clerk organization choices without device pairing", () => {
+    const onSelectOrganization = jest.fn();
+    render(
+      <SettingsScreen
+        {...unpairedProps}
+        authProvider="clerk"
+        organizations={[{ organizationId: "org_1", name: "Platform", role: "owner" }]}
+        selectedOrganizationID="org_1"
+        setSelectedOrganizationID={onSelectOrganization}
+      />,
+    );
+    expect(screen.getByText("Signed in with Clerk")).toBeTruthy();
+    expect(screen.getByText("Platform")).toBeTruthy();
+    fireEvent.press(screen.getByText("Platform"));
+    expect(onSelectOrganization).toHaveBeenCalledWith("org_1");
   });
 });
