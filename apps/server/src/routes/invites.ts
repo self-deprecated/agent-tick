@@ -27,6 +27,7 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
       role: input.role,
       approvalRequired: input.approvalRequired,
       maxUses: input.maxUses,
+      ...(input.teamIds ? { teamIds: input.teamIds } : {}),
       ...(config.publicURL ? { publicURL: config.publicURL } : {}),
       ...(input.label ? { label: input.label } : {}),
       ...(input.email ? { email: input.email } : {}),

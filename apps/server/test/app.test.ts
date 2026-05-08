@@ -238,11 +238,12 @@ describe('server skeleton', () => {
 
     const createOrg = await app.inject({ method: 'POST', url: '/v1/organizations', payload: { name: 'Production' } });
     const organizationId = createOrg.json().organizationId as string;
+    const team = await app.inject({ method: 'POST', url: '/v1/teams', headers: { 'x-agent-tick-organization-id': organizationId }, payload: { name: 'On Call' } });
     const invite = await app.inject({
       method: 'POST',
       url: '/v1/organization-invites',
       headers: { 'x-agent-tick-organization-id': organizationId },
-      payload: { label: 'Bob', role: 'admin', email: 'bob@example.com' }
+      payload: { label: 'Bob', role: 'admin', teamIds: [team.json().teamId], email: 'bob@example.com' }
     });
     const bob = db.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
     const pairing = db.createPairingToken(bob.userId, bob.organizationId);
@@ -264,13 +265,14 @@ describe('server skeleton', () => {
 
     const pending = await app.inject({ method: 'GET', url: '/v1/organization-membership-requests', headers: { 'x-agent-tick-organization-id': organizationId } });
     expect(pending.statusCode).toBe(200);
-    expect(pending.json()).toEqual([expect.objectContaining({ userId: bob.userId, requestedRole: 'admin', status: 'pending_approval' })]);
+    expect(pending.json()).toEqual([expect.objectContaining({ userId: bob.userId, requestedRole: 'admin', requestedTeamIds: [team.json().teamId], status: 'pending_approval' })]);
 
     const approved = await app.inject({ method: 'POST', url: `/v1/organization-membership-requests/${pending.json()[0].requestId}/approve`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
     expect(approved.statusCode).toBe(200);
     expect(approved.json()).toMatchObject({ status: 'approved', decidedByUserId: 'usr_default' });
 
     expect(db.organizationMembershipForUser(bob.userId, organizationId)).toMatchObject({ role: 'admin' });
+    expect(db.listTeamMembers(team.json().teamId)).toEqual(expect.arrayContaining([expect.objectContaining({ userId: bob.userId, role: 'member' })]));
     const membersAfterApproval = await app.inject({ method: 'GET', url: `/v1/organizations/${organizationId}/members` });
     expect(membersAfterApproval.statusCode).toBe(200);
     expect(membersAfterApproval.json()).toEqual(expect.arrayContaining([expect.objectContaining({ userId: bob.userId, role: 'admin', status: 'active' })]));

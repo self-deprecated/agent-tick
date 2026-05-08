@@ -41,6 +41,7 @@
 	let newInviteEmail = $state('');
 	let newInviteRole = $state('member');
 	let newInviteLabel = $state('');
+	let newInviteTeamId = $state('');
 	let createdInvite = $state<OrganizationInviteRecord | undefined>();
 	let newProjectName = $state('');
 	let newTeamName = $state('');
@@ -219,12 +220,14 @@
 		try {
 			createdInvite = await client().createOrganizationInvite({
 				role: newInviteRole as 'owner' | 'admin' | 'approver' | 'member' | 'viewer',
+				...(newInviteTeamId ? { teamIds: [newInviteTeamId] } : {}),
 				...(newInviteEmail.trim() ? { email: newInviteEmail.trim() } : {}),
 				...(newInviteLabel.trim() ? { label: newInviteLabel.trim() } : {})
 			});
 			newInviteEmail = '';
 			newInviteLabel = '';
 			newInviteRole = 'member';
+			newInviteTeamId = '';
 			await Promise.all([refreshInvites(), refreshMembershipRequests(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
@@ -563,6 +566,12 @@
 						<option value="admin">admin</option>
 						<option value="viewer">viewer</option>
 					</select>
+					<select bind:value={newInviteTeamId} aria-label="Invite team">
+						<option value="">No team</option>
+						{#each teams as team}
+							<option value={team.teamId}>{team.name}</option>
+						{/each}
+					</select>
 					<button type="submit">Create invite</button>
 				</div>
 			</form>
@@ -582,7 +591,7 @@
 						<li class="item-card" class:is-muted={Boolean(invite.revokedAt)}>
 							<div>
 								<strong>{invite.label ?? invite.email ?? invite.inviteId}</strong>
-								<p class="subtle">{invite.inviteId} · {invite.role} · {invite.approvalRequired ? 'approval required' : 'auto-approved'} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
+								<p class="subtle">{invite.inviteId} · {invite.role} · {invite.approvalRequired ? 'approval required' : 'auto-approved'}{invite.teamIds?.length ? ` · teams ${invite.teamIds.map(teamLabel).join(', ')}` : ''} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
 								{#if invite.email}<p>{invite.email}</p>{/if}
 							</div>
 							{#if !invite.revokedAt}<button class="danger" onclick={() => void revokeInvite(invite.inviteId)}>Revoke</button>{/if}
@@ -604,7 +613,7 @@
 						<li class="item-card">
 							<div>
 								<strong>{request.userName ?? request.userEmail ?? request.userId}</strong>
-								<p class="subtle">{request.requestId} · requested {request.requestedRole} · invite {request.inviteLabel ?? request.inviteId} · {new Date(request.acceptedAt).toLocaleString()}</p>
+								<p class="subtle">{request.requestId} · requested {request.requestedRole} · invite {request.inviteLabel ?? request.inviteId}{request.requestedTeamIds?.length ? ` · teams ${request.requestedTeamIds.map(teamLabel).join(', ')}` : ''} · {new Date(request.acceptedAt).toLocaleString()}</p>
 								{#if request.userEmail}<p>{request.userEmail}</p>{/if}
 							</div>
 							<div class="actions">

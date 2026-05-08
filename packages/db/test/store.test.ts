@@ -58,23 +58,26 @@ describe('AgentTickStore', () => {
       userId: 'usr_default',
       label: 'Teammate',
       role: 'admin',
+      teamIds: [team.teamId],
       email: 'bob@example.com',
       publicURL: 'https://tick.example.com'
     });
     expect(invite.token).toMatch(/^invite_/);
     expect(invite.url).toBe(`https://tick.example.com/invite/${invite.token}`);
     expect(JSON.stringify(store.db.prepare('SELECT * FROM organization_invites').all())).not.toContain(invite.token);
-    expect(store.previewInvite(invite.token!)).toMatchObject({ organizationId: created.organizationId, organizationName: 'Production', role: 'admin', approvalRequired: true });
+    expect(invite.teamIds).toEqual([team.teamId]);
+    expect(store.previewInvite(invite.token!)).toMatchObject({ organizationId: created.organizationId, organizationName: 'Production', role: 'admin', approvalRequired: true, teamIds: [team.teamId] });
     const bob = store.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
     const accepted = store.acceptInvite(invite.token!, bob.userId);
     expect(accepted).toMatchObject({ status: 'pending_approval', membership: { organizationId: created.organizationId, userId: bob.userId, role: 'admin', status: 'pending_approval' } });
     expect(store.organizationMembershipForUser(bob.userId, created.organizationId)).toBeNull();
     expect(store.listOrganizationsForUser(bob.userId).map((membership) => membership.organizationId)).not.toContain(created.organizationId);
     const [pendingRequest] = store.listOrganizationMembershipRequests(created.organizationId);
-    expect(pendingRequest).toMatchObject({ inviteId: invite.inviteId, userId: bob.userId, requestedRole: 'admin', status: 'pending_approval' });
+    expect(pendingRequest).toMatchObject({ inviteId: invite.inviteId, userId: bob.userId, requestedRole: 'admin', requestedTeamIds: [team.teamId], status: 'pending_approval' });
     const approvedRequest = store.approveOrganizationMembershipRequest(pendingRequest!.requestId, created.organizationId, 'usr_default');
     expect(approvedRequest).toMatchObject({ requestId: pendingRequest!.requestId, status: 'approved', decidedByUserId: 'usr_default' });
     expect(store.organizationMembershipForUser(bob.userId, created.organizationId)).toMatchObject({ role: 'admin' });
+    expect(store.listTeamMembers(team.teamId)).toEqual(expect.arrayContaining([expect.objectContaining({ userId: bob.userId, role: 'member' })]));
     const teamMember = store.upsertTeamMember({ organizationId: created.organizationId, actorUserId: 'usr_default', teamId: team.teamId, userId: bob.userId, role: 'lead' });
     expect(teamMember).toMatchObject({ teamId: team.teamId, userId: bob.userId, role: 'lead' });
     const removedTeamMember = store.removeTeamMember({ organizationId: created.organizationId, actorUserId: 'usr_default', teamId: team.teamId, userId: bob.userId });

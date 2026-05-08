@@ -98,6 +98,7 @@ export interface OrganizationInviteRecord {
   label: string | undefined;
   role: string;
   approvalRequired: boolean;
+  teamIds: string[];
   email: string | undefined;
   expiresAt: string | undefined;
   maxUses: number | undefined;
@@ -114,6 +115,7 @@ export interface CreateOrganizationInviteInput {
   label?: string;
   role?: string;
   approvalRequired?: boolean;
+  teamIds?: string[];
   email?: string;
   expiresAt?: string;
   maxUses?: number;
@@ -126,6 +128,7 @@ export interface InvitePreviewRecord {
   label: string | undefined;
   role: string;
   approvalRequired: boolean;
+  teamIds: string[];
   email: string | undefined;
   expiresAt: string | undefined;
 }
@@ -144,6 +147,7 @@ export interface OrganizationMembershipRequestRecord {
   userName: string | undefined;
   inviteLabel: string | undefined;
   requestedRole: string;
+  requestedTeamIds: string[];
   status: string;
   acceptedAt: string;
   decidedByUserId: string | undefined;
@@ -342,6 +346,7 @@ export class AgentTickStore {
     ensureColumn(this.db, 'organization_memberships', 'rejected_at', 'ALTER TABLE organization_memberships ADD COLUMN rejected_at TEXT');
     ensureColumn(this.db, 'organization_memberships', 'invite_id', 'ALTER TABLE organization_memberships ADD COLUMN invite_id TEXT');
     ensureColumn(this.db, 'organization_invites', 'approval_required', 'ALTER TABLE organization_invites ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 1');
+    ensureColumn(this.db, 'organization_invite_acceptances', 'requested_team_ids_json', "ALTER TABLE organization_invite_acceptances ADD COLUMN requested_team_ids_json TEXT NOT NULL DEFAULT '[]'");
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
   }
@@ -493,7 +498,7 @@ export class AgentTickStore {
     const rows = this.db
       .prepare('SELECT * FROM organization_invites WHERE organization_id = ? ORDER BY created_at DESC')
       .all(organizationId) as OrganizationInviteRow[];
-    return rows.map(mapOrganizationInviteRow);
+    return rows.map((row) => mapOrganizationInviteRow(row, this.listInviteTeamIds(row.invite_id)));
   }
 
   createOrganizationInvite(input: CreateOrganizationInviteInput, now = new Date().toISOString()): OrganizationInviteRecord {
@@ -502,23 +507,30 @@ export class AgentTickStore {
     const role = input.role?.trim() || 'member';
     const maxUses = Math.min(Math.max(Math.trunc(input.maxUses ?? 1), 1), 100);
     const approvalRequired = input.approvalRequired ?? true;
-    this.db
-      .prepare('INSERT INTO organization_invites(invite_id, organization_id, created_by_user_id, label, role, approval_required, token_hash, email, expires_at, max_uses, used_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(
-        inviteId,
-        input.organizationId,
-        input.userId,
-        input.label?.trim() || null,
-        role,
-        approvalRequired ? 1 : 0,
-        hashToken(token),
-        input.email?.trim().toLowerCase() || null,
-        input.expiresAt ?? null,
-        maxUses,
-        0,
-        now
-      );
-    this.writeAuditEvent(input.organizationId, input.userId, 'organization_invite.created', inviteId, { role, approvalRequired, email: input.email?.trim().toLowerCase() }, now);
+    const teamIds = uniqueStrings(input.teamIds ?? []);
+    for (const teamId of teamIds) {
+      if (!this.teamBelongsToOrganization(teamId, input.organizationId)) throw httpError(400, 'bad_request', 'Team is not in the selected organization');
+    }
+    this.db.transaction(() => {
+      this.db
+        .prepare('INSERT INTO organization_invites(invite_id, organization_id, created_by_user_id, label, role, approval_required, token_hash, email, expires_at, max_uses, used_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(
+          inviteId,
+          input.organizationId,
+          input.userId,
+          input.label?.trim() || null,
+          role,
+          approvalRequired ? 1 : 0,
+          hashToken(token),
+          input.email?.trim().toLowerCase() || null,
+          input.expiresAt ?? null,
+          maxUses,
+          0,
+          now
+        );
+      for (const teamId of teamIds) this.db.prepare('INSERT INTO organization_invite_teams(invite_id, team_id) VALUES (?, ?)').run(inviteId, teamId);
+    })();
+    this.writeAuditEvent(input.organizationId, input.userId, 'organization_invite.created', inviteId, { role, approvalRequired, teamIds, email: input.email?.trim().toLowerCase() }, now);
     const invite = this.getOrganizationInvite(inviteId) ?? missingInvite(inviteId);
     return {
       ...invite,
@@ -529,7 +541,7 @@ export class AgentTickStore {
 
   getOrganizationInvite(inviteId: string): OrganizationInviteRecord | null {
     const row = this.db.prepare('SELECT * FROM organization_invites WHERE invite_id = ?').get(inviteId) as OrganizationInviteRow | undefined;
-    return row ? mapOrganizationInviteRow(row) : null;
+    return row ? mapOrganizationInviteRow(row, this.listInviteTeamIds(inviteId)) : null;
   }
 
   revokeOrganizationInvite(inviteId: string, organizationId: string, userId: string, now = new Date().toISOString()): OrganizationInviteRecord | null {
@@ -542,7 +554,12 @@ export class AgentTickStore {
       row.revoked_at = now;
       this.writeAuditEvent(organizationId, userId, 'organization_invite.revoked', inviteId, {}, now);
     }
-    return mapOrganizationInviteRow(row);
+    return mapOrganizationInviteRow(row, this.listInviteTeamIds(inviteId));
+  }
+
+  private listInviteTeamIds(inviteId: string): string[] {
+    const rows = this.db.prepare('SELECT team_id FROM organization_invite_teams WHERE invite_id = ? ORDER BY team_id ASC').all(inviteId) as { team_id: string }[];
+    return rows.map((row) => row.team_id);
   }
 
   previewInvite(token: string, now = new Date().toISOString()): InvitePreviewRecord | null {
@@ -554,6 +571,7 @@ export class AgentTickStore {
       label: row.label ?? undefined,
       role: row.role,
       approvalRequired: Boolean(row.approval_required),
+      teamIds: this.listInviteTeamIds(row.invite_id),
       email: row.email ?? undefined,
       expiresAt: row.expires_at ?? undefined
     };
@@ -580,6 +598,7 @@ export class AgentTickStore {
     }
 
     const approvalRequired = Boolean(invite.approval_required);
+    const teamIds = this.listInviteTeamIds(invite.invite_id);
     const requestId = newID('mreq');
     const accepted = this.db.transaction(() => {
       const consumed = this.db
@@ -595,8 +614,8 @@ export class AgentTickStore {
       if (consumed !== 1) return false;
 
       this.db
-        .prepare('INSERT INTO organization_invite_acceptances(request_id, invite_id, organization_id, user_id, requested_role, status, accepted_at, decided_by_user_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(requestId, invite.invite_id, invite.organization_id, userId, invite.role, approvalRequired ? 'pending_approval' : 'approved', now, approvalRequired ? null : userId, approvalRequired ? null : now);
+        .prepare('INSERT INTO organization_invite_acceptances(request_id, invite_id, organization_id, user_id, requested_role, requested_team_ids_json, status, accepted_at, decided_by_user_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(requestId, invite.invite_id, invite.organization_id, userId, invite.role, JSON.stringify(teamIds), approvalRequired ? 'pending_approval' : 'approved', now, approvalRequired ? null : userId, approvalRequired ? null : now);
 
       if (existing) {
         this.db
@@ -607,13 +626,23 @@ export class AgentTickStore {
           .prepare('INSERT INTO organization_memberships(organization_id, user_id, role, status, created_at, updated_at, approved_by_user_id, approved_at, invite_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .run(invite.organization_id, userId, invite.role, approvalRequired ? 'pending_approval' : 'active', now, now, approvalRequired ? null : userId, approvalRequired ? null : now, invite.invite_id);
       }
+      if (!approvalRequired) {
+        for (const teamId of teamIds) {
+          if (this.teamBelongsToOrganization(teamId, invite.organization_id)) {
+            this.db
+              .prepare('INSERT INTO team_memberships(team_id, organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at')
+              .run(teamId, invite.organization_id, userId, 'member', now, now);
+            this.writeAuditEvent(invite.organization_id, userId, 'team_member.upserted', teamId, { userId, role: 'member', source: 'organization_invite', inviteId: invite.invite_id }, now);
+          }
+        }
+      }
       return true;
     })();
 
     if (!accepted) return null;
-    this.writeAuditEvent(invite.organization_id, userId, 'organization_invite.accepted', invite.invite_id, { role: invite.role, approvalRequired }, now);
-    if (approvalRequired) this.writeAuditEvent(invite.organization_id, userId, 'organization_membership.pending', requestId, { inviteId: invite.invite_id, role: invite.role }, now);
-    else this.writeAuditEvent(invite.organization_id, userId, 'organization_membership.approved', requestId, { inviteId: invite.invite_id, role: invite.role, autoApproved: true }, now);
+    this.writeAuditEvent(invite.organization_id, userId, 'organization_invite.accepted', invite.invite_id, { role: invite.role, approvalRequired, teamIds }, now);
+    if (approvalRequired) this.writeAuditEvent(invite.organization_id, userId, 'organization_membership.pending', requestId, { inviteId: invite.invite_id, role: invite.role, teamIds }, now);
+    else this.writeAuditEvent(invite.organization_id, userId, 'organization_membership.approved', requestId, { inviteId: invite.invite_id, role: invite.role, teamIds, autoApproved: true }, now);
 
     const membership = this.organizationMembershipForUserAnyStatus(userId, invite.organization_id) ?? missingOrganization(invite.organization_id);
     return { status: approvalRequired ? 'pending_approval' : 'joined', membership };
@@ -623,7 +652,7 @@ export class AgentTickStore {
     const rows = this.db
       .prepare(`
         SELECT a.request_id, a.invite_id, a.organization_id, a.user_id, u.email AS user_email, u.name AS user_name,
-               i.label AS invite_label, a.requested_role, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+               i.label AS invite_label, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
         FROM organization_invite_acceptances a
         JOIN users u ON u.id = a.user_id
         JOIN organization_invites i ON i.invite_id = a.invite_id
@@ -638,7 +667,7 @@ export class AgentTickStore {
     const row = this.db
       .prepare(`
         SELECT a.request_id, a.invite_id, a.organization_id, a.user_id, u.email AS user_email, u.name AS user_name,
-               i.label AS invite_label, a.requested_role, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+               i.label AS invite_label, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
         FROM organization_invite_acceptances a
         JOIN users u ON u.id = a.user_id
         JOIN organization_invites i ON i.invite_id = a.invite_id
@@ -662,13 +691,21 @@ export class AgentTickStore {
           .prepare("UPDATE organization_memberships SET role = ?, status = 'active', updated_at = ?, approved_by_user_id = ?, approved_at = ?, rejected_by_user_id = NULL, rejected_at = NULL WHERE organization_id = ? AND user_id = ? AND status = 'pending_approval'")
           .run(existing.requestedRole, now, actorUserId, now, organizationId, existing.userId).changes;
         if (membership !== 1) throw new Error('pending membership was not updated');
+        for (const teamId of existing.requestedTeamIds) {
+          if (this.teamBelongsToOrganization(teamId, organizationId)) {
+            this.db
+              .prepare('INSERT INTO team_memberships(team_id, organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at')
+              .run(teamId, organizationId, existing.userId, 'member', now, now);
+            this.writeAuditEvent(organizationId, actorUserId, 'team_member.upserted', teamId, { userId: existing.userId, role: 'member', source: 'organization_invite', inviteId: existing.inviteId }, now);
+          }
+        }
         return true;
       })();
     } catch {
       return null;
     }
     if (!changed) return null;
-    this.writeAuditEvent(organizationId, actorUserId, 'organization_membership.approved', requestId, { inviteId: existing.inviteId, userId: existing.userId, role: existing.requestedRole }, now);
+    this.writeAuditEvent(organizationId, actorUserId, 'organization_membership.approved', requestId, { inviteId: existing.inviteId, userId: existing.userId, role: existing.requestedRole, teamIds: existing.requestedTeamIds }, now);
     return this.getOrganizationMembershipRequest(requestId, organizationId);
   }
 
@@ -692,7 +729,7 @@ export class AgentTickStore {
       return null;
     }
     if (!changed) return null;
-    this.writeAuditEvent(organizationId, actorUserId, 'organization_membership.rejected', requestId, { inviteId: existing.inviteId, userId: existing.userId, role: existing.requestedRole }, now);
+    this.writeAuditEvent(organizationId, actorUserId, 'organization_membership.rejected', requestId, { inviteId: existing.inviteId, userId: existing.userId, role: existing.requestedRole, teamIds: existing.requestedTeamIds }, now);
     return this.getOrganizationMembershipRequest(requestId, organizationId);
   }
 
@@ -1336,13 +1373,14 @@ function mapOrganizationMembershipRow(row: OrganizationMembershipRow): Organizat
   };
 }
 
-function mapOrganizationInviteRow(row: OrganizationInviteRow): OrganizationInviteRecord {
+function mapOrganizationInviteRow(row: OrganizationInviteRow, teamIds: string[] = []): OrganizationInviteRecord {
   return {
     inviteId: row.invite_id,
     organizationId: row.organization_id,
     label: row.label ?? undefined,
     role: row.role,
     approvalRequired: Boolean(row.approval_required),
+    teamIds,
     email: row.email ?? undefined,
     expiresAt: row.expires_at ?? undefined,
     maxUses: row.max_uses ?? undefined,
@@ -1362,6 +1400,7 @@ function mapOrganizationMembershipRequestRow(row: OrganizationMembershipRequestR
     userName: row.user_name?.trim() || undefined,
     inviteLabel: row.invite_label ?? undefined,
     requestedRole: row.requested_role,
+    requestedTeamIds: parseJSON<string[]>(row.requested_team_ids_json, []),
     status: row.status,
     acceptedAt: row.accepted_at,
     decidedByUserId: row.decided_by_user_id ?? undefined,
@@ -1576,6 +1615,10 @@ function uniqueTeamSlug(db: Database.Database, organizationId: string, input: st
   return candidate;
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
 function ensureColumn(db: Database.Database, table: string, column: string, alterSQL: string): void {
   const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (!rows.some((row) => row.name === column)) db.exec(alterSQL);
@@ -1718,6 +1761,7 @@ interface OrganizationMembershipRequestRow {
   user_name: string | null;
   invite_label: string | null;
   requested_role: string;
+  requested_team_ids_json: string;
   status: string;
   accepted_at: string;
   decided_by_user_id: string | null;
@@ -1890,12 +1934,21 @@ CREATE TABLE IF NOT EXISTS organization_invites (
 CREATE INDEX IF NOT EXISTS organization_invites_org_idx ON organization_invites(organization_id, revoked_at, created_at);
 CREATE INDEX IF NOT EXISTS organization_invites_token_idx ON organization_invites(token_hash);
 
+CREATE TABLE IF NOT EXISTS organization_invite_teams (
+  invite_id TEXT NOT NULL REFERENCES organization_invites(invite_id),
+  team_id TEXT NOT NULL REFERENCES teams(team_id),
+  PRIMARY KEY (invite_id, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS organization_invite_teams_team_idx ON organization_invite_teams(team_id);
+
 CREATE TABLE IF NOT EXISTS organization_invite_acceptances (
   request_id TEXT PRIMARY KEY,
   invite_id TEXT NOT NULL REFERENCES organization_invites(invite_id),
   organization_id TEXT NOT NULL REFERENCES organizations(id),
   user_id TEXT NOT NULL REFERENCES users(id),
   requested_role TEXT NOT NULL,
+  requested_team_ids_json TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL,
   accepted_at TEXT NOT NULL,
   decided_by_user_id TEXT,
