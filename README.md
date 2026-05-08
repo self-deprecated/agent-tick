@@ -1,93 +1,88 @@
 # Agent Tick
 
-Agent Tick is an approval broker for agent systems. An agent submits a request; your phone shows it; you approve or deny; the agent continues.
+Agent Tick is an approval broker for agent systems. An agent submits a request, a human reviews it in the dashboard or mobile app, and the agent continues only after approval.
 
-You currently need to run your own Agent Tick server. A hosted option is planned. See [SELFHOSTING.md](./SELFHOSTING.md) to get one running in minutes.
+The project is now TypeScript-first:
 
-## Install
+- Dockerized Node/Fastify server
+- Svelte dashboard served by the server
+- npm-installable `agent-tick` CLI for agents
+- Expo mobile app
+- SQLite persistence
+- optional Clerk human authentication for multi-user mode
 
-**macOS:**
+## Quick start
 
-```bash
-brew install self-deprecated/tap/agent-tick
+Start the server locally:
+
+```sh
+docker compose up --build
 ```
 
-**Windows:**
+Open the dashboard:
 
-```bash
-scoop bucket add self-deprecated https://github.com/self-deprecated/scoop-bucket
-scoop install self-deprecated/agent-tick
+```text
+http://localhost:8787
 ```
 
-**Linux:**
+Create an agent token in the dashboard, then configure the CLI:
 
-```bash
-curl -sSL https://raw.githubusercontent.com/self-deprecated/agent-tick/main/install.sh | bash
+```sh
+npx agent-tick setup --server http://localhost:8787 --token agent_...
 ```
 
-**Go:**
+Send an approval request:
 
-```bash
-go install github.com/self-deprecated/agent-tick/apps/server/cmd/agent-tick@latest
-```
-
-## Quick Start
-
-**1. Pair your phone**
-
-Open the dashboard at your server URL, sign in, and open the **Devices** panel. Click **Create QR**, then in the Agent Tick phone app open Settings → **Scan Pairing QR**.
-
-**2. Create an agent token**
-
-In the dashboard, open the **Agents** panel and click **Create Agent Token**. Run the shown setup command on the machine where your agent runs:
-
-```bash
-agent-tick setup --server <your-server-url> --token agent_...
-```
-
-**3. Send an approval request**
-
-```bash
-agent-tick request \
+```sh
+npx agent-tick request \
   --title "Run command?" \
   --body "codex wants to run npm install" \
   --command "npm install"
 ```
 
-Your phone shows the request. Approve or deny. The CLI returns with the decision.
+Approve or reject it in the dashboard.
 
-**4. Guard a command**
+## Auth modes
 
-```bash
-agent-tick guard -- npm install
+### `single`
+
+Default local self-hosted mode.
+
+- no Clerk account required
+- one local admin/user context
+- optional `AGENT_TICK_ADMIN_TOKEN`
+- agents use Agent Tick `agent_...` tokens
+
+### `clerk`
+
+Multi-user mode.
+
+- Clerk authenticates humans
+- Agent Tick verifies Clerk session JWTs
+- Agent Tick still owns orgs, approvals, devices, agent tokens, policies, and audit data
+- agents still use Agent Tick `agent_...` tokens
+
+See [SELFHOSTING.md](./SELFHOSTING.md) for configuration.
+
+## Development
+
+Install dependencies:
+
+```sh
+corepack pnpm install
 ```
 
-The command only runs after you approve on your phone.
+Useful commands:
 
-**5. Ask for steering without freeform text**
-
-```bash
-agent-tick steer \
-  --title "How should I continue?" \
-  --option run-tests:"Run tests and fix failures" \
-  --option update-docs:"Update README/docs"
+```sh
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm --filter @agent-tick/server dev
+corepack pnpm --filter agent-tick-admin dev
+corepack pnpm --filter agent-tick build
 ```
 
-Your phone shows only the supplied options plus **Do nothing / skip**. The CLI prints only the selected option ID, or `none` on skip, timeout, expiry, or delivery failure.
-
-Requests are grouped in the mobile app by project. The CLI defaults the project to the current machine and working directory; override the display name with `--project` and the grouping directory with `--project-dir`. Team-aware servers can also use `--project-id` / `AGENT_TICK_PROJECT_ID`, `--team` / `AGENT_TICK_TEAM`, and `--approval-policy` / `AGENT_TICK_APPROVAL_POLICY` routing hints.
-
-Team-aware servers can attach approval policies to projects or agent tokens. Simple requests still need one response, while policy-backed requests can require an owner, any team member, a quorum, an on-call approver, the most recently active available teammate, or an ordered multi-step flow. The phone app shows who is responsible, quorum progress, availability controls, and vote history; the CLI keeps waiting until the policy reaches its final approved or denied decision.
-
-## How It Works
-
-An agent calls `agent-tick request`, `agent-tick guard`, or `agent-tick steer`. The CLI sends the request to the server and polls for a response. The server pushes the request to your paired phone. You approve, deny, or select a constrained steering option. The server returns the decision to the CLI, and the agent continues.
-
-The server can also fan out new requests to extra notification sinks such as generic webhooks, Slack, Slack DM, Microsoft Teams, and SMTP email while keeping the existing mobile push flow. For connector-style integrations, the repo also includes a GitHub Actions composite action and an MCP stdio server.
-
-## Agent Skill
-
-This repo includes a Codex-compatible skill at `skills/agent-tick`. Install it into your agent's skills directory so the agent knows when to call `agent-tick guard`, `agent-tick request`, and `agent-tick setup`.
+The mobile Jest suite is still being reworked for the pnpm/Expo workspace; the root test command currently runs all non-mobile tests and mobile typechecking.
 
 ## License
 
@@ -96,5 +91,5 @@ agent-tick is licensed under the [Business Source License 1.1](./LICENSE) (BSL 1
 ---
 
 - [SELFHOSTING.md](./SELFHOSTING.md) — run your own Agent Tick server
-- [docs/integrations.md](./docs/integrations.md) — Slack, Teams, webhooks, email, GitHub Actions, and MCP patterns
-- [DEVELOPMENT.md](./DEVELOPMENT.md) — contributing and building from source
+- [docs/typescript-first-rewrite-plan.md](./docs/typescript-first-rewrite-plan.md) — architecture migration plan
+- [docs/clerk-auth-migration.md](./docs/clerk-auth-migration.md) — Clerk auth design notes

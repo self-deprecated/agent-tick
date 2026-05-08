@@ -1,317 +1,122 @@
 # Development
 
-This project uses Devbox for local dependencies.
+Agent Tick is now a TypeScript-first monorepo.
 
-Run the full local check loop:
+## Project shape
 
-```sh
-devbox run check
-```
-
-## Project Shape
-
-- `apps/server`: Go server and CLI in one binary.
-- `apps/admin`: Svelte 5 + TypeScript dashboard built with Vite and embedded into the Go server.
+- `apps/server-ts`: Fastify API server and static dashboard host.
+- `apps/admin`: Svelte 5 + TypeScript dashboard built with Vite.
 - `apps/mobile`: Expo React Native phone app.
-- `devbox.json`: local development tasks and dependency management.
-- `.github/workflows/server-image.yml`: GitHub Actions workflow for the server container image.
+- `packages/cli`: npm CLI package with the `agent-tick` binary.
+- `packages/sdk`: environment-neutral typed HTTP client.
+- `packages/shared`: Zod schemas, shared API types, constants.
+- `packages/db`: SQLite migrations and repository helpers.
 
-## Local CLI Build
+The old Go server/CLI has been removed from the active implementation.
 
-Install the CLI into `~/.local/bin/agent-tick`:
+## Setup
 
-```sh
-devbox run build:local
-```
-
-Verify:
+Use Corepack and pnpm:
 
 ```sh
-agent-tick request --help
+corepack pnpm install
 ```
 
-Build release archives for Linux and macOS:
+## Check loop
 
 ```sh
-AGENT_TICK_VERSION=0.1.0 devbox run build:server
+corepack pnpm typecheck
+corepack pnpm test
 ```
 
-## Local Server Modes
+The root test command runs all non-mobile tests and mobile typechecking. The Expo/Jest suite still needs a follow-up pnpm-compatible test harness pass.
 
-Single mode is the default self-hosted setup. It uses one implicit user and an admin bearer token.
+## Server
+
+Run the TypeScript server locally:
 
 ```sh
-AGENT_TICK_TOKEN=change-me \
-AGENT_TICK_PUBLIC_URL=http://192.168.0.111:8787 \
-devbox run server
+AGENT_TICK_MODE=single \
+AGENT_TICK_PUBLIC_URL=http://localhost:8787 \
+corepack pnpm --filter @agent-tick/server dev
 ```
 
-User mode is for one server serving many independent users. Dashboard users sign in with email/password, pair their own phones, and create their own agent tokens.
+The server uses SQLite. By default it writes `./agent-tick.db`; override with:
 
 ```sh
-AGENT_TICK_MODE=user \
-AGENT_TICK_PUBLIC_URL=http://192.168.0.111:8787 \
-devbox run server
+AGENT_TICK_DATABASE_URL=file:/path/to/agent-tick.db
 ```
 
-`AGENT_TICK_PUBLIC_URL` is important for phone pairing. It is embedded in dashboard QR codes so the phone talks to the LAN or public URL instead of `localhost`.
+Single mode optionally accepts an admin token:
 
-For local integration testing you can also set outbound sink variables such as `AGENT_TICK_WEBHOOK_URLS`, `AGENT_TICK_SLACK_WEBHOOK_URLS`, `AGENT_TICK_SLACK_BOT_TOKEN` + `AGENT_TICK_SLACK_DM_USER_IDS`, `AGENT_TICK_TEAMS_WEBHOOK_URLS`, and the SMTP variables `AGENT_TICK_EMAIL_SMTP_ADDR`, `AGENT_TICK_EMAIL_SMTP_USERNAME`, `AGENT_TICK_EMAIL_SMTP_PASSWORD`, `AGENT_TICK_EMAIL_FROM`, `AGENT_TICK_EMAIL_TO`.
+```sh
+AGENT_TICK_ADMIN_TOKEN=change-me
+```
 
-See [docs/integrations.md](./docs/integrations.md) for end-to-end examples, including the GitHub Actions composite action and the `agent-tick mcp` stdio server.
+Clerk mode requires:
+
+```sh
+AGENT_TICK_MODE=clerk
+AGENT_TICK_CLERK_PUBLISHABLE_KEY=pk_...
+AGENT_TICK_CLERK_SECRET_KEY=sk_...
+AGENT_TICK_CLERK_AUTHORIZED_PARTIES=http://localhost:8787
+```
 
 ## Dashboard
 
-The dashboard is a Svelte 5 + TypeScript app in `apps/admin`. Build and validate it with:
+Run the dashboard dev server:
 
 ```sh
-devbox run admin:check
+corepack pnpm --filter agent-tick-admin dev
 ```
 
-For dashboard-only iteration against a local server, run:
+The Vite dev server proxies `/v1` to `http://localhost:8787`.
+
+Build production dashboard assets:
 
 ```sh
-devbox run admin:dev
+corepack pnpm --filter agent-tick-admin build
 ```
 
-Production dashboard assets are written to `apps/server/internal/approval/admin_static` and embedded in the Go binary. Run `npm run build` in `apps/admin` (or any build/check task above) after dashboard source changes so the embedded assets stay current.
+The build writes to `apps/server-ts/public/admin`, which the server serves in Docker/runtime builds. Generated dashboard assets are not intended to be committed.
 
-The dashboard supports:
+## CLI
 
-- User sign-in and session resume in `AGENT_TICK_MODE=user`.
-- Single-user bearer-token auth in default mode.
-- Responsive Approvals, Devices, Agents, Teams, and Projects sections with loading, empty, and error states.
-- Organization-aware first-run defaults: single-user installs get a default organization and default project automatically, while user-mode sign-in creates a personal organization.
-- Basic organization creation plus team and project listing/creation from the dashboard.
-- Phone pairing with short-lived QR codes and device revocation.
-- Approval policy builder with human-readable templates, previews, project defaults, and agent default-policy selection.
-- Agent registration wizard with project/team/owner/default-policy metadata, config-file setup commands, environment-variable setup commands, token listing, and revocation.
-- Approval list with approve/deny or constrained choice responses for pending requests.
-
-Pair a phone:
-
-1. Sign in or connect with the bearer token.
-2. Open `Devices`.
-3. Click `Create QR`.
-4. In the phone app, open Settings, then `Scan Pairing QR`.
-
-Register an agent:
-
-1. Open `Agents`.
-2. Enter the agent name, choose an existing project or create one inline, choose the owner user, optionally choose team access, and choose a default approval behavior.
-3. Click `Create Agent Token`.
-4. Run either the shown `agent-tick setup ...` command or export the shown environment variables on the machine where the agent runs.
-
-The token is shown once. Agent tokens created by the dashboard default to `approval:write`, which lets the CLI create approval requests, poll its own request by ID, and abandon pending requests it no longer needs. It does not let the agent approve, pair devices, create tokens, or list all approvals. Project, team, and policy hints are validated server-side against the token metadata. Use the dashboard **Rotate** action when a token is exposed; it shows a replacement setup command once and immediately invalidates the old secret.
-
-## Teams and Projects
-
-Agent Tick stores organizations, memberships, teams, team members, projects, and invite-ready records in SQLite. Existing single-user records are backfilled into `org_default` and `prj_default`, so self-hosted users can continue pairing phones and creating agent tokens without thinking about organizations.
-
-Organization roles are `owner`, `admin`, `approver`, and `viewer`. Owners can manage team membership; owners and admins can create or update teams and projects; viewers can list team and project context. Current approval, device, and agent-token endpoints remain user-scoped for compatibility while storing organization/project columns for hosted/team features. The API test suite includes tenant-isolation coverage for teams, policies, agents, devices, approvals, and audit logs so hosted changes do not accidentally leak data across organizations.
-
-Approval policies are stored as organization-scoped templates plus ordered policy steps. Supported templates are owner-only, any-team-member, on-call, recently-active, quorum, sequence, and risk-based. The dashboard exposes friendly labels like "Just me", "Anyone on a team", "On-call person", "Most recently active", "Require multiple approvals", and "Multi-step flow" instead of raw workflow JSON.
-
-Policy-backed approval requests now collect auditable votes before writing the final response. Owner-only, any-team-member, quorum, sequence, and risk-based policies are enforced by the backend; a request can stay `pending` after one approver votes until the current step's quorum is satisfied. Risk-based policies route low-risk commands to the owner, medium/default-risk requests to any configured team member, and high-risk commands to a team quorum; server-side command classification prevents clients from downgrading dangerous commands by submitting a lower `risk` value. Deny-veto steps finalize the request as denied immediately. Approval API responses include `policyProgress` with the current step, required and received approvals, waiting count, eligible approvers, whether the current user is eligible or already voted, the current user's vote, and vote history. The CLI still waits for the final `responded` decision, so existing automation does not unblock on partial approvals.
-
-The mobile app uses that progress data to show project, agent, owner, team, and policy context on the request detail screen. Eligible approvers keep the fast approve/deny buttons; people who already voted or are not eligible see read-only progress copy such as “You approved. Waiting for 1 more approval.” Completed history rows include the final vote trail for auditability. Policy progress intentionally exposes eligible approver IDs and vote user IDs to users who can view that request; do not treat those IDs as anonymous when designing hosted/team visibility.
-
-Presence and coverage features are intentionally coarse. Mobile clients send periodic authenticated heartbeats that update `lastSeenAt`; users can set availability to available, busy, do-not-disturb, or off-call. The dashboard team detail view shows current coverage, member availability, and primary/secondary on-call routing. On-call and recently-active policy templates use this data to choose the current approver, and timeout settings can escalate to a fallback user.
-
-Organizations carry hosted-service plan metadata in SQLite: plan name, seat/team/agent/request limits, audit retention days, and approval retention days. New and migrated self-hosted organizations default to the `self-hosted` plan with unlimited seat/team/agent/request counts (`-1`) and 365-day audit/approval retention values. Non-negative limits are enforced when creating teams, adding a new organization member through team membership, creating active agent tokens, and creating approval requests in the rolling 30-day window; API callers receive HTTP 402 with a clear plan-limit error. `GET /v1/billing` returns the current organization's plan, limits, 30-day usage counters including recorded push-notification attempts, retained audit-event count, and placeholder upgrade/contact links without coupling the core server to a specific billing provider. Hosted builds can install a `BillingProvider` with `SetBillingProvider`; `POST /v1/billing/webhook` forwards the raw body and signature header to that provider without requiring dashboard auth. Admins can inspect tenant-scoped audit events with `GET /v1/audit-events` or download CSV from `GET /v1/audit-events/export`; both endpoints are scoped to the authenticated organization. Hosted hardening keeps browser CORS scoped to the configured or same public origin (plus loopback development origins), caps write request bodies at 1 MiB, returns generic messages for unexpected internal API errors, and applies an in-process per-client-IP rate limit with stricter budgets for login/pairing/token creation. Operators can schedule `agent-tick maintenance cleanup --data <db>` to enforce expired-session, pairing-token, approval-retention, audit-retention, and revoked-agent-token cleanup.
-
-Agent tokens can now carry an owner user, project, optional team, and optional default approval policy. When an agent-token-authenticated request supplies project/team/policy hints, the server validates them against the token and fills missing hints from the token defaults before storing request metadata. Request creation resolves the effective policy from the request hint, agent default, project default, or organization default and stores it in request metadata for the policy engine.
-
-## CLI Usage
-
-Configure the installed CLI once:
+Build the npm CLI:
 
 ```sh
-agent-tick setup --server http://192.168.0.111:8787 --token agent_...
+corepack pnpm --filter agent-tick build
 ```
 
-This writes:
-
-```text
-<user config dir>/agent-tick/config.json
-```
-
-The CLI reads config in this order:
-
-1. `AGENT_TICK_SERVER` and `AGENT_TICK_TOKEN` environment overrides.
-2. The `agent-tick setup` config file.
-3. Fallback server `http://localhost:8787`.
-
-Submit a blocking request:
+Run it from the package during development:
 
 ```sh
-agent-tick request \
-  --title "Run command?" \
-  --body "codex wants to run npm install" \
-  --command "npm install"
+node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
+node packages/cli/dist/index.js request --title "Deploy?"
 ```
 
-For agent integrations, stream machine-readable request lifecycle events and wait indefinitely with no request expiry:
+The CLI intentionally does not start the server. The official server distribution is Docker.
+
+## Docker
+
+Build the server image:
 
 ```sh
-agent-tick request --json-events --timeout 0 --expires-in 0 --title "Run command?"
-agent-tick abandon <request-id> --json
+docker build -f apps/server-ts/Dockerfile -t agent-tick:dev .
 ```
 
-The first JSON event includes `requestId` immediately; a later terminal event includes the final status/response. `abandon` cancels a pending request from the creator side without approving or denying it.
-
-Guard a command so it only runs after approval:
+Run with Compose:
 
 ```sh
-agent-tick guard -- npm install
-```
-
-Use the stdio JSON adapter from an agent:
-
-```sh
-printf '{"title":"Run command?","command":"npm install"}' | agent-tick adapter
-```
-
-Bridge Claude Code `AskUserQuestion` through Agent Tick:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/claude-code-ask-user-question-hook.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-The hook script converts Claude Code question payloads into an Agent Tick `questionnaire` request, waits for the answer on your phone, then returns `updatedInput.answers` back to Claude Code. It needs `jq` and a configured `agent-tick` CLI.
-
-Create a pairing QR from the CLI:
-
-```sh
-agent-tick pair
-```
-
-For server-local admin token management, the binary also has:
-
-```sh
-agent-tick agent-token --name codex
-agent-tick agent-token list
-agent-tick agent-token revoke agent_...
-agent-tick agent-token rotate agent_...
-```
-
-The dashboard is preferred for user-mode agent tokens because it scopes tokens to the signed-in user.
-
-## Agent Skill
-
-The repo ships a Codex-compatible skill in `skills/agent-tick`.
-
-Validate it after edits:
-
-```sh
-devbox run skill:validate
+AGENT_TICK_IMAGE=agent-tick:dev docker compose up -d
 ```
 
 ## Mobile
 
-Run the Expo app:
+Typecheck:
 
 ```sh
-devbox run mobile
+corepack pnpm --filter @agent-tick/mobile typecheck
 ```
 
-For a physical phone on the same network:
-
-```sh
-devbox run mobile:lan
-```
-
-On a physical phone, `localhost` means the phone itself. Use the computer LAN address for the backend, for example:
-
-```text
-http://192.168.0.111:8787
-```
-
-The phone app:
-
-- Stores server URL, device id, and device token.
-- Shows pending approvals.
-- Shows a waiting state when there is nothing to approve.
-- Supports approve/deny, option choices, and short replies.
-- Shows approval history.
-- Can trigger local notifications while polling.
-
-For remote push notification testing and any native-module work, use an EAS development build rather than Expo Go. Build and install it once:
-
-```sh
-devbox run mobile:dev-build:ios
-# or
-devbox run mobile:dev-build:android
-```
-
-Then iterate against that installed app without rebuilding native code:
-
-```sh
-# Physical phone on the same network:
-devbox run mobile:dev-client:lan
-
-# Simulator/emulator or USB/local tunneling setup:
-devbox run mobile:dev-client
-```
-
-Open the installed development build on the phone and select the local development server from the dev-client launcher. JavaScript and asset changes reload through Metro; a new EAS build is only needed after changing native dependencies, native config, or the Expo SDK/runtime version.
-
-To publish a persistent JavaScript/assets update that the development build can load without your laptop running Metro:
-
-```sh
-devbox run mobile:update:development
-```
-
-To pass an explicit update message, run EAS directly from the mobile app directory:
-
-```sh
-cd apps/mobile
-npx eas-cli update --channel development --message "Describe the change"
-```
-
-The development EAS build profile uses the `development` update channel. The app is configured for EAS Update with project id `66c26d86-bff7-4681-a7b8-bc865a5212af`.
-
-Validate the mobile EAS config after changing `app.json`, `eas.json`, or mobile Expo dependencies:
-
-```sh
-devbox run mobile:validate-config
-```
-
-## Publishing CLI Binaries
-
-The CLI release workflow builds archives with:
-
-```sh
-sh scripts/build-server-release.sh
-```
-
-Pull requests upload the archives as workflow artifacts. Tags matching `v*` create or update a GitHub Release and attach:
-
-```text
-agent-tick_<version>_linux_amd64.tar.gz
-agent-tick_<version>_linux_arm64.tar.gz
-agent-tick_<version>_darwin_amd64.tar.gz
-agent-tick_<version>_darwin_arm64.tar.gz
-checksums.txt
-```
-
-Create a release by pushing a version tag:
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
+The mobile app has foundation code for runtime `/v1/auth/config` discovery and Clerk token-cache namespacing. Full Clerk UI/device registration wiring is still in progress.
