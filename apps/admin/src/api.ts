@@ -185,6 +185,15 @@ export interface CreateOrganizationInviteRequest {
 	maxUses?: number;
 }
 
+export type InviteEmailDeliveryStatus = 'sent' | 'skipped' | 'failed' | string;
+
+export interface InviteEmailDelivery {
+	status: InviteEmailDeliveryStatus;
+	recipient?: string;
+	sentAt?: string;
+	message?: string;
+}
+
 export interface OrganizationInviteRecord {
 	inviteId: string;
 	organizationId: string;
@@ -199,10 +208,19 @@ export interface OrganizationInviteRecord {
 	usedCount: number;
 	pendingCount?: number;
 	approvedCount?: number;
+	emailLastStatus?: InviteEmailDeliveryStatus;
+	emailLastSentAt?: string;
+	emailLastError?: string;
+	emailDelivery?: InviteEmailDelivery;
 	revokedAt?: string;
 	createdAt: string;
 	url?: string;
 	token?: string;
+}
+
+export interface OrganizationInviteEmailResult {
+	invite: OrganizationInviteRecord;
+	delivery: InviteEmailDelivery;
 }
 
 export interface InvitePreview {
@@ -475,6 +493,10 @@ export class AdminApiClient {
 
 	revokeOrganizationInvite(id: string): Promise<OrganizationInviteRecord> {
 		return this.#requestJSON<OrganizationInviteRecord>(`/v1/organization-invites/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: {} });
+	}
+
+	resendOrganizationInvite(id: string): Promise<OrganizationInviteEmailResult> {
+		return this.#requestJSON<OrganizationInviteEmailResult>(`/v1/organization-invites/${encodeURIComponent(id)}/resend`, { method: 'POST', body: {} });
 	}
 
 	listMembershipRequests(): Promise<MembershipRequestRecord[]> {

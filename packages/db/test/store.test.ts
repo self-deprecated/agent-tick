@@ -119,6 +119,24 @@ describe('AgentTickStore', () => {
     expect(() => store!.createOrganizationInvite({ organizationId: created.organizationId, userId: 'usr_default', role: 'viewer', email: 'carol@example.com', domain: 'example.com' })).toThrow(/either exact email or domain/i);
   });
 
+  it('rotates invite tokens and records email delivery state for resend', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const created = store.createOrganizationForUser('usr_default', 'Production');
+    expect(store.organizationName(created.organizationId)).toBe('Production');
+    const invite = store.createOrganizationInvite({ organizationId: created.organizationId, userId: 'usr_default', role: 'member', email: 'bob@example.com', publicURL: 'https://tick.example.com' });
+    const rotated = store.rotateOrganizationInviteToken(invite.inviteId, created.organizationId, 'usr_default', '2026-05-08T01:00:00.000Z', 'https://tick.example.com');
+    expect(rotated).toMatchObject({ inviteId: invite.inviteId, email: 'bob@example.com', token: expect.stringMatching(/^invite_/), url: expect.stringMatching(/^https:\/\/tick\.example\.com\/invite\/invite_/) });
+    expect(rotated!.token).not.toBe(invite.token);
+    expect(store.previewInvite(invite.token!)).toBeNull();
+    expect(store.previewInvite(rotated!.token!)).toMatchObject({ organizationName: 'Production' });
+
+    const recorded = store.recordOrganizationInviteEmailDelivery(invite.inviteId, created.organizationId, 'usr_default', 'sent', undefined, '2026-05-08T01:01:00.000Z');
+    expect(recorded).toMatchObject({ inviteId: invite.inviteId, emailLastStatus: 'sent', emailLastSentAt: '2026-05-08T01:01:00.000Z' });
+  });
+
   it('tracks active/pending seat usage and enforces activation limits', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

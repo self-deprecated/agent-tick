@@ -272,6 +272,7 @@ describe('AgentTickClient', () => {
           });
         }
         if (url.includes('/v1/invites/invite_secret')) return jsonResponse({ organizationName: 'Production', role: 'admin', approvalRequired: true });
+        if (url.includes('/v1/organization-invites/inv_123/resend')) return jsonResponse({ invite: { ...invite, emailLastStatus: 'sent', emailLastSentAt: '2026-01-01T00:00:00.000Z' }, delivery: { status: 'sent', recipient: 'teammate@example.com', sentAt: '2026-01-01T00:00:00.000Z' } });
         if (url.includes('/v1/organization-membership-requests/mreq_123/approve')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], inviteRevokedAt: '2026-01-02T00:00:00.000Z', status: 'approved', acceptedAt: '2026-01-01T00:00:00.000Z' });
         if (url.includes('/v1/organization-membership-requests/mreq_123/reject')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], inviteRevokedAt: '2026-01-02T00:00:00.000Z', status: 'rejected', acceptedAt: '2026-01-01T00:00:00.000Z' });
         if (url.endsWith('/v1/me/organization-membership-requests')) return jsonResponse([{ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], inviteRevokedAt: '2026-01-02T00:00:00.000Z', status: 'pending_approval', acceptedAt: '2026-01-01T00:00:00.000Z' }]);
@@ -289,6 +290,7 @@ describe('AgentTickClient', () => {
     await expect(client.listMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123', organizationName: 'Production', inviteRevokedAt: '2026-01-02T00:00:00.000Z' })]);
     await expect(client.approveMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'approved' });
     await expect(client.rejectMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'rejected' });
+    await expect(client.resendOrganizationInvite('inv_123')).resolves.toMatchObject({ delivery: { status: 'sent', recipient: 'teammate@example.com' }, invite: { emailLastStatus: 'sent' } });
     await expect(client.revokeOrganizationInvite('inv_123')).resolves.toMatchObject({ revokedAt: expect.any(String) });
     expect(requests.map((request) => [request.method, request.url, request.organizationId, request.body])).toEqual([
       ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', approvalRequired: true, teamIds: ['team_123'], domain: 'example.com', maxUses: 1 }],
@@ -299,6 +301,7 @@ describe('AgentTickClient', () => {
       ['GET', 'https://tick.example.com/v1/organization-membership-requests', 'org_selected', undefined],
       ['POST', 'https://tick.example.com/v1/organization-membership-requests/mreq_123/approve', 'org_selected', {}],
       ['POST', 'https://tick.example.com/v1/organization-membership-requests/mreq_123/reject', 'org_selected', {}],
+      ['POST', 'https://tick.example.com/v1/organization-invites/inv_123/resend', 'org_selected', {}],
       ['POST', 'https://tick.example.com/v1/organization-invites/inv_123/revoke', 'org_selected', {}]
     ]);
   });

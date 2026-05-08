@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { AgentTickStore } from '@agent-tick/db';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { createInviteEmailSender, type InviteEmailInput } from '../src/services/inviteEmail.js';
 
 let app: FastifyInstance | undefined;
 let store: AgentTickStore | undefined;
@@ -295,6 +296,98 @@ describe('server skeleton', () => {
     const membersAfterApproval = await app.inject({ method: 'GET', url: `/v1/organizations/${organizationId}/members` });
     expect(membersAfterApproval.statusCode).toBe(200);
     expect(membersAfterApproval.json()).toEqual(expect.arrayContaining([expect.objectContaining({ userId: bob.userId, role: 'admin', status: 'active' })]));
+  });
+
+  it('posts invite email webhook payloads when configured', async () => {
+    const originalFetch = globalThis.fetch;
+    const seen: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = (async (input, init) => {
+      seen.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return new Response('{}', { status: 202 });
+    }) as typeof fetch;
+    try {
+      const sender = createInviteEmailSender(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL: 'https://mail.example.test/invites' }));
+      await expect(sender.sendInvite({
+        organizationName: 'Production',
+        url: 'https://tick.example.com/invite/invite_secret',
+        invite: {
+          inviteId: 'inv_123',
+          organizationId: 'org_123',
+          label: 'Bob',
+          role: 'member',
+          approvalRequired: true,
+          teamIds: [],
+          email: 'bob@example.com',
+          domain: undefined,
+          expiresAt: undefined,
+          maxUses: 1,
+          usedCount: 0,
+          emailLastStatus: undefined,
+          emailLastSentAt: undefined,
+          emailLastError: undefined,
+          revokedAt: undefined,
+          createdAt: '2026-05-08T00:00:00.000Z'
+        }
+      })).resolves.toMatchObject({ status: 'sent', recipient: 'bob@example.com' });
+      expect(seen).toEqual([{ url: 'https://mail.example.test/invites', body: expect.objectContaining({ type: 'organization_invite', to: 'bob@example.com', url: 'https://tick.example.com/invite/invite_secret' }) }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('sends and resends exact-email invites through the configured email sender without exposing resend tokens', async () => {
+    const deliveries: Array<{ inviteId: string; url: string | undefined; recipient: string | undefined }> = [];
+    const db = testStore();
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_PUBLIC_URL: 'https://tick.example.com', AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL: 'https://mail.example.test/invites' }),
+      store: db,
+      inviteEmailSender: {
+        async sendInvite(input: InviteEmailInput) {
+          deliveries.push({ inviteId: input.invite.inviteId, url: input.url, recipient: input.invite.email });
+          return { status: 'sent', recipient: input.invite.email!, sentAt: '2026-05-08T00:00:00.000Z' };
+        }
+      }
+    });
+
+    const createOrg = await app.inject({ method: 'POST', url: '/v1/organizations', payload: { name: 'Production' } });
+    const organizationId = createOrg.json().organizationId as string;
+    const invite = await app.inject({
+      method: 'POST',
+      url: '/v1/organization-invites',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { label: 'Bob', role: 'member', email: 'bob@example.com' }
+    });
+    expect(invite.statusCode).toBe(200);
+    expect(invite.json()).toMatchObject({ token: expect.stringMatching(/^invite_/), emailDelivery: { status: 'sent', recipient: 'bob@example.com' }, emailLastStatus: 'sent' });
+    expect(deliveries).toEqual([{ inviteId: invite.json().inviteId, recipient: 'bob@example.com', url: `https://tick.example.com/invite/${encodeURIComponent(invite.json().token)}` }]);
+
+    const resend = await app.inject({ method: 'POST', url: `/v1/organization-invites/${invite.json().inviteId}/resend`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
+    expect(resend.statusCode).toBe(200);
+    expect(resend.json()).toMatchObject({ delivery: { status: 'sent', recipient: 'bob@example.com' }, invite: { inviteId: invite.json().inviteId, emailLastStatus: 'sent' } });
+    expect(JSON.stringify(resend.json())).not.toContain('invite_');
+    expect(deliveries).toHaveLength(2);
+    expect(deliveries[1]!.url).toMatch(/^https:\/\/tick\.example\.com\/invite\/invite_/);
+    expect(deliveries[1]!.url).not.toBe(deliveries[0]!.url);
+
+    const oldPreview = await app.inject({ method: 'GET', url: `/v1/invites/${encodeURIComponent(invite.json().token)}` });
+    expect(oldPreview.statusCode).toBe(404);
+  });
+
+  it('skips invite email delivery when no provider is configured', async () => {
+    const db = testStore();
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_PUBLIC_URL: 'https://tick.example.com' }), store: db });
+
+    const createOrg = await app.inject({ method: 'POST', url: '/v1/organizations', payload: { name: 'Production' } });
+    const organizationId = createOrg.json().organizationId as string;
+    const invite = await app.inject({
+      method: 'POST',
+      url: '/v1/organization-invites',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { label: 'Bob', role: 'member', email: 'bob@example.com' }
+    });
+    expect(invite.statusCode).toBe(200);
+    expect(invite.json()).toMatchObject({ emailDelivery: { status: 'skipped', recipient: 'bob@example.com' }, emailLastStatus: 'skipped' });
+    expect(invite.json().emailDelivery.message).toMatch(/not configured/i);
   });
 
   it('reports billing seat usage and enforces active-member limits for invite approvals', async () => {

@@ -22,6 +22,7 @@ import {
   HeartbeatResponseSchema,
   InvitePreviewSchema,
   MeResponseSchema,
+  OrganizationInviteEmailResultSchema,
   OrganizationInviteRecordSchema,
   OrganizationMembershipRequestRecordSchema,
   OrganizationMembershipSchema,
@@ -62,8 +63,10 @@ import {
   type HealthResponse,
   type HeartbeatRequest,
   type HeartbeatResponse,
+  type InviteEmailDelivery,
   type InvitePreview,
   type MeResponse,
+  type OrganizationInviteEmailResult,
   type OrganizationInviteRecord,
   type OrganizationMembership,
   type OrganizationMembershipRequestRecord,
@@ -223,6 +226,10 @@ export class AgentTickClient {
 
   revokeOrganizationInvite(inviteId: string): Promise<OrganizationInviteRecord> {
     return this.#request('POST', `/v1/organization-invites/${encodeURIComponent(inviteId)}/revoke`, OrganizationInviteRecordSchema, { body: {} });
+  }
+
+  resendOrganizationInvite(inviteId: string): Promise<OrganizationInviteEmailResult> {
+    return this.#request('POST', `/v1/organization-invites/${encodeURIComponent(inviteId)}/resend`, OrganizationInviteEmailResultSchema, { body: {} });
   }
 
   listMyMembershipRequests(): Promise<OrganizationMembershipRequestRecord[]> {
@@ -420,8 +427,10 @@ export type {
   HealthResponse,
   HeartbeatRequest,
   HeartbeatResponse,
+  InviteEmailDelivery,
   InvitePreview,
   MeResponse,
+  OrganizationInviteEmailResult,
   OrganizationInviteRecord,
   OrganizationMembership,
   OrganizationMembershipRequestRecord,

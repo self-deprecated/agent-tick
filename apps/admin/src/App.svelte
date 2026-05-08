@@ -50,6 +50,7 @@
 	let inviteStatus = $state<'idle' | 'loading' | 'ready' | 'accepting' | 'accepted' | 'error'>('idle');
 	let inviteError = $state('');
 	let inviteAutoAcceptAttempted = $state(false);
+	let inviteEmailMessage = $state('');
 	let newOrganizationName = $state('');
 	let newInviteEmail = $state('');
 	let newInviteDomain = $state('');
@@ -212,6 +213,7 @@
 		organizationInvites = [];
 		organizationMembers = [];
 		membershipRequests = [];
+		inviteEmailMessage = '';
 		myMembershipRequests = [];
 		projects = [];
 		teams = [];
@@ -316,6 +318,7 @@
 		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
 		else localStorage.removeItem(organizationStorageKey);
 		createdInvite = undefined;
+		inviteEmailMessage = '';
 		teamMembers = {};
 		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshBilling(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests()]);
 		void ensureEventStream();
@@ -389,6 +392,7 @@
 
 	async function createInvite(): Promise<void> {
 		error = '';
+		inviteEmailMessage = '';
 		createdInvite = undefined;
 		try {
 			createdInvite = await client().createOrganizationInvite({
@@ -403,7 +407,20 @@
 			newInviteLabel = '';
 			newInviteRole = 'member';
 			newInviteTeamId = '';
+			inviteEmailMessage = messageForInviteEmailDelivery(createdInvite.emailDelivery);
 			await Promise.all([refreshInvites(), refreshMembershipRequests(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	async function resendInvite(inviteId: string): Promise<void> {
+		error = '';
+		inviteEmailMessage = '';
+		try {
+			const result = await client().resendOrganizationInvite(inviteId);
+			inviteEmailMessage = messageForInviteEmailDelivery(result.delivery);
+			await Promise.all([refreshInvites(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -582,6 +599,13 @@
 
 	function seatUsageLabel(status: BillingStatus): string {
 		return status.limits.seats ? `${status.usage.activeMembers}/${status.limits.seats} active seats` : `${status.usage.activeMembers} active seats (no configured limit)`;
+	}
+
+	function messageForInviteEmailDelivery(delivery: OrganizationInviteRecord['emailDelivery']): string {
+		if (!delivery) return '';
+		if (delivery.status === 'sent') return `Invite email sent${delivery.recipient ? ` to ${delivery.recipient}` : ''}.`;
+		if (delivery.status === 'skipped') return delivery.message ?? 'Invite email was skipped.';
+		return delivery.message ?? 'Invite email delivery failed.';
 	}
 
 	async function refreshAuditEvents(): Promise<void> {
@@ -804,6 +828,7 @@
 					<button type="submit">Create invite</button>
 				</div>
 			</form>
+			{#if inviteEmailMessage}<p class="subtle">{inviteEmailMessage}</p>{/if}
 			{#if createdInvite?.token}
 				<div class="token">
 					<p><strong>Invite created:</strong> {createdInvite.label ?? createdInvite.email ?? createdInvite.domain ?? createdInvite.role}</p>
@@ -823,7 +848,10 @@
 								<p class="subtle">{invite.inviteId} · {invite.role} · {invite.approvalRequired ? 'approval required' : 'auto-approved'}{invite.teamIds?.length ? ` · teams ${invite.teamIds.map(teamLabel).join(', ')}` : ''}{invite.domain ? ` · domain ${invite.domain}` : ''} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
 								{#if invite.email}<p>{invite.email}</p>{/if}
 							</div>
-							{#if !invite.revokedAt}<button class="danger" onclick={() => void revokeInvite(invite.inviteId)}>Revoke</button>{/if}
+							<div class="actions">
+								{#if invite.email && !invite.revokedAt}<button onclick={() => void resendInvite(invite.inviteId)}>Email invite</button>{/if}
+								{#if !invite.revokedAt}<button class="danger" onclick={() => void revokeInvite(invite.inviteId)}>Revoke</button>{/if}
+							</div>
 						</li>
 					{/each}
 				</ul>

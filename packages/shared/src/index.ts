@@ -67,6 +67,17 @@ export const CreateOrganizationSchema = z.object({
 });
 export type CreateOrganization = z.input<typeof CreateOrganizationSchema>;
 
+export const InviteEmailDeliveryStatusSchema = z.enum(['sent', 'skipped', 'failed']);
+export type InviteEmailDeliveryStatus = z.infer<typeof InviteEmailDeliveryStatusSchema>;
+
+export const InviteEmailDeliverySchema = z.object({
+  status: InviteEmailDeliveryStatusSchema,
+  recipient: z.string().email().optional(),
+  sentAt: z.string().optional(),
+  message: z.string().optional()
+});
+export type InviteEmailDelivery = z.infer<typeof InviteEmailDeliverySchema>;
+
 export const OrganizationInviteRecordSchema = z.object({
   inviteId: z.string(),
   organizationId: z.string(),
@@ -79,12 +90,22 @@ export const OrganizationInviteRecordSchema = z.object({
   expiresAt: z.string().optional(),
   maxUses: z.number().int().positive().optional(),
   usedCount: z.number().int().min(0),
+  emailLastStatus: InviteEmailDeliveryStatusSchema.or(z.string()).optional(),
+  emailLastSentAt: z.string().optional(),
+  emailLastError: z.string().optional(),
+  emailDelivery: InviteEmailDeliverySchema.optional(),
   revokedAt: z.string().optional(),
   createdAt: z.string(),
   url: z.string().optional(),
   token: z.string().optional()
 });
 export type OrganizationInviteRecord = z.infer<typeof OrganizationInviteRecordSchema>;
+
+export const OrganizationInviteEmailResultSchema = z.object({
+  invite: OrganizationInviteRecordSchema,
+  delivery: InviteEmailDeliverySchema
+});
+export type OrganizationInviteEmailResult = z.infer<typeof OrganizationInviteEmailResultSchema>;
 
 export const CreateOrganizationInviteSchema = z.object({
   label: z.string().optional(),

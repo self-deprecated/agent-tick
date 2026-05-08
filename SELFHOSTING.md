@@ -17,6 +17,9 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 
 # Optional local active-member seat guard. Omit for unlimited self-hosted seats.
 # AGENT_TICK_MAX_ACTIVE_MEMBERS=10
+
+# Optional invite email delivery. Agent Tick POSTs invite JSON to this webhook.
+# AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
 ```
 
 Start it:
@@ -47,10 +50,11 @@ AGENT_TICK_CLERK_SECRET_KEY=sk_...
 AGENT_TICK_CLERK_AUTHORIZED_PARTIES=https://tick.example.com
 ```
 
-Optional local active-member seat guard (also available in single mode):
+Optional local active-member seat guard and invite email webhook (also available in single mode):
 
 ```env
 AGENT_TICK_MAX_ACTIVE_MEMBERS=10
+AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
 ```
 
 Optional networkless verification key:
@@ -91,6 +95,6 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 ## Current implementation scope
 
-The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, and optional active-member seat enforcement.
+The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, and optional invite email webhooks/resend.
 
 Some earlier Go-era features are intentionally being reintroduced only when they are needed: advanced policy templates, extra notification sinks, richer mobile Clerk flows, and hosted billing/operator tooling.

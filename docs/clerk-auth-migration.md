@@ -193,6 +193,7 @@ Implemented so far:
 - Mobile uses the shared SDK for organization discovery, approval list/respond, presence, and device pair/register/unregister/push flows.
 - Audit-event table, event recording, route, SDK method, and dashboard display.
 - Local billing seat usage for active vs pending members, optional `AGENT_TICK_MAX_ACTIVE_MEMBERS` enforcement, SDK method, and dashboard display.
+- Optional invite email webhook delivery/resend owned by Agent Tick, including delivery audit state and resend token rotation.
 - SDK token provider and organization provider support.
 - Svelte dashboard Clerk sign-in, invite preview/continuation, local organization selector, token management, audit view, pairing code UI, and ticketed EventSource refreshes.
 - Docker image build for the TypeScript server plus static Svelte admin assets.
@@ -213,6 +214,7 @@ Product rebuilds to evaluate/port from the prototype:
 - Notification delivery service beyond stored push tokens.
 - MCP/adapter/guard integrations that still fit the npm CLI model.
 - Hosted-service billing portals, plan sync, and operator tooling beyond the current local seat guard.
+- SMTP/provider-specific invite email templates and retry tooling beyond the current webhook handoff.
 
 Operational hardening:
 

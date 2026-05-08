@@ -1,15 +1,17 @@
 import type { FastifyInstance } from 'fastify';
-import { CreateOrganizationInviteSchema } from '@agent-tick/shared';
-import type { AgentTickStore } from '@agent-tick/db';
+import { CreateOrganizationInviteSchema, type InviteEmailDelivery } from '@agent-tick/shared';
+import type { AgentTickStore, OrganizationInviteRecord } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman, type AuthContext } from '../auth/context.js';
+import type { InviteEmailSender } from '../services/inviteEmail.js';
 
 export interface InviteRoutesOptions {
   config: ServerConfig;
   store: AgentTickStore;
+  inviteEmailSender: InviteEmailSender;
 }
 
-export async function registerInviteRoutes(app: FastifyInstance, { config, store }: InviteRoutesOptions): Promise<void> {
+export async function registerInviteRoutes(app: FastifyInstance, { config, store, inviteEmailSender }: InviteRoutesOptions): Promise<void> {
   app.get('/v1/organization-invites', async (request) => {
     const auth = await requirePrivilegedHuman(request, config, store);
     requireOrganizationAdmin(auth);
@@ -21,7 +23,7 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
     requireOrganizationAdmin(auth);
     const input = CreateOrganizationInviteSchema.parse(request.body);
     assertCanCreateInvite(auth, input.role, input.approvalRequired);
-    return store.createOrganizationInvite({
+    const invite = store.createOrganizationInvite({
       organizationId: auth.organizationId,
       userId: auth.userId ?? 'usr_default',
       role: input.role,
@@ -34,6 +36,7 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
       ...(input.domain ? { domain: input.domain } : {}),
       ...(input.expiresAt ? { expiresAt: input.expiresAt } : {})
     });
+    return input.email ? deliverInviteEmail({ invite, auth, store, inviteEmailSender }) : invite;
   });
 
   app.post('/v1/organization-invites/:id/revoke', async (request, reply) => {
@@ -43,6 +46,21 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
     const invite = store.revokeOrganizationInvite(id, auth.organizationId, auth.userId ?? 'usr_default');
     if (!invite) return reply.status(404).send({ error: { code: 'not_found', message: 'Invite not found', requestId: request.id } });
     return invite;
+  });
+
+  app.post('/v1/organization-invites/:id/resend', async (request, reply) => {
+    const auth = await requirePrivilegedHuman(request, config, store);
+    requireOrganizationAdmin(auth);
+    const { id } = request.params as { id: string };
+    const existing = store.getOrganizationInvite(id);
+    if (!existing || existing.organizationId !== auth.organizationId || existing.revokedAt) return reply.status(404).send({ error: { code: 'not_found', message: 'Invite not found', requestId: request.id } });
+    assertCanCreateInvite(auth, existing.role, existing.approvalRequired);
+    const invite = config.publicURL && config.inviteEmailWebhookURL && existing.email
+      ? store.rotateOrganizationInviteToken(id, auth.organizationId, auth.userId ?? 'usr_default', new Date().toISOString(), config.publicURL)
+      : existing;
+    if (!invite) return reply.status(404).send({ error: { code: 'not_found', message: 'Invite not found or inactive', requestId: request.id } });
+    const delivered = await deliverInviteEmail({ invite, auth, store, inviteEmailSender });
+    return { invite: withoutInviteSecret(delivered), delivery: delivered.emailDelivery };
   });
 
   app.get('/v1/me/organization-membership-requests', async (request) => {
@@ -88,6 +106,28 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
     if (!accepted) return reply.status(404).send({ error: { code: 'not_found', message: 'Invite not found or expired', requestId: request.id } });
     return accepted;
   });
+}
+
+async function deliverInviteEmail({ invite, auth, store, inviteEmailSender }: { invite: OrganizationInviteRecord; auth: AuthContext; store: AgentTickStore; inviteEmailSender: InviteEmailSender }): Promise<OrganizationInviteRecord & { emailDelivery: InviteEmailDelivery }> {
+  let delivery: InviteEmailDelivery;
+  try {
+    delivery = await inviteEmailSender.sendInvite({ invite, organizationName: store.organizationName(invite.organizationId), url: invite.url });
+  } catch (error) {
+    delivery = { status: 'failed', ...(invite.email ? { recipient: invite.email } : {}), message: error instanceof Error ? error.message : 'Invite email delivery failed' };
+  }
+  const recorded = store.recordOrganizationInviteEmailDelivery(invite.inviteId, invite.organizationId, auth.userId ?? 'usr_default', delivery.status, delivery.status === 'failed' || delivery.status === 'skipped' ? delivery.message : undefined, delivery.sentAt ?? new Date().toISOString());
+  return {
+    ...invite,
+    emailLastStatus: recorded?.emailLastStatus ?? delivery.status,
+    emailLastSentAt: recorded?.emailLastSentAt,
+    emailLastError: recorded?.emailLastError,
+    emailDelivery: delivery
+  };
+}
+
+function withoutInviteSecret(invite: OrganizationInviteRecord & { emailDelivery?: InviteEmailDelivery }): OrganizationInviteRecord {
+  const { token: _token, url: _url, emailDelivery: _delivery, ...safeInvite } = invite;
+  return safeInvite;
 }
 
 function activationLimits(config: ServerConfig): { maxActiveMembers?: number } {

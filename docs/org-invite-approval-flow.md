@@ -461,7 +461,7 @@ For a new account created from the invite page, the app should automatically acc
 
 ## Implementation slices
 
-Current status: TypeScript support exists for approval-required invites, exact-email and domain invite restrictions, redacted public invite previews, dashboard invite preview/continuation, pending membership rows, pending/rejected self-status visibility, revoked-invite visibility on pending requests, active-only authorization/listing, invite team assignment on approval, pending request list/approve/reject endpoints, SDK methods, audit events, backend tests, dashboard invite/pending-member management, and local active/pending seat usage with optional active-seat enforcement. Email-delivery polish remains.
+Current status: TypeScript support exists for approval-required invites, exact-email and domain invite restrictions, redacted public invite previews, dashboard invite preview/continuation, pending membership rows, pending/rejected self-status visibility, revoked-invite visibility on pending requests, active-only authorization/listing, invite team assignment on approval, pending request list/approve/reject endpoints, SDK methods, audit events, backend tests, dashboard invite/pending-member management, local active/pending seat usage with optional active-seat enforcement, and optional invite email webhook delivery/resend. SMTP/provider-specific polish remains.
 
 ### Slice 1: Core backend
 
@@ -499,9 +499,10 @@ Current status: TypeScript support exists for approval-required invites, exact-e
 
 ### Slice 5: Email delivery
 
-- SMTP/provider configuration.
-- Send invite email.
-- Resend invite.
+- [x] Optional provider/webhook configuration that preserves no-email self-hosted defaults.
+- [x] Send exact-email invites on creation when delivery is configured.
+- [x] Resend exact-email invites without exposing raw tokens in API responses; resend rotates the token before delivery.
+- [ ] SMTP/provider-specific templates and richer delivery retries.
 
 ## Open questions
 

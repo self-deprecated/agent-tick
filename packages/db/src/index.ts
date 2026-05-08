@@ -104,6 +104,9 @@ export interface OrganizationInviteRecord {
   expiresAt: string | undefined;
   maxUses: number | undefined;
   usedCount: number;
+  emailLastStatus: string | undefined;
+  emailLastSentAt: string | undefined;
+  emailLastError: string | undefined;
   revokedAt: string | undefined;
   createdAt: string;
   token?: string;
@@ -356,6 +359,9 @@ export class AgentTickStore {
     ensureColumn(this.db, 'organization_memberships', 'invite_id', 'ALTER TABLE organization_memberships ADD COLUMN invite_id TEXT');
     ensureColumn(this.db, 'organization_invites', 'approval_required', 'ALTER TABLE organization_invites ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 1');
     ensureColumn(this.db, 'organization_invites', 'domain', 'ALTER TABLE organization_invites ADD COLUMN domain TEXT');
+    ensureColumn(this.db, 'organization_invites', 'email_last_status', 'ALTER TABLE organization_invites ADD COLUMN email_last_status TEXT');
+    ensureColumn(this.db, 'organization_invites', 'email_last_sent_at', 'ALTER TABLE organization_invites ADD COLUMN email_last_sent_at TEXT');
+    ensureColumn(this.db, 'organization_invites', 'email_last_error', 'ALTER TABLE organization_invites ADD COLUMN email_last_error TEXT');
     ensureColumn(this.db, 'organization_invite_acceptances', 'requested_team_ids_json', "ALTER TABLE organization_invite_acceptances ADD COLUMN requested_team_ids_json TEXT NOT NULL DEFAULT '[]'");
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
@@ -574,6 +580,37 @@ export class AgentTickStore {
   getOrganizationInvite(inviteId: string): OrganizationInviteRecord | null {
     const row = this.db.prepare('SELECT * FROM organization_invites WHERE invite_id = ?').get(inviteId) as OrganizationInviteRow | undefined;
     return row ? mapOrganizationInviteRow(row, this.listInviteTeamIds(inviteId)) : null;
+  }
+
+  organizationName(organizationId: string): string | undefined {
+    const row = this.db.prepare('SELECT name FROM organizations WHERE id = ?').get(organizationId) as { name: string } | undefined;
+    return row?.name;
+  }
+
+  rotateOrganizationInviteToken(inviteId: string, organizationId: string, userId: string, now = new Date().toISOString(), publicURL?: string): OrganizationInviteRecord | null {
+    const invite = this.getOrganizationInvite(inviteId);
+    if (!invite || invite.organizationId !== organizationId || invite.revokedAt) return null;
+    if (invite.expiresAt && invite.expiresAt <= now) return null;
+    if (invite.maxUses !== undefined && invite.usedCount >= invite.maxUses) return null;
+    const token = `invite_${randomToken()}`;
+    const changed = this.db.prepare('UPDATE organization_invites SET token_hash = ? WHERE invite_id = ? AND organization_id = ? AND revoked_at IS NULL').run(hashToken(token), inviteId, organizationId).changes;
+    if (changed !== 1) return null;
+    this.writeAuditEvent(organizationId, userId, 'organization_invite.token_rotated', inviteId, {}, now);
+    const rotated = this.getOrganizationInvite(inviteId) ?? missingInvite(inviteId);
+    return {
+      ...rotated,
+      token,
+      ...(publicURL ? { url: `${publicURL.replace(/\/+$/, '')}/invite/${encodeURIComponent(token)}` } : {})
+    };
+  }
+
+  recordOrganizationInviteEmailDelivery(inviteId: string, organizationId: string, userId: string, status: string, errorMessage: string | undefined, now = new Date().toISOString()): OrganizationInviteRecord | null {
+    const changed = this.db
+      .prepare('UPDATE organization_invites SET email_last_status = ?, email_last_sent_at = ?, email_last_error = ? WHERE invite_id = ? AND organization_id = ?')
+      .run(status, status === 'sent' ? now : null, errorMessage ?? null, inviteId, organizationId).changes;
+    if (changed !== 1) return null;
+    this.writeAuditEvent(organizationId, userId, 'organization_invite.email_delivery', inviteId, { status, error: errorMessage }, now);
+    return this.getOrganizationInvite(inviteId);
   }
 
   revokeOrganizationInvite(inviteId: string, organizationId: string, userId: string, now = new Date().toISOString()): OrganizationInviteRecord | null {
@@ -1449,6 +1486,9 @@ function mapOrganizationInviteRow(row: OrganizationInviteRow, teamIds: string[] 
     expiresAt: row.expires_at ?? undefined,
     maxUses: row.max_uses ?? undefined,
     usedCount: row.used_count,
+    emailLastStatus: row.email_last_status ?? undefined,
+    emailLastSentAt: row.email_last_sent_at ?? undefined,
+    emailLastError: row.email_last_error ?? undefined,
     revokedAt: row.revoked_at ?? undefined,
     createdAt: row.created_at
   };
@@ -1828,6 +1868,9 @@ interface OrganizationInviteRow {
   expires_at: string | null;
   max_uses: number | null;
   used_count: number;
+  email_last_status: string | null;
+  email_last_sent_at: string | null;
+  email_last_error: string | null;
   revoked_at: string | null;
   created_at: string;
 }
@@ -2014,6 +2057,9 @@ CREATE TABLE IF NOT EXISTS organization_invites (
   expires_at TEXT,
   max_uses INTEGER,
   used_count INTEGER NOT NULL DEFAULT 0,
+  email_last_status TEXT,
+  email_last_sent_at TEXT,
+  email_last_error TEXT,
   revoked_at TEXT,
   created_at TEXT NOT NULL
 );

@@ -18,15 +18,17 @@ import { registerPolicyRoutes } from './routes/policies.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerTeamRoutes } from './routes/teams.js';
+import { createInviteEmailSender, type InviteEmailSender } from './services/inviteEmail.js';
 import { createExpoPushNotifier, type ApprovalNotifier } from './services/notifications.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
   store: AgentTickStore;
   notifier?: ApprovalNotifier;
+  inviteEmailSender?: InviteEmailSender;
 }
 
-export async function buildApp({ config, store, notifier = createExpoPushNotifier({ store }) }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, store, notifier = createExpoPushNotifier({ store }), inviteEmailSender = createInviteEmailSender(config) }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: true,
     genReqId: (request) => request.headers['x-request-id']?.toString() ?? crypto.randomUUID()
@@ -56,7 +58,7 @@ export async function buildApp({ config, store, notifier = createExpoPushNotifie
 
   await registerMeRoutes(app, { config, store });
   await registerOrganizationRoutes(app, { config, store });
-  await registerInviteRoutes(app, { config, store });
+  await registerInviteRoutes(app, { config, store, inviteEmailSender });
   await registerAgentTokenRoutes(app, { config, store });
   await registerBillingRoutes(app, { config, store });
   await registerApprovalRoutes(app, { config, store, notifier });
