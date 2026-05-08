@@ -738,7 +738,7 @@ Changes:
 - initialize/remount `ClerkProvider` using returned publishable key
 - namespace Clerk token cache by server URL/publishable key
 - in `clerk` mode, get API token via `useAuth().getToken()`
-- support Clerk email/password sign-in and email-code account creation before broader OAuth/deep-link provider polish
+- support Clerk email/password sign-in, email-code account creation, and OAuth SSO buttons via Expo AuthSession/WebBrowser before broader provider-specific polish
 - in `single` mode, preserve existing QR/device-token pairing
 - add Clerk-mode device registration for push tokens
 - on sign-out/server switch, best-effort unregister current push/device association

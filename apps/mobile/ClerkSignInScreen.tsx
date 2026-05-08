@@ -1,4 +1,4 @@
-import { useSignIn, useSignUp } from "@clerk/expo";
+import { useSignIn, useSignUp, useSSO, type StartSSOFlowParams } from "@clerk/expo";
 import { useState } from "react";
 import {
   Pressable,
@@ -11,20 +11,32 @@ import {
 import { StatusBar } from "expo-status-bar";
 
 type ClerkAuthMode = "signIn" | "signUp";
+type OAuthSSOStrategy = Exclude<StartSSOFlowParams["strategy"], "enterprise_sso">;
+type SSOProvider = {
+  label: string;
+  strategy: OAuthSSOStrategy;
+};
+
+const ssoProviders = [
+  { label: "Continue with Google", strategy: "oauth_google" },
+  { label: "Continue with GitHub", strategy: "oauth_github" },
+] satisfies SSOProvider[];
 
 export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
   const { fetchStatus: signInFetchStatus, signIn } = useSignIn();
   const { fetchStatus: signUpFetchStatus, signUp } = useSignUp();
+  const { startSSOFlow } = useSSO();
   const [mode, setMode] = useState<ClerkAuthMode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingVerification, setPendingVerification] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [ssoSubmitting, setSsoSubmitting] = useState<OAuthSSOStrategy | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const clerkFetching = mode === "signIn" ? signInFetchStatus === "fetching" : signUpFetchStatus === "fetching";
-  const canSubmit = !clerkFetching && !submitting;
+  const canSubmit = !clerkFetching && !submitting && !ssoSubmitting;
   const title = mode === "signIn" ? "Sign in with Clerk" : "Create an account";
   const submitLabel = submitting
     ? pendingVerification
@@ -43,6 +55,24 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
     setError(null);
     setPendingVerification(false);
     setVerificationCode("");
+  };
+
+  const submitSSO = async (strategy: OAuthSSOStrategy) => {
+    if (submitting || ssoSubmitting) return;
+    setError(null);
+    setSsoSubmitting(strategy);
+    try {
+      const result = await startSSOFlow({ strategy });
+      if (result.createdSessionId && result.setActive) {
+        await result.setActive({ session: result.createdSessionId });
+        return;
+      }
+      setError(ssoResultMessage(result.authSessionResult?.type));
+    } catch (err) {
+      setError(clerkAuthErrorMessage(err, "Could not continue with the selected Clerk provider"));
+    } finally {
+      setSsoSubmitting(null);
+    }
   };
 
   const submit = async () => {
@@ -130,6 +160,23 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
             />
           </>
         )}
+        <View style={styles.ssoGroup}>
+          {ssoProviders.map((provider) => (
+            <Pressable
+              key={provider.strategy}
+              style={styles.ssoButton}
+              onPress={() => void submitSSO(provider.strategy)}
+              disabled={Boolean(submitting || ssoSubmitting)}
+            >
+              <Text style={styles.ssoButtonText}>{ssoSubmitting === provider.strategy ? "Opening…" : provider.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <Pressable style={styles.primaryButton} onPress={() => void submit()} disabled={!canSubmit}>
           <Text style={styles.primaryButtonText}>{submitLabel}</Text>
@@ -159,6 +206,12 @@ export function clerkAuthErrorMessage(err: unknown, fallback: string): string {
 
 function nextClerkStepMessage(flow: "sign-in" | "sign-up", status: string | null): string {
   return `Additional Clerk ${flow} step required: ${status ?? "unknown"}`;
+}
+
+function ssoResultMessage(resultType: string | undefined): string {
+  if (resultType === "cancel" || resultType === "dismiss") return "Clerk provider sign-in was canceled.";
+  if (resultType === "locked") return "Another sign-in window is already open.";
+  return "Additional Clerk provider step required.";
 }
 
 const styles = StyleSheet.create({
@@ -201,6 +254,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     width: "100%",
+  },
+  ssoGroup: {
+    gap: 8,
+    maxWidth: 420,
+    width: "100%",
+  },
+  ssoButton: {
+    alignItems: "center",
+    backgroundColor: "#fffaf2",
+    borderColor: "#d7ccbb",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 13,
+    width: "100%",
+  },
+  ssoButtonText: {
+    color: "#202124",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  dividerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    maxWidth: 420,
+    width: "100%",
+  },
+  dividerLine: {
+    backgroundColor: "#d7ccbb",
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    color: "#6f6558",
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
   },
   errorText: {
     color: "#9b1c1c",

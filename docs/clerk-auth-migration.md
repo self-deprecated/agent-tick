@@ -186,7 +186,7 @@ Implemented so far:
 - Single-mode mobile pairing and device-token auth.
 - Clerk-mode device registration and push token APIs.
 - Short-lived opaque event tickets for event streams, SSE audit-event streaming, SDK stream URL/EventSource helpers, and startup/hourly cleanup for expired tickets and pairing codes.
-- Mobile Clerk runtime discovery and ClerkProvider sign-in/account-creation wiring with email-code verification.
+- Mobile Clerk runtime discovery, ClerkProvider sign-in/account-creation wiring with email-code verification, and OAuth SSO provider buttons using Expo AuthSession/WebBrowser.
 - Mobile local organization selection for Clerk-mode multi-org users.
 - Best-effort Clerk-mode mobile device unregister on sign-out/server switch.
 - Mobile heartbeat and availability APIs.
@@ -201,7 +201,7 @@ Implemented so far:
 
 High priority:
 
-- Harden mobile OAuth/deep-link provider flows beyond the email/password and email-code signup path.
+- Broaden mobile provider-specific OAuth/deep-link coverage beyond the built-in Google/GitHub SSO buttons.
 - Wire mobile EventSource/SSE listeners if polling becomes insufficient in React Native.
 - Broaden signed-out invite continuation coverage with deep-link/OAuth provider-specific tests.
 

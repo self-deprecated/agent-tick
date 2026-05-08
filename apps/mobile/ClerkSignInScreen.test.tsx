@@ -8,6 +8,8 @@ const mockSignUpCreate = jest.fn();
 const mockSignUpSendEmailCode = jest.fn();
 const mockSignUpVerifyEmailCode = jest.fn();
 const mockSignUpFinalize = jest.fn();
+const mockStartSSOFlow = jest.fn();
+const mockSSOSetActive = jest.fn();
 
 const mockSignInResource = {
   status: "needs_identifier",
@@ -35,6 +37,9 @@ jest.mock("@clerk/expo", () => ({
     fetchStatus: "idle",
     signUp: mockSignUpResource,
   }),
+  useSSO: () => ({
+    startSSOFlow: mockStartSSOFlow,
+  }),
 }));
 
 describe("ClerkSignInScreen", () => {
@@ -61,6 +66,32 @@ describe("ClerkSignInScreen", () => {
       identifier: "ada@example.com",
       password: "correct horse battery staple",
     });
+  });
+
+  it("activates completed Clerk SSO sessions", async () => {
+    mockStartSSOFlow.mockResolvedValue({
+      createdSessionId: "sess_sso",
+      setActive: mockSSOSetActive,
+      authSessionResult: { type: "success", url: "agenttick://sso-callback" },
+    });
+
+    render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+    fireEvent.press(screen.getByText("Continue with Google"));
+
+    await waitFor(() => expect(mockSSOSetActive).toHaveBeenCalledWith({ session: "sess_sso" }));
+    expect(mockStartSSOFlow).toHaveBeenCalledWith({ strategy: "oauth_google" });
+  });
+
+  it("shows provider cancellation errors", async () => {
+    mockStartSSOFlow.mockResolvedValue({
+      createdSessionId: null,
+      authSessionResult: { type: "cancel" },
+    });
+
+    render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+    fireEvent.press(screen.getByText("Continue with GitHub"));
+
+    await waitFor(() => expect(screen.getByText("Clerk provider sign-in was canceled.")).toBeTruthy());
   });
 
   it("supports email-code verification when creating a Clerk account", async () => {
