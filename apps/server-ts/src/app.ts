@@ -6,6 +6,7 @@ import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from './config.js';
 import { registerAgentTokenRoutes } from './routes/agentTokens.js';
 import { registerApprovalRoutes } from './routes/approvals.js';
+import { registerDeviceRoutes } from './routes/devices.js';
 import { registerMeRoutes } from './routes/me.js';
 
 export interface BuildAppOptions {
@@ -43,6 +44,7 @@ export async function buildApp({ config, store }: BuildAppOptions): Promise<Fast
   await registerMeRoutes(app, { config, store });
   await registerAgentTokenRoutes(app, { config, store });
   await registerApprovalRoutes(app, { config, store });
+  await registerDeviceRoutes(app, { config, store });
 
   const adminIndexPath = await registerStaticAdmin(app, config.adminDistDir);
   setFallbackNotFoundHandler(app, adminIndexPath);

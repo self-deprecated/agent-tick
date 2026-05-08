@@ -1,0 +1,59 @@
+import { z } from 'zod';
+import type { FastifyInstance } from 'fastify';
+import type { AgentTickStore } from '@agent-tick/db';
+import type { ServerConfig } from '../config.js';
+import { requireHuman } from '../auth/context.js';
+
+const RegisterDeviceSchema = z.object({
+  deviceName: z.string().min(1),
+  platform: z.string().optional(),
+  installationId: z.string().optional(),
+  expoPushToken: z.string().optional()
+});
+
+const PushTokenSchema = z.object({
+  expoPushToken: z.string()
+});
+
+export interface DeviceRoutesOptions {
+  config: ServerConfig;
+  store: AgentTickStore;
+}
+
+export async function registerDeviceRoutes(app: FastifyInstance, { config, store }: DeviceRoutesOptions): Promise<void> {
+  app.get('/v1/devices', async (request) => {
+    const auth = await requireHuman(request, config, store);
+    return store.listDevicesForUser(auth.userId ?? 'usr_default');
+  });
+
+  app.post('/v1/devices/register', async (request) => {
+    const auth = await requireHuman(request, config, store);
+    const input = RegisterDeviceSchema.parse(request.body);
+    const device = store.registerDevice({
+      userId: auth.userId ?? 'usr_default',
+      organizationId: auth.organizationId,
+      deviceName: input.deviceName,
+      ...(input.platform ? { platform: input.platform } : {}),
+      ...(input.installationId ? { installationId: input.installationId } : {}),
+      ...(input.expoPushToken ? { expoPushToken: input.expoPushToken } : {})
+    });
+    return { deviceId: device.deviceId };
+  });
+
+  app.post('/v1/devices/:id/push-token', async (request, reply) => {
+    const auth = await requireHuman(request, config, store);
+    const { id } = request.params as { id: string };
+    const input = PushTokenSchema.parse(request.body);
+    const device = store.updateDevicePushToken(id, auth.userId ?? 'usr_default', input.expoPushToken);
+    if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
+    return device;
+  });
+
+  app.post('/v1/devices/:id/unregister', async (request, reply) => {
+    const auth = await requireHuman(request, config, store);
+    const { id } = request.params as { id: string };
+    const device = store.unregisterDevice(id, auth.userId ?? 'usr_default');
+    if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
+    return device;
+  });
+}

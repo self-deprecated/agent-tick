@@ -68,6 +68,28 @@ export interface HumanIdentityResult {
   role: string;
 }
 
+export interface DeviceRegistrationInput {
+  userId: string;
+  organizationId: string;
+  deviceName: string;
+  platform?: string;
+  installationId?: string;
+  expoPushToken?: string;
+}
+
+export interface DeviceRecord {
+  deviceId: string;
+  userId: string;
+  organizationId: string;
+  name: string;
+  platform: string | undefined;
+  installationId: string | undefined;
+  expoPushToken: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+  unregisteredAt: string | undefined;
+}
+
 export class AgentTickStore {
   readonly db: Database.Database;
 
@@ -275,6 +297,58 @@ export class AgentTickStore {
     return this.getApprovalRequest(id);
   }
 
+  registerDevice(input: DeviceRegistrationInput, now = new Date().toISOString()): DeviceRecord {
+    const existing = input.installationId
+      ? (this.db
+          .prepare('SELECT * FROM devices WHERE user_id = ? AND installation_id = ? AND unregistered_at IS NULL')
+          .get(input.userId, input.installationId) as DeviceRow | undefined)
+      : undefined;
+    const deviceId = existing?.device_id ?? newID('dev');
+    const expoPushToken = input.expoPushToken?.trim() || null;
+
+    const tx = this.db.transaction(() => {
+      if (expoPushToken) {
+        this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE expo_push_token = ?').run(now, expoPushToken);
+      }
+      if (existing) {
+        this.db
+          .prepare('UPDATE devices SET name = ?, platform = ?, expo_push_token = ?, updated_at = ? WHERE device_id = ?')
+          .run(input.deviceName.trim(), input.platform ?? null, expoPushToken, now, deviceId);
+      } else {
+        this.db
+          .prepare('INSERT INTO devices(device_id, user_id, organization_id, name, platform, installation_id, expo_push_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(deviceId, input.userId, input.organizationId, input.deviceName.trim(), input.platform ?? null, input.installationId ?? null, expoPushToken, now, now);
+      }
+    });
+    tx();
+    return this.getDeviceForUser(deviceId, input.userId) ?? missingDevice(deviceId);
+  }
+
+  listDevicesForUser(userId: string): DeviceRecord[] {
+    const rows = this.db.prepare('SELECT * FROM devices WHERE user_id = ? ORDER BY updated_at DESC').all(userId) as DeviceRow[];
+    return rows.map(mapDeviceRow);
+  }
+
+  getDeviceForUser(deviceId: string, userId: string): DeviceRecord | null {
+    const row = this.db.prepare('SELECT * FROM devices WHERE device_id = ? AND user_id = ?').get(deviceId, userId) as DeviceRow | undefined;
+    return row ? mapDeviceRow(row) : null;
+  }
+
+  updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now = new Date().toISOString()): DeviceRecord | null {
+    const token = expoPushToken.trim();
+    const tx = this.db.transaction(() => {
+      if (token) this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE expo_push_token = ?').run(now, token);
+      this.db.prepare('UPDATE devices SET expo_push_token = ?, updated_at = ? WHERE device_id = ? AND user_id = ?').run(token || null, now, deviceId, userId);
+    });
+    tx();
+    return this.getDeviceForUser(deviceId, userId);
+  }
+
+  unregisterDevice(deviceId: string, userId: string, now = new Date().toISOString()): DeviceRecord | null {
+    this.db.prepare('UPDATE devices SET unregistered_at = ?, expo_push_token = NULL, updated_at = ? WHERE device_id = ? AND user_id = ?').run(now, now, deviceId, userId);
+    return this.getDeviceForUser(deviceId, userId);
+  }
+
   writeAuditEvent(organizationId: string, userId: string, eventType: string, targetId: string, payload: unknown, now = new Date().toISOString()): void {
     this.db
       .prepare('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -298,6 +372,21 @@ function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
     lastRequestAt: row.last_request_at ?? undefined,
     createdAt: row.created_at,
     revokedAt: row.revoked_at ?? undefined
+  };
+}
+
+function mapDeviceRow(row: DeviceRow): DeviceRecord {
+  return {
+    deviceId: row.device_id,
+    userId: row.user_id,
+    organizationId: row.organization_id,
+    name: row.name,
+    platform: row.platform ?? undefined,
+    installationId: row.installation_id ?? undefined,
+    expoPushToken: row.expo_push_token ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    unregisteredAt: row.unregistered_at ?? undefined
   };
 }
 
@@ -369,6 +458,10 @@ function missingApproval(id: string): never {
   throw new Error(`approval request ${id} was not created`);
 }
 
+function missingDevice(id: string): never {
+  throw new Error(`device ${id} was not created`);
+}
+
 interface AgentTokenRow {
   agent_id: string;
   organization_id: string;
@@ -379,6 +472,19 @@ interface AgentTokenRow {
   last_request_at: string | null;
   created_at: string;
   revoked_at: string | null;
+}
+
+interface DeviceRow {
+  device_id: string;
+  user_id: string;
+  organization_id: string;
+  name: string;
+  platform: string | null;
+  installation_id: string | null;
+  expo_push_token: string | null;
+  created_at: string;
+  updated_at: string;
+  unregistered_at: string | null;
 }
 
 interface ApprovalRow {
@@ -498,6 +604,22 @@ CREATE TABLE IF NOT EXISTS approval_requests (
 );
 
 CREATE INDEX IF NOT EXISTS approval_requests_org_status_idx ON approval_requests(organization_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS devices (
+  device_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  platform TEXT,
+  installation_id TEXT,
+  expo_push_token TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  unregistered_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS devices_user_idx ON devices(user_id, unregistered_at);
+CREATE UNIQUE INDEX IF NOT EXISTS devices_user_installation_idx ON devices(user_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS audit_events (
   event_id INTEGER PRIMARY KEY AUTOINCREMENT,

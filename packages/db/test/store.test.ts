@@ -74,6 +74,31 @@ describe('AgentTickStore', () => {
     ).toThrow(/identity linking/i);
   });
 
+  it('registers devices and moves duplicate push tokens', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const first = store.registerDevice({
+      userId: 'usr_default',
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      deviceName: 'iPhone',
+      installationId: 'install-1',
+      expoPushToken: 'ExponentPushToken[abc]'
+    });
+    const second = store.registerDevice({
+      userId: 'usr_default',
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      deviceName: 'iPad',
+      installationId: 'install-2',
+      expoPushToken: 'ExponentPushToken[abc]'
+    });
+
+    const devices = store.listDevicesForUser('usr_default');
+    expect(devices.find((device) => device.deviceId === first.deviceId)?.expoPushToken).toBeUndefined();
+    expect(devices.find((device) => device.deviceId === second.deviceId)?.expoPushToken).toBe('ExponentPushToken[abc]');
+  });
+
   it('creates and responds to approval requests', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

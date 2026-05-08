@@ -115,6 +115,24 @@ describe('server skeleton', () => {
     expect(createResponse.json()).toMatchObject({ title: 'Deploy?', status: 'pending' });
   });
 
+  it('registers devices for the authenticated human user', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/devices/register',
+      payload: {
+        deviceName: 'iPhone',
+        platform: 'ios',
+        installationId: 'install-1',
+        expoPushToken: 'ExponentPushToken[abc]'
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().deviceId).toMatch(/^dev_/);
+  });
+
   it('allows a human admin to respond to an approval request', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
     const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
