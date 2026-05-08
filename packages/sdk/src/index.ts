@@ -8,12 +8,18 @@ import {
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
   CreateOrganizationSchema,
+  DeviceCredentialSchema,
+  DeviceRecordSchema,
   EventTicketResponseSchema,
   HealthResponseSchema,
   MeResponseSchema,
   OrganizationMembershipSchema,
+  PairDeviceRequestSchema,
   PairingTokenSchema,
+  RegisterDeviceResponseSchema,
+  RegisterDeviceSchema,
   RespondApprovalRequestSchema,
+  UpdateDevicePushTokenSchema,
   WaitApprovalResponseSchema,
   type AgentCredential,
   type AgentTokenRecord,
@@ -23,12 +29,18 @@ import {
   type CreateAgentToken,
   type CreateApprovalRequest,
   type CreateOrganization,
+  type DeviceCredential,
+  type DeviceRecord,
   type EventTicketResponse,
   type HealthResponse,
   type MeResponse,
   type OrganizationMembership,
+  type PairDeviceRequest,
   type PairingToken,
+  type RegisterDevice,
+  type RegisterDeviceResponse,
   type RespondApprovalRequest,
+  type UpdateDevicePushToken,
   type WaitApprovalResponse
 } from '@agent-tick/shared';
 
@@ -141,6 +153,32 @@ export class AgentTickClient {
     return this.#request('POST', '/v1/pairing-tokens', PairingTokenSchema, { body: {} });
   }
 
+  pairDevice(input: PairDeviceRequest): Promise<DeviceCredential> {
+    return this.#request('POST', '/v1/devices/pair', DeviceCredentialSchema, {
+      body: PairDeviceRequestSchema.parse(input)
+    });
+  }
+
+  listDevices(): Promise<DeviceRecord[]> {
+    return this.#request('GET', '/v1/devices', DeviceRecordSchema.array());
+  }
+
+  registerDevice(input: RegisterDevice): Promise<RegisterDeviceResponse> {
+    return this.#request('POST', '/v1/devices/register', RegisterDeviceResponseSchema, {
+      body: RegisterDeviceSchema.parse(input)
+    });
+  }
+
+  updateDevicePushToken(id: string, input: UpdateDevicePushToken): Promise<DeviceRecord> {
+    return this.#request('POST', `/v1/devices/${encodeURIComponent(id)}/push-token`, DeviceRecordSchema, {
+      body: UpdateDevicePushTokenSchema.parse(input)
+    });
+  }
+
+  unregisterDevice(id: string): Promise<DeviceRecord> {
+    return this.#request('POST', `/v1/devices/${encodeURIComponent(id)}/unregister`, DeviceRecordSchema, { body: {} });
+  }
+
   async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown } = {}): Promise<T> {
     const headers = new Headers();
     headers.set('Accept', 'application/json');
@@ -201,11 +239,17 @@ export type {
   CreateAgentToken,
   CreateApprovalRequest,
   CreateOrganization,
+  DeviceCredential,
+  DeviceRecord,
   EventTicketResponse,
   HealthResponse,
   MeResponse,
   OrganizationMembership,
+  PairDeviceRequest,
   PairingToken,
+  RegisterDevice,
+  RegisterDeviceResponse,
   RespondApprovalRequest,
+  UpdateDevicePushToken,
   WaitApprovalResponse
 };

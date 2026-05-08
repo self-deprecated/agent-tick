@@ -201,6 +201,39 @@ export const DeviceCredentialSchema = z.object({
 });
 export type DeviceCredential = z.infer<typeof DeviceCredentialSchema>;
 
+export const RegisterDeviceSchema = z.object({
+  deviceName: z.string().min(1),
+  platform: z.string().optional(),
+  installationId: z.string().optional(),
+  expoPushToken: z.string().optional()
+});
+export type RegisterDevice = z.input<typeof RegisterDeviceSchema>;
+
+export const RegisterDeviceResponseSchema = z.object({
+  deviceId: z.string()
+});
+export type RegisterDeviceResponse = z.infer<typeof RegisterDeviceResponseSchema>;
+
+export const DeviceRecordSchema = z.object({
+  deviceId: z.string(),
+  userId: z.string(),
+  organizationId: z.string(),
+  name: z.string(),
+  platform: z.string().optional(),
+  installationId: z.string().optional(),
+  expoPushToken: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  unregisteredAt: z.string().optional()
+});
+export type DeviceRecord = z.infer<typeof DeviceRecordSchema>;
+
+export const UpdateDevicePushTokenSchema = z.object({
+  expoPushToken: z.string().optional(),
+  token: z.string().optional()
+}).refine((value) => Boolean(value.expoPushToken || value.token), { message: 'expoPushToken is required' });
+export type UpdateDevicePushToken = z.input<typeof UpdateDevicePushTokenSchema>;
+
 export const EventTicketResponseSchema = z.object({
   ticket: z.string(),
   expiresAt: z.string()

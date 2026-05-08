@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiErrorEnvelopeSchema, AuthConfigSchema, CreateApprovalRequestSchema } from '../src/index.js';
+import { ApiErrorEnvelopeSchema, AuthConfigSchema, CreateApprovalRequestSchema, UpdateDevicePushTokenSchema } from '../src/index.js';
 
 describe('shared schemas', () => {
   it('validates public auth config', () => {
@@ -22,6 +22,11 @@ describe('shared schemas', () => {
     expect(() =>
       CreateApprovalRequestSchema.parse({ requester: { name: 'agent' }, title: '' })
     ).toThrow();
+  });
+
+  it('validates device push-token aliases', () => {
+    expect(UpdateDevicePushTokenSchema.parse({ token: 'ExponentPushToken[1]' })).toEqual({ token: 'ExponentPushToken[1]' });
+    expect(() => UpdateDevicePushTokenSchema.parse({})).toThrow();
   });
 
   it('validates structured API errors', () => {

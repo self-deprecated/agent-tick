@@ -40,6 +40,46 @@ describe('AgentTickClient', () => {
     });
   });
 
+  it('calls device endpoints with validated payloads', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        requests.push({
+          url: String(input),
+          method: init?.method,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined
+        });
+        const url = String(input);
+        if (url.endsWith('/v1/devices/register')) return jsonResponse({ deviceId: 'dev_123' });
+        if (url.endsWith('/v1/devices/pair')) return jsonResponse({ deviceId: 'dev_123', token: 'dtok_123' });
+        return jsonResponse({
+          deviceId: 'dev_123',
+          userId: 'usr_123',
+          organizationId: 'org_123',
+          name: 'Phone',
+          platform: 'ios',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z'
+        });
+      }
+    });
+
+    await expect(client.registerDevice({ deviceName: 'Phone', platform: 'ios', expoPushToken: 'ExponentPushToken[1]' })).resolves.toEqual({
+      deviceId: 'dev_123'
+    });
+    await expect(client.pairDevice({ token: 'pair_123', deviceName: 'Phone' })).resolves.toEqual({ deviceId: 'dev_123', token: 'dtok_123' });
+    await expect(client.updateDevicePushToken('dev_123', { token: 'ExponentPushToken[2]' })).resolves.toMatchObject({ deviceId: 'dev_123' });
+    await expect(client.unregisterDevice('dev_123')).resolves.toMatchObject({ deviceId: 'dev_123' });
+
+    expect(requests.map((request) => [request.method, request.url, request.body])).toEqual([
+      ['POST', 'https://tick.example.com/v1/devices/register', { deviceName: 'Phone', platform: 'ios', expoPushToken: 'ExponentPushToken[1]' }],
+      ['POST', 'https://tick.example.com/v1/devices/pair', { token: 'pair_123', deviceName: 'Phone' }],
+      ['POST', 'https://tick.example.com/v1/devices/dev_123/push-token', { token: 'ExponentPushToken[2]' }],
+      ['POST', 'https://tick.example.com/v1/devices/dev_123/unregister', {}]
+    ]);
+  });
+
   it('validates response schemas', async () => {
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com',
