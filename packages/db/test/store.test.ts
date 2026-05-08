@@ -87,6 +87,22 @@ describe('AgentTickStore', () => {
     ).toThrow(/identity linking/i);
   });
 
+  it('creates short-lived event tickets without storing plaintext tickets', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const ticket = store.createEventTicket(
+      { source: 'agent', organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_123', ttlSeconds: 30 },
+      '2026-05-08T00:00:00.000Z'
+    );
+
+    expect(ticket.ticket).toMatch(/^evt_/);
+    expect(JSON.stringify(store.db.prepare('SELECT * FROM event_tickets').all())).not.toContain(ticket.ticket);
+    expect(store.verifyEventTicket(ticket.ticket, '2026-05-08T00:00:10.000Z')).toMatchObject({ organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_123' });
+    expect(store.verifyEventTicket(ticket.ticket, '2026-05-08T00:01:00.000Z')).toBeNull();
+  });
+
   it('registers devices and moves duplicate push tokens', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

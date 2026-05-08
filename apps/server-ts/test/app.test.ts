@@ -130,6 +130,29 @@ describe('server skeleton', () => {
     expect(createResponse.json()).toMatchObject({ title: 'Deploy?', status: 'pending' });
   });
 
+  it('issues short-lived event tickets instead of using bearer tokens in event query strings', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+    const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
+    const token = tokenResponse.json().token as string;
+
+    const ticketResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/events/ticket',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {}
+    });
+    expect(ticketResponse.statusCode).toBe(200);
+    expect(ticketResponse.json().ticket).toMatch(/^evt_/);
+
+    const events = await app.inject({ method: 'GET', url: `/v1/events?ticket=${encodeURIComponent(ticketResponse.json().ticket)}` });
+    expect(events.statusCode).toBe(200);
+    expect(events.headers['content-type']).toContain('text/event-stream');
+    expect(events.body).toContain('event: ready');
+
+    const invalid = await app.inject({ method: 'GET', url: '/v1/events?ticket=bad' });
+    expect(invalid.statusCode).toBe(401);
+  });
+
   it('registers devices for the authenticated human user', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
 

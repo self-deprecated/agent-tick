@@ -8,6 +8,7 @@ import {
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
   CreateOrganizationSchema,
+  EventTicketResponseSchema,
   HealthResponseSchema,
   MeResponseSchema,
   OrganizationMembershipSchema,
@@ -21,6 +22,7 @@ import {
   type CreateAgentToken,
   type CreateApprovalRequest,
   type CreateOrganization,
+  type EventTicketResponse,
   type HealthResponse,
   type MeResponse,
   type OrganizationMembership,
@@ -125,6 +127,10 @@ export class AgentTickClient {
     });
   }
 
+  createEventTicket(): Promise<EventTicketResponse> {
+    return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
+  }
+
   async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown } = {}): Promise<T> {
     const headers = new Headers();
     headers.set('Accept', 'application/json');
@@ -185,6 +191,7 @@ export type {
   CreateAgentToken,
   CreateApprovalRequest,
   CreateOrganization,
+  EventTicketResponse,
   HealthResponse,
   MeResponse,
   OrganizationMembership,

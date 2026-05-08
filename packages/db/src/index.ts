@@ -102,6 +102,27 @@ export interface DeviceRecord {
   unregisteredAt: string | undefined;
 }
 
+export interface EventTicketInput {
+  source: string;
+  organizationId: string;
+  userId?: string;
+  agentId?: string;
+  ttlSeconds?: number;
+}
+
+export interface EventTicketRecord {
+  ticket: string;
+  expiresAt: string;
+}
+
+export interface EventTicketAuth {
+  source: string;
+  organizationId: string;
+  userId: string | undefined;
+  agentId: string | undefined;
+  expiresAt: string;
+}
+
 export class AgentTickStore {
   readonly db: Database.Database;
 
@@ -402,6 +423,32 @@ export class AgentTickStore {
     return this.getDeviceForUser(deviceId, userId);
   }
 
+  createEventTicket(input: EventTicketInput, now = new Date().toISOString()): EventTicketRecord {
+    const ticket = `evt_${randomToken()}`;
+    const ttlSeconds = Math.min(Math.max(input.ttlSeconds ?? 60, 5), 300);
+    const expiresAt = new Date(new Date(now).getTime() + ttlSeconds * 1000).toISOString();
+    this.db
+      .prepare('INSERT INTO event_tickets(ticket_hash, source, organization_id, user_id, agent_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(hashToken(ticket), input.source, input.organizationId, input.userId ?? null, input.agentId ?? null, expiresAt, now);
+    return { ticket, expiresAt };
+  }
+
+  verifyEventTicket(ticket: string, now = new Date().toISOString()): EventTicketAuth | null {
+    if (!ticket.startsWith('evt_')) return null;
+    const row = this.db
+      .prepare('SELECT * FROM event_tickets WHERE ticket_hash = ? AND expires_at > ?')
+      .get(hashToken(ticket), now) as EventTicketRow | undefined;
+    if (!row) return null;
+    this.db.prepare('UPDATE event_tickets SET last_used_at = ? WHERE ticket_hash = ?').run(now, hashToken(ticket));
+    return {
+      source: row.source,
+      organizationId: row.organization_id,
+      userId: row.user_id ?? undefined,
+      agentId: row.agent_id ?? undefined,
+      expiresAt: row.expires_at
+    };
+  }
+
   writeAuditEvent(organizationId: string, userId: string, eventType: string, targetId: string, payload: unknown, now = new Date().toISOString()): void {
     this.db
       .prepare('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -551,6 +598,17 @@ interface AgentTokenRow {
   revoked_at: string | null;
 }
 
+interface EventTicketRow {
+  ticket_hash: string;
+  source: string;
+  organization_id: string;
+  user_id: string | null;
+  agent_id: string | null;
+  expires_at: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
 interface DeviceRow {
   device_id: string;
   user_id: string;
@@ -681,6 +739,19 @@ CREATE TABLE IF NOT EXISTS approval_requests (
 );
 
 CREATE INDEX IF NOT EXISTS approval_requests_org_status_idx ON approval_requests(organization_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS event_tickets (
+  ticket_hash TEXT PRIMARY KEY,
+  source TEXT NOT NULL,
+  organization_id TEXT NOT NULL,
+  user_id TEXT,
+  agent_id TEXT,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS event_tickets_expires_idx ON event_tickets(expires_at);
 
 CREATE TABLE IF NOT EXISTS devices (
   device_id TEXT PRIMARY KEY,
