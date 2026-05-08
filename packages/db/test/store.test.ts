@@ -290,7 +290,10 @@ describe('AgentTickStore', () => {
     expect(ticket.ticket).toMatch(/^evt_/);
     expect(JSON.stringify(store.db.prepare('SELECT * FROM event_tickets').all())).not.toContain(ticket.ticket);
     expect(store.verifyEventTicket(ticket.ticket, '2026-05-08T00:00:10.000Z')).toMatchObject({ organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_123' });
-    expect(store.verifyEventTicket(ticket.ticket, '2026-05-08T00:01:00.000Z')).toBeNull();
+    expect(store.verifyEventTicket(ticket.ticket, '2026-05-08T00:00:11.000Z')).toBeNull();
+
+    const expired = store.createEventTicket({ source: 'agent', organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_123', ttlSeconds: 5 }, '2026-05-08T00:00:00.000Z');
+    expect(store.verifyEventTicket(expired.ticket, '2026-05-08T00:01:00.000Z')).toBeNull();
   });
 
   it('cleans retained operational history when retention policies are configured', () => {

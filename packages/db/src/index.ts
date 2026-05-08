@@ -1502,7 +1502,8 @@ export class AgentTickStore {
       .prepare('SELECT * FROM event_tickets WHERE ticket_hash = ? AND expires_at > ?')
       .get(hashToken(ticket), now) as EventTicketRow | undefined;
     if (!row) return null;
-    this.db.prepare('UPDATE event_tickets SET last_used_at = ? WHERE ticket_hash = ?').run(now, hashToken(ticket));
+    const used = this.db.prepare('UPDATE event_tickets SET last_used_at = ? WHERE ticket_hash = ? AND last_used_at IS NULL').run(now, hashToken(ticket));
+    if (used.changes === 0) return null;
     return {
       source: row.source,
       organizationId: row.organization_id,

@@ -170,9 +170,11 @@ Recommended action: decide whether to keep this as normal schema evolution suppo
 
 ### Event tickets are reusable until expiry
 
-Current event stream tickets are short-lived opaque tickets, satisfying the requirement to avoid bearer tokens in query strings. However, they are reusable until expiry.
+Status: addressed by making event stream tickets one-use while keeping them short-lived and opaque.
 
-Recommended action: consider one-use or stream-bound tickets if stricter replay resistance is desired.
+Current event stream tickets satisfy the requirement to avoid bearer tokens in query strings.
+
+Recommended action: keep clients creating a fresh ticket for every EventSource connection/reconnect.
 
 ### Rate limiting is in-memory and per-process
 
