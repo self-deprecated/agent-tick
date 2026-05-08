@@ -123,6 +123,31 @@ export interface CreateTeamInput {
   description?: string;
 }
 
+export interface PolicyRecord {
+  policyId: string;
+  organizationId: string;
+  name: string;
+  description: string | undefined;
+  projectId: string | undefined;
+  teamId: string | undefined;
+  requiredApprovals: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | undefined;
+}
+
+export interface CreatePolicyInput {
+  organizationId: string;
+  userId: string;
+  name: string;
+  description?: string;
+  projectId?: string;
+  teamId?: string;
+  requiredApprovals?: number;
+  enabled?: boolean;
+}
+
 export interface DeviceRegistrationInput {
   userId: string;
   organizationId: string;
@@ -403,6 +428,54 @@ export class AgentTickStore {
       `)
       .all(teamId) as TeamMembershipRow[];
     return rows.map(mapTeamMembershipRow);
+  }
+
+  listPolicies(organizationId = DEFAULT_ORGANIZATION_ID): PolicyRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM policies WHERE organization_id = ? ORDER BY archived_at IS NOT NULL, name COLLATE NOCASE ASC')
+      .all(organizationId) as PolicyRow[];
+    return rows.map(mapPolicyRow);
+  }
+
+  createPolicy(input: CreatePolicyInput, now = new Date().toISOString()): PolicyRecord {
+    if (input.projectId && !this.projectBelongsToOrganization(input.projectId, input.organizationId)) {
+      throw httpError(400, 'bad_request', 'Project is not in the selected organization');
+    }
+    if (input.teamId && !this.teamBelongsToOrganization(input.teamId, input.organizationId)) {
+      throw httpError(400, 'bad_request', 'Team is not in the selected organization');
+    }
+    const policyId = newID('pol');
+    const cleanName = input.name.trim();
+    const requiredApprovals = Math.min(Math.max(Math.trunc(input.requiredApprovals ?? 1), 1), 10);
+    this.db
+      .prepare('INSERT INTO policies(policy_id, organization_id, name, description, project_id, team_id, required_approvals, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(
+        policyId,
+        input.organizationId,
+        cleanName,
+        input.description?.trim() || null,
+        input.projectId ?? null,
+        input.teamId ?? null,
+        requiredApprovals,
+        input.enabled === false ? 0 : 1,
+        now,
+        now
+      );
+    this.writeAuditEvent(input.organizationId, input.userId, 'policy.created', policyId, { name: cleanName, requiredApprovals }, now);
+    return this.getPolicy(policyId) ?? missingPolicy(policyId);
+  }
+
+  getPolicy(policyId: string): PolicyRecord | null {
+    const row = this.db.prepare('SELECT * FROM policies WHERE policy_id = ?').get(policyId) as PolicyRow | undefined;
+    return row ? mapPolicyRow(row) : null;
+  }
+
+  projectBelongsToOrganization(projectId: string, organizationId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM projects WHERE project_id = ? AND organization_id = ?').get(projectId, organizationId));
+  }
+
+  teamBelongsToOrganization(teamId: string, organizationId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM teams WHERE team_id = ? AND organization_id = ?').get(teamId, organizationId));
   }
 
   createAgentToken(input: CreateAgentTokenInput, now = new Date().toISOString()): AgentCredential {
@@ -772,6 +845,22 @@ function mapTeamMembershipRow(row: TeamMembershipRow): TeamMembershipRecord {
   };
 }
 
+function mapPolicyRow(row: PolicyRow): PolicyRecord {
+  return {
+    policyId: row.policy_id,
+    organizationId: row.organization_id,
+    name: row.name,
+    description: row.description ?? undefined,
+    projectId: row.project_id ?? undefined,
+    teamId: row.team_id ?? undefined,
+    requiredApprovals: row.required_approvals,
+    enabled: Boolean(row.enabled),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? undefined
+  };
+}
+
 function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
   return {
     agentId: row.agent_id,
@@ -936,6 +1025,10 @@ function missingTeam(id: string): never {
   throw new Error(`team ${id} was not created`);
 }
 
+function missingPolicy(id: string): never {
+  throw new Error(`policy ${id} was not created`);
+}
+
 function missingAvailability(userId: string): never {
   throw new Error(`availability for ${userId} was not saved`);
 }
@@ -983,6 +1076,20 @@ interface TeamRow {
 interface TeamMembershipRow extends TeamRow {
   user_id: string;
   role: string;
+}
+
+interface PolicyRow {
+  policy_id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  project_id: string | null;
+  team_id: string | null;
+  required_approvals: number;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
 }
 
 interface OrganizationMembershipRow {
@@ -1155,6 +1262,22 @@ CREATE TABLE IF NOT EXISTS team_memberships (
 );
 
 CREATE INDEX IF NOT EXISTS team_memberships_user_idx ON team_memberships(organization_id, user_id);
+
+CREATE TABLE IF NOT EXISTS policies (
+  policy_id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  description TEXT,
+  project_id TEXT REFERENCES projects(project_id),
+  team_id TEXT REFERENCES teams(team_id),
+  required_approvals INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS policies_org_idx ON policies(organization_id, enabled, archived_at, name);
 
 CREATE TABLE IF NOT EXISTS agent_tokens (
   agent_id TEXT PRIMARY KEY,

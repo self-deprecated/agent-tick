@@ -123,6 +123,33 @@ describe('AgentTickClient', () => {
     ]);
   });
 
+  it('calls policy endpoints with validated payloads', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        const policy = {
+          policyId: 'pol_123',
+          organizationId: 'org_123',
+          name: 'Production quorum',
+          requiredApprovals: 2,
+          enabled: true,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z'
+        };
+        return String(input).endsWith('/v1/policies') && init?.method === 'POST' ? jsonResponse(policy) : jsonResponse([policy]);
+      }
+    });
+
+    await expect(client.createPolicy({ name: 'Production quorum', requiredApprovals: 2 })).resolves.toMatchObject({ policyId: 'pol_123' });
+    await expect(client.listPolicies()).resolves.toEqual([expect.objectContaining({ policyId: 'pol_123' })]);
+    expect(requests).toEqual([
+      { method: 'POST', url: 'https://tick.example.com/v1/policies', body: { name: 'Production quorum', requiredApprovals: 2, enabled: true } },
+      { method: 'GET', url: 'https://tick.example.com/v1/policies', body: undefined }
+    ]);
+  });
+
   it('calls organization member endpoint', async () => {
     const seen: { url?: string; method?: string } = {};
     const client = new AgentTickClient({

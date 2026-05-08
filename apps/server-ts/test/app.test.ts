@@ -143,6 +143,19 @@ describe('server skeleton', () => {
     expect(teamMembers.statusCode).toBe(200);
     expect(teamMembers.json()).toEqual([expect.objectContaining({ teamId: team.json().teamId, userId: 'usr_default' })]);
 
+    const policy = await app.inject({
+      method: 'POST',
+      url: '/v1/policies',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { name: 'Production quorum', projectId: project.json().projectId, teamId: team.json().teamId, requiredApprovals: 2 }
+    });
+    expect(policy.statusCode).toBe(200);
+    expect(policy.json()).toMatchObject({ organizationId, name: 'Production quorum', requiredApprovals: 2, enabled: true });
+
+    const policies = await app.inject({ method: 'GET', url: '/v1/policies', headers: { 'x-agent-tick-organization-id': organizationId } });
+    expect(policies.statusCode).toBe(200);
+    expect(policies.json()).toEqual([expect.objectContaining({ policyId: policy.json().policyId })]);
+
     const forbidden = await app.inject({ method: 'GET', url: '/v1/me', headers: { 'x-agent-tick-organization-id': 'org_missing' } });
     expect(forbidden.statusCode).toBe(403);
   });

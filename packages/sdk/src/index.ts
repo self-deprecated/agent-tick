@@ -18,11 +18,13 @@ import {
   OrganizationMembershipSchema,
   PairDeviceRequestSchema,
   PairingTokenSchema,
+  PolicyRecordSchema,
   ProjectRecordSchema,
   RegisterDeviceResponseSchema,
   RegisterDeviceSchema,
   RespondApprovalRequestSchema,
   CreateProjectSchema,
+  CreatePolicySchema,
   TeamMembershipSchema,
   TeamRecordSchema,
   UpdateDevicePushTokenSchema,
@@ -36,6 +38,7 @@ import {
   type CreateAgentToken,
   type CreateApprovalRequest,
   type CreateOrganization,
+  type CreatePolicy,
   type CreateProject,
   type CreateTeam,
   type DeviceCredential,
@@ -46,6 +49,7 @@ import {
   type OrganizationMembership,
   type PairDeviceRequest,
   type PairingToken,
+  type PolicyRecord,
   type ProjectRecord,
   type RegisterDevice,
   type RegisterDeviceResponse,
@@ -196,6 +200,16 @@ export class AgentTickClient {
     return this.#request('GET', `/v1/teams/${encodeURIComponent(teamId)}/members`, TeamMembershipSchema.array());
   }
 
+  listPolicies(): Promise<PolicyRecord[]> {
+    return this.#request('GET', '/v1/policies', PolicyRecordSchema.array());
+  }
+
+  createPolicy(input: CreatePolicy): Promise<PolicyRecord> {
+    return this.#request('POST', '/v1/policies', PolicyRecordSchema, {
+      body: CreatePolicySchema.parse(input)
+    });
+  }
+
   createEventTicket(): Promise<EventTicketResponse> {
     return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
   }
@@ -291,6 +305,7 @@ export type {
   CreateAgentToken,
   CreateApprovalRequest,
   CreateOrganization,
+  CreatePolicy,
   CreateProject,
   CreateTeam,
   DeviceCredential,
@@ -301,6 +316,7 @@ export type {
   OrganizationMembership,
   PairDeviceRequest,
   PairingToken,
+  PolicyRecord,
   ProjectRecord,
   RegisterDevice,
   RegisterDeviceResponse,

@@ -12,6 +12,7 @@ import { registerEventRoutes } from './routes/events.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerOrganizationRoutes } from './routes/organizations.js';
 import { registerPairingRoutes } from './routes/pairing.js';
+import { registerPolicyRoutes } from './routes/policies.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerTeamRoutes } from './routes/teams.js';
@@ -57,6 +58,7 @@ export async function buildApp({ config, store }: BuildAppOptions): Promise<Fast
   await registerPresenceRoutes(app, { config, store });
   await registerProjectRoutes(app, { config, store });
   await registerTeamRoutes(app, { config, store });
+  await registerPolicyRoutes(app, { config, store });
   await registerAuditRoutes(app, { config, store });
   await registerEventRoutes(app, { config, store });
 

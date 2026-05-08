@@ -41,6 +41,17 @@ describe('AgentTickStore', () => {
     expect(store.createTeam({ organizationId: created.organizationId, userId: 'usr_default', name: 'Platform' }).slug).toBe('platform-2');
     expect(store.listTeams(created.organizationId).map((entry) => entry.teamId)).toContain(team.teamId);
     expect(store.listTeamMembers(team.teamId)).toEqual([team]);
+
+    const policy = store.createPolicy({
+      organizationId: created.organizationId,
+      userId: 'usr_default',
+      name: 'Production quorum',
+      projectId: project.projectId,
+      teamId: team.teamId,
+      requiredApprovals: 2
+    });
+    expect(policy).toMatchObject({ name: 'Production quorum', projectId: project.projectId, teamId: team.teamId, requiredApprovals: 2, enabled: true });
+    expect(store.listPolicies(created.organizationId)).toEqual([policy]);
   });
 
   it('creates and verifies agent tokens by hash', () => {

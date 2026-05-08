@@ -110,6 +110,31 @@ export const CreateTeamSchema = z.object({
 });
 export type CreateTeam = z.input<typeof CreateTeamSchema>;
 
+export const PolicyRecordSchema = z.object({
+  policyId: z.string(),
+  organizationId: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  projectId: z.string().optional(),
+  teamId: z.string().optional(),
+  requiredApprovals: z.number().int().min(1),
+  enabled: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  archivedAt: z.string().optional()
+});
+export type PolicyRecord = z.infer<typeof PolicyRecordSchema>;
+
+export const CreatePolicySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  projectId: z.string().optional(),
+  teamId: z.string().optional(),
+  requiredApprovals: z.number().int().min(1).max(10).default(1),
+  enabled: z.boolean().default(true)
+});
+export type CreatePolicy = z.input<typeof CreatePolicySchema>;
+
 export const MeResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email().optional(),
