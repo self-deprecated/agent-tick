@@ -178,7 +178,7 @@ Implemented so far:
 - Clerk Backend User profile sync into local users and `auth_identities`.
 - Verified primary email requirement and safe email-collision behavior.
 - Local organization creation, selection, membership validation, and member listing.
-- Project, team, policy foundations, and basic quorum approval policy handling with dashboard management.
+- Project, team, policy foundations, basic quorum approval policy handling, and team-scoped approval responder eligibility with dashboard management.
 - Team member add/update/remove APIs and dashboard management for local organization members.
 - Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens, email/domain restrictions, pending membership self-status, revoked-invite request visibility, pending membership approval/rejection, invite team assignment, and dashboard invite/member-request management.
 - Approval request create/list/get/respond/abandon/wait APIs with local-organization scoping on detail and mutation routes.
@@ -210,7 +210,7 @@ High priority:
 
 Product rebuilds to evaluate/port from the prototype:
 
-- Richer team role/eligibility management beyond basic add/update/remove.
+- Richer team role/eligibility management beyond basic add/update/remove and team-scoped approval eligibility.
 - Policy templates and richer multi-step eligibility/routing policy engine.
 - Notification delivery service beyond stored push tokens.
 - MCP/adapter/guard integrations that still fit the npm CLI model.

@@ -689,4 +689,42 @@ describe('server skeleton', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ status: 'responded', response: { choiceId: 'approve' } });
   });
+
+  it('rejects responders outside a team-scoped approval policy', async () => {
+    const db = testStore();
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: db });
+    const org = await app.inject({ method: 'POST', url: '/v1/organizations', payload: { name: 'Production' } });
+    const organizationId = org.json().organizationId as string;
+    const team = await app.inject({ method: 'POST', url: '/v1/teams', headers: { 'x-agent-tick-organization-id': organizationId }, payload: { name: 'Release' } });
+    const policy = await app.inject({ method: 'POST', url: '/v1/policies', headers: { 'x-agent-tick-organization-id': organizationId }, payload: { name: 'Release team', teamId: team.json().teamId, requiredApprovals: 1 } });
+    const agent = await app.inject({ method: 'POST', url: '/v1/agent-tokens', headers: { 'x-agent-tick-organization-id': organizationId }, payload: { name: 'release agent', teamId: team.json().teamId, defaultApprovalPolicy: policy.json().policyId } });
+    db.db.prepare('INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('usr_teammate', 'teammate@example.com', 1, 'Teammate', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
+    db.db.prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(organizationId, 'usr_teammate', 'member', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
+    const pairing = db.createPairingToken('usr_teammate', organizationId, '2026-05-08T00:00:00.000Z');
+    const device = db.pairDeviceWithCode(pairing.token, 'Teammate phone', 'ios', '2026-05-08T00:00:01.000Z');
+    const approval = await app.inject({
+      method: 'POST',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${agent.json().token}` },
+      payload: { requester: { name: 'release agent' }, title: 'Deploy release?' }
+    });
+
+    const rejected = await app.inject({
+      method: 'POST',
+      url: `/v1/approval-requests/${approval.json().id}/responses`,
+      headers: { authorization: `Bearer ${device!.token}` },
+      payload: { choiceId: 'approve' }
+    });
+    expect(rejected.statusCode).toBe(403);
+    expect(rejected.json()).toMatchObject({ error: { code: 'forbidden' } });
+
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/v1/approval-requests/${approval.json().id}/responses`,
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { choiceId: 'approve' }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({ status: 'responded', response: { choiceId: 'approve' } });
+  });
 });

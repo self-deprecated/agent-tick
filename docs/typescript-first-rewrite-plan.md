@@ -981,7 +981,7 @@ Inventory each current Go feature and decide keep/drop/redesign.
 Likely keep:
 
 - approval choices/freeform responses
-- project/team/policy concepts
+- project/team/policy concepts, including team-scoped approval responder eligibility
 - agent token management
 - invites, if multi-user onboarding still needs them with Clerk
 - audit logs

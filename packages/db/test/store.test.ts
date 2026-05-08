@@ -160,6 +160,25 @@ describe('AgentTickStore', () => {
     expect(store.organizationMembershipForUserAnyStatus(alice.userId, created.organizationId)).toBeNull();
   });
 
+  it('enforces team-scoped approval policy responder eligibility', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const created = store.createOrganizationForUser('usr_default', 'Production');
+    const team = store.createTeam({ organizationId: created.organizationId, userId: 'usr_default', name: 'Release' });
+    const policy = store.createPolicy({ organizationId: created.organizationId, userId: 'usr_default', name: 'Release team', teamId: team.teamId, requiredApprovals: 1 });
+    store.db.prepare('INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('usr_teammate', 'teammate@example.com', 1, 'Teammate', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
+    store.db.prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(created.organizationId, 'usr_teammate', 'member', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
+    const approval = store.createApprovalRequest(
+      { organizationId: created.organizationId, requester: { name: 'agent' }, title: 'Deploy?', metadata: { defaultApprovalPolicy: policy.policyId } },
+      '2026-05-08T00:00:00.000Z'
+    );
+
+    expect(() => store!.respondToApprovalRequestForOrganization(approval.id, created.organizationId, { choiceId: 'approve' }, 'usr_teammate')).toThrow(/team approval policy/i);
+    expect(store.respondToApprovalRequestForOrganization(approval.id, created.organizationId, { choiceId: 'approve' }, 'usr_default')).toMatchObject({ status: 'responded' });
+  });
+
   it('creates and verifies agent tokens by hash', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();
@@ -397,6 +416,7 @@ describe('AgentTickStore', () => {
     store.migrate();
     store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
     store.db.prepare('INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('usr_second', 'second@example.com', 1, 'Second', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
+    store.db.prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(DEFAULT_ORGANIZATION_ID, 'usr_second', 'approver', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
     const policy = store.createPolicy({
       organizationId: DEFAULT_ORGANIZATION_ID,
       userId: 'usr_default',

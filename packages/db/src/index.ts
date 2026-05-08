@@ -1262,6 +1262,24 @@ export class AgentTickStore {
     return policy ?? null;
   }
 
+  private assertApprovalResponderEligible(row: ApprovalRow, responderUserId: string, policy: PolicyRow | null): void {
+    const membership = this.organizationMembershipForUser(responderUserId, row.organization_id);
+    if (!membership) throw httpError(403, 'forbidden', 'Responder is not an active member of this organization');
+    if (!approvalOrganizationRoleCanRespond(membership.role)) throw httpError(403, 'forbidden', 'Responder role is not eligible to approve requests');
+    if (!policy?.team_id) return;
+    const teamRole = this.teamMembershipRole(policy.team_id, row.organization_id, responderUserId);
+    if (!teamRole || !approvalTeamRoleCanRespond(teamRole)) {
+      throw httpError(403, 'forbidden', 'Responder is not eligible for this team approval policy');
+    }
+  }
+
+  private teamMembershipRole(teamId: string, organizationId: string, userId: string): string | null {
+    const row = this.db
+      .prepare('SELECT role FROM team_memberships WHERE team_id = ? AND organization_id = ? AND user_id = ?')
+      .get(teamId, organizationId, userId) as { role: string } | undefined;
+    return row?.role ?? null;
+  }
+
   private respondToApprovalRow(row: ApprovalRow, response: RespondApprovalRequest, responderUserId: string, now: string): ApprovalRequest {
     const parsed = RespondApprovalRequestSchema.parse(response);
     const current = this.mapApprovalWithProgress(row, responderUserId);
@@ -1270,6 +1288,7 @@ export class AgentTickStore {
       throw new Error(`unknown choiceId: ${parsed.choiceId}`);
     }
     const policy = this.approvalPolicyForRow(row);
+    this.assertApprovalResponderEligible(row, responderUserId, policy);
     if (policy && policy.required_approvals > 1 && parsed.choiceId) {
       this.recordApprovalVote(row.id, policy.policy_id, responderUserId, parsed, now);
       this.writeAuditEvent(row.organization_id, responderUserId, 'approval.vote_recorded', row.id, { policyId: policy.policy_id, choiceId: parsed.choiceId }, now);
@@ -1811,6 +1830,14 @@ function retentionCutoff(now: string, days: number): string {
   const timestamp = Date.parse(now);
   if (Number.isNaN(timestamp)) throw new Error('retention cleanup requires a valid ISO timestamp');
   return new Date(timestamp - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function approvalOrganizationRoleCanRespond(role: string): boolean {
+  return ['owner', 'admin', 'approver', 'member'].includes(role);
+}
+
+function approvalTeamRoleCanRespond(role: string): boolean {
+  return ['owner', 'lead', 'member'].includes(role);
 }
 
 function httpError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
