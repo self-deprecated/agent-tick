@@ -156,9 +156,11 @@ Recommended action: either prepare/publish the CLI package later or keep docs on
 
 ### Notification docs mention unimplemented sinks
 
-`docs/integrations.md` documents Slack, Teams, SMTP, and multiple webhook env vars. Current implementation supports Expo push plus `AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL`.
+Status: addressed by narrowing `docs/integrations.md` to current Expo push plus `AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL` support.
 
-Recommended action: align docs with current support or implement the additional sinks intentionally.
+Previous docs mentioned Slack, Teams, SMTP, and multiple webhook env vars that are not currently implemented.
+
+Recommended action: add provider-specific notification docs only with matching implementation and tests.
 
 ### Additive database migration helpers remain
 
