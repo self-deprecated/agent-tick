@@ -268,6 +268,16 @@ a {
 	color: #842323;
 }
 
+.success {
+	margin: 0;
+	border: 1px solid #a8cfa2;
+	border-radius: 12px;
+	background: #f0fff0;
+	color: #246b24;
+	padding: 0.75rem;
+	font-weight: 700;
+}
+
 .error {
 	margin: 0;
 	border-radius: 12px;

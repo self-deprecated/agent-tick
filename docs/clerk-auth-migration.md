@@ -193,7 +193,7 @@ Implemented so far:
 - Mobile uses the shared SDK for organization discovery, approval list/respond, presence, and device pair/register/unregister/push flows.
 - Audit-event table, event recording, route, SDK method, and dashboard display.
 - SDK token provider and organization provider support.
-- Svelte dashboard Clerk sign-in, local organization selector, token management, audit view, and pairing code UI.
+- Svelte dashboard Clerk sign-in, invite preview/continuation, local organization selector, token management, audit view, and pairing code UI.
 - Docker image build for the TypeScript server plus static Svelte admin assets.
 - Initial in-memory rate limits for auth-sensitive token endpoints.
 
@@ -203,7 +203,7 @@ High priority:
 
 - Harden mobile Clerk UX beyond the first email/password sign-in path, including OAuth/deep-link flows where needed.
 - Add event-ticket based streaming clients if polling becomes insufficient.
-- Add signed-out invite continuation polish for new Clerk accounts.
+- Broaden signed-out invite continuation coverage with deep-link/OAuth provider-specific tests.
 
 Product rebuilds to evaluate/port from the prototype:
 

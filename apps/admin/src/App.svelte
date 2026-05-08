@@ -3,11 +3,13 @@
 	import {
 		AgentTickApiError,
 		AgentTickClient,
+		type AcceptInviteResponse,
 		type AgentCredential,
 		type AgentTokenRecord,
 		type ApprovalRequest,
 		type AuditEventRecord,
 		type AuthConfig,
+		type InvitePreview,
 		type OrganizationInviteRecord,
 		type OrganizationMembership,
 		type OrganizationMembershipRequestRecord,
@@ -19,6 +21,8 @@
 	} from '@agent-tick/sdk';
 	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
 	import type { AdminConfig } from './app';
+	import { inviteTokenFromLocation } from './inviteRouting';
+	import { inviteAcceptedMessage } from './inviteStatus';
 
 	const adminTokenStorageKey = 'agent_tick_admin_token';
 	const organizationStorageKey = 'agent_tick_organization_id';
@@ -38,6 +42,12 @@
 	let teamMembers = $state<Record<string, TeamMembership[]>>({});
 	let policies = $state<PolicyRecord[]>([]);
 	let selectedOrganizationId = $state('');
+	let inviteToken = $state('');
+	let invitePreview = $state<InvitePreview | undefined>();
+	let inviteAccepted = $state<AcceptInviteResponse | undefined>();
+	let inviteStatus = $state<'idle' | 'loading' | 'ready' | 'accepting' | 'accepted' | 'error'>('idle');
+	let inviteError = $state('');
+	let inviteAutoAcceptAttempted = $state(false);
 	let newOrganizationName = $state('');
 	let newInviteEmail = $state('');
 	let newInviteDomain = $state('');
@@ -81,8 +91,64 @@
 	onMount(() => {
 		adminToken = localStorage.getItem(adminTokenStorageKey) ?? '';
 		selectedOrganizationId = localStorage.getItem(organizationStorageKey) ?? '';
+		syncInviteTokenFromLocation();
+		const onHashChange = () => syncInviteTokenFromLocation();
+		window.addEventListener('hashchange', onHashChange);
 		void load();
+		return () => window.removeEventListener('hashchange', onHashChange);
 	});
+
+	function syncInviteTokenFromLocation(): void {
+		const nextToken = inviteTokenFromLocation(window.location.pathname, window.location.hash);
+		if (nextToken === inviteToken) return;
+		inviteToken = nextToken;
+		invitePreview = undefined;
+		inviteAccepted = undefined;
+		inviteError = '';
+		inviteAutoAcceptAttempted = false;
+		inviteStatus = nextToken ? 'loading' : 'idle';
+		if (nextToken) void refreshInvitePreview(nextToken);
+	}
+
+	async function refreshInvitePreview(token = inviteToken): Promise<void> {
+		if (!token) return;
+		inviteStatus = 'loading';
+		inviteError = '';
+		try {
+			invitePreview = await client({ includeOrganization: false }).previewInvite(token);
+			inviteStatus = inviteAccepted ? 'accepted' : 'ready';
+		} catch (err) {
+			inviteError = messageForError(err);
+			inviteStatus = 'error';
+		}
+	}
+
+	async function acceptCurrentInvite(): Promise<void> {
+		if (!inviteToken) return;
+		inviteStatus = 'accepting';
+		inviteError = '';
+		try {
+			const accepted = await client({ includeOrganization: false }).acceptInvite(inviteToken);
+			inviteAccepted = accepted;
+			inviteStatus = 'accepted';
+			if (accepted.status === 'pending_approval') {
+				await Promise.all([refreshOrganizations(), refreshMyMembershipRequests()]);
+			} else {
+				await refreshOrganizations();
+				await selectOrganization(accepted.membership.organizationId);
+			}
+		} catch (err) {
+			inviteError = messageForError(err);
+			inviteStatus = 'error';
+		}
+	}
+
+	async function maybeAcceptInviteAfterSignIn(): Promise<void> {
+		if (!inviteToken || inviteAccepted || inviteAutoAcceptAttempted) return;
+		if (runtimeConfig?.authProvider === 'clerk' && !clerkSignedIn) return;
+		inviteAutoAcceptAttempted = true;
+		await acceptCurrentInvite();
+	}
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -110,13 +176,19 @@
 		clerkSignedIn = nextClerk.isSignedIn;
 		nextClerk.addListener(() => {
 			clerkSignedIn = nextClerk.isSignedIn;
-			if (nextClerk.isSignedIn) void refreshWorkspace();
+			if (nextClerk.isSignedIn) {
+				void (async () => {
+					await refreshWorkspace();
+					await maybeAcceptInviteAfterSignIn();
+				})();
+			}
 		});
 		await tick();
 		if (!nextClerk.isSignedIn && signInElement) {
 			nextClerk.mountSignIn(signInElement);
 		} else if (nextClerk.isSignedIn) {
 			await refreshWorkspace();
+			await maybeAcceptInviteAfterSignIn();
 		}
 	}
 
@@ -532,6 +604,32 @@
 					{/if}
 				</div>
 			{/if}
+		</section>
+	{/if}
+
+	{#if inviteToken}
+		<section class="card stack">
+			<div class="section-heading">
+				<h2>Organization invite</h2>
+				{#if inviteStatus === 'error'}<button onclick={() => void refreshInvitePreview()}>Retry preview</button>{/if}
+			</div>
+			{#if inviteStatus === 'loading'}
+				<p class="subtle">Loading invite…</p>
+			{/if}
+			{#if invitePreview}
+				<p><strong>{invitePreview.organizationName}</strong> invited you as <strong>{invitePreview.role}</strong>.</p>
+				<p class="subtle">{invitePreview.approvalRequired ? 'An organization admin must approve your request before you get access.' : 'This invite grants access after acceptance.'}{invitePreview.expiresAt ? ` Expires ${new Date(invitePreview.expiresAt).toLocaleString()}.` : ''}</p>
+			{/if}
+			{#if inviteAccepted}
+				<p class="success">{inviteAcceptedMessage(inviteAccepted.status)}</p>
+			{:else if !runtimeConfig}
+				<p class="subtle">Loading sign-in configuration…</p>
+			{:else if runtimeConfig.authProvider === 'clerk' && !clerkSignedIn}
+				<p class="warning">Sign in or create an account above to accept this invite. Agent Tick will continue automatically after sign-in.</p>
+			{:else}
+				<button onclick={() => void acceptCurrentInvite()} disabled={inviteStatus === 'accepting' || inviteStatus === 'loading'}>{inviteStatus === 'accepting' ? 'Accepting…' : 'Accept invite'}</button>
+			{/if}
+			{#if inviteError}<p class="error">{inviteError}</p>{/if}
 		</section>
 	{/if}
 
