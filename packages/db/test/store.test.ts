@@ -223,6 +223,30 @@ describe('AgentTickStore', () => {
     expect(store.listAuditEventsAfter(DEFAULT_ORGANIZATION_ID, createdEventId).map((event) => event.eventType)).toEqual(['agent_token.revoked']);
   });
 
+  it('creates request-scoped waiter tokens by hash', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const credential = store.createAgentToken({ name: 'test agent' }, '2026-05-08T00:00:00.000Z');
+    const approval = store.createApprovalRequest(
+      { requester: { name: 'agent' }, title: 'Deploy?', agentId: credential.agentId, expiresAt: '2026-05-08T00:05:00.000Z' },
+      '2026-05-08T00:00:00.000Z'
+    );
+    const waiter = store.createApprovalWaiterToken(approval.id, DEFAULT_ORGANIZATION_ID, credential.agentId, approval.expiresAt, '2026-05-08T00:00:00.000Z');
+
+    expect(waiter.token).toMatch(/^wait_/);
+    expect(waiter.expiresAt).toBe('2026-05-08T01:05:00.000Z');
+    expect(JSON.stringify(store.db.prepare('SELECT * FROM approval_waiter_tokens').all())).not.toContain(waiter.token);
+    expect(store.verifyApprovalWaiterToken(waiter.token, approval.id, '2026-05-08T00:01:00.000Z')).toMatchObject({
+      requestId: approval.id,
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      agentId: credential.agentId
+    });
+    expect(store.verifyApprovalWaiterToken(waiter.token, 'req_wrong', '2026-05-08T00:01:00.000Z')).toBeNull();
+    expect(store.verifyApprovalWaiterToken(waiter.token, approval.id, '2026-05-08T01:06:00.000Z')).toBeNull();
+  });
+
   it('maps Clerk identities to local users by issuer and subject', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();
@@ -360,20 +384,24 @@ describe('AgentTickStore', () => {
     expect(store.pairDeviceWithCode(pairing.token, 'Replay', 'ios')).toBeNull();
   });
 
-  it('cleans expired event tickets and pairing codes', () => {
+  it('cleans expired event tickets, waiter tokens, and pairing codes', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();
     store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
 
     store.createEventTicket({ source: 'agent', organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_expired', ttlSeconds: 1 }, '2026-05-08T00:00:00.000Z');
     store.createEventTicket({ source: 'agent', organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_active', ttlSeconds: 60 }, '2026-05-08T00:00:00.000Z');
+    const approval = store.createApprovalRequest({ requester: { name: 'agent' }, title: 'Deploy?' }, '2026-05-08T00:00:00.000Z');
+    store.createApprovalWaiterToken(approval.id, DEFAULT_ORGANIZATION_ID, 'agt_expired', '2026-05-07T23:00:00.000Z', '2026-05-07T21:00:00.000Z');
+    store.createApprovalWaiterToken(approval.id, DEFAULT_ORGANIZATION_ID, 'agt_active', undefined, '2026-05-08T00:00:00.000Z');
     store.createPairingToken('usr_default', DEFAULT_ORGANIZATION_ID, '2026-05-08T00:00:00.000Z', 1);
     store.createPairingToken('usr_default', DEFAULT_ORGANIZATION_ID, '2026-05-08T00:00:00.000Z', 60);
 
     const result = store.cleanupExpiredSecrets('2026-05-08T00:00:06.000Z');
 
-    expect(result).toEqual({ eventTickets: 1, pairingCodes: 1 });
+    expect(result).toEqual({ eventTickets: 1, pairingCodes: 1, approvalWaiterTokens: 1 });
     expect(store.db.prepare('SELECT COUNT(*) AS count FROM event_tickets').get()).toEqual({ count: 1 });
+    expect(store.db.prepare('SELECT COUNT(*) AS count FROM approval_waiter_tokens').get()).toEqual({ count: 1 });
     expect(store.db.prepare('SELECT COUNT(*) AS count FROM pairing_codes').get()).toEqual({ count: 1 });
   });
 

@@ -244,7 +244,7 @@ describe('server skeleton', () => {
       payload: { requester: { name: 'scoped agent' }, title: 'Deploy scoped project?' }
     });
     expect(scopedApproval.statusCode).toBe(200);
-    expect(scopedApproval.json()).toMatchObject({ requester: { projectId: project.json().projectId }, metadata: { teamId: team.json().teamId, defaultApprovalPolicy: policy.json().policyId } });
+    expect(scopedApproval.json()).toMatchObject({ request: { requester: { projectId: project.json().projectId }, metadata: { teamId: team.json().teamId, defaultApprovalPolicy: policy.json().policyId } }, waiter: { token: expect.stringMatching(/^wait_/) } });
 
     const invite = await app.inject({
       method: 'POST',
@@ -516,7 +516,7 @@ describe('server skeleton', () => {
 
     expect(createResponse.statusCode).toBe(200);
     await new Promise((resolve) => setImmediate(resolve));
-    expect(notified).toEqual([createResponse.json().id]);
+    expect(notified).toEqual([createResponse.json().request.id]);
   });
 
   it('creates an agent token and uses it to create an approval request', async () => {
@@ -534,7 +534,14 @@ describe('server skeleton', () => {
       payload: { requester: { name: 'agent' }, title: 'Deploy?' }
     });
     expect(createResponse.statusCode).toBe(200);
-    expect(createResponse.json()).toMatchObject({ title: 'Deploy?', status: 'pending' });
+    expect(createResponse.json()).toMatchObject({ request: { title: 'Deploy?', status: 'pending', requester: { agentId } }, waiter: { token: expect.stringMatching(/^wait_/) } });
+
+    const agentListDenied = await app.inject({
+      method: 'GET',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(agentListDenied.statusCode).toBe(403);
 
     const revokeResponse = await app.inject({ method: 'POST', url: `/v1/agent-tokens/${agentId}/revoke`, payload: {} });
     expect(revokeResponse.statusCode).toBe(200);
@@ -570,10 +577,17 @@ describe('server skeleton', () => {
     const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
     const token = tokenResponse.json().token as string;
 
-    const ticketResponse = await app.inject({
+    const agentTicketDenied = await app.inject({
       method: 'POST',
       url: '/v1/events/ticket',
       headers: { authorization: `Bearer ${token}` },
+      payload: {}
+    });
+    expect(agentTicketDenied.statusCode).toBe(403);
+
+    const ticketResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/events/ticket',
       payload: {}
     });
     expect(ticketResponse.statusCode).toBe(200);
@@ -651,7 +665,7 @@ describe('server skeleton', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: `/v1/approval-requests/${createResponse.json().id}/abandon`,
+      url: `/v1/approval-requests/${createResponse.json().request.id}/abandon`,
       headers: { authorization: `Bearer ${token}` },
       payload: {}
     });
@@ -673,7 +687,7 @@ describe('server skeleton', () => {
       headers: { authorization: `Bearer ${ownerToken}` },
       payload: { requester: { name: 'owner agent' }, title: 'Deploy?' }
     });
-    const requestId = requestResponse.json().id as string;
+    const requestId = requestResponse.json().request.id as string;
 
     const otherOrgTokenResponse = await app.inject({
       method: 'POST',
@@ -687,14 +701,29 @@ describe('server skeleton', () => {
       url: `/v1/approval-requests/${requestId}`,
       headers: { authorization: `Bearer ${otherOrgToken}` }
     });
-    expect(otherOrgGet.statusCode).toBe(404);
+    expect(otherOrgGet.statusCode).toBe(403);
 
     const otherOrgWait = await app.inject({
       method: 'GET',
       url: `/v1/approval-requests/${requestId}/wait?timeoutMs=0`,
       headers: { authorization: `Bearer ${otherOrgToken}` }
     });
-    expect(otherOrgWait.statusCode).toBe(404);
+    expect(otherOrgWait.statusCode).toBe(403);
+
+    const ownerAgentWait = await app.inject({
+      method: 'GET',
+      url: `/v1/approval-requests/${requestId}/wait?timeoutMs=0`,
+      headers: { authorization: `Bearer ${ownerToken}` }
+    });
+    expect(ownerAgentWait.statusCode).toBe(403);
+
+    const waiterWait = await app.inject({
+      method: 'GET',
+      url: `/v1/approval-requests/${requestId}/wait?timeoutMs=0`,
+      headers: { authorization: `Bearer ${requestResponse.json().waiter.token}` }
+    });
+    expect(waiterWait.statusCode).toBe(200);
+    expect(waiterWait.json()).toMatchObject({ terminal: false, request: { id: requestId, status: 'pending' } });
 
     const otherOrgHumanRespond = await app.inject({
       method: 'POST',
@@ -736,7 +765,7 @@ describe('server skeleton', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: `/v1/approval-requests/${createResponse.json().id}/responses`,
+      url: `/v1/approval-requests/${createResponse.json().request.id}/responses`,
       payload: { choiceId: 'approve' }
     });
 
@@ -765,7 +794,7 @@ describe('server skeleton', () => {
 
     const rejected = await app.inject({
       method: 'POST',
-      url: `/v1/approval-requests/${approval.json().id}/responses`,
+      url: `/v1/approval-requests/${approval.json().request.id}/responses`,
       headers: { authorization: `Bearer ${device!.token}` },
       payload: { choiceId: 'approve' }
     });
@@ -774,7 +803,7 @@ describe('server skeleton', () => {
 
     const accepted = await app.inject({
       method: 'POST',
-      url: `/v1/approval-requests/${approval.json().id}/responses`,
+      url: `/v1/approval-requests/${approval.json().request.id}/responses`,
       headers: { 'x-agent-tick-organization-id': organizationId },
       payload: { choiceId: 'approve' }
     });

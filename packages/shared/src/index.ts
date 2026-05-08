@@ -244,8 +244,7 @@ export const CreatePolicySchema = z.object({
   description: z.string().optional(),
   projectId: z.string().optional(),
   teamId: z.string().optional(),
-  requiredApprovals: z.number().int().min(1).max(10).default(1),
-  enabled: z.boolean().default(true)
+  requiredApprovals: z.number().int().min(1).max(10).default(1)
 });
 export type CreatePolicy = z.input<typeof CreatePolicySchema>;
 
@@ -369,6 +368,18 @@ export const CreateApprovalRequestSchema = z.object({
   metadata: z.record(z.string(), z.string()).optional()
 });
 export type CreateApprovalRequest = z.input<typeof CreateApprovalRequestSchema>;
+
+export const ApprovalWaiterCredentialSchema = z.object({
+  token: z.string(),
+  expiresAt: z.string()
+});
+export type ApprovalWaiterCredential = z.infer<typeof ApprovalWaiterCredentialSchema>;
+
+export const CreateApprovalResponseSchema = z.object({
+  request: ApprovalRequestSchema,
+  waiter: ApprovalWaiterCredentialSchema.optional()
+});
+export type CreateApprovalResponse = z.infer<typeof CreateApprovalResponseSchema>;
 
 export const RespondApprovalRequestSchema = z.object({
   choiceId: z.string().optional(),

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentTickStore, AuditEventRecord } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
-import { requireAuth } from '../auth/context.js';
+import { requirePrivilegedHuman } from '../auth/context.js';
 
 export interface EventRoutesOptions {
   config: ServerConfig;
@@ -13,7 +13,7 @@ const eventHeartbeatMs = 15000;
 
 export async function registerEventRoutes(app: FastifyInstance, { config, store }: EventRoutesOptions): Promise<void> {
   app.post('/v1/events/ticket', async (request) => {
-    const auth = await requireAuth(request, config, store);
+    const auth = await requirePrivilegedHuman(request, config, store);
     return store.createEventTicket({
       source: auth.source,
       organizationId: auth.organizationId,
@@ -105,4 +105,3 @@ function writeSSE(raw: { write: (chunk: string) => unknown }, event: string, dat
   raw.write(`event: ${event}\n`);
   raw.write(`data: ${JSON.stringify(data)}\n\n`);
 }
-

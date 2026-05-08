@@ -235,7 +235,7 @@ describe('AgentTickClient', () => {
     await expect(client.createPolicy({ name: 'Production quorum', requiredApprovals: 2 })).resolves.toMatchObject({ policyId: 'pol_123' });
     await expect(client.listPolicies()).resolves.toEqual([expect.objectContaining({ policyId: 'pol_123' })]);
     expect(requests).toEqual([
-      { method: 'POST', url: 'https://tick.example.com/v1/policies', body: { name: 'Production quorum', requiredApprovals: 2, enabled: true } },
+      { method: 'POST', url: 'https://tick.example.com/v1/policies', body: { name: 'Production quorum', requiredApprovals: 2 } },
       { method: 'GET', url: 'https://tick.example.com/v1/policies', body: undefined }
     ]);
   });

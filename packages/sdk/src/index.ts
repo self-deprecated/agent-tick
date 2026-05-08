@@ -11,6 +11,7 @@ import {
   BillingStatusSchema,
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
+  CreateApprovalResponseSchema,
   CreateOrganizationInviteSchema,
   CreateOrganizationSchema,
   CreateTeamSchema,
@@ -46,12 +47,14 @@ import {
   type AgentTokenRecord,
   type ApiErrorEnvelope,
   type ApprovalRequest,
+  type ApprovalWaiterCredential,
   type AuditEventRecord,
   type AuthConfig,
   type AvailabilityRecord,
   type BillingStatus,
   type CreateAgentToken,
   type CreateApprovalRequest,
+  type CreateApprovalResponse,
   type CreateOrganization,
   type CreateOrganizationInvite,
   type CreatePolicy,
@@ -163,8 +166,8 @@ export class AgentTickClient {
     });
   }
 
-  createApprovalRequest(input: CreateApprovalRequest): Promise<ApprovalRequest> {
-    return this.#request('POST', '/v1/approval-requests', ApprovalRequestSchema, {
+  createApprovalRequest(input: CreateApprovalRequest): Promise<CreateApprovalResponse> {
+    return this.#request('POST', '/v1/approval-requests', CreateApprovalResponseSchema, {
       body: CreateApprovalRequestSchema.parse(input)
     });
   }
@@ -410,12 +413,14 @@ export type {
   AgentTokenRecord,
   ApiErrorEnvelope,
   ApprovalRequest,
+  ApprovalWaiterCredential,
   AuditEventRecord,
   AuthConfig,
   AvailabilityRecord,
   BillingStatus,
   CreateAgentToken,
   CreateApprovalRequest,
+  CreateApprovalResponse,
   CreateOrganization,
   CreateOrganizationInvite,
   CreatePolicy,

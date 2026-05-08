@@ -23,7 +23,6 @@ export async function registerPolicyRoutes(app: FastifyInstance, { config, store
       userId: auth.userId ?? 'usr_default',
       name: input.name,
       requiredApprovals: input.requiredApprovals,
-      enabled: input.enabled,
       ...(input.description ? { description: input.description } : {}),
       ...(input.projectId ? { projectId: input.projectId } : {}),
       ...(input.teamId ? { teamId: input.teamId } : {})

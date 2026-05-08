@@ -292,6 +292,18 @@ export interface EventTicketAuth {
   expiresAt: string;
 }
 
+export interface ApprovalWaiterTokenRecord {
+  token: string;
+  expiresAt: string;
+}
+
+export interface ApprovalWaiterAuth {
+  requestId: string;
+  organizationId: string;
+  agentId: string;
+  expiresAt: string;
+}
+
 export interface PairingTokenRecord {
   token: string;
   expiresAt: string;
@@ -330,6 +342,7 @@ export interface AuditEventRecord {
 export interface CleanupExpiredSecretsResult {
   eventTickets: number;
   pairingCodes: number;
+  approvalWaiterTokens: number;
 }
 
 export interface RetentionPolicy {
@@ -403,7 +416,8 @@ export class AgentTickStore {
     const tx = this.db.transaction(() => {
       const eventTickets = this.db.prepare('DELETE FROM event_tickets WHERE expires_at <= ?').run(now).changes;
       const pairingCodes = this.db.prepare('DELETE FROM pairing_codes WHERE expires_at <= ? OR used_at IS NOT NULL').run(now).changes;
-      return { eventTickets, pairingCodes };
+      const approvalWaiterTokens = this.db.prepare('DELETE FROM approval_waiter_tokens WHERE expires_at <= ?').run(now).changes;
+      return { eventTickets, pairingCodes, approvalWaiterTokens };
     });
     return tx();
   }
@@ -1141,7 +1155,7 @@ export class AgentTickStore {
     const parsed = CreateApprovalRequestSchema.parse(input);
     const id = newID('req');
     const organizationId = input.organizationId ?? DEFAULT_ORGANIZATION_ID;
-    const requesterAgentId = parsed.requester.agentId ?? input.agentId ?? 'agent_unknown';
+    const requesterAgentId = input.agentId ?? parsed.requester.agentId ?? 'agent_unknown';
     const choices = parsed.choices?.length ? parsed.choices : defaultChoices();
     this.db
       .prepare(
@@ -1289,7 +1303,7 @@ export class AgentTickStore {
     const policyId = metadata.defaultApprovalPolicy || metadata.policyId;
     if (!policyId) return null;
     const policy = this.db
-      .prepare('SELECT * FROM policies WHERE policy_id = ? AND organization_id = ?')
+      .prepare('SELECT * FROM policies WHERE policy_id = ? AND organization_id = ? AND enabled = 1 AND archived_at IS NULL')
       .get(policyId, row.organization_id) as PolicyRow | undefined;
     return policy ?? null;
   }
@@ -1317,7 +1331,7 @@ export class AgentTickStore {
     const current = this.mapApprovalWithProgress(row, responderUserId);
     if (current.status !== 'pending') return current;
     if (parsed.choiceId && !current.choices.some((choice) => choice.id === parsed.choiceId)) {
-      throw new Error(`unknown choiceId: ${parsed.choiceId}`);
+      throw httpError(400, 'bad_request', `unknown choiceId: ${parsed.choiceId}`);
     }
     const policy = this.approvalPolicyForRow(row);
     this.assertApprovalResponderEligible(row, responderUserId, policy);
@@ -1509,6 +1523,30 @@ export class AgentTickStore {
       organizationId: row.organization_id,
       userId: row.user_id ?? undefined,
       agentId: row.agent_id ?? undefined,
+      expiresAt: row.expires_at
+    };
+  }
+
+  createApprovalWaiterToken(requestId: string, organizationId: string, agentId: string, requestExpiresAt: string | undefined, now = new Date().toISOString()): ApprovalWaiterTokenRecord {
+    const token = `wait_${randomToken()}`;
+    const expiresAt = waiterExpiresAt(now, requestExpiresAt);
+    this.db
+      .prepare('INSERT INTO approval_waiter_tokens(token_hash, request_id, organization_id, agent_id, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(hashToken(token), requestId, organizationId, agentId, expiresAt, now);
+    return { token, expiresAt };
+  }
+
+  verifyApprovalWaiterToken(token: string, requestId: string, now = new Date().toISOString()): ApprovalWaiterAuth | null {
+    if (!token.startsWith('wait_')) return null;
+    const row = this.db
+      .prepare('SELECT * FROM approval_waiter_tokens WHERE token_hash = ? AND request_id = ? AND expires_at > ?')
+      .get(hashToken(token), requestId, now) as ApprovalWaiterTokenRow | undefined;
+    if (!row) return null;
+    this.db.prepare('UPDATE approval_waiter_tokens SET last_used_at = ? WHERE token_hash = ?').run(now, hashToken(token));
+    return {
+      requestId: row.request_id,
+      organizationId: row.organization_id,
+      agentId: row.agent_id,
       expiresAt: row.expires_at
     };
   }
@@ -1865,6 +1903,16 @@ function retentionCutoff(now: string, days: number): string {
   return new Date(timestamp - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
+function waiterExpiresAt(now: string, requestExpiresAt: string | undefined): string {
+  const nowTimestamp = Date.parse(now);
+  if (Number.isNaN(nowTimestamp)) throw new Error('waiter token creation requires a valid ISO timestamp');
+  if (requestExpiresAt) {
+    const requestExpiry = Date.parse(requestExpiresAt);
+    if (!Number.isNaN(requestExpiry)) return new Date(requestExpiry + 60 * 60 * 1000).toISOString();
+  }
+  return new Date(nowTimestamp + 24 * 60 * 60 * 1000).toISOString();
+}
+
 function approvalOrganizationRoleCanRespond(role: string): boolean {
   return ['owner', 'admin', 'approver', 'member'].includes(role);
 }
@@ -2053,6 +2101,16 @@ interface EventTicketRow {
   organization_id: string;
   user_id: string | null;
   agent_id: string | null;
+  expires_at: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+interface ApprovalWaiterTokenRow {
+  token_hash: string;
+  request_id: string;
+  organization_id: string;
+  agent_id: string;
   expires_at: string;
   created_at: string;
   last_used_at: string | null;
@@ -2335,6 +2393,19 @@ CREATE TABLE IF NOT EXISTS approval_votes (
 );
 
 CREATE INDEX IF NOT EXISTS approval_votes_request_idx ON approval_votes(request_id, step, created_at);
+
+CREATE TABLE IF NOT EXISTS approval_waiter_tokens (
+  token_hash TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL REFERENCES approval_requests(id) ON DELETE CASCADE,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  agent_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS approval_waiter_tokens_request_idx ON approval_waiter_tokens(request_id, expires_at);
+CREATE INDEX IF NOT EXISTS approval_waiter_tokens_expires_idx ON approval_waiter_tokens(expires_at);
 
 CREATE TABLE IF NOT EXISTS event_tickets (
   ticket_hash TEXT PRIMARY KEY,

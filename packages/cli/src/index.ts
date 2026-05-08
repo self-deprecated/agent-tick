@@ -38,8 +38,8 @@ export function createProgram(): Command {
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
     .action(async (options: RequestOptions) => {
-      const { client } = await clientFromOptions(options);
-      const created = await createAndMaybeWait(client, options);
+      const { client, server } = await clientFromOptions(options);
+      const created = await createAndMaybeWait(client, server, options);
       process.exitCode = exitCodeForRequest(created);
     });
 
@@ -73,8 +73,8 @@ export function createProgram(): Command {
     .action(async (commandParts: string[], options: RequestOptions) => {
       if (!commandParts.length) throw new Error('guard requires a command after --');
       const commandText = commandParts.join(' ');
-      const { client } = await clientFromOptions(options);
-      const finalRequest = await createAndMaybeWait(client, {
+      const { client, server } = await clientFromOptions(options);
+      const finalRequest = await createAndMaybeWait(client, server, {
         ...options,
         title: options.title ?? `Run command?`,
         command: commandText
@@ -94,7 +94,7 @@ async function clientFromOptions(options: ClientOptions): Promise<{ client: Agen
   return { server, token, client: new AgentTickClient({ baseUrl: server, tokenProvider: () => token }) };
 }
 
-async function createAndMaybeWait(client: AgentTickClient, options: RequestOptions): Promise<ApprovalRequest> {
+async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
   const created = await client.createApprovalRequest({
     requester: {
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
@@ -104,24 +104,26 @@ async function createAndMaybeWait(client: AgentTickClient, options: RequestOptio
     ...(options.body ? { body: options.body } : {}),
     ...(options.command ? { command: options.command } : {})
   });
+  const request = created.request;
 
   if (options.json) {
-    process.stdout.write(`${JSON.stringify({ event: 'created', request: created })}\n`);
+    process.stdout.write(`${JSON.stringify({ event: 'created', request, waiter: created.waiter })}\n`);
   } else {
-    process.stdout.write(`created approval request ${created.id}: ${created.title}\n`);
+    process.stdout.write(`created approval request ${request.id}: ${request.title}\n`);
   }
 
   const timeoutMs = parseDurationMs(options.timeout);
-  if (timeoutMs === 0) return created;
+  if (timeoutMs === 0) return request;
 
-  const waited = await client.waitForApproval(created.id, { timeoutMs });
+  const waitClient = created.waiter ? new AgentTickClient({ baseUrl: server, tokenProvider: () => created.waiter?.token }) : client;
+  const waited = await waitClient.waitForApproval(request.id, { timeoutMs });
   if (options.json) {
     process.stdout.write(`${JSON.stringify({ event: waited.terminal ? 'terminal' : 'timeout', ...waited })}\n`);
   } else if (!waited.terminal) {
-    process.stderr.write(`timed out waiting for approval request ${created.id}\n`);
+    process.stderr.write(`timed out waiting for approval request ${request.id}\n`);
   } else {
     const choice = waited.request.response?.choiceId ?? waited.request.response?.message ?? waited.request.status;
-    process.stdout.write(`approval request ${created.id} completed: ${choice}\n`);
+    process.stdout.write(`approval request ${request.id} completed: ${choice}\n`);
   }
   return waited.request;
 }

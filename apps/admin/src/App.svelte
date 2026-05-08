@@ -1005,11 +1005,11 @@
 			{:else}
 				<ul class="item-list">
 					{#each policies as policy}
-						<li class="item-card" class:is-muted={!policy.enabled || Boolean(policy.archivedAt)}>
+						<li class="item-card" class:is-muted={Boolean(policy.archivedAt)}>
 							<div>
 								<strong>{policy.name}</strong>
 								<p class="subtle">
-									{policy.policyId} · {policy.enabled ? 'enabled' : 'disabled'} · {policy.requiredApprovals} approval{policy.requiredApprovals === 1 ? '' : 's'}
+									{policy.policyId} · {policy.requiredApprovals} approval{policy.requiredApprovals === 1 ? '' : 's'}
 									{policy.projectId ? ` · project ${projectLabel(policy.projectId)}` : ''}
 									{policy.teamId ? ` · team ${teamLabel(policy.teamId)}` : ''}
 									{policy.archivedAt ? ` · archived ${new Date(policy.archivedAt).toLocaleString()}` : ''}
