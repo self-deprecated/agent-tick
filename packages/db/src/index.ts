@@ -371,6 +371,17 @@ export class AgentTickStore {
     return this.getApprovalRequest(id);
   }
 
+  abandonApprovalRequest(id: string, actorId: string, now = new Date().toISOString()): ApprovalRequest | null {
+    const current = this.getApprovalRequest(id);
+    if (!current) return null;
+    if (current.status !== 'pending') return current;
+    this.db
+      .prepare('UPDATE approval_requests SET status = ?, responded_at = ?, response_json = ? WHERE id = ? AND status = ?')
+      .run('abandoned', now, JSON.stringify({ message: 'abandoned' }), id, 'pending');
+    this.writeAuditEvent(DEFAULT_ORGANIZATION_ID, actorId, 'approval.abandoned', id, {}, now);
+    return this.getApprovalRequest(id);
+  }
+
   registerDevice(input: DeviceRegistrationInput, now = new Date().toISOString()): DeviceRecord {
     const existing = input.installationId
       ? (this.db

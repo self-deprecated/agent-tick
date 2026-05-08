@@ -128,6 +128,20 @@ describe('AgentTickStore', () => {
     expect(devices.find((device) => device.deviceId === second.deviceId)?.expoPushToken).toBe('ExponentPushToken[abc]');
   });
 
+  it('abandons pending approval requests', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const request = store.createApprovalRequest({
+      requester: { name: 'agent', agentId: 'agent_test' },
+      title: 'Deploy?'
+    });
+
+    const abandoned = store.abandonApprovalRequest(request.id, 'agent_test');
+    expect(abandoned).toMatchObject({ id: request.id, status: 'abandoned' });
+  });
+
   it('creates and responds to approval requests', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

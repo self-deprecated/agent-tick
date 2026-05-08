@@ -44,6 +44,14 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
     return approval;
   });
 
+  app.post('/v1/approval-requests/:id/abandon', async (request, reply) => {
+    const auth = await requireAuth(request, config, store);
+    const { id } = request.params as { id: string };
+    const approval = store.abandonApprovalRequest(id, auth.agentId ?? auth.userId ?? 'unknown');
+    if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
+    return approval;
+  });
+
   app.get('/v1/approval-requests/:id/wait', async (request, reply) => {
     await requireAuth(request, config, store);
     const { id } = request.params as { id: string };

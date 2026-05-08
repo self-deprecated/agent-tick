@@ -179,6 +179,9 @@ export const AgentCredentialSchema = AgentTokenRecordSchema.extend({
 });
 export type AgentCredential = z.infer<typeof AgentCredentialSchema>;
 
+export const AbandonApprovalResponseSchema = ApprovalRequestSchema;
+export type AbandonApprovalResponse = z.infer<typeof AbandonApprovalResponseSchema>;
+
 export const EventTicketResponseSchema = z.object({
   ticket: z.string(),
   expiresAt: z.string()

@@ -100,6 +100,10 @@ export class AgentTickClient {
     });
   }
 
+  abandonApproval(id: string): Promise<ApprovalRequest> {
+    return this.#request('POST', `/v1/approval-requests/${encodeURIComponent(id)}/abandon`, ApprovalRequestSchema, { body: {} });
+  }
+
   waitForApproval(id: string, options: { timeoutMs?: number } = {}): Promise<WaitApprovalResponse> {
     const params = new URLSearchParams();
     if (options.timeoutMs !== undefined) params.set('timeoutMs', String(options.timeoutMs));

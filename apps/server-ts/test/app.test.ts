@@ -171,6 +171,28 @@ describe('server skeleton', () => {
     expect(response.json().deviceId).toMatch(/^dev_/);
   });
 
+  it('allows an agent to abandon its approval request', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+    const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
+    const token = tokenResponse.json().token as string;
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { requester: { name: 'agent' }, title: 'Deploy?' }
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/approval-requests/${createResponse.json().id}/abandon`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {}
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ status: 'abandoned' });
+  });
+
   it('allows a human admin to respond to an approval request', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
     const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
