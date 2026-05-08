@@ -67,7 +67,7 @@ describe('server skeleton', () => {
     expect(JSON.stringify(response.json())).not.toContain('sk_test_secret');
   });
 
-  it('parses optional active-member seat limits and retention cleanup windows', () => {
+  it('parses optional active-member seat limits, retention cleanup windows, and rate limits', () => {
     const config = loadConfig({
       AGENT_TICK_MODE: 'single',
       AGENT_TICK_MAX_ACTIVE_MEMBERS: '10',
@@ -76,7 +76,9 @@ describe('server skeleton', () => {
       AGENT_TICK_AUDIT_RETENTION_DAYS: '365',
       AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS: '30',
       AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS: '14',
-      AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES: '15'
+      AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES: '15',
+      AGENT_TICK_RATE_LIMIT_WINDOW_MS: '5000',
+      AGENT_TICK_RATE_LIMIT_MAX_REQUESTS: '2'
     });
     expect(config.maxActiveMembers).toBe(10);
     expect(config.approvalNotificationWebhookURL).toBe('https://hooks.example.com/approvals');
@@ -85,8 +87,12 @@ describe('server skeleton', () => {
     expect(config.unregisteredDeviceRetentionDays).toBe(30);
     expect(config.expiredInviteRetentionDays).toBe(14);
     expect(config.retentionCleanupIntervalMinutes).toBe(15);
+    expect(config.rateLimitWindowMs).toBe(5000);
+    expect(config.rateLimitMaxRequests).toBe(2);
     expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_MAX_ACTIVE_MEMBERS: '' }).maxActiveMembers).toBeUndefined();
     expect(loadConfig({ AGENT_TICK_MODE: 'single' }).retentionCleanupIntervalMinutes).toBe(60);
+    expect(loadConfig({ AGENT_TICK_MODE: 'single' }).rateLimitWindowMs).toBe(60_000);
+    expect(loadConfig({ AGENT_TICK_MODE: 'single' }).rateLimitMaxRequests).toBeUndefined();
   });
 
   it('requires Clerk keys in clerk mode config', () => {
@@ -131,6 +137,18 @@ describe('server skeleton', () => {
     expect(response.statusCode).toBe(429);
     expect(response.headers['retry-after']).toBeDefined();
     expect(response.json()).toMatchObject({ error: { code: 'rate_limited' } });
+  });
+
+  it('applies configured rate limit ceilings to token endpoints', async () => {
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_RATE_LIMIT_MAX_REQUESTS: '2' }),
+      store: testStore()
+    });
+    expect((await app.inject({ method: 'GET', url: '/v1/invites/not-a-real-token' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/v1/invites/not-a-real-token' })).statusCode).toBe(404);
+    const limited = await app.inject({ method: 'GET', url: '/v1/invites/not-a-real-token' });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toMatchObject({ error: { code: 'rate_limited' } });
   });
 
   it('lists and selects local organizations for human requests', async () => {

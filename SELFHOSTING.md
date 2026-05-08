@@ -24,6 +24,10 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 # Optional approval notification webhook in addition to mobile push.
 # AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/approvals
 
+# Optional in-memory rate limit overrides for auth-sensitive token endpoints.
+# AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
+# AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
+
 # Optional retention cleanup windows. Omit to retain operational history indefinitely.
 # AGENT_TICK_APPROVAL_RETENTION_DAYS=180
 # AGENT_TICK_AUDIT_RETENTION_DAYS=365
@@ -60,12 +64,14 @@ AGENT_TICK_CLERK_SECRET_KEY=sk_...
 AGENT_TICK_CLERK_AUTHORIZED_PARTIES=https://tick.example.com
 ```
 
-Optional local active-member seat guard, webhooks, and retention cleanup windows (also available in single mode):
+Optional local active-member seat guard, webhooks, rate limits, and retention cleanup windows (also available in single mode):
 
 ```env
 AGENT_TICK_MAX_ACTIVE_MEMBERS=10
 AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
 AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/approvals
+AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
+AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
 AGENT_TICK_APPROVAL_RETENTION_DAYS=180
 AGENT_TICK_AUDIT_RETENTION_DAYS=365
 AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
@@ -112,6 +118,6 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 ## Current implementation scope
 
-The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, optional approval notification webhooks, and configurable retention cleanup.
+The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, optional approval notification webhooks, configurable in-memory rate limits, and configurable retention cleanup.
 
 Agent Tick is a fresh TypeScript service; no Go-era CLI/server compatibility or prototype database migration path is supported. Future work should add only product-relevant features for the current architecture.

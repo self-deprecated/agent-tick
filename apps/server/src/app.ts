@@ -45,7 +45,7 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
       }
     });
   });
-  registerRateLimitHook(app);
+  registerRateLimitHook(app, config);
 
   app.get('/healthz', async () => ({ status: 'ok' as const, time: new Date().toISOString() }));
 
@@ -116,11 +116,11 @@ interface RateLimitRule {
   max: number;
 }
 
-function registerRateLimitHook(app: FastifyInstance): void {
+function registerRateLimitHook(app: FastifyInstance, config: ServerConfig): void {
   const buckets = new Map<string, { windowStart: number; count: number }>();
   app.addHook('preHandler', async (request, reply) => {
     const routePath = request.routeOptions.url ?? request.url.split('?', 1)[0] ?? request.url;
-    const rule = rateLimitRule(request.method, routePath);
+    const rule = rateLimitRule(request.method, routePath, config);
     if (!rule) return;
 
     const now = Date.now();
@@ -142,12 +142,13 @@ function registerRateLimitHook(app: FastifyInstance): void {
   });
 }
 
-function rateLimitRule(method: string, routePath: string): RateLimitRule | null {
-  if (method === 'GET' && routePath === '/v1/invites/:token') return { windowMs: 60_000, max: 30 };
-  if (method === 'POST' && routePath === '/v1/invites/:token/accept') return { windowMs: 60_000, max: 30 };
-  if (method === 'POST' && routePath === '/v1/devices/pair') return { windowMs: 60_000, max: 30 };
-  if (method === 'POST' && routePath === '/v1/pairing-tokens') return { windowMs: 60_000, max: 60 };
-  if (method === 'POST' && routePath === '/v1/events/ticket') return { windowMs: 60_000, max: 60 };
+function rateLimitRule(method: string, routePath: string, config: ServerConfig): RateLimitRule | null {
+  const rule = (defaultMax: number) => ({ windowMs: config.rateLimitWindowMs, max: config.rateLimitMaxRequests ?? defaultMax });
+  if (method === 'GET' && routePath === '/v1/invites/:token') return rule(30);
+  if (method === 'POST' && routePath === '/v1/invites/:token/accept') return rule(30);
+  if (method === 'POST' && routePath === '/v1/devices/pair') return rule(30);
+  if (method === 'POST' && routePath === '/v1/pairing-tokens') return rule(60);
+  if (method === 'POST' && routePath === '/v1/events/ticket') return rule(60);
   return null;
 }
 

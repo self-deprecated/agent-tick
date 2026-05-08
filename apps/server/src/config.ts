@@ -21,7 +21,9 @@ const ConfigSchema = z.object({
   auditRetentionDays: z.coerce.number().int().nonnegative().optional(),
   unregisteredDeviceRetentionDays: z.coerce.number().int().nonnegative().optional(),
   expiredInviteRetentionDays: z.coerce.number().int().nonnegative().optional(),
-  retentionCleanupIntervalMinutes: z.coerce.number().int().positive().default(60)
+  retentionCleanupIntervalMinutes: z.coerce.number().int().positive().default(60),
+  rateLimitWindowMs: z.coerce.number().int().positive().default(60_000),
+  rateLimitMaxRequests: z.coerce.number().int().positive().optional()
 });
 
 export type ServerConfig = Omit<z.infer<typeof ConfigSchema>, 'adminDistDir'> & {
@@ -49,7 +51,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     auditRetentionDays: optionalEnv(env.AGENT_TICK_AUDIT_RETENTION_DAYS),
     unregisteredDeviceRetentionDays: optionalEnv(env.AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS),
     expiredInviteRetentionDays: optionalEnv(env.AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS),
-    retentionCleanupIntervalMinutes: optionalEnv(env.AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES)
+    retentionCleanupIntervalMinutes: optionalEnv(env.AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES),
+    rateLimitWindowMs: optionalEnv(env.AGENT_TICK_RATE_LIMIT_WINDOW_MS),
+    rateLimitMaxRequests: optionalEnv(env.AGENT_TICK_RATE_LIMIT_MAX_REQUESTS)
   });
 
   if (parsed.mode === 'clerk' && (!parsed.clerkPublishableKey || !parsed.clerkSecretKey)) {

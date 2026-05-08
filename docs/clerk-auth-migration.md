@@ -198,7 +198,7 @@ Implemented so far:
 - SDK token provider and organization provider support.
 - Svelte dashboard Clerk sign-in, invite preview/continuation, local organization selector, token management, audit view, pairing code UI, and ticketed EventSource refreshes.
 - Docker image build for the TypeScript server plus static Svelte admin assets.
-- Initial in-memory rate limits for auth-sensitive token endpoints.
+- Configurable in-memory rate limits for auth-sensitive token endpoints.
 
 ## Remaining work
 
@@ -219,7 +219,7 @@ Future product work to evaluate for the current architecture:
 
 Operational hardening:
 
-- Configurable/distributed rate limits for hosted deployments.
+- Distributed rate-limit backing for hosted deployments.
 - Continue audit/authorization coverage review for all mutable routes.
 - Docker release workflow and published npm CLI package.
 - Broaden mobile Jest/Expo coverage now that the pnpm harness runs in the workspace test suite.
