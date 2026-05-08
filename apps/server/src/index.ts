@@ -1,26 +1,20 @@
 import { AgentTickStore } from '@agent-tick/db';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
+import { hasRetentionCleanupChanges, runRetentionCleanup, startRetentionCleanupTimer } from './services/retention.js';
 
 const config = loadConfig();
 const store = AgentTickStore.open({ databaseURL: config.databaseURL });
 store.migrate();
 store.ensureSingleTenantDefaults();
-store.cleanupExpiredSecrets();
 
 const app = await buildApp({ config, store });
-const retentionTimer = setInterval(() => {
-  try {
-    const result = store.cleanupExpiredSecrets();
-    if (result.eventTickets || result.pairingCodes) app.log.info({ result }, 'cleaned expired secrets');
-  } catch (error) {
-    app.log.error({ err: error }, 'failed to clean expired secrets');
-  }
-}, 60 * 60_000);
-retentionTimer.unref();
+const startupCleanup = runRetentionCleanup(store, config);
+if (hasRetentionCleanupChanges(startupCleanup)) app.log.info({ result: startupCleanup }, 'cleaned retained data at startup');
+const retentionCleanup = startRetentionCleanupTimer({ store, config, logger: app.log });
 
 const shutdown = async (): Promise<void> => {
-  clearInterval(retentionTimer);
+  retentionCleanup.stop();
   await app.close();
   store.close();
 };

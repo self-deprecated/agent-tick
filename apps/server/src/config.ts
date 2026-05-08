@@ -15,7 +15,12 @@ const ConfigSchema = z.object({
   clerkJwtKey: z.string().optional(),
   clerkAuthorizedParties: z.array(z.string()).default([]),
   maxActiveMembers: z.coerce.number().int().positive().optional(),
-  inviteEmailWebhookURL: z.string().url().optional()
+  inviteEmailWebhookURL: z.string().url().optional(),
+  approvalRetentionDays: z.coerce.number().int().nonnegative().optional(),
+  auditRetentionDays: z.coerce.number().int().nonnegative().optional(),
+  unregisteredDeviceRetentionDays: z.coerce.number().int().nonnegative().optional(),
+  expiredInviteRetentionDays: z.coerce.number().int().nonnegative().optional(),
+  retentionCleanupIntervalMinutes: z.coerce.number().int().positive().default(60)
 });
 
 export type ServerConfig = Omit<z.infer<typeof ConfigSchema>, 'adminDistDir'> & {
@@ -36,8 +41,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     clerkSecretKey: env.AGENT_TICK_CLERK_SECRET_KEY,
     clerkJwtKey: env.AGENT_TICK_CLERK_JWT_KEY,
     clerkAuthorizedParties: splitCSV(env.AGENT_TICK_CLERK_AUTHORIZED_PARTIES),
-    maxActiveMembers: env.AGENT_TICK_MAX_ACTIVE_MEMBERS?.trim() || undefined,
-    inviteEmailWebhookURL: env.AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL?.trim() || undefined
+    maxActiveMembers: optionalEnv(env.AGENT_TICK_MAX_ACTIVE_MEMBERS),
+    inviteEmailWebhookURL: optionalEnv(env.AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL),
+    approvalRetentionDays: optionalEnv(env.AGENT_TICK_APPROVAL_RETENTION_DAYS),
+    auditRetentionDays: optionalEnv(env.AGENT_TICK_AUDIT_RETENTION_DAYS),
+    unregisteredDeviceRetentionDays: optionalEnv(env.AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS),
+    expiredInviteRetentionDays: optionalEnv(env.AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS),
+    retentionCleanupIntervalMinutes: optionalEnv(env.AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES)
   });
 
   if (parsed.mode === 'clerk' && (!parsed.clerkPublishableKey || !parsed.clerkSecretKey)) {
@@ -53,6 +63,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
 
 export function authProviderForMode(mode: AgentTickMode): AuthProvider {
   return mode === 'clerk' ? 'clerk' : 'local';
+}
+
+function optionalEnv(value: string | undefined): string | undefined {
+  return value?.trim() || undefined;
 }
 
 function splitCSV(value: string | undefined): string[] {

@@ -254,6 +254,56 @@ describe('AgentTickStore', () => {
     expect(store.verifyEventTicket(ticket.ticket, '2026-05-08T00:01:00.000Z')).toBeNull();
   });
 
+  it('cleans retained operational history when retention policies are configured', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const completed = store.createApprovalRequest({ requester: { name: 'agent' }, title: 'Old completed?' }, '2026-03-01T00:00:00.000Z');
+    store.respondToApprovalRequest(completed.id, { choiceId: 'approve' }, 'usr_default', '2026-03-02T00:00:00.000Z');
+    const expiredPending = store.createApprovalRequest(
+      { requester: { name: 'agent' }, title: 'Old expired?', expiresAt: '2026-03-05T00:00:00.000Z' },
+      '2026-03-01T00:00:00.000Z'
+    );
+    const freshPending = store.createApprovalRequest({ requester: { name: 'agent' }, title: 'Fresh pending?' }, '2026-05-07T00:00:00.000Z');
+
+    const oldDevice = store.registerDevice(
+      { userId: 'usr_default', organizationId: DEFAULT_ORGANIZATION_ID, deviceName: 'Old phone', platform: 'ios', installationId: 'old-phone' },
+      '2026-03-01T00:00:00.000Z'
+    );
+    store.unregisterDevice(oldDevice.deviceId, 'usr_default', '2026-03-02T00:00:00.000Z');
+    const activeDevice = store.registerDevice(
+      { userId: 'usr_default', organizationId: DEFAULT_ORGANIZATION_ID, deviceName: 'Active phone', platform: 'ios', installationId: 'active-phone' },
+      '2026-03-01T00:00:00.000Z'
+    );
+
+    const team = store.createTeam({ organizationId: DEFAULT_ORGANIZATION_ID, userId: 'usr_default', name: 'Cleanup' }, '2026-03-01T00:00:00.000Z');
+    const expiredInvite = store.createOrganizationInvite(
+      { organizationId: DEFAULT_ORGANIZATION_ID, userId: 'usr_default', role: 'member', teamIds: [team.teamId], expiresAt: '2026-03-05T00:00:00.000Z' },
+      '2026-03-01T00:00:00.000Z'
+    );
+    const recentInvite = store.createOrganizationInvite(
+      { organizationId: DEFAULT_ORGANIZATION_ID, userId: 'usr_default', role: 'member', expiresAt: '2026-05-09T00:00:00.000Z' },
+      '2026-05-07T00:00:00.000Z'
+    );
+
+    const result = store.cleanupRetention(
+      { approvalRequestsDays: 30, auditEventsDays: 30, unregisteredDevicesDays: 30, expiredInvitesDays: 30 },
+      '2026-05-08T00:00:00.000Z'
+    );
+
+    expect(result).toMatchObject({ approvalRequests: 2, devices: 1, organizationInviteTeams: 1, organizationInvites: 1 });
+    expect(result.auditEvents).toBeGreaterThan(0);
+    expect(store.getApprovalRequest(completed.id)).toBeNull();
+    expect(store.getApprovalRequest(expiredPending.id)).toBeNull();
+    expect(store.getApprovalRequest(freshPending.id)).toMatchObject({ id: freshPending.id });
+    expect(store.getDeviceForUser(oldDevice.deviceId, 'usr_default')).toBeNull();
+    expect(store.getDeviceForUser(activeDevice.deviceId, 'usr_default')).toMatchObject({ deviceId: activeDevice.deviceId });
+    expect(store.getOrganizationInvite(expiredInvite.inviteId)).toBeNull();
+    expect(store.getOrganizationInvite(recentInvite.inviteId)).toMatchObject({ inviteId: recentInvite.inviteId });
+    expect(store.listAuditEvents(DEFAULT_ORGANIZATION_ID).every((event) => event.createdAt > '2026-04-08T00:00:00.000Z')).toBe(true);
+  });
+
   it('pairs single-mode devices with short-lived pairing codes', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

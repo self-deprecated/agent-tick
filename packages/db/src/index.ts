@@ -332,6 +332,21 @@ export interface CleanupExpiredSecretsResult {
   pairingCodes: number;
 }
 
+export interface RetentionPolicy {
+  approvalRequestsDays?: number;
+  auditEventsDays?: number;
+  unregisteredDevicesDays?: number;
+  expiredInvitesDays?: number;
+}
+
+export interface CleanupRetentionResult {
+  approvalRequests: number;
+  auditEvents: number;
+  devices: number;
+  organizationInviteTeams: number;
+  organizationInvites: number;
+}
+
 export class AgentTickStore {
   readonly db: Database.Database;
 
@@ -389,6 +404,50 @@ export class AgentTickStore {
       const eventTickets = this.db.prepare('DELETE FROM event_tickets WHERE expires_at <= ?').run(now).changes;
       const pairingCodes = this.db.prepare('DELETE FROM pairing_codes WHERE expires_at <= ? OR used_at IS NOT NULL').run(now).changes;
       return { eventTickets, pairingCodes };
+    });
+    return tx();
+  }
+
+  cleanupRetention(policy: RetentionPolicy = {}, now = new Date().toISOString()): CleanupRetentionResult {
+    const tx = this.db.transaction(() => {
+      let approvalRequests = 0;
+      let auditEvents = 0;
+      let devices = 0;
+      let organizationInviteTeams = 0;
+      let organizationInvites = 0;
+
+      if (policy.approvalRequestsDays !== undefined) {
+        const cutoff = retentionCutoff(now, policy.approvalRequestsDays);
+        approvalRequests = this.db
+          .prepare(
+            "DELETE FROM approval_requests WHERE (status != 'pending' AND COALESCE(responded_at, created_at) <= ?) OR (status = 'pending' AND created_at <= ? AND expires_at IS NOT NULL AND expires_at <= ?)"
+          )
+          .run(cutoff, cutoff, now).changes;
+      }
+
+      if (policy.auditEventsDays !== undefined) {
+        auditEvents = this.db.prepare('DELETE FROM audit_events WHERE created_at <= ?').run(retentionCutoff(now, policy.auditEventsDays)).changes;
+      }
+
+      if (policy.unregisteredDevicesDays !== undefined) {
+        devices = this.db
+          .prepare('DELETE FROM devices WHERE unregistered_at IS NOT NULL AND unregistered_at <= ?')
+          .run(retentionCutoff(now, policy.unregisteredDevicesDays)).changes;
+      }
+
+      if (policy.expiredInvitesDays !== undefined) {
+        const cutoff = retentionCutoff(now, policy.expiredInvitesDays);
+        const eligibleInvites = `
+          SELECT i.invite_id
+          FROM organization_invites i
+          WHERE ((i.expires_at IS NOT NULL AND i.expires_at <= ?) OR (i.revoked_at IS NOT NULL AND i.revoked_at <= ?))
+            AND NOT EXISTS (SELECT 1 FROM organization_invite_acceptances a WHERE a.invite_id = i.invite_id)
+        `;
+        organizationInviteTeams = this.db.prepare(`DELETE FROM organization_invite_teams WHERE invite_id IN (${eligibleInvites})`).run(cutoff, cutoff).changes;
+        organizationInvites = this.db.prepare(`DELETE FROM organization_invites WHERE invite_id IN (${eligibleInvites})`).run(cutoff, cutoff).changes;
+      }
+
+      return { approvalRequests, auditEvents, devices, organizationInviteTeams, organizationInvites };
     });
     return tx();
   }
@@ -1745,6 +1804,13 @@ function domainFromEmail(email: string | undefined): string | undefined {
 function ensureColumn(db: Database.Database, table: string, column: string, alterSQL: string): void {
   const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (!rows.some((row) => row.name === column)) db.exec(alterSQL);
+}
+
+function retentionCutoff(now: string, days: number): string {
+  if (!Number.isInteger(days) || days < 0) throw new Error('retention days must be a non-negative integer');
+  const timestamp = Date.parse(now);
+  if (Number.isNaN(timestamp)) throw new Error('retention cleanup requires a valid ISO timestamp');
+  return new Date(timestamp - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function httpError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {

@@ -67,9 +67,24 @@ describe('server skeleton', () => {
     expect(JSON.stringify(response.json())).not.toContain('sk_test_secret');
   });
 
-  it('parses optional active-member seat limits', () => {
-    expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_MAX_ACTIVE_MEMBERS: '10' }).maxActiveMembers).toBe(10);
+  it('parses optional active-member seat limits and retention cleanup windows', () => {
+    const config = loadConfig({
+      AGENT_TICK_MODE: 'single',
+      AGENT_TICK_MAX_ACTIVE_MEMBERS: '10',
+      AGENT_TICK_APPROVAL_RETENTION_DAYS: '90',
+      AGENT_TICK_AUDIT_RETENTION_DAYS: '365',
+      AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS: '30',
+      AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS: '14',
+      AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES: '15'
+    });
+    expect(config.maxActiveMembers).toBe(10);
+    expect(config.approvalRetentionDays).toBe(90);
+    expect(config.auditRetentionDays).toBe(365);
+    expect(config.unregisteredDeviceRetentionDays).toBe(30);
+    expect(config.expiredInviteRetentionDays).toBe(14);
+    expect(config.retentionCleanupIntervalMinutes).toBe(15);
     expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_MAX_ACTIVE_MEMBERS: '' }).maxActiveMembers).toBeUndefined();
+    expect(loadConfig({ AGENT_TICK_MODE: 'single' }).retentionCleanupIntervalMinutes).toBe(60);
   });
 
   it('requires Clerk keys in clerk mode config', () => {

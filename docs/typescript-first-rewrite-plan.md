@@ -756,7 +756,7 @@ CLI request flow:
 
 Dashboard/mobile can initially poll pending approvals.
 
-Current TypeScript support includes short-lived event tickets, SSE `ready`/`audit` events, SDK helpers for creating stream URLs or opening an injectable `EventSource`, and dashboard EventSource refresh wiring. Mobile EventSource/SSE wiring can be enabled where polling becomes insufficient.
+Current TypeScript support includes short-lived event tickets, SSE `ready`/`audit` events, SDK helpers for creating stream URLs or opening an injectable `EventSource`, dashboard EventSource refresh wiring, and configurable retention cleanup for operational history. Mobile EventSource/SSE wiring can be enabled where polling becomes insufficient.
 
 Recommended event streaming design:
 
@@ -972,7 +972,7 @@ Acceptance criteria:
 
 - dashboard/mobile update without excessive polling
 - Clerk JWTs are not placed directly in event query strings
-- cleanup can run automatically or as an operator command
+- cleanup can run automatically or as an operator command; current TypeScript server runs configurable startup/hourly cleanup for old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites without acceptance history
 
 ### Phase 10: Port remaining product features intentionally
 

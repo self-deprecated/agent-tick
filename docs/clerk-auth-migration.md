@@ -186,6 +186,7 @@ Implemented so far:
 - Single-mode mobile pairing and device-token auth.
 - Clerk-mode device registration and push token APIs.
 - Short-lived opaque event tickets for event streams, SSE audit-event streaming, SDK stream URL/EventSource helpers, and startup/hourly cleanup for expired tickets and pairing codes.
+- Configurable startup/hourly retention cleanup for old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites without acceptance history.
 - Mobile Clerk runtime discovery, ClerkProvider sign-in/account-creation wiring with email-code verification, and OAuth SSO provider buttons using Expo AuthSession/WebBrowser.
 - Mobile local organization selection for Clerk-mode multi-org users, with server-scoped local storage for selected organization/device state.
 - Best-effort Clerk-mode mobile device unregister on sign-out/server switch, plus local state cleanup for server changes.
@@ -220,6 +221,5 @@ Operational hardening:
 
 - Configurable/distributed rate limits for hosted deployments.
 - Continue audit/authorization coverage review for all mutable routes.
-- Broader retention/cleanup policy for old approvals, audit events, devices, and expired invites.
 - Docker release workflow and published npm CLI package.
 - Broaden mobile Jest/Expo coverage now that the pnpm harness runs in the workspace test suite.

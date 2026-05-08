@@ -20,6 +20,13 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 
 # Optional invite email delivery. Agent Tick POSTs invite JSON to this webhook.
 # AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
+
+# Optional retention cleanup windows. Omit to retain operational history indefinitely.
+# AGENT_TICK_APPROVAL_RETENTION_DAYS=180
+# AGENT_TICK_AUDIT_RETENTION_DAYS=365
+# AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
+# AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS=90
+# AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES=60
 ```
 
 Start it:
@@ -50,11 +57,15 @@ AGENT_TICK_CLERK_SECRET_KEY=sk_...
 AGENT_TICK_CLERK_AUTHORIZED_PARTIES=https://tick.example.com
 ```
 
-Optional local active-member seat guard and invite email webhook (also available in single mode):
+Optional local active-member seat guard, invite email webhook, and retention cleanup windows (also available in single mode):
 
 ```env
 AGENT_TICK_MAX_ACTIVE_MEMBERS=10
 AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
+AGENT_TICK_APPROVAL_RETENTION_DAYS=180
+AGENT_TICK_AUDIT_RETENTION_DAYS=365
+AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
+AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS=90
 ```
 
 Optional networkless verification key:
@@ -81,6 +92,8 @@ docker compose up -d
 
 SQLite data is in the `agent_tick_data` Docker volume. Back up the volume regularly. It contains users, Clerk identity mappings, organizations, agent token hashes, approval history, device registrations, and audit events.
 
+By default, operational history is retained indefinitely except short-lived event tickets and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites that have no acceptance history.
+
 Do not store or back up Clerk session tokens; Agent Tick only verifies them at request time.
 
 ## Security notes
@@ -95,6 +108,6 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 ## Current implementation scope
 
-The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, and optional invite email webhooks/resend.
+The TypeScript server currently covers the core vertical slice: server health/config, SQLite migrations, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait, dashboard approval UI, npm CLI request flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, and configurable retention cleanup.
 
 Some earlier Go-era features are intentionally being reintroduced only when they are needed: advanced policy templates, extra notification sinks, richer mobile Clerk flows, and hosted billing/operator tooling.
