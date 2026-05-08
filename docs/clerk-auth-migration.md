@@ -205,7 +205,7 @@ Implemented so far:
 High priority:
 
 - Broaden mobile provider-specific OAuth/deep-link coverage beyond the built-in Google/GitHub SSO buttons.
-- Wire mobile EventSource/SSE listeners if polling becomes insufficient in React Native.
+- Broaden mobile provider/runtime coverage for ticketed EventSource/SSE listeners; the Expo app now feature-detects EventSource, subscribes with short-lived tickets when available, and keeps polling as the fallback.
 - Broaden signed-out invite continuation coverage with deep-link/OAuth provider-specific tests.
 
 Future product work to evaluate for the current architecture:

@@ -65,6 +65,7 @@ import {
   serverURLStorageKey,
   type RuntimeAuthConfig,
 } from "./mobileAuth";
+import { mobileEventStreamsAvailable, subscribeToMobileEventStream } from "./mobileEvents";
 
 type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
@@ -259,6 +260,7 @@ function AgentTickApp({
       }),
     [currentAuthToken, selectedOrganizationID, serverURL],
   );
+  const hasRequestAuth = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(selectedOrganizationID) : Boolean(token);
 
   useEffect(() => {
     let cancelled = false;
@@ -464,9 +466,13 @@ function AgentTickApp({
     }
 
     void load({ visible: false });
+    if (hasRequestAuth && mobileEventStreamsAvailable()) {
+      return;
+    }
+
     const timer = setInterval(() => void load({ visible: false }), 5000);
     return () => clearInterval(timer);
-  }, [load, settingsLoaded]);
+  }, [hasRequestAuth, load, settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded || (runtimeAuthConfig?.authProvider !== "clerk" && !token)) {
@@ -481,10 +487,40 @@ function AgentTickApp({
   }, [deviceID, runtimeAuthConfig?.authProvider, sdk, settingsLoaded, token]);
 
   useEffect(() => {
-    // Polling remains the mobile baseline. Clerk-mode event streams use short-lived
-    // event tickets server-side; React Native streaming support will be wired in a
-    // follow-up without putting bearer tokens in query strings.
-  }, [load, serverURL, settingsLoaded, token]);
+    if (!settingsLoaded || !hasRequestAuth || !mobileEventStreamsAvailable()) {
+      return;
+    }
+
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearRefreshTimer = () => {
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+        refreshTimer = null;
+      }
+    };
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void load({ visible: false });
+      }, 100);
+    };
+
+    const subscription = subscribeToMobileEventStream({
+      client: sdk,
+      onAuditEvent: scheduleRefresh,
+      onStatusChange: (status) => {
+        if (status === "open") setConnectionStatus("connected");
+        if (status === "connecting" || status === "reconnecting") setConnectionStatus("checking");
+      },
+      onError: () => setConnectionStatus("disconnected"),
+    });
+
+    return () => {
+      clearRefreshTimer();
+      subscription.close();
+    };
+  }, [hasRequestAuth, load, sdk, settingsLoaded]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);

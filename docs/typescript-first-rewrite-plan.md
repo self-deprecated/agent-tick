@@ -964,13 +964,13 @@ Deliverables:
 
 - event ticket endpoint
 - event stream endpoint or polling improvements
-- mobile/admin event subscription
+- mobile/admin event subscription; mobile feature-detects EventSource support and falls back to polling when unavailable
 - notification service ported/rethought; current TypeScript server supports Expo push and an optional approval notification webhook
 - retention cleanup service/script
 
 Acceptance criteria:
 
-- dashboard/mobile update without excessive polling
+- dashboard/mobile update without excessive polling where event streams are supported
 - Clerk JWTs are not placed directly in event query strings
 - cleanup can run automatically or as an operator command; current TypeScript server runs configurable startup/hourly cleanup for old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites without acceptance history
 
