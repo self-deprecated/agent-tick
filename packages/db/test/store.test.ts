@@ -43,6 +43,10 @@ describe('AgentTickStore', () => {
     const auth = store.verifyAgentToken(credential.token);
     expect(auth).toMatchObject({ agentId: credential.agentId, organizationId: DEFAULT_ORGANIZATION_ID });
     expect(store.verifyAgentToken('agent_wrong')).toBeNull();
+
+    const revoked = store.revokeAgentToken(credential.agentId, DEFAULT_ORGANIZATION_ID, '2026-05-08T00:00:00.000Z');
+    expect(revoked).toMatchObject({ agentId: credential.agentId, revokedAt: '2026-05-08T00:00:00.000Z' });
+    expect(store.verifyAgentToken(credential.token)).toBeNull();
   });
 
   it('maps Clerk identities to local users by issuer and subject', () => {

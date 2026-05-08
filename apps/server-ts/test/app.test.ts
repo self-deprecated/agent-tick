@@ -119,6 +119,7 @@ describe('server skeleton', () => {
     const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
     expect(tokenResponse.statusCode).toBe(200);
     const token = tokenResponse.json().token as string;
+    const agentId = tokenResponse.json().agentId as string;
 
     const createResponse = await app.inject({
       method: 'POST',
@@ -128,6 +129,18 @@ describe('server skeleton', () => {
     });
     expect(createResponse.statusCode).toBe(200);
     expect(createResponse.json()).toMatchObject({ title: 'Deploy?', status: 'pending' });
+
+    const revokeResponse = await app.inject({ method: 'POST', url: `/v1/agent-tokens/${agentId}/revoke`, payload: {} });
+    expect(revokeResponse.statusCode).toBe(200);
+    expect(revokeResponse.json()).toMatchObject({ agentId, revokedAt: expect.any(String) });
+
+    const deniedResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { requester: { name: 'agent' }, title: 'Deploy again?' }
+    });
+    expect(deniedResponse.statusCode).toBe(401);
   });
 
   it('accepts heartbeat and availability updates', async () => {

@@ -309,6 +309,18 @@ export class AgentTickStore {
     return rows.map(mapAgentTokenRow);
   }
 
+  revokeAgentToken(agentId: string, organizationId = DEFAULT_ORGANIZATION_ID, now = new Date().toISOString()): AgentTokenRecord | null {
+    const row = this.db
+      .prepare('SELECT * FROM agent_tokens WHERE agent_id = ? AND organization_id = ?')
+      .get(agentId, organizationId) as AgentTokenRow | undefined;
+    if (!row) return null;
+    if (!row.revoked_at) {
+      this.db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE agent_id = ? AND organization_id = ?').run(now, agentId, organizationId);
+      row.revoked_at = now;
+    }
+    return mapAgentTokenRow(row);
+  }
+
   verifyAgentToken(token: string, now = new Date().toISOString()): AgentTokenAuth | null {
     if (!token.startsWith('agent_')) return null;
     const hash = hashToken(token);

@@ -135,6 +135,10 @@ export class AgentTickClient {
     });
   }
 
+  revokeAgentToken(agentId: string): Promise<AgentTokenRecord> {
+    return this.#request('POST', `/v1/agent-tokens/${encodeURIComponent(agentId)}/revoke`, AgentTokenRecordSchema, { body: {} });
+  }
+
   listOrganizations(): Promise<OrganizationMembership[]> {
     return this.#request('GET', '/v1/organizations', OrganizationMembershipSchema.array());
   }

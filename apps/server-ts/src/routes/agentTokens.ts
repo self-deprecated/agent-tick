@@ -30,4 +30,12 @@ export async function registerAgentTokenRoutes(app: FastifyInstance, { config, s
       ...(auth.userId ? { ownerUserId: auth.userId } : {})
     });
   });
+
+  app.post('/v1/agent-tokens/:id/revoke', async (request, reply) => {
+    const auth = await requirePrivilegedHuman(request, config, store);
+    const { id } = request.params as { id: string };
+    const token = store.revokeAgentToken(id, auth.organizationId);
+    if (!token) return reply.status(404).send({ error: { code: 'not_found', message: 'Agent token not found', requestId: request.id } });
+    return token;
+  });
 }

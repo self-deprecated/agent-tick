@@ -22,52 +22,49 @@ export interface AuthContext {
 
 export async function authenticateRequest(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext | null> {
   const bearer = bearerToken(request.headers.authorization);
+
+  if (config.mode === 'single' && bearer && config.adminToken && timingSafeEqualString(bearer, config.adminToken)) {
+    return applySelectedOrganization(request, store, {
+      source: 'admin',
+      isHuman: true,
+      userId: DEFAULT_USER_ID,
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      role: 'owner'
+    });
+  }
+
   if (bearer?.startsWith('agent_')) {
     const agent = store.verifyAgentToken(bearer);
-    if (agent) {
-      return {
-        source: 'agent',
-        isHuman: false,
-        agentId: agent.agentId,
-        organizationId: agent.organizationId
-      };
-    }
+    if (!agent) return null;
+    return {
+      source: 'agent',
+      isHuman: false,
+      agentId: agent.agentId,
+      organizationId: agent.organizationId
+    };
   }
 
   if (config.mode === 'single' && bearer?.startsWith('device_')) {
     const device = store.verifyDeviceToken(bearer);
-    if (device) {
-      return {
-        source: 'device',
-        isHuman: true,
-        userId: device.userId,
-        organizationId: device.organizationId,
-        role: 'owner',
-        deviceId: device.deviceId
-      };
-    }
+    if (!device) return null;
+    return {
+      source: 'device',
+      isHuman: true,
+      userId: device.userId,
+      organizationId: device.organizationId,
+      role: 'owner',
+      deviceId: device.deviceId
+    };
   }
 
-  if (config.mode === 'single') {
-    if (bearer && config.adminToken && timingSafeEqualString(bearer, config.adminToken)) {
-      return applySelectedOrganization(request, store, {
-        source: 'admin',
-        isHuman: true,
-        userId: DEFAULT_USER_ID,
-        organizationId: DEFAULT_ORGANIZATION_ID,
-        role: 'owner'
-      });
-    }
-
-    if (!config.adminToken && isLoopback(request.ip)) {
-      return applySelectedOrganization(request, store, {
-        source: 'loopback',
-        isHuman: true,
-        userId: DEFAULT_USER_ID,
-        organizationId: DEFAULT_ORGANIZATION_ID,
-        role: 'owner'
-      });
-    }
+  if (config.mode === 'single' && !config.adminToken && !bearer && isLoopback(request.ip)) {
+    return applySelectedOrganization(request, store, {
+      source: 'loopback',
+      isHuman: true,
+      userId: DEFAULT_USER_ID,
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      role: 'owner'
+    });
   }
 
   if (config.mode === 'clerk' && bearer) {

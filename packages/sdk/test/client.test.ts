@@ -40,6 +40,33 @@ describe('AgentTickClient', () => {
     });
   });
 
+  it('calls agent token revoke endpoint', async () => {
+    const seen: { url?: string; method?: string; body?: unknown } = {};
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        seen.url = String(input);
+        seen.method = init?.method;
+        seen.body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        return jsonResponse({
+          agentId: 'agt_123',
+          name: 'agent',
+          scopes: ['approval:create'],
+          organizationId: 'org_123',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          revokedAt: '2026-01-01T00:00:00.000Z'
+        });
+      }
+    });
+
+    await expect(client.revokeAgentToken('agt_123')).resolves.toMatchObject({ agentId: 'agt_123' });
+    expect(seen).toEqual({
+      url: 'https://tick.example.com/v1/agent-tokens/agt_123/revoke',
+      method: 'POST',
+      body: {}
+    });
+  });
+
   it('calls device endpoints with validated payloads', async () => {
     const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
     const client = new AgentTickClient({
