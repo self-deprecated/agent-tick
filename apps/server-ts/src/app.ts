@@ -2,13 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
+import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from './config.js';
+import { registerAgentTokenRoutes } from './routes/agentTokens.js';
+import { registerApprovalRoutes } from './routes/approvals.js';
+import { registerMeRoutes } from './routes/me.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
+  store: AgentTickStore;
 }
 
-export async function buildApp({ config }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, store }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: true,
     genReqId: (request) => request.headers['x-request-id']?.toString() ?? crypto.randomUUID()
@@ -19,7 +24,7 @@ export async function buildApp({ config }: BuildAppOptions): Promise<FastifyInst
     request.log.error({ err: error, statusCode }, 'request failed');
     void reply.status(statusCode).send({
       error: {
-        code: statusCode >= 500 ? 'internal_error' : 'bad_request',
+        code: statusCode >= 500 ? 'internal_error' : codeForError(error),
         message: statusCode >= 500 ? 'Internal server error' : messageForError(error),
         requestId: request.id
       }
@@ -34,6 +39,10 @@ export async function buildApp({ config }: BuildAppOptions): Promise<FastifyInst
     publicURL: config.publicURL,
     clerkPublishableKey: config.mode === 'clerk' ? config.clerkPublishableKey : undefined
   }));
+
+  await registerMeRoutes(app, { config, store });
+  await registerAgentTokenRoutes(app, { config, store });
+  await registerApprovalRoutes(app, { config, store });
 
   const adminIndexPath = await registerStaticAdmin(app, config.adminDistDir);
   setFallbackNotFoundHandler(app, adminIndexPath);
@@ -80,6 +89,11 @@ function statusCodeForError(error: unknown): number {
   if (typeof maybeFastifyError.statusCode === 'number') return maybeFastifyError.statusCode;
   if (typeof maybeFastifyError.validation === 'object') return 400;
   return 500;
+}
+
+function codeForError(error: unknown): string {
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : 'bad_request';
 }
 
 function messageForError(error: unknown): string {
