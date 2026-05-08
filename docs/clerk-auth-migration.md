@@ -193,7 +193,7 @@ Implemented so far:
 - Mobile uses the shared SDK for organization discovery, approval list/respond, presence, and device pair/register/unregister/push flows.
 - Audit-event table, event recording, route, SDK method, and dashboard display.
 - SDK token provider and organization provider support.
-- Svelte dashboard Clerk sign-in, invite preview/continuation, local organization selector, token management, audit view, and pairing code UI.
+- Svelte dashboard Clerk sign-in, invite preview/continuation, local organization selector, token management, audit view, pairing code UI, and ticketed EventSource refreshes.
 - Docker image build for the TypeScript server plus static Svelte admin assets.
 - Initial in-memory rate limits for auth-sensitive token endpoints.
 
@@ -202,7 +202,7 @@ Implemented so far:
 High priority:
 
 - Harden mobile OAuth/deep-link provider flows beyond the email/password and email-code signup path.
-- Wire dashboard/mobile EventSource listeners where polling becomes insufficient.
+- Wire mobile EventSource/SSE listeners if polling becomes insufficient in React Native.
 - Broaden signed-out invite continuation coverage with deep-link/OAuth provider-specific tests.
 
 Product rebuilds to evaluate/port from the prototype:

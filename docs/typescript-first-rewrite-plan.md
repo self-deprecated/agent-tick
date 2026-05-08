@@ -756,7 +756,7 @@ CLI request flow:
 
 Dashboard/mobile can initially poll pending approvals.
 
-Current TypeScript support includes short-lived event tickets, SSE `ready`/`audit` events, and SDK helpers for creating stream URLs or opening an injectable `EventSource`. Dashboard/mobile EventSource wiring can be enabled where polling becomes insufficient.
+Current TypeScript support includes short-lived event tickets, SSE `ready`/`audit` events, SDK helpers for creating stream URLs or opening an injectable `EventSource`, and dashboard EventSource refresh wiring. Mobile EventSource/SSE wiring can be enabled where polling becomes insufficient.
 
 Recommended event streaming design:
 

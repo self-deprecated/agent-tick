@@ -76,6 +76,10 @@
 	let clerk = $state<ClerkJS | undefined>();
 	let clerkSignedIn = $state(false);
 	let signInElement = $state<HTMLDivElement | undefined>();
+	let eventSource: EventSource | undefined;
+	let eventStreamOrganizationId = '';
+	let eventStreamRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+	let eventStreamReconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function client(options: { includeOrganization?: boolean } = {}): AgentTickClient {
 		return new AgentTickClient({
@@ -95,7 +99,10 @@
 		const onHashChange = () => syncInviteTokenFromLocation();
 		window.addEventListener('hashchange', onHashChange);
 		void load();
-		return () => window.removeEventListener('hashchange', onHashChange);
+		return () => {
+			window.removeEventListener('hashchange', onHashChange);
+			stopEventStream();
+		};
 	});
 
 	function syncInviteTokenFromLocation(): void {
@@ -193,6 +200,7 @@
 	}
 
 	async function signOut(): Promise<void> {
+		stopEventStream();
 		await clerk?.signOut();
 		approvals = [];
 		agentTokens = [];
@@ -216,6 +224,71 @@
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
 		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests(), refreshMyMembershipRequests()]);
+		void ensureEventStream();
+	}
+
+	function stopEventStream(): void {
+		if (eventStreamReconnectTimer) {
+			clearTimeout(eventStreamReconnectTimer);
+			eventStreamReconnectTimer = undefined;
+		}
+		if (eventStreamRefreshTimer) {
+			clearTimeout(eventStreamRefreshTimer);
+			eventStreamRefreshTimer = undefined;
+		}
+		eventSource?.close();
+		eventSource = undefined;
+		eventStreamOrganizationId = '';
+	}
+
+	function scheduleEventStreamReconnect(): void {
+		if (eventStreamReconnectTimer) return;
+		eventStreamReconnectTimer = setTimeout(() => {
+			eventStreamReconnectTimer = undefined;
+			void ensureEventStream();
+		}, 5000);
+	}
+
+	async function ensureEventStream(): Promise<void> {
+		if (!runtimeConfig || !selectedOrganizationId) {
+			stopEventStream();
+			return;
+		}
+		if (runtimeConfig.authProvider === 'clerk' && !clerkSignedIn) {
+			stopEventStream();
+			return;
+		}
+		if (eventSource && eventStreamOrganizationId === selectedOrganizationId) return;
+		stopEventStream();
+		const targetOrganizationId = selectedOrganizationId;
+		try {
+			const source = await client().openEventStream({ lastEventId: auditEvents[0]?.eventId });
+			if (targetOrganizationId !== selectedOrganizationId) {
+				source.close();
+				return;
+			}
+			eventSource = source;
+			eventStreamOrganizationId = targetOrganizationId;
+			source.addEventListener('audit', () => queueEventStreamRefresh());
+			source.onerror = () => {
+				if (eventSource === source) {
+					eventSource = undefined;
+					eventStreamOrganizationId = '';
+					source.close();
+					scheduleEventStreamReconnect();
+				}
+			};
+		} catch {
+			scheduleEventStreamReconnect();
+		}
+	}
+
+	function queueEventStreamRefresh(): void {
+		if (eventStreamRefreshTimer) return;
+		eventStreamRefreshTimer = setTimeout(() => {
+			eventStreamRefreshTimer = undefined;
+			void refreshWorkspace();
+		}, 250);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -235,12 +308,14 @@
 	}
 
 	async function selectOrganization(organizationId: string): Promise<void> {
+		stopEventStream();
 		selectedOrganizationId = organizationId;
 		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
 		else localStorage.removeItem(organizationStorageKey);
 		createdInvite = undefined;
 		teamMembers = {};
 		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests()]);
+		void ensureEventStream();
 	}
 
 	async function createOrganization(): Promise<void> {
