@@ -52,9 +52,13 @@ export const OrganizationRecordSchema = z.object({
 });
 export type OrganizationRecord = z.infer<typeof OrganizationRecordSchema>;
 
+export const OrganizationMembershipStatusSchema = z.enum(['active', 'pending_approval', 'rejected', 'removed']).or(z.string().min(1));
+export type OrganizationMembershipStatus = z.infer<typeof OrganizationMembershipStatusSchema>;
+
 export const OrganizationMembershipSchema = OrganizationRecordSchema.extend({
   userId: z.string(),
-  role: OrganizationRoleSchema.or(z.string())
+  role: OrganizationRoleSchema.or(z.string()),
+  status: OrganizationMembershipStatusSchema.default('active')
 });
 export type OrganizationMembership = z.infer<typeof OrganizationMembershipSchema>;
 
@@ -68,6 +72,7 @@ export const OrganizationInviteRecordSchema = z.object({
   organizationId: z.string(),
   label: z.string().optional(),
   role: OrganizationRoleSchema.or(z.string()),
+  approvalRequired: z.boolean().default(true),
   email: z.string().email().optional(),
   expiresAt: z.string().optional(),
   maxUses: z.number().int().positive().optional(),
@@ -82,6 +87,7 @@ export type OrganizationInviteRecord = z.infer<typeof OrganizationInviteRecordSc
 export const CreateOrganizationInviteSchema = z.object({
   label: z.string().optional(),
   role: OrganizationRoleSchema.default('member'),
+  approvalRequired: z.boolean().default(true),
   email: z.string().email().optional(),
   expiresAt: z.string().optional(),
   maxUses: z.number().int().positive().max(100).default(1)
@@ -93,16 +99,33 @@ export const InvitePreviewSchema = z.object({
   organizationName: z.string(),
   label: z.string().optional(),
   role: OrganizationRoleSchema.or(z.string()),
+  approvalRequired: z.boolean().default(true),
   email: z.string().email().optional(),
   expiresAt: z.string().optional()
 });
 export type InvitePreview = z.infer<typeof InvitePreviewSchema>;
 
 export const AcceptInviteResponseSchema = z.object({
-  status: z.enum(['joined', 'already_member']),
+  status: z.enum(['joined', 'already_member', 'pending_approval']),
   membership: OrganizationMembershipSchema
 });
 export type AcceptInviteResponse = z.infer<typeof AcceptInviteResponseSchema>;
+
+export const OrganizationMembershipRequestRecordSchema = z.object({
+  requestId: z.string(),
+  inviteId: z.string(),
+  organizationId: z.string(),
+  userId: z.string(),
+  userEmail: z.string().email().optional(),
+  userName: z.string().optional(),
+  inviteLabel: z.string().optional(),
+  requestedRole: OrganizationRoleSchema.or(z.string()),
+  status: z.enum(['pending_approval', 'approved', 'rejected']).or(z.string()),
+  acceptedAt: z.string(),
+  decidedByUserId: z.string().optional(),
+  decidedAt: z.string().optional()
+});
+export type OrganizationMembershipRequestRecord = z.infer<typeof OrganizationMembershipRequestRecordSchema>;
 
 export const ProjectRecordSchema = z.object({
   projectId: z.string(),

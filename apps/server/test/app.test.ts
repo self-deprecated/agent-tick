@@ -232,6 +232,50 @@ describe('server skeleton', () => {
     expect(forbidden.statusCode).toBe(403);
   });
 
+  it('keeps invite acceptances pending until an organization admin approves them', async () => {
+    const db = testStore();
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: db });
+
+    const createOrg = await app.inject({ method: 'POST', url: '/v1/organizations', payload: { name: 'Production' } });
+    const organizationId = createOrg.json().organizationId as string;
+    const invite = await app.inject({
+      method: 'POST',
+      url: '/v1/organization-invites',
+      headers: { 'x-agent-tick-organization-id': organizationId },
+      payload: { label: 'Bob', role: 'admin', email: 'bob@example.com' }
+    });
+    const bob = db.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
+    const pairing = db.createPairingToken(bob.userId, bob.organizationId);
+    const bobDevice = db.pairDeviceWithCode(pairing.token, 'Bob phone', 'ios');
+
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/v1/invites/${encodeURIComponent(invite.json().token)}/accept`,
+      headers: { authorization: `Bearer ${bobDevice!.token}` },
+      payload: {}
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({ status: 'pending_approval', membership: { organizationId, role: 'admin', status: 'pending_approval' } });
+
+    expect(db.organizationMembershipForUser(bob.userId, organizationId)).toBeNull();
+    const membersWhilePending = await app.inject({ method: 'GET', url: `/v1/organizations/${organizationId}/members` });
+    expect(membersWhilePending.statusCode).toBe(200);
+    expect(membersWhilePending.json().map((member: { userId: string }) => member.userId)).not.toContain(bob.userId);
+
+    const pending = await app.inject({ method: 'GET', url: '/v1/organization-membership-requests', headers: { 'x-agent-tick-organization-id': organizationId } });
+    expect(pending.statusCode).toBe(200);
+    expect(pending.json()).toEqual([expect.objectContaining({ userId: bob.userId, requestedRole: 'admin', status: 'pending_approval' })]);
+
+    const approved = await app.inject({ method: 'POST', url: `/v1/organization-membership-requests/${pending.json()[0].requestId}/approve`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({ status: 'approved', decidedByUserId: 'usr_default' });
+
+    expect(db.organizationMembershipForUser(bob.userId, organizationId)).toMatchObject({ role: 'admin' });
+    const membersAfterApproval = await app.inject({ method: 'GET', url: `/v1/organizations/${organizationId}/members` });
+    expect(membersAfterApproval.statusCode).toBe(200);
+    expect(membersAfterApproval.json()).toEqual(expect.arrayContaining([expect.objectContaining({ userId: bob.userId, role: 'admin', status: 'active' })]));
+  });
+
   it('notifies registered push devices when an approval request is created', async () => {
     const notified: string[] = [];
     app = await buildApp({

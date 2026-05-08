@@ -22,6 +22,7 @@ import {
   InvitePreviewSchema,
   MeResponseSchema,
   OrganizationInviteRecordSchema,
+  OrganizationMembershipRequestRecordSchema,
   OrganizationMembershipSchema,
   PairDeviceRequestSchema,
   PairingTokenSchema,
@@ -63,6 +64,7 @@ import {
   type MeResponse,
   type OrganizationInviteRecord,
   type OrganizationMembership,
+  type OrganizationMembershipRequestRecord,
   type PairDeviceRequest,
   type PairingToken,
   type PolicyRecord,
@@ -214,6 +216,18 @@ export class AgentTickClient {
 
   revokeOrganizationInvite(inviteId: string): Promise<OrganizationInviteRecord> {
     return this.#request('POST', `/v1/organization-invites/${encodeURIComponent(inviteId)}/revoke`, OrganizationInviteRecordSchema, { body: {} });
+  }
+
+  listMembershipRequests(): Promise<OrganizationMembershipRequestRecord[]> {
+    return this.#request('GET', '/v1/organization-membership-requests', OrganizationMembershipRequestRecordSchema.array());
+  }
+
+  approveMembershipRequest(requestId: string): Promise<OrganizationMembershipRequestRecord> {
+    return this.#request('POST', `/v1/organization-membership-requests/${encodeURIComponent(requestId)}/approve`, OrganizationMembershipRequestRecordSchema, { body: {} });
+  }
+
+  rejectMembershipRequest(requestId: string): Promise<OrganizationMembershipRequestRecord> {
+    return this.#request('POST', `/v1/organization-membership-requests/${encodeURIComponent(requestId)}/reject`, OrganizationMembershipRequestRecordSchema, { body: {} });
   }
 
   previewInvite(token: string): Promise<InvitePreview> {
@@ -383,6 +397,7 @@ export type {
   MeResponse,
   OrganizationInviteRecord,
   OrganizationMembership,
+  OrganizationMembershipRequestRecord,
   PairDeviceRequest,
   PairingToken,
   PolicyRecord,

@@ -200,11 +200,14 @@ describe('AgentTickClient', () => {
         const url = String(input);
         if (url.includes('/v1/invites/invite_secret/accept')) {
           return jsonResponse({
-            status: 'joined',
-            membership: { organizationId: 'org_123', name: 'Production', userId: 'usr_123', role: 'admin', createdAt: '2026-01-01T00:00:00.000Z' }
+            status: 'pending_approval',
+            membership: { organizationId: 'org_123', name: 'Production', userId: 'usr_123', role: 'admin', status: 'pending_approval', createdAt: '2026-01-01T00:00:00.000Z' }
           });
         }
-        if (url.includes('/v1/invites/invite_secret')) return jsonResponse({ organizationId: 'org_123', organizationName: 'Production', role: 'admin' });
+        if (url.includes('/v1/invites/invite_secret')) return jsonResponse({ organizationId: 'org_123', organizationName: 'Production', role: 'admin', approvalRequired: true });
+        if (url.includes('/v1/organization-membership-requests/mreq_123/approve')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', status: 'approved', acceptedAt: '2026-01-01T00:00:00.000Z' });
+        if (url.includes('/v1/organization-membership-requests/mreq_123/reject')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', status: 'rejected', acceptedAt: '2026-01-01T00:00:00.000Z' });
+        if (url.endsWith('/v1/organization-membership-requests')) return jsonResponse([{ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', status: 'pending_approval', acceptedAt: '2026-01-01T00:00:00.000Z' }]);
         if (url.includes('/revoke')) return jsonResponse({ ...invite, revokedAt: '2026-01-01T00:00:00.000Z' });
         return url.endsWith('/v1/organization-invites') && init?.method === 'POST' ? jsonResponse(invite) : jsonResponse([invite]);
       }
@@ -213,13 +216,19 @@ describe('AgentTickClient', () => {
     await expect(client.createOrganizationInvite({ label: 'Teammate', role: 'admin' })).resolves.toMatchObject({ inviteId: 'inv_123' });
     await expect(client.listOrganizationInvites()).resolves.toEqual([expect.objectContaining({ inviteId: 'inv_123' })]);
     await expect(client.previewInvite('invite_secret')).resolves.toMatchObject({ organizationName: 'Production' });
-    await expect(client.acceptInvite('invite_secret')).resolves.toMatchObject({ status: 'joined', membership: { role: 'admin' } });
+    await expect(client.acceptInvite('invite_secret')).resolves.toMatchObject({ status: 'pending_approval', membership: { role: 'admin' } });
+    await expect(client.listMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123' })]);
+    await expect(client.approveMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'approved' });
+    await expect(client.rejectMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'rejected' });
     await expect(client.revokeOrganizationInvite('inv_123')).resolves.toMatchObject({ revokedAt: expect.any(String) });
     expect(requests.map((request) => [request.method, request.url, request.organizationId, request.body])).toEqual([
-      ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', maxUses: 1 }],
+      ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', approvalRequired: true, maxUses: 1 }],
       ['GET', 'https://tick.example.com/v1/organization-invites', 'org_selected', undefined],
       ['GET', 'https://tick.example.com/v1/invites/invite_secret', null, undefined],
       ['POST', 'https://tick.example.com/v1/invites/invite_secret/accept', null, {}],
+      ['GET', 'https://tick.example.com/v1/organization-membership-requests', 'org_selected', undefined],
+      ['POST', 'https://tick.example.com/v1/organization-membership-requests/mreq_123/approve', 'org_selected', {}],
+      ['POST', 'https://tick.example.com/v1/organization-membership-requests/mreq_123/reject', 'org_selected', {}],
       ['POST', 'https://tick.example.com/v1/organization-invites/inv_123/revoke', 'org_selected', {}]
     ]);
   });

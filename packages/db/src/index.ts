@@ -89,6 +89,7 @@ export interface OrganizationRecord {
 export interface OrganizationMembershipRecord extends OrganizationRecord {
   userId: string;
   role: string;
+  status: string;
 }
 
 export interface OrganizationInviteRecord {
@@ -96,6 +97,7 @@ export interface OrganizationInviteRecord {
   organizationId: string;
   label: string | undefined;
   role: string;
+  approvalRequired: boolean;
   email: string | undefined;
   expiresAt: string | undefined;
   maxUses: number | undefined;
@@ -111,6 +113,7 @@ export interface CreateOrganizationInviteInput {
   userId: string;
   label?: string;
   role?: string;
+  approvalRequired?: boolean;
   email?: string;
   expiresAt?: string;
   maxUses?: number;
@@ -122,13 +125,29 @@ export interface InvitePreviewRecord {
   organizationName: string;
   label: string | undefined;
   role: string;
+  approvalRequired: boolean;
   email: string | undefined;
   expiresAt: string | undefined;
 }
 
 export interface AcceptInviteResult {
-  status: 'joined' | 'already_member';
+  status: 'joined' | 'already_member' | 'pending_approval';
   membership: OrganizationMembershipRecord;
+}
+
+export interface OrganizationMembershipRequestRecord {
+  requestId: string;
+  inviteId: string;
+  organizationId: string;
+  userId: string;
+  userEmail: string | undefined;
+  userName: string | undefined;
+  inviteLabel: string | undefined;
+  requestedRole: string;
+  status: string;
+  acceptedAt: string;
+  decidedByUserId: string | undefined;
+  decidedAt: string | undefined;
 }
 
 export interface ProjectRecord {
@@ -316,6 +335,13 @@ export class AgentTickStore {
 
   migrate(): void {
     this.db.exec(MIGRATION_0001);
+    ensureColumn(this.db, 'organization_memberships', 'status', "ALTER TABLE organization_memberships ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+    ensureColumn(this.db, 'organization_memberships', 'approved_by_user_id', 'ALTER TABLE organization_memberships ADD COLUMN approved_by_user_id TEXT');
+    ensureColumn(this.db, 'organization_memberships', 'approved_at', 'ALTER TABLE organization_memberships ADD COLUMN approved_at TEXT');
+    ensureColumn(this.db, 'organization_memberships', 'rejected_by_user_id', 'ALTER TABLE organization_memberships ADD COLUMN rejected_by_user_id TEXT');
+    ensureColumn(this.db, 'organization_memberships', 'rejected_at', 'ALTER TABLE organization_memberships ADD COLUMN rejected_at TEXT');
+    ensureColumn(this.db, 'organization_memberships', 'invite_id', 'ALTER TABLE organization_memberships ADD COLUMN invite_id TEXT');
+    ensureColumn(this.db, 'organization_invites', 'approval_required', 'ALTER TABLE organization_invites ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 1');
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
   }
@@ -388,7 +414,7 @@ export class AgentTickStore {
 
   defaultMembershipForUser(userId: string): HumanIdentityResult {
     const row = this.db
-      .prepare(`SELECT organization_id, role FROM organization_memberships WHERE user_id = ? ORDER BY created_at ASC LIMIT 1`)
+      .prepare(`SELECT organization_id, role FROM organization_memberships WHERE user_id = ? AND status = 'active' ORDER BY created_at ASC LIMIT 1`)
       .get(userId) as { organization_id: string; role: string } | undefined;
     if (!row) return { userId, organizationId: DEFAULT_ORGANIZATION_ID, role: 'owner' };
     return { userId, organizationId: row.organization_id, role: row.role };
@@ -397,10 +423,10 @@ export class AgentTickStore {
   listOrganizationsForUser(userId: string): OrganizationMembershipRecord[] {
     const rows = this.db
       .prepare(`
-        SELECT o.id AS organization_id, o.name, o.created_at, o.updated_at, m.user_id, m.role
+        SELECT o.id AS organization_id, o.name, o.created_at, o.updated_at, m.user_id, m.role, m.status
         FROM organization_memberships m
         JOIN organizations o ON o.id = m.organization_id
-        WHERE m.user_id = ?
+        WHERE m.user_id = ? AND m.status = 'active'
         ORDER BY o.created_at ASC
       `)
       .all(userId) as OrganizationMembershipRow[];
@@ -410,10 +436,10 @@ export class AgentTickStore {
   listOrganizationMembers(organizationId: string): OrganizationMembershipRecord[] {
     const rows = this.db
       .prepare(`
-        SELECT o.id AS organization_id, o.name, o.created_at, o.updated_at, m.user_id, m.role
+        SELECT o.id AS organization_id, o.name, o.created_at, o.updated_at, m.user_id, m.role, m.status
         FROM organization_memberships m
         JOIN organizations o ON o.id = m.organization_id
-        WHERE m.organization_id = ?
+        WHERE m.organization_id = ? AND m.status = 'active'
         ORDER BY m.created_at ASC
       `)
       .all(organizationId) as OrganizationMembershipRow[];
@@ -422,9 +448,21 @@ export class AgentTickStore {
 
   organizationMembershipForUser(userId: string, organizationId: string): HumanIdentityResult | null {
     const row = this.db
-      .prepare('SELECT organization_id, role FROM organization_memberships WHERE user_id = ? AND organization_id = ?')
+      .prepare("SELECT organization_id, role FROM organization_memberships WHERE user_id = ? AND organization_id = ? AND status = 'active'")
       .get(userId, organizationId) as { organization_id: string; role: string } | undefined;
     return row ? { userId, organizationId: row.organization_id, role: row.role } : null;
+  }
+
+  organizationMembershipForUserAnyStatus(userId: string, organizationId: string): OrganizationMembershipRecord | null {
+    const row = this.db
+      .prepare(`
+        SELECT o.id AS organization_id, o.name, o.created_at, o.updated_at, m.user_id, m.role, m.status
+        FROM organization_memberships m
+        JOIN organizations o ON o.id = m.organization_id
+        WHERE m.user_id = ? AND m.organization_id = ?
+      `)
+      .get(userId, organizationId) as OrganizationMembershipRow | undefined;
+    return row ? mapOrganizationMembershipRow(row) : null;
   }
 
   createOrganizationForUser(userId: string, name: string, now = new Date().toISOString()): OrganizationMembershipRecord {
@@ -444,6 +482,7 @@ export class AgentTickStore {
       organizationId: membership.organizationId,
       userId,
       role: membership.role,
+      status: 'active',
       name: cleanName,
       createdAt: now,
       updatedAt: now
@@ -462,14 +501,16 @@ export class AgentTickStore {
     const token = `invite_${randomToken()}`;
     const role = input.role?.trim() || 'member';
     const maxUses = Math.min(Math.max(Math.trunc(input.maxUses ?? 1), 1), 100);
+    const approvalRequired = input.approvalRequired ?? true;
     this.db
-      .prepare('INSERT INTO organization_invites(invite_id, organization_id, created_by_user_id, label, role, token_hash, email, expires_at, max_uses, used_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .prepare('INSERT INTO organization_invites(invite_id, organization_id, created_by_user_id, label, role, approval_required, token_hash, email, expires_at, max_uses, used_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run(
         inviteId,
         input.organizationId,
         input.userId,
         input.label?.trim() || null,
         role,
+        approvalRequired ? 1 : 0,
         hashToken(token),
         input.email?.trim().toLowerCase() || null,
         input.expiresAt ?? null,
@@ -477,7 +518,7 @@ export class AgentTickStore {
         0,
         now
       );
-    this.writeAuditEvent(input.organizationId, input.userId, 'organization_invite.created', inviteId, { role, email: input.email?.trim().toLowerCase() }, now);
+    this.writeAuditEvent(input.organizationId, input.userId, 'organization_invite.created', inviteId, { role, approvalRequired, email: input.email?.trim().toLowerCase() }, now);
     const invite = this.getOrganizationInvite(inviteId) ?? missingInvite(inviteId);
     return {
       ...invite,
@@ -512,6 +553,7 @@ export class AgentTickStore {
       organizationName: row.organization_name,
       label: row.label ?? undefined,
       role: row.role,
+      approvalRequired: Boolean(row.approval_required),
       email: row.email ?? undefined,
       expiresAt: row.expires_at ?? undefined
     };
@@ -526,22 +568,132 @@ export class AgentTickStore {
       throw httpError(403, 'forbidden', 'This invite is restricted to a different email address');
     }
 
-    const existing = this.organizationMembershipForUser(userId, invite.organization_id);
-    if (existing) {
-      const membership = this.listOrganizationsForUser(userId).find((entry) => entry.organizationId === invite.organization_id) ?? missingOrganization(invite.organization_id);
-      return { status: 'already_member', membership };
+    const existing = this.organizationMembershipForUserAnyStatus(userId, invite.organization_id);
+    if (existing?.status === 'active') return { status: 'already_member', membership: existing };
+    if (existing?.status === 'pending_approval') return { status: 'pending_approval', membership: existing };
+
+    const previousAcceptance = this.db
+      .prepare('SELECT status FROM organization_invite_acceptances WHERE invite_id = ? AND user_id = ?')
+      .get(invite.invite_id, userId) as { status: string } | undefined;
+    if (previousAcceptance?.status === 'rejected') {
+      throw httpError(409, 'conflict', 'This invite request was rejected');
     }
 
-    const tx = this.db.transaction(() => {
+    const approvalRequired = Boolean(invite.approval_required);
+    const requestId = newID('mreq');
+    const accepted = this.db.transaction(() => {
+      const consumed = this.db
+        .prepare(`
+          UPDATE organization_invites
+          SET used_count = used_count + 1
+          WHERE invite_id = ?
+            AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > ?)
+            AND (max_uses IS NULL OR used_count < max_uses)
+        `)
+        .run(invite.invite_id, now).changes;
+      if (consumed !== 1) return false;
+
       this.db
-        .prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-        .run(invite.organization_id, userId, invite.role, now, now);
-      this.db.prepare('UPDATE organization_invites SET used_count = used_count + 1 WHERE invite_id = ?').run(invite.invite_id);
-    });
-    tx();
-    this.writeAuditEvent(invite.organization_id, userId, 'organization_invite.accepted', invite.invite_id, { role: invite.role }, now);
-    const membership = this.listOrganizationsForUser(userId).find((entry) => entry.organizationId === invite.organization_id) ?? missingOrganization(invite.organization_id);
-    return { status: 'joined', membership };
+        .prepare('INSERT INTO organization_invite_acceptances(request_id, invite_id, organization_id, user_id, requested_role, status, accepted_at, decided_by_user_id, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(requestId, invite.invite_id, invite.organization_id, userId, invite.role, approvalRequired ? 'pending_approval' : 'approved', now, approvalRequired ? null : userId, approvalRequired ? null : now);
+
+      if (existing) {
+        this.db
+          .prepare('UPDATE organization_memberships SET role = ?, status = ?, updated_at = ?, approved_by_user_id = ?, approved_at = ?, rejected_by_user_id = NULL, rejected_at = NULL, invite_id = ? WHERE organization_id = ? AND user_id = ?')
+          .run(invite.role, approvalRequired ? 'pending_approval' : 'active', now, approvalRequired ? null : userId, approvalRequired ? null : now, invite.invite_id, invite.organization_id, userId);
+      } else {
+        this.db
+          .prepare('INSERT INTO organization_memberships(organization_id, user_id, role, status, created_at, updated_at, approved_by_user_id, approved_at, invite_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(invite.organization_id, userId, invite.role, approvalRequired ? 'pending_approval' : 'active', now, now, approvalRequired ? null : userId, approvalRequired ? null : now, invite.invite_id);
+      }
+      return true;
+    })();
+
+    if (!accepted) return null;
+    this.writeAuditEvent(invite.organization_id, userId, 'organization_invite.accepted', invite.invite_id, { role: invite.role, approvalRequired }, now);
+    if (approvalRequired) this.writeAuditEvent(invite.organization_id, userId, 'organization_membership.pending', requestId, { inviteId: invite.invite_id, role: invite.role }, now);
+    else this.writeAuditEvent(invite.organization_id, userId, 'organization_membership.approved', requestId, { inviteId: invite.invite_id, role: invite.role, autoApproved: true }, now);
+
+    const membership = this.organizationMembershipForUserAnyStatus(userId, invite.organization_id) ?? missingOrganization(invite.organization_id);
+    return { status: approvalRequired ? 'pending_approval' : 'joined', membership };
+  }
+
+  listOrganizationMembershipRequests(organizationId: string, status = 'pending_approval'): OrganizationMembershipRequestRecord[] {
+    const rows = this.db
+      .prepare(`
+        SELECT a.request_id, a.invite_id, a.organization_id, a.user_id, u.email AS user_email, u.name AS user_name,
+               i.label AS invite_label, a.requested_role, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+        FROM organization_invite_acceptances a
+        JOIN users u ON u.id = a.user_id
+        JOIN organization_invites i ON i.invite_id = a.invite_id
+        WHERE a.organization_id = ? AND a.status = ?
+        ORDER BY a.accepted_at ASC
+      `)
+      .all(organizationId, status) as OrganizationMembershipRequestRow[];
+    return rows.map(mapOrganizationMembershipRequestRow);
+  }
+
+  getOrganizationMembershipRequest(requestId: string, organizationId: string): OrganizationMembershipRequestRecord | null {
+    const row = this.db
+      .prepare(`
+        SELECT a.request_id, a.invite_id, a.organization_id, a.user_id, u.email AS user_email, u.name AS user_name,
+               i.label AS invite_label, a.requested_role, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+        FROM organization_invite_acceptances a
+        JOIN users u ON u.id = a.user_id
+        JOIN organization_invites i ON i.invite_id = a.invite_id
+        WHERE a.request_id = ? AND a.organization_id = ?
+      `)
+      .get(requestId, organizationId) as OrganizationMembershipRequestRow | undefined;
+    return row ? mapOrganizationMembershipRequestRow(row) : null;
+  }
+
+  approveOrganizationMembershipRequest(requestId: string, organizationId: string, actorUserId: string, now = new Date().toISOString()): OrganizationMembershipRequestRecord | null {
+    const existing = this.getOrganizationMembershipRequest(requestId, organizationId);
+    if (!existing || existing.status !== 'pending_approval') return null;
+    let changed = false;
+    try {
+      changed = this.db.transaction(() => {
+        const acceptance = this.db
+          .prepare("UPDATE organization_invite_acceptances SET status = 'approved', decided_by_user_id = ?, decided_at = ? WHERE request_id = ? AND organization_id = ? AND status = 'pending_approval'")
+          .run(actorUserId, now, requestId, organizationId).changes;
+        if (acceptance !== 1) return false;
+        const membership = this.db
+          .prepare("UPDATE organization_memberships SET role = ?, status = 'active', updated_at = ?, approved_by_user_id = ?, approved_at = ?, rejected_by_user_id = NULL, rejected_at = NULL WHERE organization_id = ? AND user_id = ? AND status = 'pending_approval'")
+          .run(existing.requestedRole, now, actorUserId, now, organizationId, existing.userId).changes;
+        if (membership !== 1) throw new Error('pending membership was not updated');
+        return true;
+      })();
+    } catch {
+      return null;
+    }
+    if (!changed) return null;
+    this.writeAuditEvent(organizationId, actorUserId, 'organization_membership.approved', requestId, { inviteId: existing.inviteId, userId: existing.userId, role: existing.requestedRole }, now);
+    return this.getOrganizationMembershipRequest(requestId, organizationId);
+  }
+
+  rejectOrganizationMembershipRequest(requestId: string, organizationId: string, actorUserId: string, now = new Date().toISOString()): OrganizationMembershipRequestRecord | null {
+    const existing = this.getOrganizationMembershipRequest(requestId, organizationId);
+    if (!existing || existing.status !== 'pending_approval') return null;
+    let changed = false;
+    try {
+      changed = this.db.transaction(() => {
+        const acceptance = this.db
+          .prepare("UPDATE organization_invite_acceptances SET status = 'rejected', decided_by_user_id = ?, decided_at = ? WHERE request_id = ? AND organization_id = ? AND status = 'pending_approval'")
+          .run(actorUserId, now, requestId, organizationId).changes;
+        if (acceptance !== 1) return false;
+        const membership = this.db
+          .prepare("UPDATE organization_memberships SET status = 'rejected', updated_at = ?, rejected_by_user_id = ?, rejected_at = ? WHERE organization_id = ? AND user_id = ? AND status = 'pending_approval'")
+          .run(now, actorUserId, now, organizationId, existing.userId).changes;
+        if (membership !== 1) throw new Error('pending membership was not updated');
+        return true;
+      })();
+    } catch {
+      return null;
+    }
+    if (!changed) return null;
+    this.writeAuditEvent(organizationId, actorUserId, 'organization_membership.rejected', requestId, { inviteId: existing.inviteId, userId: existing.userId, role: existing.requestedRole }, now);
+    return this.getOrganizationMembershipRequest(requestId, organizationId);
   }
 
   private findUsableInvite(token: string, now: string): OrganizationInviteLookupRow | null {
@@ -1178,6 +1330,7 @@ function mapOrganizationMembershipRow(row: OrganizationMembershipRow): Organizat
     name: row.name,
     userId: row.user_id,
     role: row.role,
+    status: row.status ?? 'active',
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -1189,12 +1342,30 @@ function mapOrganizationInviteRow(row: OrganizationInviteRow): OrganizationInvit
     organizationId: row.organization_id,
     label: row.label ?? undefined,
     role: row.role,
+    approvalRequired: Boolean(row.approval_required),
     email: row.email ?? undefined,
     expiresAt: row.expires_at ?? undefined,
     maxUses: row.max_uses ?? undefined,
     usedCount: row.used_count,
     revokedAt: row.revoked_at ?? undefined,
     createdAt: row.created_at
+  };
+}
+
+function mapOrganizationMembershipRequestRow(row: OrganizationMembershipRequestRow): OrganizationMembershipRequestRecord {
+  return {
+    requestId: row.request_id,
+    inviteId: row.invite_id,
+    organizationId: row.organization_id,
+    userId: row.user_id,
+    userEmail: row.user_email?.trim() || undefined,
+    userName: row.user_name?.trim() || undefined,
+    inviteLabel: row.invite_label ?? undefined,
+    requestedRole: row.requested_role,
+    status: row.status,
+    acceptedAt: row.accepted_at,
+    decidedByUserId: row.decided_by_user_id ?? undefined,
+    decidedAt: row.decided_at ?? undefined
   };
 }
 
@@ -1405,6 +1576,11 @@ function uniqueTeamSlug(db: Database.Database, organizationId: string, input: st
   return candidate;
 }
 
+function ensureColumn(db: Database.Database, table: string, column: string, alterSQL: string): void {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!rows.some((row) => row.name === column)) db.exec(alterSQL);
+}
+
 function httpError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
   const error = new Error(message) as Error & { statusCode: number; code: string };
   error.statusCode = statusCode;
@@ -1508,6 +1684,7 @@ interface OrganizationMembershipRow {
   name: string;
   user_id: string;
   role: string;
+  status: string;
   created_at: string;
   updated_at: string;
 }
@@ -1518,6 +1695,7 @@ interface OrganizationInviteRow {
   created_by_user_id: string;
   label: string | null;
   role: string;
+  approval_required: number;
   token_hash: string;
   email: string | null;
   expires_at: string | null;
@@ -1529,6 +1707,21 @@ interface OrganizationInviteRow {
 
 interface OrganizationInviteLookupRow extends OrganizationInviteRow {
   organization_name: string;
+}
+
+interface OrganizationMembershipRequestRow {
+  request_id: string;
+  invite_id: string;
+  organization_id: string;
+  user_id: string;
+  user_email: string | null;
+  user_name: string | null;
+  invite_label: string | null;
+  requested_role: string;
+  status: string;
+  accepted_at: string;
+  decided_by_user_id: string | null;
+  decided_at: string | null;
 }
 
 interface AgentTokenRow {
@@ -1665,10 +1858,18 @@ CREATE TABLE IF NOT EXISTS organization_memberships (
   organization_id TEXT NOT NULL REFERENCES organizations(id),
   user_id TEXT NOT NULL REFERENCES users(id),
   role TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  approved_by_user_id TEXT,
+  approved_at TEXT,
+  rejected_by_user_id TEXT,
+  rejected_at TEXT,
+  invite_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (organization_id, user_id)
 );
+
+CREATE INDEX IF NOT EXISTS organization_memberships_status_idx ON organization_memberships(organization_id, status);
 
 CREATE TABLE IF NOT EXISTS organization_invites (
   invite_id TEXT PRIMARY KEY,
@@ -1676,6 +1877,7 @@ CREATE TABLE IF NOT EXISTS organization_invites (
   created_by_user_id TEXT NOT NULL REFERENCES users(id),
   label TEXT,
   role TEXT NOT NULL,
+  approval_required INTEGER NOT NULL DEFAULT 1,
   token_hash TEXT NOT NULL UNIQUE,
   email TEXT,
   expires_at TEXT,
@@ -1687,6 +1889,22 @@ CREATE TABLE IF NOT EXISTS organization_invites (
 
 CREATE INDEX IF NOT EXISTS organization_invites_org_idx ON organization_invites(organization_id, revoked_at, created_at);
 CREATE INDEX IF NOT EXISTS organization_invites_token_idx ON organization_invites(token_hash);
+
+CREATE TABLE IF NOT EXISTS organization_invite_acceptances (
+  request_id TEXT PRIMARY KEY,
+  invite_id TEXT NOT NULL REFERENCES organization_invites(invite_id),
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  requested_role TEXT NOT NULL,
+  status TEXT NOT NULL,
+  accepted_at TEXT NOT NULL,
+  decided_by_user_id TEXT,
+  decided_at TEXT,
+  UNIQUE(invite_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS organization_invite_acceptances_org_status_idx ON organization_invite_acceptances(organization_id, status, accepted_at);
+CREATE INDEX IF NOT EXISTS organization_invite_acceptances_user_idx ON organization_invite_acceptances(user_id);
 
 CREATE TABLE IF NOT EXISTS projects (
   project_id TEXT PRIMARY KEY,
