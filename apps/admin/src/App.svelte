@@ -10,6 +10,7 @@
 		type AuthConfig,
 		type OrganizationMembership,
 		type PairingToken,
+		type PolicyRecord,
 		type ProjectRecord,
 		type TeamRecord
 	} from '@agent-tick/sdk';
@@ -27,10 +28,15 @@
 	let organizations = $state<OrganizationMembership[]>([]);
 	let projects = $state<ProjectRecord[]>([]);
 	let teams = $state<TeamRecord[]>([]);
+	let policies = $state<PolicyRecord[]>([]);
 	let selectedOrganizationId = $state('');
 	let newOrganizationName = $state('');
 	let newProjectName = $state('');
 	let newTeamName = $state('');
+	let newPolicyName = $state('');
+	let newPolicyRequiredApprovals = $state(1);
+	let newPolicyProjectId = $state('');
+	let newPolicyTeamId = $state('');
 	let createdCredential = $state<AgentCredential | undefined>();
 	let pairingToken = $state<PairingToken | undefined>();
 	let adminToken = $state('');
@@ -102,6 +108,7 @@
 		organizations = [];
 		projects = [];
 		teams = [];
+		policies = [];
 		selectedOrganizationId = '';
 		createdCredential = undefined;
 		clerkSignedIn = false;
@@ -111,7 +118,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies()]);
 	}
 
 	async function refreshOrganizations(): Promise<void> {
@@ -134,7 +141,7 @@
 		selectedOrganizationId = organizationId;
 		if (organizationId) localStorage.setItem(organizationStorageKey, organizationId);
 		else localStorage.removeItem(organizationStorageKey);
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshProjects(), refreshTeams(), refreshPolicies()]);
 	}
 
 	async function createOrganization(): Promise<void> {
@@ -209,6 +216,45 @@
 		} catch (err) {
 			error = messageForError(err);
 		}
+	}
+
+	async function refreshPolicies(): Promise<void> {
+		try {
+			policies = await client().listPolicies();
+		} catch {
+			policies = [];
+		}
+	}
+
+	async function createPolicy(): Promise<void> {
+		const name = newPolicyName.trim();
+		if (!name) return;
+		error = '';
+		try {
+			await client().createPolicy({
+				name,
+				requiredApprovals: newPolicyRequiredApprovals,
+				...(newPolicyProjectId ? { projectId: newPolicyProjectId } : {}),
+				...(newPolicyTeamId ? { teamId: newPolicyTeamId } : {})
+			});
+			newPolicyName = '';
+			newPolicyRequiredApprovals = 1;
+			newPolicyProjectId = '';
+			newPolicyTeamId = '';
+			await Promise.all([refreshPolicies(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	function projectLabel(projectId: string): string {
+		const project = projects.find((entry) => entry.projectId === projectId);
+		return project ? `${project.name} (${project.slug})` : projectId;
+	}
+
+	function teamLabel(teamId: string): string {
+		const team = teams.find((entry) => entry.teamId === teamId);
+		return team ? `${team.name} (${team.slug})` : teamId;
 	}
 
 	async function refreshAuditEvents(): Promise<void> {
@@ -396,6 +442,56 @@
 								<strong>{team.name}</strong>
 								<p class="subtle">{team.teamId} · {team.slug}{team.archivedAt ? ` · archived ${new Date(team.archivedAt).toLocaleString()}` : ''}</p>
 								{#if team.description}<p>{team.description}</p>{/if}
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+		<section class="card stack">
+			<div class="section-heading">
+				<h2>Policies</h2>
+				<button onclick={refreshPolicies}>Refresh policies</button>
+			</div>
+			<form class="stack" onsubmit={(event) => { event.preventDefault(); void createPolicy(); }}>
+				<div class="row">
+					<input bind:value={newPolicyName} aria-label="Policy name" placeholder="Policy name" />
+					<label for="policy-required-approvals" class="inline-label">Required approvals</label>
+					<input id="policy-required-approvals" bind:value={newPolicyRequiredApprovals} type="number" min="1" max="10" />
+				</div>
+				<div class="row">
+					<label for="policy-project" class="inline-label">Project</label>
+					<select id="policy-project" bind:value={newPolicyProjectId}>
+						<option value="">Any project</option>
+						{#each projects as project}
+							<option value={project.projectId}>{project.name} ({project.slug})</option>
+						{/each}
+					</select>
+					<label for="policy-team" class="inline-label">Team</label>
+					<select id="policy-team" bind:value={newPolicyTeamId}>
+						<option value="">Any team</option>
+						{#each teams as team}
+							<option value={team.teamId}>{team.name} ({team.slug})</option>
+						{/each}
+					</select>
+					<button type="submit">Create policy</button>
+				</div>
+			</form>
+			{#if policies.length === 0}
+				<p class="subtle">No policies yet. Create a local approval policy to start modeling quorum and project/team routing.</p>
+			{:else}
+				<ul class="item-list">
+					{#each policies as policy}
+						<li class="item-card" class:is-muted={!policy.enabled || Boolean(policy.archivedAt)}>
+							<div>
+								<strong>{policy.name}</strong>
+								<p class="subtle">
+									{policy.policyId} · {policy.enabled ? 'enabled' : 'disabled'} · {policy.requiredApprovals} approval{policy.requiredApprovals === 1 ? '' : 's'}
+									{policy.projectId ? ` · project ${projectLabel(policy.projectId)}` : ''}
+									{policy.teamId ? ` · team ${teamLabel(policy.teamId)}` : ''}
+									{policy.archivedAt ? ` · archived ${new Date(policy.archivedAt).toLocaleString()}` : ''}
+								</p>
+								{#if policy.description}<p>{policy.description}</p>{/if}
 							</div>
 						</li>
 					{/each}
