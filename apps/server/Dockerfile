@@ -21,7 +21,9 @@ RUN pnpm --filter @agent-tick/shared build \
   && pnpm --filter @agent-tick/sdk build \
   && pnpm --filter @agent-tick/db build \
   && pnpm --filter @agent-tick/server build \
-  && pnpm --filter agent-tick-admin build
+  && pnpm --filter agent-tick-admin build \
+  && pnpm --filter @agent-tick/server deploy --prod --legacy /app-runtime \
+  && rm -rf /app-runtime/src /app-runtime/test
 
 FROM docker.io/library/node:24-bookworm-slim AS runtime
 
@@ -32,14 +34,11 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-COPY --from=build /src/package.json /src/pnpm-lock.yaml /src/pnpm-workspace.yaml ./
-COPY --from=build /src/node_modules ./node_modules
-COPY --from=build /src/packages ./packages
-COPY --from=build /src/apps/server ./apps/server
+COPY --from=build /app-runtime ./
 
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 
 EXPOSE 8787
 
-CMD ["node", "apps/server/dist/index.js"]
+CMD ["node", "dist/index.js"]

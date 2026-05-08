@@ -138,9 +138,11 @@ Recommended action: revisit cache TTL/invalidation needs before hosted multi-ins
 
 ### Docker runtime image can be slimmer
 
-The runtime stage copies the full workspace `node_modules` and package directories from the build stage. This likely includes dev dependencies and source not needed at runtime.
+Status: addressed by deploying the server package into a production-only runtime layout and copying that into the runtime image.
 
-Recommended action: prune production dependencies or build a slimmer runtime package layout.
+The runtime stage should avoid copying the full workspace package/source tree when only built server assets and production dependencies are needed.
+
+Recommended action: periodically inspect image contents and size as new workspace dependencies are added.
 
 ### Published install story is inconsistent
 
