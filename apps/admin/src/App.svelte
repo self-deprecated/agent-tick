@@ -24,6 +24,7 @@
 	import type { AdminConfig } from './app';
 	import { inviteTokenFromLocation } from './inviteRouting';
 	import { inviteAcceptedMessage } from './inviteStatus';
+	import { shouldContinueInviteAcceptance } from './inviteFlow';
 
 	const adminTokenStorageKey = 'agent_tick_admin_token';
 	const organizationStorageKey = 'agent_tick_organization_id';
@@ -154,8 +155,13 @@
 	}
 
 	async function maybeAcceptInviteAfterSignIn(): Promise<void> {
-		if (!inviteToken || inviteAccepted || inviteAutoAcceptAttempted) return;
-		if (runtimeConfig?.authProvider === 'clerk' && !clerkSignedIn) return;
+		if (!shouldContinueInviteAcceptance({
+			inviteToken,
+			hasAcceptedInvite: Boolean(inviteAccepted),
+			autoAcceptAttempted: inviteAutoAcceptAttempted,
+			authProvider: runtimeConfig?.authProvider,
+			clerkSignedIn
+		})) return;
 		inviteAutoAcceptAttempted = true;
 		await acceptCurrentInvite();
 	}

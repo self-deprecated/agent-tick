@@ -19,8 +19,39 @@ async function loadModule() {
 	return import(pathToFileURL(modulePath).href);
 }
 
-const { inviteAcceptStarted } = await loadModule();
+const { inviteAcceptStarted, shouldContinueInviteAcceptance } = await loadModule();
 
 test('inviteAcceptStarted clears stale success before a new accept attempt', () => {
 	assert.deepEqual(inviteAcceptStarted(), { inviteAccepted: null, inviteAcceptStatus: 'loading', inviteFlowError: '' });
+});
+
+test('shouldContinueInviteAcceptance waits for Clerk OAuth sign-in and only runs once', () => {
+	assert.equal(shouldContinueInviteAcceptance({
+		inviteToken: 'invite_123',
+		hasAcceptedInvite: false,
+		autoAcceptAttempted: false,
+		authProvider: 'clerk',
+		clerkSignedIn: false
+	}), false);
+	assert.equal(shouldContinueInviteAcceptance({
+		inviteToken: 'invite_123',
+		hasAcceptedInvite: false,
+		autoAcceptAttempted: false,
+		authProvider: 'clerk',
+		clerkSignedIn: true
+	}), true);
+	assert.equal(shouldContinueInviteAcceptance({
+		inviteToken: 'invite_123',
+		hasAcceptedInvite: false,
+		autoAcceptAttempted: true,
+		authProvider: 'clerk',
+		clerkSignedIn: true
+	}), false);
+	assert.equal(shouldContinueInviteAcceptance({
+		inviteToken: 'invite_123',
+		hasAcceptedInvite: true,
+		autoAcceptAttempted: false,
+		authProvider: 'clerk',
+		clerkSignedIn: true
+	}), false);
 });

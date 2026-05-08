@@ -30,3 +30,9 @@ test('inviteTokenFromLocation parses path and hash invite links', () => {
 	assert.equal(inviteTokenFromLocation('/', '#invite/invite%20encoded'), 'invite encoded');
 	assert.equal(inviteTokenFromLocation('/dashboard', '#approvals'), '');
 });
+
+test('inviteTokenFromLocation survives OAuth callback query noise on invite deep links', () => {
+	assert.equal(inviteTokenFromLocation('/invite/invite_path?__clerk_status=complete', ''), 'invite_path');
+	assert.equal(inviteTokenFromLocation('/', '#/invite/invite_hash?rotating_token_nonce=nonce&provider=oauth_google'), 'invite_hash');
+	assert.equal(inviteTokenFromLocation('/', '#invite/invite_github?provider=oauth_github'), 'invite_github');
+});
