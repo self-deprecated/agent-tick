@@ -179,6 +179,26 @@ describe('AgentTickStore', () => {
     expect(store.respondToApprovalRequestForOrganization(approval.id, created.organizationId, { choiceId: 'approve' }, 'usr_default')).toMatchObject({ status: 'responded' });
   });
 
+  it('expires pending approvals before reads and rejects late responses', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const approval = store.createApprovalRequest(
+      { requester: { name: 'agent' }, title: 'Deploy?', expiresAt: '2026-05-08T00:05:00.000Z' },
+      '2026-05-08T00:00:00.000Z'
+    );
+
+    expect(store.getApprovalRequest(approval.id, 'usr_default', '2026-05-08T00:04:59.000Z')).toMatchObject({ status: 'pending' });
+    expect(store.respondToApprovalRequest(approval.id, { choiceId: 'approve' }, 'usr_default', '2026-05-08T00:05:01.000Z')).toMatchObject({
+      status: 'expired',
+      response: { message: 'expired' }
+    });
+    expect(store.getApprovalRequest(approval.id, 'usr_default', '2026-05-08T00:06:00.000Z')).toMatchObject({ status: 'expired' });
+    expect(store.listApprovalRequests(DEFAULT_ORGANIZATION_ID, 'usr_default', '2026-05-08T00:06:00.000Z')).toEqual([expect.objectContaining({ id: approval.id, status: 'expired' })]);
+    expect(store.listAuditEvents(DEFAULT_ORGANIZATION_ID).map((event) => event.eventType)).toContain('approval.expired');
+  });
+
   it('creates and verifies agent tokens by hash', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

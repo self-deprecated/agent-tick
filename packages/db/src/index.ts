@@ -1176,44 +1176,76 @@ export class AgentTickStore {
         now
       );
     this.writeAuditEvent(organizationId, input.userId ?? requesterAgentId, 'approval.created', id, { title: parsed.title }, now);
-    return this.getApprovalRequest(id) ?? missingApproval(id);
+    return this.getApprovalRequest(id, undefined, now) ?? missingApproval(id);
   }
 
-  listApprovalRequests(organizationId = DEFAULT_ORGANIZATION_ID, currentUserId?: string): ApprovalRequest[] {
+  listApprovalRequests(organizationId = DEFAULT_ORGANIZATION_ID, currentUserId?: string, now = new Date().toISOString()): ApprovalRequest[] {
+    this.expirePendingApprovals(organizationId, now);
     const rows = this.db
       .prepare('SELECT * FROM approval_requests WHERE organization_id = ? ORDER BY created_at DESC')
       .all(organizationId) as ApprovalRow[];
     return rows.map((row) => this.mapApprovalWithProgress(row, currentUserId));
   }
 
-  getApprovalRequest(id: string, currentUserId?: string): ApprovalRequest | null {
+  getApprovalRequest(id: string, currentUserId?: string, now = new Date().toISOString()): ApprovalRequest | null {
+    this.expirePendingApproval(id, undefined, now);
     const row = this.approvalRow(id);
     return row ? this.mapApprovalWithProgress(row, currentUserId) : null;
   }
 
-  getApprovalRequestForOrganization(id: string, organizationId: string, currentUserId?: string): ApprovalRequest | null {
+  getApprovalRequestForOrganization(id: string, organizationId: string, currentUserId?: string, now = new Date().toISOString()): ApprovalRequest | null {
+    this.expirePendingApproval(id, organizationId, now);
     const row = this.approvalRow(id, organizationId);
     return row ? this.mapApprovalWithProgress(row, currentUserId) : null;
   }
 
   respondToApprovalRequest(id: string, response: RespondApprovalRequest, responderUserId = DEFAULT_USER_ID, now = new Date().toISOString()): ApprovalRequest | null {
+    this.expirePendingApproval(id, undefined, now);
     const row = this.approvalRow(id);
     return row ? this.respondToApprovalRow(row, response, responderUserId, now) : null;
   }
 
   respondToApprovalRequestForOrganization(id: string, organizationId: string, response: RespondApprovalRequest, responderUserId = DEFAULT_USER_ID, now = new Date().toISOString()): ApprovalRequest | null {
+    this.expirePendingApproval(id, organizationId, now);
     const row = this.approvalRow(id, organizationId);
     return row ? this.respondToApprovalRow(row, response, responderUserId, now) : null;
   }
 
   abandonApprovalRequest(id: string, actorId: string, now = new Date().toISOString()): ApprovalRequest | null {
+    this.expirePendingApproval(id, undefined, now);
     const row = this.approvalRow(id);
     return row ? this.abandonApprovalRow(row, actorId, now) : null;
   }
 
   abandonApprovalRequestForOrganization(id: string, organizationId: string, actorId: string, now = new Date().toISOString()): ApprovalRequest | null {
+    this.expirePendingApproval(id, organizationId, now);
     const row = this.approvalRow(id, organizationId);
     return row ? this.abandonApprovalRow(row, actorId, now) : null;
+  }
+
+  private expirePendingApprovals(organizationId: string, now: string): void {
+    const rows = this.db
+      .prepare('SELECT id, organization_id FROM approval_requests WHERE organization_id = ? AND status = ? AND expires_at IS NOT NULL AND expires_at <= ?')
+      .all(organizationId, 'pending', now) as Array<{ id: string; organization_id: string }>;
+    for (const row of rows) this.markApprovalExpired(row.id, row.organization_id, now);
+  }
+
+  private expirePendingApproval(id: string, organizationId: string | undefined, now: string): void {
+    const row = organizationId
+      ? (this.db
+          .prepare('SELECT id, organization_id FROM approval_requests WHERE id = ? AND organization_id = ? AND status = ? AND expires_at IS NOT NULL AND expires_at <= ?')
+          .get(id, organizationId, 'pending', now) as { id: string; organization_id: string } | undefined)
+      : (this.db
+          .prepare('SELECT id, organization_id FROM approval_requests WHERE id = ? AND status = ? AND expires_at IS NOT NULL AND expires_at <= ?')
+          .get(id, 'pending', now) as { id: string; organization_id: string } | undefined);
+    if (row) this.markApprovalExpired(row.id, row.organization_id, now);
+  }
+
+  private markApprovalExpired(id: string, organizationId: string, now: string): void {
+    const result = this.db
+      .prepare('UPDATE approval_requests SET status = ?, responded_at = ?, response_json = ? WHERE id = ? AND organization_id = ? AND status = ?')
+      .run('expired', now, JSON.stringify({ message: 'expired' }), id, organizationId, 'pending');
+    if (result.changes > 0) this.writeAuditEvent(organizationId, 'system', 'approval.expired', id, {}, now);
   }
 
   private approvalRow(id: string, organizationId?: string): ApprovalRow | null {

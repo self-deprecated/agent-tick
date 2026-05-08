@@ -117,9 +117,11 @@ Recommended action: keep CI aligned with the full manual validation suite when n
 
 ### Approval expiration is stored but not actively enforced
 
-`expiresAt` exists in schemas and the database. Retention cleanup can remove old expired approvals if configured, but pending approvals do not appear to automatically transition to `expired` or reject late responses in response/wait flows.
+Status: addressed by expiring pending approvals during list/get/respond/abandon flows and rejecting late responses by returning the expired request state.
 
-Recommended action: enforce expiration when reading, waiting on, or responding to approval requests, and add tests for late responses.
+`expiresAt` exists in schemas and the database. Retention cleanup can remove old expired approvals if configured.
+
+Recommended action: keep expiration behavior covered in DB/server tests as approval workflows evolve.
 
 ### Clerk profile lookup happens on every authenticated request
 
