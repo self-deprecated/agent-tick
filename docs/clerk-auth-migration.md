@@ -186,7 +186,7 @@ Implemented so far:
 - Single-mode mobile pairing and device-token auth.
 - Clerk-mode device registration and push token APIs.
 - Short-lived opaque event tickets for event streams, with startup/hourly cleanup for expired tickets and pairing codes.
-- Mobile Clerk runtime discovery and ClerkProvider sign-in wiring.
+- Mobile Clerk runtime discovery and ClerkProvider sign-in/account-creation wiring with email-code verification.
 - Mobile local organization selection for Clerk-mode multi-org users.
 - Best-effort Clerk-mode mobile device unregister on sign-out/server switch.
 - Mobile heartbeat and availability APIs.
@@ -201,7 +201,7 @@ Implemented so far:
 
 High priority:
 
-- Harden mobile Clerk UX beyond the first email/password sign-in path, including OAuth/deep-link flows where needed.
+- Harden mobile OAuth/deep-link provider flows beyond the email/password and email-code signup path.
 - Add event-ticket based streaming clients if polling becomes insufficient.
 - Broaden signed-out invite continuation coverage with deep-link/OAuth provider-specific tests.
 

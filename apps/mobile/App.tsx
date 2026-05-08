@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ClerkProvider, useAuth, useSignIn } from "@clerk/expo";
+import { ClerkProvider, useAuth } from "@clerk/expo";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
@@ -55,6 +55,7 @@ import {
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
 import { AgentTickClient, type OrganizationMembership } from "@agent-tick/sdk";
+import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import { clerkTokenCacheKey, fetchRuntimeAuthConfig, normalizeServerURL, type RuntimeAuthConfig } from "./mobileAuth";
 
 type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
@@ -153,62 +154,6 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       clerkTokenProvider={() => getToken()}
       onForgetClerkSession={() => void signOut()}
     />
-  );
-}
-
-function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
-  const { signIn, fetchStatus } = useSignIn();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const submitting = fetchStatus === "fetching";
-
-  const submit = async () => {
-    if (submitting) return;
-    setError(null);
-    try {
-      const result = await signIn.create({ identifier: email.trim(), password });
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
-      if (signIn.status === "complete") {
-        const finalizeResult = await signIn.finalize();
-        if (finalizeResult.error) throw new Error(finalizeResult.error.message);
-        return;
-      }
-      setError(`Additional Clerk step required: ${signIn.status}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not sign in with Clerk");
-    }
-  };
-
-  return (
-    <SafeAreaView style={styles.shell}>
-      <StatusBar style="dark" />
-      <View style={styles.emptyState}>
-        <Text style={styles.title}>Sign in with Clerk</Text>
-        <Text style={styles.subtitle}>{serverURL}</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="Email"
-          style={styles.input}
-        />
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Password"
-          secureTextEntry
-          style={styles.input}
-        />
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        <Pressable style={styles.primaryButton} onPress={() => void submit()} disabled={submitting}>
-          <Text style={styles.primaryButtonText}>{submitting ? "Signing in…" : "Sign in"}</Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
   );
 }
 
