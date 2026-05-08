@@ -13,7 +13,7 @@ export interface ApprovalRoutesOptions {
 export async function registerApprovalRoutes(app: FastifyInstance, { config, store }: ApprovalRoutesOptions): Promise<void> {
   app.get('/v1/approval-requests', async (request) => {
     const auth = await requireAuth(request, config, store);
-    return store.listApprovalRequests(auth.organizationId);
+    return store.listApprovalRequests(auth.organizationId, auth.userId);
   });
 
   app.post('/v1/approval-requests', async (request) => {
@@ -39,7 +39,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
   app.get('/v1/approval-requests/:id', async (request, reply) => {
     const auth = await requireAuth(request, config, store);
     const { id } = request.params as { id: string };
-    const approval = store.getApprovalRequestForOrganization(id, auth.organizationId);
+    const approval = store.getApprovalRequestForOrganization(id, auth.organizationId, auth.userId);
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     return approval;
   });
@@ -71,12 +71,12 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
     const { id } = request.params as { id: string };
     const timeoutMs = timeoutFromQuery(request.query);
     const deadline = Date.now() + timeoutMs;
-    let approval = store.getApprovalRequestForOrganization(id, auth.organizationId);
+    let approval = store.getApprovalRequestForOrganization(id, auth.organizationId, auth.userId);
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
 
     while (approval.status === 'pending' && Date.now() < deadline) {
       await sleep(Math.min(250, Math.max(25, deadline - Date.now())));
-      approval = store.getApprovalRequestForOrganization(id, auth.organizationId);
+      approval = store.getApprovalRequestForOrganization(id, auth.organizationId, auth.userId);
       if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     }
 

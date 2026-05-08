@@ -254,6 +254,31 @@ describe('AgentTickStore', () => {
     expect(responded).toMatchObject({ id: request.id, status: 'responded', response: { choiceId: 'approve' } });
   });
 
+  it('keeps policy-backed approvals pending until quorum is met', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+    store.db.prepare('INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('usr_second', 'second@example.com', 1, 'Second', '2026-05-08T00:00:00.000Z', '2026-05-08T00:00:00.000Z');
+    const policy = store.createPolicy({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      userId: 'usr_default',
+      name: 'Two approvers',
+      requiredApprovals: 2
+    });
+    const request = store.createApprovalRequest({
+      requester: { name: 'agent', agentId: 'agent_test' },
+      title: 'Deploy?',
+      metadata: { defaultApprovalPolicy: policy.policyId }
+    });
+
+    const firstVote = store.respondToApprovalRequest(request.id, { choiceId: 'approve' }, 'usr_default');
+    expect(firstVote).toMatchObject({ status: 'pending', policyProgress: { requiredApprovals: 2, receivedApprovals: 1, currentUserHasVoted: true } });
+    expect(firstVote?.response).toBeUndefined();
+
+    const secondVote = store.respondToApprovalRequest(request.id, { choiceId: 'approve' }, 'usr_second');
+    expect(secondVote).toMatchObject({ status: 'responded', response: { choiceId: 'approve' }, policyProgress: { receivedApprovals: 2, waitingFor: 0 } });
+  });
+
   it('scopes approval request lookup and mutation to organizations', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

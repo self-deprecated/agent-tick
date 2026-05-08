@@ -4,7 +4,9 @@ import {
   ApprovalRequestSchema,
   CreateApprovalRequestSchema,
   RespondApprovalRequestSchema,
+  type ApprovalPolicyProgress,
   type ApprovalRequest,
+  type ApprovalVoteRecord,
   type Choice,
   type CreateApprovalRequest,
   type RespondApprovalRequest
@@ -838,21 +840,21 @@ export class AgentTickStore {
     return this.getApprovalRequest(id) ?? missingApproval(id);
   }
 
-  listApprovalRequests(organizationId = DEFAULT_ORGANIZATION_ID): ApprovalRequest[] {
+  listApprovalRequests(organizationId = DEFAULT_ORGANIZATION_ID, currentUserId?: string): ApprovalRequest[] {
     const rows = this.db
       .prepare('SELECT * FROM approval_requests WHERE organization_id = ? ORDER BY created_at DESC')
       .all(organizationId) as ApprovalRow[];
-    return rows.map(mapApprovalRow);
+    return rows.map((row) => this.mapApprovalWithProgress(row, currentUserId));
   }
 
-  getApprovalRequest(id: string): ApprovalRequest | null {
+  getApprovalRequest(id: string, currentUserId?: string): ApprovalRequest | null {
     const row = this.approvalRow(id);
-    return row ? mapApprovalRow(row) : null;
+    return row ? this.mapApprovalWithProgress(row, currentUserId) : null;
   }
 
-  getApprovalRequestForOrganization(id: string, organizationId: string): ApprovalRequest | null {
+  getApprovalRequestForOrganization(id: string, organizationId: string, currentUserId?: string): ApprovalRequest | null {
     const row = this.approvalRow(id, organizationId);
-    return row ? mapApprovalRow(row) : null;
+    return row ? this.mapApprovalWithProgress(row, currentUserId) : null;
   }
 
   respondToApprovalRequest(id: string, response: RespondApprovalRequest, responderUserId = DEFAULT_USER_ID, now = new Date().toISOString()): ApprovalRequest | null {
@@ -882,22 +884,103 @@ export class AgentTickStore {
     return row ?? null;
   }
 
+  private mapApprovalWithProgress(row: ApprovalRow, currentUserId?: string): ApprovalRequest {
+    return mapApprovalRow(row, this.approvalPolicyProgress(row, currentUserId));
+  }
+
+  private approvalPolicyProgress(row: ApprovalRow, currentUserId?: string): ApprovalPolicyProgress | undefined {
+    const policy = this.approvalPolicyForRow(row);
+    if (!policy) return undefined;
+    const voteRows = this.db
+      .prepare('SELECT * FROM approval_votes WHERE request_id = ? ORDER BY step ASC, created_at ASC')
+      .all(row.id) as ApprovalVoteRow[];
+    const votes = voteRows.map(mapApprovalVoteRow);
+    const receivedApprovals = votes.filter((vote) => vote.choiceId === 'approve').length;
+    const currentUserVote = currentUserId ? votes.find((vote) => vote.approverUserId === currentUserId) : undefined;
+    const response = row.response_json ? parseJSON<{ choiceId?: string } | undefined>(row.response_json, undefined) : undefined;
+    const state = row.status === 'responded' ? (response?.choiceId && response.choiceId !== 'approve' ? 'denied' : 'approved') : row.status;
+    return {
+      policyId: policy.policy_id,
+      state,
+      currentStep: 1,
+      totalSteps: 1,
+      requiredApprovals: policy.required_approvals,
+      receivedApprovals,
+      currentUserHasVoted: Boolean(currentUserVote),
+      ...(currentUserVote ? { currentUserVote } : {}),
+      waitingFor: Math.max(policy.required_approvals - receivedApprovals, 0),
+      votes
+    };
+  }
+
+  private approvalPolicyForRow(row: ApprovalRow): PolicyRow | null {
+    const metadata = parseJSON<Record<string, string>>(row.metadata_json, {});
+    const policyId = metadata.defaultApprovalPolicy || metadata.policyId;
+    if (!policyId) return null;
+    const policy = this.db
+      .prepare('SELECT * FROM policies WHERE policy_id = ? AND organization_id = ?')
+      .get(policyId, row.organization_id) as PolicyRow | undefined;
+    return policy ?? null;
+  }
+
   private respondToApprovalRow(row: ApprovalRow, response: RespondApprovalRequest, responderUserId: string, now: string): ApprovalRequest {
     const parsed = RespondApprovalRequestSchema.parse(response);
-    const current = mapApprovalRow(row);
+    const current = this.mapApprovalWithProgress(row, responderUserId);
     if (current.status !== 'pending') return current;
     if (parsed.choiceId && !current.choices.some((choice) => choice.id === parsed.choiceId)) {
       throw new Error(`unknown choiceId: ${parsed.choiceId}`);
+    }
+    const policy = this.approvalPolicyForRow(row);
+    if (policy && policy.required_approvals > 1 && parsed.choiceId) {
+      this.recordApprovalVote(row.id, policy.policy_id, responderUserId, parsed, now);
+      this.writeAuditEvent(row.organization_id, responderUserId, 'approval.vote_recorded', row.id, { policyId: policy.policy_id, choiceId: parsed.choiceId }, now);
+      if (parsed.choiceId === 'approve' && this.approvalVoteCount(row.id, 'approve') < policy.required_approvals) {
+        return this.getApprovalRequestForOrganization(row.id, row.organization_id, responderUserId) ?? missingApproval(row.id);
+      }
     }
     this.db
       .prepare('UPDATE approval_requests SET status = ?, response_json = ?, responded_at = ? WHERE id = ? AND organization_id = ? AND status = ?')
       .run('responded', JSON.stringify(parsed), now, row.id, row.organization_id, 'pending');
     this.writeAuditEvent(row.organization_id, responderUserId, 'approval.responded', row.id, parsed, now);
-    return this.getApprovalRequestForOrganization(row.id, row.organization_id) ?? missingApproval(row.id);
+    return this.getApprovalRequestForOrganization(row.id, row.organization_id, responderUserId) ?? missingApproval(row.id);
+  }
+
+  private recordApprovalVote(requestId: string, policyId: string, responderUserId: string, response: RespondApprovalRequest, now: string): void {
+    const parsed = RespondApprovalRequestSchema.parse(response);
+    this.db
+      .prepare(`
+        INSERT INTO approval_votes(vote_id, request_id, policy_id, step, approver_user_id, source, choice_id, message, answers_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(request_id, approver_user_id, step) DO UPDATE SET
+          choice_id = excluded.choice_id,
+          message = excluded.message,
+          answers_json = excluded.answers_json,
+          updated_at = excluded.updated_at
+      `)
+      .run(
+        newID('vote'),
+        requestId,
+        policyId,
+        1,
+        responderUserId,
+        'human',
+        parsed.choiceId ?? 'response',
+        parsed.message ?? null,
+        parsed.answers ? JSON.stringify(parsed.answers) : null,
+        now,
+        now
+      );
+  }
+
+  private approvalVoteCount(requestId: string, choiceId: string): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM approval_votes WHERE request_id = ? AND step = 1 AND choice_id = ?')
+      .get(requestId, choiceId) as { count: number } | undefined;
+    return row?.count ?? 0;
   }
 
   private abandonApprovalRow(row: ApprovalRow, actorId: string, now: string): ApprovalRequest {
-    const current = mapApprovalRow(row);
+    const current = this.mapApprovalWithProgress(row);
     if (current.status !== 'pending') return current;
     this.db
       .prepare('UPDATE approval_requests SET status = ?, responded_at = ?, response_json = ? WHERE id = ? AND organization_id = ? AND status = ?')
@@ -1211,7 +1294,7 @@ function mapDeviceRow(row: DeviceRow): DeviceRecord {
   };
 }
 
-function mapApprovalRow(row: ApprovalRow): ApprovalRequest {
+function mapApprovalRow(row: ApprovalRow, policyProgress?: ApprovalPolicyProgress): ApprovalRequest {
   return ApprovalRequestSchema.parse({
     id: row.id,
     userId: row.user_id ?? undefined,
@@ -1236,8 +1319,24 @@ function mapApprovalRow(row: ApprovalRow): ApprovalRequest {
     status: row.status,
     createdAt: row.created_at,
     respondedAt: row.responded_at ?? undefined,
-    response: row.response_json ? parseJSON(row.response_json, undefined) : undefined
+    response: row.response_json ? parseJSON(row.response_json, undefined) : undefined,
+    policyProgress
   });
+}
+
+function mapApprovalVoteRow(row: ApprovalVoteRow): ApprovalVoteRecord {
+  return {
+    voteId: row.vote_id,
+    requestId: row.request_id,
+    policyId: row.policy_id ?? undefined,
+    step: row.step,
+    approverUserId: row.approver_user_id,
+    source: row.source,
+    choiceId: row.choice_id,
+    message: row.message ?? undefined,
+    answers: parseJSON<Record<string, string[]> | undefined>(row.answers_json, undefined),
+    createdAt: row.created_at
+  };
 }
 
 function defaultChoices(): Choice[] {
@@ -1473,6 +1572,20 @@ interface DeviceRow {
   unregistered_at: string | null;
 }
 
+interface ApprovalVoteRow {
+  vote_id: string;
+  request_id: string;
+  policy_id: string | null;
+  step: number;
+  approver_user_id: string;
+  source: string;
+  choice_id: string;
+  message: string | null;
+  answers_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ApprovalRow {
   id: string;
   organization_id: string;
@@ -1667,6 +1780,23 @@ CREATE TABLE IF NOT EXISTS approval_requests (
 );
 
 CREATE INDEX IF NOT EXISTS approval_requests_org_status_idx ON approval_requests(organization_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS approval_votes (
+  vote_id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL REFERENCES approval_requests(id) ON DELETE CASCADE,
+  policy_id TEXT REFERENCES policies(policy_id),
+  step INTEGER NOT NULL DEFAULT 1,
+  approver_user_id TEXT NOT NULL REFERENCES users(id),
+  source TEXT NOT NULL,
+  choice_id TEXT NOT NULL,
+  message TEXT,
+  answers_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(request_id, approver_user_id, step)
+);
+
+CREATE INDEX IF NOT EXISTS approval_votes_request_idx ON approval_votes(request_id, step, created_at);
 
 CREATE TABLE IF NOT EXISTS event_tickets (
   ticket_hash TEXT PRIMARY KEY,

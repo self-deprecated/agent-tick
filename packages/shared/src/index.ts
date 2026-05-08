@@ -232,6 +232,36 @@ export type ResponsePayload = z.infer<typeof ResponsePayloadSchema>;
 export const ApprovalStatusSchema = z.enum(['pending', 'responded', 'expired', 'abandoned']);
 export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>;
 
+export const ApprovalVoteRecordSchema = z.object({
+  voteId: z.string(),
+  requestId: z.string(),
+  policyId: z.string().optional(),
+  step: z.number().int().min(1),
+  approverUserId: z.string(),
+  source: z.string(),
+  choiceId: z.string(),
+  message: z.string().optional(),
+  answers: z.record(z.string(), z.array(z.string())).optional(),
+  createdAt: z.string()
+});
+export type ApprovalVoteRecord = z.infer<typeof ApprovalVoteRecordSchema>;
+
+export const ApprovalPolicyProgressSchema = z.object({
+  policyId: z.string().optional(),
+  state: z.string(),
+  currentStep: z.number().int().min(1),
+  totalSteps: z.number().int().min(1),
+  requiredApprovals: z.number().int().min(1),
+  receivedApprovals: z.number().int().min(0),
+  currentUserHasVoted: z.boolean(),
+  currentUserEligible: z.boolean().optional(),
+  currentUserVote: ApprovalVoteRecordSchema.optional(),
+  waitingFor: z.number().int().min(0),
+  eligibleApproverIds: z.array(z.string()).optional(),
+  votes: z.array(ApprovalVoteRecordSchema).optional()
+});
+export type ApprovalPolicyProgress = z.infer<typeof ApprovalPolicyProgressSchema>;
+
 export const ApprovalRequestSchema = z.object({
   id: z.string(),
   userId: z.string().optional(),
@@ -249,7 +279,8 @@ export const ApprovalRequestSchema = z.object({
   status: ApprovalStatusSchema.or(z.string()),
   createdAt: z.string(),
   respondedAt: z.string().optional(),
-  response: ResponsePayloadSchema.optional()
+  response: ResponsePayloadSchema.optional(),
+  policyProgress: ApprovalPolicyProgressSchema.optional()
 });
 export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
 
