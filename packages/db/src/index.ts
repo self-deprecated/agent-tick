@@ -100,6 +100,7 @@ export interface OrganizationInviteRecord {
   approvalRequired: boolean;
   teamIds: string[];
   email: string | undefined;
+  domain: string | undefined;
   expiresAt: string | undefined;
   maxUses: number | undefined;
   usedCount: number;
@@ -117,6 +118,7 @@ export interface CreateOrganizationInviteInput {
   approvalRequired?: boolean;
   teamIds?: string[];
   email?: string;
+  domain?: string;
   expiresAt?: string;
   maxUses?: number;
   publicURL?: string;
@@ -342,6 +344,7 @@ export class AgentTickStore {
     ensureColumn(this.db, 'organization_memberships', 'rejected_at', 'ALTER TABLE organization_memberships ADD COLUMN rejected_at TEXT');
     ensureColumn(this.db, 'organization_memberships', 'invite_id', 'ALTER TABLE organization_memberships ADD COLUMN invite_id TEXT');
     ensureColumn(this.db, 'organization_invites', 'approval_required', 'ALTER TABLE organization_invites ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 1');
+    ensureColumn(this.db, 'organization_invites', 'domain', 'ALTER TABLE organization_invites ADD COLUMN domain TEXT');
     ensureColumn(this.db, 'organization_invite_acceptances', 'requested_team_ids_json', "ALTER TABLE organization_invite_acceptances ADD COLUMN requested_team_ids_json TEXT NOT NULL DEFAULT '[]'");
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
@@ -503,13 +506,16 @@ export class AgentTickStore {
     const role = input.role?.trim() || 'member';
     const maxUses = Math.min(Math.max(Math.trunc(input.maxUses ?? 1), 1), 100);
     const approvalRequired = input.approvalRequired ?? true;
+    const email = input.email?.trim().toLowerCase() || undefined;
+    const domain = normalizeInviteDomain(input.domain);
+    if (email && domain) throw httpError(400, 'bad_request', 'Invite can be restricted by either exact email or domain, not both');
     const teamIds = uniqueStrings(input.teamIds ?? []);
     for (const teamId of teamIds) {
       if (!this.teamBelongsToOrganization(teamId, input.organizationId)) throw httpError(400, 'bad_request', 'Team is not in the selected organization');
     }
     this.db.transaction(() => {
       this.db
-        .prepare('INSERT INTO organization_invites(invite_id, organization_id, created_by_user_id, label, role, approval_required, token_hash, email, expires_at, max_uses, used_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .prepare('INSERT INTO organization_invites(invite_id, organization_id, created_by_user_id, label, role, approval_required, token_hash, email, domain, expires_at, max_uses, used_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(
           inviteId,
           input.organizationId,
@@ -518,7 +524,8 @@ export class AgentTickStore {
           role,
           approvalRequired ? 1 : 0,
           hashToken(token),
-          input.email?.trim().toLowerCase() || null,
+          email ?? null,
+          domain ?? null,
           input.expiresAt ?? null,
           maxUses,
           0,
@@ -526,7 +533,7 @@ export class AgentTickStore {
         );
       for (const teamId of teamIds) this.db.prepare('INSERT INTO organization_invite_teams(invite_id, team_id) VALUES (?, ?)').run(inviteId, teamId);
     })();
-    this.writeAuditEvent(input.organizationId, input.userId, 'organization_invite.created', inviteId, { role, approvalRequired, teamIds, email: input.email?.trim().toLowerCase() }, now);
+    this.writeAuditEvent(input.organizationId, input.userId, 'organization_invite.created', inviteId, { role, approvalRequired, teamIds, email, domain }, now);
     const invite = this.getOrganizationInvite(inviteId) ?? missingInvite(inviteId);
     return {
       ...invite,
@@ -573,9 +580,14 @@ export class AgentTickStore {
     const invite = this.findUsableInvite(token, now);
     if (!invite) return null;
     const user = this.db.prepare('SELECT email FROM users WHERE id = ?').get(userId) as { email: string } | undefined;
+    const userEmail = user?.email?.trim().toLowerCase();
     const inviteEmail = invite.email?.trim().toLowerCase();
-    if (inviteEmail && user?.email?.trim().toLowerCase() !== inviteEmail) {
+    if (inviteEmail && userEmail !== inviteEmail) {
       throw httpError(403, 'forbidden', 'This invite is restricted to a different email address');
+    }
+    const inviteDomain = invite.domain?.trim().toLowerCase();
+    if (inviteDomain && domainFromEmail(userEmail) !== inviteDomain) {
+      throw httpError(403, 'forbidden', 'This invite is restricted to a different email domain');
     }
 
     const existing = this.organizationMembershipForUserAnyStatus(userId, invite.organization_id);
@@ -1374,6 +1386,7 @@ function mapOrganizationInviteRow(row: OrganizationInviteRow, teamIds: string[] 
     approvalRequired: Boolean(row.approval_required),
     teamIds,
     email: row.email ?? undefined,
+    domain: row.domain ?? undefined,
     expiresAt: row.expires_at ?? undefined,
     maxUses: row.max_uses ?? undefined,
     usedCount: row.used_count,
@@ -1611,6 +1624,23 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+function normalizeInviteDomain(value: string | undefined): string | undefined {
+  const candidate = value?.trim().toLowerCase().replace(/^@+/, '');
+  if (!candidate) return undefined;
+  const labels = candidate.split('.');
+  const valid =
+    candidate.length <= 253 &&
+    labels.length >= 2 &&
+    labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
+  if (!valid) throw httpError(400, 'bad_request', 'Invite domain must be a valid email domain');
+  return candidate;
+}
+
+function domainFromEmail(email: string | undefined): string | undefined {
+  const at = email?.lastIndexOf('@') ?? -1;
+  return at > 0 ? email?.slice(at + 1).toLowerCase() : undefined;
+}
+
 function ensureColumn(db: Database.Database, table: string, column: string, alterSQL: string): void {
   const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (!rows.some((row) => row.name === column)) db.exec(alterSQL);
@@ -1733,6 +1763,7 @@ interface OrganizationInviteRow {
   approval_required: number;
   token_hash: string;
   email: string | null;
+  domain: string | null;
   expires_at: string | null;
   max_uses: number | null;
   used_count: number;
@@ -1916,6 +1947,7 @@ CREATE TABLE IF NOT EXISTS organization_invites (
   approval_required INTEGER NOT NULL DEFAULT 1,
   token_hash TEXT NOT NULL UNIQUE,
   email TEXT,
+  domain TEXT,
   expires_at TEXT,
   max_uses INTEGER,
   used_count INTEGER NOT NULL DEFAULT 0,

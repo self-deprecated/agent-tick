@@ -39,6 +39,7 @@
 	let selectedOrganizationId = $state('');
 	let newOrganizationName = $state('');
 	let newInviteEmail = $state('');
+	let newInviteDomain = $state('');
 	let newInviteRole = $state('member');
 	let newInviteLabel = $state('');
 	let newInviteTeamId = $state('');
@@ -222,9 +223,11 @@
 				role: newInviteRole as 'owner' | 'admin' | 'approver' | 'member' | 'viewer',
 				...(newInviteTeamId ? { teamIds: [newInviteTeamId] } : {}),
 				...(newInviteEmail.trim() ? { email: newInviteEmail.trim() } : {}),
+				...(newInviteDomain.trim() ? { domain: newInviteDomain.trim() } : {}),
 				...(newInviteLabel.trim() ? { label: newInviteLabel.trim() } : {})
 			});
 			newInviteEmail = '';
+			newInviteDomain = '';
 			newInviteLabel = '';
 			newInviteRole = 'member';
 			newInviteTeamId = '';
@@ -559,6 +562,7 @@
 			<form class="stack" onsubmit={(event) => { event.preventDefault(); void createInvite(); }}>
 				<div class="row">
 					<input bind:value={newInviteEmail} aria-label="Invite email" placeholder="teammate@example.com (optional)" />
+					<input bind:value={newInviteDomain} aria-label="Invite domain" placeholder="example.com domain (optional)" />
 					<input bind:value={newInviteLabel} aria-label="Invite label" placeholder="Label (optional)" />
 					<select bind:value={newInviteRole} aria-label="Invite role">
 						<option value="member">member</option>
@@ -577,7 +581,7 @@
 			</form>
 			{#if createdInvite?.token}
 				<div class="token">
-					<p><strong>Invite created:</strong> {createdInvite.label ?? createdInvite.email ?? createdInvite.role}</p>
+					<p><strong>Invite created:</strong> {createdInvite.label ?? createdInvite.email ?? createdInvite.domain ?? createdInvite.role}</p>
 					<code>{createdInvite.url ?? createdInvite.token}</code>
 					<button onclick={copyInvite}>Copy invite</button>
 					<p class="subtle">The plaintext token is shown once. Agent Tick stores only a hash. New members remain pending until an admin approves them.</p>
@@ -590,8 +594,8 @@
 					{#each organizationInvites as invite}
 						<li class="item-card" class:is-muted={Boolean(invite.revokedAt)}>
 							<div>
-								<strong>{invite.label ?? invite.email ?? invite.inviteId}</strong>
-								<p class="subtle">{invite.inviteId} · {invite.role} · {invite.approvalRequired ? 'approval required' : 'auto-approved'}{invite.teamIds?.length ? ` · teams ${invite.teamIds.map(teamLabel).join(', ')}` : ''} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
+								<strong>{invite.label ?? invite.email ?? invite.domain ?? invite.inviteId}</strong>
+								<p class="subtle">{invite.inviteId} · {invite.role} · {invite.approvalRequired ? 'approval required' : 'auto-approved'}{invite.teamIds?.length ? ` · teams ${invite.teamIds.map(teamLabel).join(', ')}` : ''}{invite.domain ? ` · domain ${invite.domain}` : ''} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
 								{#if invite.email}<p>{invite.email}</p>{/if}
 							</div>
 							{#if !invite.revokedAt}<button class="danger" onclick={() => void revokeInvite(invite.inviteId)}>Revoke</button>{/if}

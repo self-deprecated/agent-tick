@@ -194,6 +194,7 @@ describe('AgentTickClient', () => {
           label: 'Teammate',
           role: 'admin',
           teamIds: ['team_123'],
+          domain: 'example.com',
           usedCount: 0,
           createdAt: '2026-01-01T00:00:00.000Z',
           token: 'invite_secret'
@@ -214,8 +215,8 @@ describe('AgentTickClient', () => {
       }
     });
 
-    await expect(client.createOrganizationInvite({ label: 'Teammate', role: 'admin', teamIds: ['team_123'] })).resolves.toMatchObject({ inviteId: 'inv_123', teamIds: ['team_123'] });
-    await expect(client.listOrganizationInvites()).resolves.toEqual([expect.objectContaining({ inviteId: 'inv_123' })]);
+    await expect(client.createOrganizationInvite({ label: 'Teammate', role: 'admin', teamIds: ['team_123'], domain: 'example.com' })).resolves.toMatchObject({ inviteId: 'inv_123', teamIds: ['team_123'], domain: 'example.com' });
+    await expect(client.listOrganizationInvites()).resolves.toEqual([expect.objectContaining({ inviteId: 'inv_123', domain: 'example.com' })]);
     await expect(client.previewInvite('invite_secret')).resolves.toEqual({ organizationName: 'Production', role: 'admin', approvalRequired: true });
     await expect(client.acceptInvite('invite_secret')).resolves.toMatchObject({ status: 'pending_approval', membership: { role: 'admin' } });
     await expect(client.listMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123' })]);
@@ -223,7 +224,7 @@ describe('AgentTickClient', () => {
     await expect(client.rejectMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'rejected' });
     await expect(client.revokeOrganizationInvite('inv_123')).resolves.toMatchObject({ revokedAt: expect.any(String) });
     expect(requests.map((request) => [request.method, request.url, request.organizationId, request.body])).toEqual([
-      ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', approvalRequired: true, teamIds: ['team_123'], maxUses: 1 }],
+      ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', approvalRequired: true, teamIds: ['team_123'], domain: 'example.com', maxUses: 1 }],
       ['GET', 'https://tick.example.com/v1/organization-invites', 'org_selected', undefined],
       ['GET', 'https://tick.example.com/v1/invites/invite_secret', null, undefined],
       ['POST', 'https://tick.example.com/v1/invites/invite_secret/accept', null, {}],

@@ -31,6 +31,7 @@ export async function registerInviteRoutes(app: FastifyInstance, { config, store
       ...(config.publicURL ? { publicURL: config.publicURL } : {}),
       ...(input.label ? { label: input.label } : {}),
       ...(input.email ? { email: input.email } : {}),
+      ...(input.domain ? { domain: input.domain } : {}),
       ...(input.expiresAt ? { expiresAt: input.expiresAt } : {})
     });
   });

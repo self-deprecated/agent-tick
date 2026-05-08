@@ -75,6 +75,7 @@ export const OrganizationInviteRecordSchema = z.object({
   approvalRequired: z.boolean().default(true),
   teamIds: z.array(z.string()).optional(),
   email: z.string().email().optional(),
+  domain: z.string().min(1).optional(),
   expiresAt: z.string().optional(),
   maxUses: z.number().int().positive().optional(),
   usedCount: z.number().int().min(0),
@@ -91,6 +92,7 @@ export const CreateOrganizationInviteSchema = z.object({
   approvalRequired: z.boolean().default(true),
   teamIds: z.array(z.string()).optional(),
   email: z.string().email().optional(),
+  domain: z.string().min(1).optional(),
   expiresAt: z.string().optional(),
   maxUses: z.number().int().positive().max(100).default(1)
 });

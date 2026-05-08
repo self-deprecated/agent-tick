@@ -180,7 +180,7 @@ Implemented so far:
 - Local organization creation, selection, membership validation, and member listing.
 - Project, team, policy foundations, and basic quorum approval policy handling with dashboard management.
 - Team member add/update/remove APIs and dashboard management for local organization members.
-- Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens, pending membership approval/rejection, invite team assignment, and dashboard invite/member-request management.
+- Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens, email/domain restrictions, pending membership approval/rejection, invite team assignment, and dashboard invite/member-request management.
 - Approval request create/list/get/respond/abandon/wait APIs with local-organization scoping on detail and mutation routes.
 - Agent token create/list/revoke APIs, including optional project/team/default-policy scoping and owning-agent abandon checks.
 - Single-mode mobile pairing and device-token auth.
@@ -203,7 +203,7 @@ High priority:
 
 - Harden mobile Clerk UX beyond the first email/password sign-in path, including OAuth/deep-link flows where needed.
 - Add event-ticket based streaming clients if polling becomes insufficient.
-- Add invite email/domain restriction polish and clearer pending-member onboarding states.
+- Add clearer pending-member onboarding states and signed-out invite continuation polish.
 
 Product rebuilds to evaluate/port from the prototype:
 

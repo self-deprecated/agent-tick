@@ -90,6 +90,32 @@ describe('AgentTickStore', () => {
     expect(() => store!.removeTeamMember({ organizationId: created.organizationId, actorUserId: 'usr_default', teamId: team.teamId, userId: 'usr_default' })).toThrow(/last team owner/i);
   });
 
+  it('enforces domain-restricted organization invites', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const created = store.createOrganizationForUser('usr_default', 'Contractors');
+    const invite = store.createOrganizationInvite({
+      organizationId: created.organizationId,
+      userId: 'usr_default',
+      label: 'Contractors',
+      role: 'viewer',
+      domain: '@Example.COM'
+    });
+    expect(invite.domain).toBe('example.com');
+    expect(store.previewInvite(invite.token!)).not.toHaveProperty('domain');
+
+    const alice = store.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_alice', email: 'alice@example.com', emailVerified: true, name: 'Alice' });
+    expect(store.acceptInvite(invite.token!, alice.userId)).toMatchObject({ status: 'pending_approval', membership: { organizationId: created.organizationId, role: 'viewer', status: 'pending_approval' } });
+
+    const restricted = store.createOrganizationInvite({ organizationId: created.organizationId, userId: 'usr_default', role: 'viewer', domain: 'example.org' });
+    const bob = store.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
+    expect(() => store!.acceptInvite(restricted.token!, bob.userId)).toThrow(/different email domain/i);
+    expect(() => store!.createOrganizationInvite({ organizationId: created.organizationId, userId: 'usr_default', role: 'viewer', domain: 'invalid-domain' })).toThrow(/valid email domain/i);
+    expect(() => store!.createOrganizationInvite({ organizationId: created.organizationId, userId: 'usr_default', role: 'viewer', email: 'carol@example.com', domain: 'example.com' })).toThrow(/either exact email or domain/i);
+  });
+
   it('creates and verifies agent tokens by hash', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

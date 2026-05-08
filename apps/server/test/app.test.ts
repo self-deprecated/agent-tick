@@ -209,15 +209,15 @@ describe('server skeleton', () => {
       method: 'POST',
       url: '/v1/organization-invites',
       headers: { 'x-agent-tick-organization-id': organizationId },
-      payload: { label: 'Teammate', role: 'admin', email: 'teammate@example.com' }
+      payload: { label: 'Teammate', role: 'admin', domain: 'Example.com' }
     });
     expect(invite.statusCode).toBe(200);
-    expect(invite.json()).toMatchObject({ organizationId, role: 'admin', usedCount: 0 });
+    expect(invite.json()).toMatchObject({ organizationId, role: 'admin', domain: 'example.com', usedCount: 0 });
     expect(invite.json().token).toMatch(/^invite_/);
 
     const invites = await app.inject({ method: 'GET', url: '/v1/organization-invites', headers: { 'x-agent-tick-organization-id': organizationId } });
     expect(invites.statusCode).toBe(200);
-    expect(invites.json()).toEqual([expect.objectContaining({ inviteId: invite.json().inviteId })]);
+    expect(invites.json()).toEqual([expect.objectContaining({ inviteId: invite.json().inviteId, domain: 'example.com' })]);
     expect(JSON.stringify(invites.json())).not.toContain(invite.json().token);
 
     const preview = await app.inject({ method: 'GET', url: `/v1/invites/${encodeURIComponent(invite.json().token)}` });
@@ -226,6 +226,7 @@ describe('server skeleton', () => {
     expect(preview.json()).not.toHaveProperty('organizationId');
     expect(preview.json()).not.toHaveProperty('teamIds');
     expect(preview.json()).not.toHaveProperty('email');
+    expect(preview.json()).not.toHaveProperty('domain');
 
     const revoked = await app.inject({ method: 'POST', url: `/v1/organization-invites/${invite.json().inviteId}/revoke`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
     expect(revoked.statusCode).toBe(200);
