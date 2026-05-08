@@ -1,8 +1,10 @@
-export type AdminMode = 'single' | 'user';
+export type AdminMode = 'single' | 'clerk';
 
 export interface AdminConfig {
 	mode: AdminMode;
 	publicURL: string;
+	authProvider?: 'local' | 'clerk';
+	clerkPublishableKey?: string;
 }
 
 declare global {

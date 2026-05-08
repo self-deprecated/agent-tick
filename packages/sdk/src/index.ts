@@ -1,16 +1,22 @@
 import type { ZodType } from 'zod';
 import {
+  AgentCredentialSchema,
+  AgentTokenRecordSchema,
   ApiErrorEnvelopeSchema,
   ApprovalRequestSchema,
   AuthConfigSchema,
+  CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
   HealthResponseSchema,
   MeResponseSchema,
   RespondApprovalRequestSchema,
   WaitApprovalResponseSchema,
+  type AgentCredential,
+  type AgentTokenRecord,
   type ApiErrorEnvelope,
   type ApprovalRequest,
   type AuthConfig,
+  type CreateAgentToken,
   type CreateApprovalRequest,
   type HealthResponse,
   type MeResponse,
@@ -95,6 +101,16 @@ export class AgentTickClient {
     return this.#request('GET', `/v1/approval-requests/${encodeURIComponent(id)}/wait${suffix}`, WaitApprovalResponseSchema);
   }
 
+  listAgentTokens(): Promise<AgentTokenRecord[]> {
+    return this.#request('GET', '/v1/agent-tokens', AgentTokenRecordSchema.array());
+  }
+
+  createAgentToken(input: CreateAgentToken): Promise<AgentCredential> {
+    return this.#request('POST', '/v1/agent-tokens', AgentCredentialSchema, {
+      body: CreateAgentTokenSchema.parse(input)
+    });
+  }
+
   async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown } = {}): Promise<T> {
     const headers = new Headers();
     headers.set('Accept', 'application/json');
@@ -147,9 +163,12 @@ function normalizeBaseUrl(baseUrl: string): string {
 }
 
 export type {
+  AgentCredential,
+  AgentTokenRecord,
   ApiErrorEnvelope,
   ApprovalRequest,
   AuthConfig,
+  CreateAgentToken,
   CreateApprovalRequest,
   HealthResponse,
   MeResponse,

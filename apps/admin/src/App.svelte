@@ -1,1869 +1,347 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {
-		AdminApiClient,
-		csrfTokenFromCookie,
-		type AgentCredential,
-		type AgentTokenRecord,
-		type ApprovalPolicyPreview,
-		type ApprovalPolicyRecord,
-		type ApprovalRequest,
-		type AuditEventRecord,
-		type BillingStatus,
-		type Choice,
-		type DeviceRecord,
-		type OnCallScheduleRecord,
-		type InvitePreview,
-		type OrganizationInviteRecord,
-		type OrganizationMembershipRecord,
-		type MembershipRequestRecord,
-		type PairingToken,
-		type ProjectRecord,
-		type Requester,
-		type SessionCredential,
-		type TeamCoverageRecord,
-		type TeamRecord,
-		type UserAvailabilityRecord
-	} from './api';
+	import { AgentTickApiError, AgentTickClient, type AgentCredential, type ApprovalRequest, type AuthConfig } from '@agent-tick/sdk';
 	import type { AdminConfig } from './app';
-	import { inviteAcceptStarted } from './inviteFlow';
-	import { inviteAcceptedMessage } from './inviteStatus';
-	import { defaultPageForSetupStatus, pageFromHash as routePageFromHash, refreshLoadKeys, shouldShowBillingPanel } from './pageRouting';
-	import type { DashboardLoadKey, Page } from './pageRouting';
 
-	type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+	const adminTokenStorageKey = 'agent_tick_admin_token';
 
-	let { config }: { config: AdminConfig } = $props();
+	let { config: initialConfig }: { config: AdminConfig } = $props();
+	let runtimeConfig = $state<AuthConfig | undefined>();
+	let approvals = $state<ApprovalRequest[]>([]);
+	let createdCredential = $state<AgentCredential | undefined>();
+	let adminToken = $state('');
+	let agentName = $state('Local agent');
+	let loading = $state(false);
+	let error = $state('');
 
-	let mode = $derived(config.mode);
-	let publicURL = $derived(config.publicURL || window.location.origin);
-
-	let bearerToken = $state('');
-	let email = $state('');
-	let password = $state('');
-	let session = $state<SessionCredential | null>(null);
-	let authStatus = $state<LoadStatus>('idle');
-	let authError = $state('');
-
-	let approvals = $state.raw<ApprovalRequest[]>([]);
-	let approvalsStatus = $state<LoadStatus>('idle');
-	let approvalsError = $state('');
-	let busyApproval = $state('');
-
-	let devices = $state.raw<DeviceRecord[]>([]);
-	let devicesStatus = $state<LoadStatus>('idle');
-	let devicesError = $state('');
-	let busyDevice = $state('');
-	let pairing = $state<PairingToken | null>(null);
-	let pairingStatus = $state<LoadStatus>('idle');
-	let pairingError = $state('');
-	let pairingClearTimer: number | undefined;
-
-	let agents = $state.raw<AgentTokenRecord[]>([]);
-	let agentsStatus = $state<LoadStatus>('idle');
-	let agentsError = $state('');
-	let agentActionError = $state('');
-	let agentName = $state('agent');
-	let agentProjectID = $state('');
-	let agentNewProjectName = $state('');
-	let agentOwnerUserID = $state('');
-	let agentTeamID = $state('');
-	let agentDefaultPolicy = $state('');
-	let creatingAgent = $state(false);
-	let busyAgent = $state('');
-	let newAgentCredential = $state<AgentCredential | null>(null);
-
-	let organizations = $state.raw<OrganizationMembershipRecord[]>([]);
-	let organizationsStatus = $state<LoadStatus>('idle');
-	let organizationsError = $state('');
-	let organizationName = $state('');
-	let organizationActionError = $state('');
-	let creatingOrganization = $state(false);
-	let invites = $state.raw<OrganizationInviteRecord[]>([]);
-	let invitesStatus = $state<LoadStatus>('idle');
-	let invitesError = $state('');
-	let inviteLabel = $state('');
-	let inviteRole = $state('viewer');
-	let inviteTeamID = $state('');
-	let inviteApprovalRequired = $state(true);
-	let inviteMaxUses = $state('1');
-	let inviteExpiresAt = $state('');
-	let inviteEmail = $state('');
-	let inviteDomain = $state('');
-	let creatingInvite = $state(false);
-	let newInviteURL = $state('');
-	let pendingMembers = $state.raw<MembershipRequestRecord[]>([]);
-	let pendingMembersStatus = $state<LoadStatus>('idle');
-	let pendingMembersError = $state('');
-	let busyMembershipRequest = $state('');
-
-	let teams = $state.raw<TeamRecord[]>([]);
-	let teamsStatus = $state<LoadStatus>('idle');
-	let teamsError = $state('');
-	let teamActionError = $state('');
-	let teamName = $state('');
-	let teamDescription = $state('');
-	let creatingTeam = $state(false);
-	let selectedTeamID = $state('');
-	let teamAvailability = $state.raw<UserAvailabilityRecord[]>([]);
-	let teamCoverage = $state<TeamCoverageRecord | null>(null);
-	let onCallSchedules = $state.raw<OnCallScheduleRecord[]>([]);
-	let onCallPrimaryUserID = $state('');
-	let onCallSecondaryUserID = $state('');
-	let teamPresenceStatus = $state<LoadStatus>('idle');
-	let teamPresenceError = $state('');
-	let savingOnCall = $state(false);
-
-	let projects = $state.raw<ProjectRecord[]>([]);
-	let projectsStatus = $state<LoadStatus>('idle');
-	let projectsError = $state('');
-	let projectActionError = $state('');
-	let projectName = $state('');
-	let projectDescription = $state('');
-	let projectTeamID = $state('');
-	let projectDefaultPolicyID = $state('');
-	let creatingProject = $state(false);
-	let selectedProjectID = $state('');
-
-	let policies = $state.raw<ApprovalPolicyRecord[]>([]);
-	let policiesStatus = $state<LoadStatus>('idle');
-	let policiesError = $state('');
-	let policyActionError = $state('');
-	let policyName = $state('');
-	let policyTemplate = $state('owner-only');
-	let policyTeamID = $state('');
-	let policyQuorum = $state('2');
-	let policyTimeout = $state('3600');
-	let policyEscalationTarget = $state('');
-	let policyDenyVeto = $state(true);
-	let creatingPolicy = $state(false);
-	let selectedPolicyID = $state('');
-	let policyPreview = $state<ApprovalPolicyPreview | null>(null);
-	let policyPreviewError = $state('');
-
-	let billing = $state<BillingStatus | null>(null);
-	let billingStatus = $state<LoadStatus>('idle');
-	let billingError = $state('');
-
-	let auditEvents = $state.raw<AuditEventRecord[]>([]);
-	let auditStatus = $state<LoadStatus>('idle');
-	let auditError = $state('');
-	let auditEventType = $state('');
-	let auditExporting = $state(false);
-
-	let activePage = $state<Page>('setup');
-	let inviteToken = $state('');
-	let invitePreview = $state<InvitePreview | null>(null);
-	let invitePreviewStatus = $state<LoadStatus>('idle');
-	let inviteAcceptStatus = $state<LoadStatus>('idle');
-	let inviteFlowError = $state('');
-	let inviteAccepted = $state<MembershipRequestRecord | null>(null);
-	let copiedSnippet = $state('');
-	let copyError = $state('');
-	let copyClearTimer: number | undefined;
-
-	const api = new AdminApiClient({
-		bearerToken: () => bearerToken,
-		csrfToken: csrfTokenFromCookie
-	});
-
-	let isUserMode = $derived(mode === 'user');
-	let canShowDashboard = $derived(!isUserMode || session !== null);
-	let signedInLabel = $derived(session?.email || session?.name || session?.userId || 'Signed in');
-	let organizationLabel = $derived(organizations[0]?.name || 'Default organization');
-	let currentMembership = $derived(organizations[0]);
-	let isOrgAdmin = $derived(!isUserMode || ['owner', 'admin'].includes((currentMembership?.role || '').toLowerCase()));
-	let isOrgOwner = $derived(!isUserMode || (currentMembership?.role || '').toLowerCase() === 'owner');
-	let modeLabel = $derived(isUserMode ? 'Account dashboard' : 'Self-hosted dashboard');
-	let anyDashboardLoading = $derived(
-		approvalsStatus === 'loading' ||
-			devicesStatus === 'loading' ||
-			agentsStatus === 'loading' ||
-			teamsStatus === 'loading' ||
-			projectsStatus === 'loading' ||
-			policiesStatus === 'loading' ||
-			billingStatus === 'loading' ||
-			auditStatus === 'loading' ||
-			invitesStatus === 'loading' ||
-			pendingMembersStatus === 'loading' ||
-			invitePreviewStatus === 'loading' ||
-			inviteAcceptStatus === 'loading'
-	);
-	let selectedTeam = $derived(teams.find((team) => team.teamId === selectedTeamID));
-	let selectedProject = $derived(projects.find((project) => project.projectId === selectedProjectID));
-	let selectedPolicy = $derived(policies.find((policy) => policy.policyId === selectedPolicyID));
-	let setupCommand = $derived(
-		newAgentCredential
-			? `agent-tick setup --server ${shellQuote(publicURL)} --token ${shellQuote(newAgentCredential.token)}`
-			: ''
-	);
-	let setupEnvCommand = $derived.by(() => {
-		if (!newAgentCredential) return '';
-		const lines = [
-			`export AGENT_TICK_SERVER=${shellQuote(publicURL)}`,
-			`export AGENT_TICK_TOKEN=${shellQuote(newAgentCredential.token)}`
-		];
-		if (newAgentCredential.projectId) lines.push(`export AGENT_TICK_PROJECT_ID=${shellQuote(newAgentCredential.projectId)}`);
-		if (newAgentCredential.teamId) lines.push(`export AGENT_TICK_TEAM=${shellQuote(newAgentCredential.teamId)}`);
-		if (newAgentCredential.defaultApprovalPolicy) lines.push(`export AGENT_TICK_APPROVAL_POLICY=${shellQuote(newAgentCredential.defaultApprovalPolicy)}`);
-		return lines.join('\n');
-	});
-	let testCommand = $derived(
-		"agent-tick request --title 'Run command?' --body 'Agent Tick test approval from the CLI' --command 'npm install'"
-	);
-	let setupExample = $derived(
-		newAgentCredential
-			? ['# 1. Connect this machine to Agent Tick', setupCommand, '', '# 2. Send a test approval to your phone', testCommand].join('\n')
-			: ''
-	);
-	let billingUsageRows = $derived.by(() => {
-		if (!billing) return [];
-		return [
-			{ label: 'Seats', used: billing.usage.activeUsers, limit: billing.limits.seats, help: 'Organization members with access.' },
-			{ label: 'Teams', used: billing.usage.teams, limit: billing.limits.teams, help: 'Team workspaces for routing and on-call coverage.' },
-			{ label: 'Active agents', used: billing.usage.activeAgents, limit: billing.limits.agents, help: 'Non-revoked agent tokens.' },
-			{ label: 'Approval requests', used: billing.usage.approvalRequests30d, limit: billing.limits.requests, help: 'Requests created in the last 30 days.' },
-			{ label: 'Push notifications', used: billing.usage.pushNotifications30d, limit: -1, help: 'Remote push notification attempts in the last 30 days.' },
-			{ label: 'Audit events', used: billing.usage.auditEventsRetained, limit: -1, help: `${formatLimit(billing.limits.auditRetentionDays, 'days')} audit retention.` }
-		];
-	});
+	function client(): AgentTickClient {
+		return new AgentTickClient({
+			baseUrl: window.location.origin,
+			tokenProvider: () => adminToken || null
+		});
+	}
 
 	onMount(() => {
-		activePage = pageFromHash();
-		const handleHashChange = () => {
-			activePage = pageFromHash();
-			void ensurePageData(activePage);
-		};
-		window.addEventListener('hashchange', handleHashChange);
-		if (activePage === 'invite' && !isUserMode) void loadInvitePreview();
-		if (isUserMode) {
-			void resumeSession();
-		}
-		return () => {
-			window.removeEventListener('hashchange', handleHashChange);
-			if (copyClearTimer !== undefined) window.clearTimeout(copyClearTimer);
-			if (pairingClearTimer !== undefined) window.clearTimeout(pairingClearTimer);
-		};
+		adminToken = localStorage.getItem(adminTokenStorageKey) ?? '';
+		void load();
 	});
 
-	async function resumeSession() {
-		authStatus = 'loading';
-		authError = '';
+	async function load(): Promise<void> {
+		loading = true;
+		error = '';
 		try {
-			session = await api.getSession();
-			authStatus = 'ready';
-			if (activePage === 'invite') await loadInvitePreview();
-			else await refreshDashboard();
-		} catch {
-			session = null;
-			authStatus = 'idle';
-		}
-	}
-
-	async function login(event?: SubmitEvent) {
-		event?.preventDefault();
-		authError = '';
-		if (!email.trim() || !password) {
-			authError = 'Enter your email and password.';
-			return;
-		}
-
-		authStatus = 'loading';
-		try {
-			session = await api.login({ email: email.trim(), password });
-			password = '';
-			authStatus = 'ready';
-			if (activePage === 'invite') await loadInvitePreview();
-			else await refreshDashboard();
-		} catch (error) {
-			session = null;
-			authStatus = 'error';
-			authError = errorMessage(error);
-		}
-	}
-
-	async function connectDashboard(event?: SubmitEvent) {
-		event?.preventDefault();
-		authError = '';
-		clearPairing();
-		await refreshDashboard();
-	}
-
-	async function refreshDashboard() {
-		if (!canShowDashboard) return;
-		const loadedResources = refreshLoadKeys(activePage);
-		await Promise.all(loadedResources.map(loadDashboardResource));
-		applyDefaultPageIfNoHash();
-		if (activePage === 'approvals' && loadedResources.includes('approvals')) return;
-		await ensurePageData(activePage);
-	}
-
-	function loadDashboardResource(resource: DashboardLoadKey): Promise<void> {
-		if (resource === 'approvals') return loadApprovals();
-		if (resource === 'devices') return loadDevices();
-		if (resource === 'agents') return loadAgents();
-		return loadOrganizations();
-	}
-
-	async function ensurePageData(page: Page) {
-		if (!canShowDashboard) return;
-		if (page === 'organization') {
-			await Promise.all([loadOrganizations(), loadTeams(), loadProjects(), loadPolicies(), loadInvites(), loadPendingMembers()]);
-		} else if (page === 'admin' && isOrgAdmin) {
-			const loads: Promise<void>[] = [loadOrganizations(), loadAuditEvents()];
-			if (isUserMode) loads.push(loadBilling());
-			await Promise.all(loads);
-		} else if (page === 'approvals') {
-			await loadApprovals();
-		} else if (page === 'invite') {
-			await loadInvitePreview();
-		}
-	}
-
-	async function loadRoutingOptions() {
-		await Promise.all([loadTeams(), loadProjects(), loadPolicies()]);
-	}
-
-	async function loadBilling() {
-		billingStatus = 'loading';
-		billingError = '';
-		try {
-			billing = await api.getBillingStatus();
-			billingStatus = 'ready';
-		} catch (error) {
-			billing = null;
-			billingStatus = 'error';
-			billingError = errorMessage(error);
-		}
-	}
-
-	async function loadAuditEvents() {
-		auditStatus = 'loading';
-		auditError = '';
-		try {
-			auditEvents = await api.listAuditEvents(auditEventType, 100);
-			auditStatus = 'ready';
-		} catch (error) {
-			auditEvents = [];
-			auditStatus = 'error';
-			auditError = errorMessage(error);
-		}
-	}
-
-	async function exportAuditEvents() {
-		auditExporting = true;
-		auditError = '';
-		try {
-			const csv = await api.exportAuditEventsCSV(auditEventType, 1000);
-			const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-			const link = document.createElement('a');
-			link.href = url;
-			link.download = `agent-tick-audit-${new Date().toISOString().slice(0, 10)}.csv`;
-			link.click();
-			URL.revokeObjectURL(url);
-		} catch (error) {
-			auditError = errorMessage(error);
+			runtimeConfig = await client().getAuthConfig();
+			await refreshApprovals();
+		} catch (err) {
+			error = messageForError(err);
 		} finally {
-			auditExporting = false;
+			loading = false;
 		}
 	}
 
-	async function loadApprovals() {
-		approvalsStatus = 'loading';
-		approvalsError = '';
+	async function refreshApprovals(): Promise<void> {
+		error = '';
 		try {
-			approvals = await api.listApprovals();
-			approvalsStatus = 'ready';
-		} catch (error) {
+			approvals = await client().listApprovalRequests();
+		} catch (err) {
+			error = messageForError(err);
 			approvals = [];
-			approvalsStatus = 'error';
-			approvalsError = errorMessage(error);
 		}
 	}
 
-	async function loadDevices() {
-		devicesStatus = 'loading';
-		devicesError = '';
+	async function saveAdminToken(): Promise<void> {
+		adminToken = adminToken.trim();
+		if (adminToken) localStorage.setItem(adminTokenStorageKey, adminToken);
+		else localStorage.removeItem(adminTokenStorageKey);
+		await refreshApprovals();
+	}
+
+	async function createAgentToken(): Promise<void> {
+		error = '';
+		createdCredential = undefined;
 		try {
-			devices = await api.listDevices();
-			devicesStatus = 'ready';
-		} catch (error) {
-			devices = [];
-			devicesStatus = 'error';
-			devicesError = errorMessage(error);
+			createdCredential = await client().createAgentToken({ name: agentName });
+		} catch (err) {
+			error = messageForError(err);
 		}
 	}
 
-	async function loadAgents() {
-		agentsStatus = 'loading';
-		agentsError = '';
+	async function respond(id: string, choiceId: string): Promise<void> {
+		error = '';
 		try {
-			agents = await api.listAgentTokens();
-			agentsStatus = 'ready';
-		} catch (error) {
-			agents = [];
-			agentsStatus = 'error';
-			agentsError = errorMessage(error);
+			await client().respondToApproval(id, { choiceId });
+			await refreshApprovals();
+		} catch (err) {
+			error = messageForError(err);
 		}
 	}
 
-	async function loadOrganizations() {
-		organizationsStatus = 'loading';
-		organizationsError = '';
-		try {
-			organizations = await api.listOrganizations();
-			organizationsStatus = 'ready';
-		} catch (error) {
-			organizations = [];
-			organizationsStatus = 'error';
-			organizationsError = errorMessage(error);
-		}
+	async function copyToken(): Promise<void> {
+		if (!createdCredential?.token) return;
+		await navigator.clipboard?.writeText(createdCredential.token);
 	}
 
-	async function loadInvitePreview() {
-		inviteToken = inviteTokenFromHash();
-		inviteAccepted = null;
-		inviteFlowError = '';
-		if (!inviteToken) {
-			invitePreview = null;
-			invitePreviewStatus = 'idle';
-			return;
-		}
-		invitePreviewStatus = 'loading';
-		try {
-			invitePreview = await api.previewInvite(inviteToken);
-			invitePreviewStatus = 'ready';
-		} catch (error) {
-			invitePreview = null;
-			invitePreviewStatus = 'error';
-			inviteFlowError = errorMessage(error);
-		}
-	}
-
-	async function acceptInvite() {
-		inviteToken = inviteTokenFromHash();
-		if (!inviteToken) return;
-		if (isUserMode && !session) {
-			authError = 'Sign in or create an account to accept this invite.';
-			return;
-		}
-		({ inviteAccepted, inviteAcceptStatus, inviteFlowError } = inviteAcceptStarted());
-		try {
-			inviteAccepted = await api.acceptInvite(inviteToken);
-			inviteAcceptStatus = 'ready';
-			await loadOrganizations();
-		} catch (error) {
-			inviteAcceptStatus = 'error';
-			inviteFlowError = errorMessage(error);
-		}
-	}
-
-	function inviteTokenFromHash(): string {
-		try {
-			return decodeURIComponent(window.location.hash.replace(/^#\/?invite\//, ''));
-		} catch {
-			return '';
-		}
-	}
-
-	async function loadInvites() {
-		if (!isOrgAdmin) return;
-		invitesStatus = 'loading';
-		invitesError = '';
-		try {
-			invites = await api.listOrganizationInvites();
-			invitesStatus = 'ready';
-		} catch (error) {
-			invites = [];
-			invitesStatus = 'error';
-			invitesError = errorMessage(error);
-		}
-	}
-
-	async function loadPendingMembers() {
-		if (!isOrgAdmin) return;
-		pendingMembersStatus = 'loading';
-		pendingMembersError = '';
-		try {
-			pendingMembers = await api.listMembershipRequests();
-			pendingMembersStatus = 'ready';
-		} catch (error) {
-			pendingMembers = [];
-			pendingMembersStatus = 'error';
-			pendingMembersError = errorMessage(error);
-		}
-	}
-
-	async function createInvite(event?: SubmitEvent) {
-		event?.preventDefault();
-		invitesError = '';
-		newInviteURL = '';
-		creatingInvite = true;
-		try {
-			const maxUses = inviteMaxUses.trim() ? Number(inviteMaxUses.trim()) : undefined;
-			if (inviteMaxUses.trim() && (!Number.isFinite(maxUses) || maxUses < 1)) {
-				invitesError = 'Enter a valid number of max uses.';
-				return;
-			}
-			let expiresAt: string | undefined;
-			if (inviteExpiresAt) {
-				const expiresDate = new Date(inviteExpiresAt);
-				if (Number.isNaN(expiresDate.getTime())) {
-					invitesError = 'Enter a valid expiration date and time.';
-					return;
-				}
-				expiresAt = expiresDate.toISOString();
-			}
-			const record = await api.createOrganizationInvite({
-				label: inviteLabel.trim(),
-				role: inviteRole,
-				teamIds: inviteTeamID ? [inviteTeamID] : [],
-				approvalRequired: inviteApprovalRequired,
-				maxUses,
-				expiresAt,
-				email: inviteEmail.trim() || undefined,
-				domain: inviteDomain.trim() || undefined
-			});
-			const baseURL = publicURL.replace(/\/$/, '');
-			newInviteURL = record.token ? `${baseURL}/#/invite/${encodeURIComponent(record.token)}` : record.url ? new URL(record.url, publicURL).toString() : '';
-			inviteLabel = '';
-			await loadInvites();
-		} catch (error) {
-			invitesError = errorMessage(error);
-		} finally {
-			creatingInvite = false;
-		}
-	}
-
-	async function revokeInvite(invite: OrganizationInviteRecord) {
-		invitesError = '';
-		try {
-			await api.revokeOrganizationInvite(invite.inviteId);
-			await loadInvites();
-		} catch (error) {
-			invitesError = errorMessage(error);
-		}
-	}
-
-	async function decidePendingMember(request: MembershipRequestRecord, approve: boolean) {
-		busyMembershipRequest = request.requestId;
-		pendingMembersError = '';
-		try {
-			if (approve) await api.approveMembershipRequest(request.requestId);
-			else await api.rejectMembershipRequest(request.requestId);
-			await Promise.all([loadPendingMembers(), loadInvites()]);
-		} catch (error) {
-			pendingMembersError = errorMessage(error);
-		} finally {
-			busyMembershipRequest = '';
-		}
-	}
-
-	async function loadTeams() {
-		teamsStatus = 'loading';
-		teamsError = '';
-		try {
-			teams = await api.listTeams();
-			teamsStatus = 'ready';
-		} catch (error) {
-			teams = [];
-			teamsStatus = 'error';
-			teamsError = errorMessage(error);
-		}
-	}
-
-	async function loadTeamPresence(teamID = selectedTeamID) {
-		if (!teamID) return;
-		teamPresenceStatus = 'loading';
-		teamPresenceError = '';
-		try {
-			const [availability, coverage, schedules] = await Promise.all([api.listTeamAvailability(teamID), api.getTeamCoverage(teamID), api.listOnCallSchedules(teamID)]);
-			teamAvailability = availability;
-			teamCoverage = coverage;
-			onCallSchedules = schedules;
-			onCallPrimaryUserID = schedules[0]?.primaryUserId || coverage.primaryUserId || '';
-			onCallSecondaryUserID = schedules[0]?.secondaryUserId || coverage.secondaryUserId || '';
-			teamPresenceStatus = 'ready';
-		} catch (error) {
-			teamAvailability = [];
-			teamCoverage = null;
-			onCallSchedules = [];
-			teamPresenceStatus = 'error';
-			teamPresenceError = errorMessage(error);
-		}
-	}
-
-	async function saveOnCallSchedule(event?: SubmitEvent) {
-		event?.preventDefault();
-		if (!selectedTeamID) return;
-		teamPresenceError = '';
-		if (!onCallPrimaryUserID.trim()) {
-			teamPresenceError = 'Enter a primary approver user ID.';
-			return;
-		}
-		savingOnCall = true;
-		try {
-			await api.upsertOnCallSchedule(selectedTeamID, { primaryUserId: onCallPrimaryUserID.trim(), secondaryUserId: onCallSecondaryUserID.trim() || undefined });
-			await loadTeamPresence(selectedTeamID);
-		} catch (error) {
-			teamPresenceError = errorMessage(error);
-		} finally {
-			savingOnCall = false;
-		}
-	}
-
-	async function loadProjects() {
-		projectsStatus = 'loading';
-		projectsError = '';
-		try {
-			projects = await api.listProjects();
-			projectsStatus = 'ready';
-		} catch (error) {
-			projects = [];
-			projectsStatus = 'error';
-			projectsError = errorMessage(error);
-		}
-	}
-
-	async function loadPolicies() {
-		policiesStatus = 'loading';
-		policiesError = '';
-		try {
-			policies = await api.listPolicies();
-			policiesStatus = 'ready';
-		} catch (error) {
-			policies = [];
-			policiesStatus = 'error';
-			policiesError = errorMessage(error);
-		}
-	}
-
-	async function createOrganization(event?: SubmitEvent) {
-		event?.preventDefault();
-		organizationActionError = '';
-		if (!organizationName.trim()) {
-			organizationActionError = 'Enter an organization name.';
-			return;
-		}
-		creatingOrganization = true;
-		try {
-			await api.createOrganization({ name: organizationName.trim() });
-			organizationName = '';
-			await loadOrganizations();
-			await Promise.all([loadTeams(), loadProjects()]);
-		} catch (error) {
-			organizationActionError = errorMessage(error);
-		} finally {
-			creatingOrganization = false;
-		}
-	}
-
-	async function createTeam(event?: SubmitEvent) {
-		event?.preventDefault();
-		teamActionError = '';
-		if (!teamName.trim()) {
-			teamActionError = 'Enter a team name.';
-			return;
-		}
-		creatingTeam = true;
-		try {
-			await api.createTeam({ name: teamName.trim(), description: teamDescription.trim() });
-			teamName = '';
-			teamDescription = '';
-			await loadTeams();
-		} catch (error) {
-			teamActionError = errorMessage(error);
-		} finally {
-			creatingTeam = false;
-		}
-	}
-
-	async function createProject(event?: SubmitEvent) {
-		event?.preventDefault();
-		projectActionError = '';
-		if (!projectName.trim()) {
-			projectActionError = 'Enter a project name.';
-			return;
-		}
-		creatingProject = true;
-		try {
-			await api.createProject({ name: projectName.trim(), description: projectDescription.trim(), teamId: projectTeamID || undefined, defaultPolicyId: projectDefaultPolicyID || undefined });
-			projectName = '';
-			projectDescription = '';
-			projectTeamID = '';
-			projectDefaultPolicyID = '';
-			await loadProjects();
-		} catch (error) {
-			projectActionError = errorMessage(error);
-		} finally {
-			creatingProject = false;
-		}
-	}
-
-	async function createPolicy(event?: SubmitEvent) {
-		event?.preventDefault();
-		policyActionError = '';
-		if (!policyName.trim()) {
-			policyActionError = 'Enter a policy name.';
-			return;
-		}
-		creatingPolicy = true;
-		try {
-			const policy = await api.createPolicy({
-				name: policyName.trim(),
-				template: policyTemplate,
-				teamId: policyTeamID || undefined,
-				settings: {
-					quorum: policyQuorum,
-					timeoutSeconds: policyTimeout,
-					escalationTarget: policyEscalationTarget,
-					denyVeto: String(policyDenyVeto)
-				}
-			});
-			policyName = '';
-			policyEscalationTarget = '';
-			selectedPolicyID = policy.policyId;
-			await loadPolicies();
-			await previewPolicy(policy.policyId);
-		} catch (error) {
-			policyActionError = errorMessage(error);
-		} finally {
-			creatingPolicy = false;
-		}
-	}
-
-	async function previewPolicy(policyID: string) {
-		selectedPolicyID = policyID;
-		policyPreview = null;
-		policyPreviewError = '';
-		try {
-			policyPreview = await api.previewPolicy(policyID);
-		} catch (error) {
-			policyPreviewError = errorMessage(error);
-		}
-	}
-
-	async function respond(id: string, choice: Choice) {
-		busyApproval = `${id}:${choice.id}`;
-		approvalsError = '';
-		try {
-			await api.respondToApproval(id, choice.id);
-			await loadApprovals();
-		} catch (error) {
-			approvalsError = errorMessage(error);
-		} finally {
-			busyApproval = '';
-		}
-	}
-
-	async function createPairing() {
-		pairingStatus = 'loading';
-		pairingError = '';
-		try {
-			pairing = await api.createPairingToken();
-			pairingStatus = 'ready';
-			schedulePairingClear(pairing.expiresAt);
-		} catch (error) {
-			pairing = null;
-			pairingStatus = 'error';
-			pairingError = errorMessage(error);
-		}
-	}
-
-	function clearPairing() {
-		if (pairingClearTimer !== undefined) {
-			window.clearTimeout(pairingClearTimer);
-			pairingClearTimer = undefined;
-		}
-		pairing = null;
-		pairingStatus = 'idle';
-		pairingError = '';
-	}
-
-	function schedulePairingClear(expiresAt: string) {
-		if (pairingClearTimer !== undefined) {
-			window.clearTimeout(pairingClearTimer);
-		}
-		const expiry = new Date(expiresAt).getTime();
-		if (Number.isFinite(expiry)) {
-			pairingClearTimer = window.setTimeout(clearPairing, Math.max(0, expiry - Date.now()));
-		}
-	}
-
-	async function revokeDevice(device: DeviceRecord) {
-		if (!window.confirm(`Revoke ${device.name || device.deviceId}? The device will no longer be able to authenticate.`)) {
-			return;
-		}
-		busyDevice = device.deviceId;
-		devicesError = '';
-		try {
-			await api.unpairDevice(device.deviceId);
-			await loadDevices();
-		} catch (error) {
-			devicesError = errorMessage(error);
-		} finally {
-			busyDevice = '';
-		}
-	}
-
-	async function createAgentToken(event?: SubmitEvent) {
-		event?.preventDefault();
-		creatingAgent = true;
-		agentActionError = '';
-		newAgentCredential = null;
-		try {
-			let projectID = agentProjectID;
-			if (agentNewProjectName.trim()) {
-				const project = await api.createProject({ name: agentNewProjectName.trim(), teamId: agentTeamID || undefined });
-				projectID = project.projectId;
-				await loadProjects();
-			}
-			newAgentCredential = await api.createAgentToken({
-				name: agentName.trim() || 'agent',
-				scopes: ['approval:write'],
-				projectId: projectID || undefined,
-				ownerUserId: (agentOwnerUserID || session?.userId || '').trim() || undefined,
-				teamId: agentTeamID || undefined,
-				defaultApprovalPolicy: agentDefaultPolicy || undefined
-			});
-			agentName = 'agent';
-			agentProjectID = projectID;
-			agentNewProjectName = '';
-			await loadAgents();
-		} catch (error) {
-			agentActionError = errorMessage(error);
-		} finally {
-			creatingAgent = false;
-		}
-	}
-
-	async function revokeAgent(agent: AgentTokenRecord) {
-		if (!window.confirm(`Revoke ${agent.name || agent.agentId}? This cannot be undone.`)) {
-			return;
-		}
-		busyAgent = agent.agentId;
-		agentsError = '';
-		try {
-			await api.revokeAgentToken(agent.agentId);
-			await loadAgents();
-		} catch (error) {
-			agentsError = errorMessage(error);
-		} finally {
-			busyAgent = '';
-		}
-	}
-
-	async function rotateAgent(agent: AgentTokenRecord) {
-		if (!window.confirm(`Rotate ${agent.name || agent.agentId}? Existing setup commands using this token will stop working.`)) {
-			return;
-		}
-		busyAgent = agent.agentId;
-		agentsError = '';
-		newAgentCredential = null;
-		try {
-			newAgentCredential = await api.rotateAgentToken(agent.agentId);
-			await loadAgents();
-		} catch (error) {
-			agentsError = errorMessage(error);
-		} finally {
-			busyAgent = '';
-		}
-	}
-
-	function navigate(event: MouseEvent, page: Page, anchor: string = page) {
-		event.preventDefault();
-		if (page === 'admin' && !isOrgAdmin) {
-			activePage = 'setup';
-			return;
-		}
-		activePage = page;
-		if (window.location.hash !== `#${anchor}`) {
-			window.history.pushState(null, '', `#${anchor}`);
-		}
-		void ensurePageData(page);
-		window.requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ block: 'start' }));
-	}
-
-	function pageFromHash(): Page {
-		const page = routePageFromHash(window.location.hash, isOrgAdmin, defaultPageForSetupStatus({ hasActiveDevice: hasActiveDevice(), hasActiveAgent: hasActiveAgent() }));
-		if (page === 'invite') inviteToken = inviteTokenFromHash();
-		return page;
-	}
-
-	function applyDefaultPageIfNoHash() {
-		if (window.location.hash !== '') return;
-		activePage = defaultPageForSetupStatus({ hasActiveDevice: hasActiveDevice(), hasActiveAgent: hasActiveAgent() });
-	}
-
-	function hasActiveDevice(): boolean {
-		return devices.some((device) => !device.unpairedAt);
-	}
-
-	function hasActiveAgent(): boolean {
-		return agents.some((agent) => !agent.revokedAt);
-	}
-
-	async function copyText(text: string, label: string) {
-		if (!text) return;
-		copyError = '';
-		try {
-			await navigator.clipboard.writeText(text);
-			copiedSnippet = label;
-			if (copyClearTimer !== undefined) window.clearTimeout(copyClearTimer);
-			copyClearTimer = window.setTimeout(() => {
-				if (copiedSnippet === label) copiedSnippet = '';
-				copyClearTimer = undefined;
-			}, 1600);
-		} catch {
-			copyError = 'Copy failed. Select the command text and copy it manually.';
-		}
-	}
-
-	function selectTeam(teamID: string) {
-		selectedTeamID = teamID;
-		void loadTeamPresence(teamID);
-	}
-
-	function closeTeam() {
-		selectedTeamID = '';
-		teamAvailability = [];
-		teamCoverage = null;
-		onCallSchedules = [];
-		teamPresenceError = '';
-	}
-
-	function requesterLabel(requester: Requester): string {
-		const base = requester.projectName || requester.host || requester.name || 'Agent';
-		if (requester.workingDirectory && requester.workingDirectory !== base) {
-			return `${base} · ${requester.workingDirectory}`;
-		}
-		return base;
-	}
-
-	function choiceLabel(choice: Choice): string {
-		return choice.label || choice.id;
-	}
-
-	function isActionable(approval: ApprovalRequest): boolean {
-		return approval.status === 'pending' && approval.requestType !== 'questionnaire' && approval.choices.length > 0;
-	}
-
-	function teamNameForID(teamID: string | undefined): string {
-		if (!teamID) return 'No team';
-		return teams.find((team) => team.teamId === teamID)?.name || teamID;
-	}
-
-	function projectNameForID(projectID: string | undefined): string {
-		if (!projectID) return 'Default project';
-		return projects.find((project) => project.projectId === projectID)?.name || projectID;
-	}
-
-	function policyLabel(policy: string | undefined): string {
-		if (!policy) return 'No default policy';
-		return policies.find((record) => record.policyId === policy)?.name || policy
-			.split('-')
-			.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-			.join(' ');
-	}
-
-	function projectCountForTeam(teamID: string): number {
-		return projects.filter((project) => project.teamId === teamID).length;
-	}
-
-	function availabilityLabel(record: UserAvailabilityRecord): string {
-		const seen = record.lastSeenAt ? ` · last seen ${formatDate(record.lastSeenAt)}` : ' · no heartbeat yet';
-		const until = record.overrideUntil ? ` until ${formatDate(record.overrideUntil)}` : '';
-		return `${record.state}${until}${seen}`;
-	}
-
-	function formatDate(value: string | undefined): string {
-		if (!value) return 'Unknown time';
-		const date = new Date(value);
-		return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-	}
-
-	function formatLimit(value: number, unit = ''): string {
-		if (value < 0) return 'Unlimited';
-		return `${value.toLocaleString()}${unit ? ` ${unit}` : ''}`;
-	}
-
-	function usagePercent(used: number, limit: number): number {
-		if (limit <= 0) return 0;
-		return Math.min(100, Math.round((used / limit) * 100));
-	}
-
-	function payloadLabel(payload: Record<string, unknown>): string {
-		const entries = Object.entries(payload ?? {}).slice(0, 4);
-		if (entries.length === 0) return 'No payload';
-		return entries.map(([key, value]) => `${key}: ${String(value)}`).join(' · ');
-	}
-
-	function statusText(status: LoadStatus, loading: string): string {
-		return status === 'loading' ? loading : '';
-	}
-
-	function errorMessage(error: unknown): string {
-		if (error instanceof Error) return error.message;
-		return 'Something went wrong. Please try again.';
-	}
-
-	function shellQuote(value: string): string {
-		return "'" + String(value).replace(/'/g, "'\\''") + "'";
+	function messageForError(err: unknown): string {
+		if (err instanceof AgentTickApiError) return `${err.status}: ${err.message}`;
+		if (err instanceof Error) return err.message;
+		return String(err);
 	}
 </script>
 
 <svelte:head>
-	<title>Agent Tick Admin</title>
+	<title>Agent Tick</title>
 </svelte:head>
 
-<div class="shell">
+<main class="shell">
 	<header class="hero">
 		<div>
-			<p class="eyebrow">Approval dashboard</p>
-			<h1>Agent Tick</h1>
-			<p class="hero-copy">Approve agent requests from your phone. Start by pairing one phone and one agent.</p>
+			<p class="eyebrow">Agent Tick</p>
+			<h1>Human approvals for agent actions</h1>
+			<p class="subtle">TypeScript server preview. Create an agent token, run the npm CLI, and approve pending requests here.</p>
 		</div>
-		<div class="mode-pill">{modeLabel}</div>
+		<button onclick={load} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
 	</header>
 
-	{#if isUserMode && !session}
-		{#if activePage === 'invite'}
-			<section class="page-intro panel" aria-labelledby="invite-title">
-				<p class="eyebrow">Organization invite</p>
-				<h2 id="invite-title">Join {invitePreview?.organizationName || 'this organization'}</h2>
-				<p class="muted">Sign in or create an account to continue. Approval is required before you receive organization access.</p>
-				{#if invitePreviewStatus === 'loading'}<p class="muted">Loading invite…</p>{/if}
-				{#if inviteFlowError}<p class="error" role="alert">{inviteFlowError}</p>{/if}
-			</section>
-		{/if}
-		<section class="auth-card" aria-labelledby="signin-title">
+	{#if runtimeConfig}
+		<section class="card grid">
 			<div>
-				<p class="eyebrow">Sign in</p>
-				<h2 id="signin-title">{activePage === 'invite' ? 'Continue invite' : 'Connect your dashboard'}</h2>
-				<p class="muted">Use your Agent Tick account to resume your session, pair phones, and manage your own agent tokens.</p>
+				<h2>Runtime</h2>
+				<p><strong>Mode:</strong> {runtimeConfig.mode}</p>
+				<p><strong>Auth provider:</strong> {runtimeConfig.authProvider}</p>
+				{#if runtimeConfig.publicURL}<p><strong>Public URL:</strong> {runtimeConfig.publicURL}</p>{/if}
+				<p><strong>Admin origin:</strong> {initialConfig.publicURL}</p>
 			</div>
-			<form class="auth-form" onsubmit={login}>
-				<label>
-					<span>Email</span>
-					<input bind:value={email} type="email" autocomplete="username" placeholder="you@example.com" required />
-				</label>
-				<label>
-					<span>Password</span>
-					<input bind:value={password} type="password" autocomplete="current-password" placeholder="••••••••" required />
-				</label>
-				<div class="toolbar">
-					<button type="submit" disabled={authStatus === 'loading'}>{authStatus === 'loading' ? 'Signing in…' : 'Sign in'}</button>
-					<button type="button" class="secondary" onclick={resumeSession} disabled={authStatus === 'loading'}>Resume session</button>
-				</div>
-				{#if authError}
-					<p class="error" role="alert">{authError}</p>
-				{:else if authStatus === 'loading'}
-					<p class="muted">Checking your session…</p>
-				{/if}
-			</form>
-		</section>
-	{:else}
-		<section class="auth-card compact" aria-label="Dashboard connection">
-			{#if isUserMode}
-				<div>
-					<p class="eyebrow">Session</p>
-					<h2>{signedInLabel}</h2>
-					<p class="muted">Ready to pair your phone, connect an agent, and approve requests.</p>
-				</div>
-			{:else}
-				<form class="connect-form" onsubmit={connectDashboard}>
-					<label>
-						<span>Admin bearer token</span>
-						<input bind:value={bearerToken} type="password" autocomplete="off" placeholder="Paste token and press Enter" />
-					</label>
-					<button type="submit" disabled={anyDashboardLoading}>Connect</button>
+			{#if runtimeConfig.mode === 'single'}
+				<form class="stack" onsubmit={(event) => { event.preventDefault(); void saveAdminToken(); }}>
+					<label for="admin-token">Admin token</label>
+					<input id="admin-token" bind:value={adminToken} type="password" autocomplete="off" placeholder="Optional for localhost single mode" />
+					<button type="submit">Save token</button>
 				</form>
-			{/if}
-			<button class="secondary" onclick={refreshDashboard} disabled={anyDashboardLoading}>Refresh all</button>
-			{#if authError}
-				<p class="error" role="alert">{authError}</p>
+			{:else}
+				<p class="warning">Clerk sign-in is planned next. This preview dashboard currently exercises single mode.</p>
 			{/if}
 		</section>
-
-		{#if activePage === 'invite'}
-			<section class="page-intro panel" aria-labelledby="accept-invite-title">
-				<p class="eyebrow">Organization invite</p>
-				<h2 id="accept-invite-title">Join {invitePreview?.organizationName || 'this organization'}</h2>
-				{#if inviteAccepted}
-					<p>{inviteAcceptedMessage(inviteAccepted.status)}</p>
-				{:else}
-					<p class="muted">Requested role: {invitePreview?.role || 'viewer'} · Approval required: {invitePreview?.approvalRequired ? 'yes' : 'no'}</p>
-					<button onclick={acceptInvite} disabled={inviteAcceptStatus === 'loading'}>{inviteAcceptStatus === 'loading' ? 'Accepting…' : 'Accept invite'}</button>
-				{/if}
-				{#if inviteFlowError}<p class="error" role="alert">{inviteFlowError}</p>{/if}
-			</section>
-		{/if}
-
-		<nav class="quick-actions" aria-label="Dashboard sections">
-			<a class={activePage === 'setup' ? 'active' : undefined} href="#setup" onclick={(event) => navigate(event, 'setup')}>Setup</a>
-			<a class={activePage === 'approvals' ? 'active' : undefined} href="#approvals" onclick={(event) => navigate(event, 'approvals')}>Approvals</a>
-			<span class="nav-spacer"></span>
-			<a class={['secondary-nav', activePage === 'organization' ? 'active' : undefined]} href="#organization" onclick={(event) => navigate(event, 'organization')}>Organization</a>
-			{#if isOrgAdmin}
-				<a class={['secondary-nav', activePage === 'admin' ? 'active' : undefined]} href="#admin" onclick={(event) => navigate(event, 'admin')}>Admin</a>
-			{/if}
-		</nav>
-
-		{#if activePage === 'setup'}
-		<section id="setup" class="onboarding-card" aria-labelledby="setup-title">
-			<div>
-				<p class="eyebrow">First run</p>
-				<h2 id="setup-title">Pair your phone and connect your agent</h2>
-				<p class="muted">Setup is only for creating these two connections. Once both exist, the dashboard opens to approvals by default.</p>
-			</div>
-			<ol class="setup-steps two-step">
-				<li><a href="#devices" onclick={(event) => navigate(event, 'setup', 'devices')}><strong>Pair your phone</strong><span>Create a QR and scan it from the mobile app.</span></a></li>
-				<li><a href="#agents" onclick={(event) => navigate(event, 'setup', 'agents')}><strong>Connect your agent</strong><span>Create one token and copy the command.</span></a></li>
-			</ol>
-		</section>
-		{/if}
-
-		<main class={['dashboard-grid', activePage !== 'setup' ? 'single-page-grid' : undefined]}>
-			{#if activePage === 'approvals'}
-			<section id="approvals" class="panel approvals-panel" aria-labelledby="approvals-title">
-				<div class="panel-heading">
-					<div>
-						<p class="eyebrow">Approvals</p>
-						<h2 id="approvals-title">Requests</h2>
-					</div>
-					<button class="secondary" onclick={loadApprovals} disabled={approvalsStatus === 'loading'}>Refresh</button>
-				</div>
-
-				{#if approvalsError}
-					<div class="inline-error" role="alert"><strong>Error</strong><span>{approvalsError}</span></div>
-				{/if}
-				{#if approvalsStatus === 'idle'}
-					<div class="empty-state">Connect to load approval requests.</div>
-				{:else if approvalsStatus === 'loading'}
-					<div class="empty-state">{statusText(approvalsStatus, 'Loading approvals…')}</div>
-				{:else if approvals.length === 0 && !approvalsError}
-					<div class="empty-state">No approval requests yet. After setup, test requests appear here.</div>
-				{:else}
-					<div class="request-list">
-						{#each approvals as approval (approval.id)}
-							<article class={['request-card', `status-${approval.status}`]}>
-								<div class="request-meta-row">
-									<span class="status-pill">{approval.status}</span>
-									<time datetime={approval.createdAt}>{formatDate(approval.createdAt)}</time>
-								</div>
-								<h3>{approval.title}</h3>
-								<p class="muted">{requesterLabel(approval.requester)}</p>
-								{#if approval.body}
-									<p>{approval.body}</p>
-								{/if}
-								{#if approval.command}
-									<pre>{approval.command}</pre>
-								{/if}
-								{#if approval.questions?.length}
-									<div class="question-list">
-										{#each approval.questions as question, index (`${approval.id}-${index}`)}
-											<div>
-												<strong>{question.header || question.question}</strong>
-												{#if question.header && question.question}
-													<p>{question.question}</p>
-												{/if}
-												{#if question.options?.length}
-													<p class="muted">Options: {question.options.map((option) => option.label).join(', ')}</p>
-												{/if}
-											</div>
-										{/each}
-									</div>
-								{/if}
-								{#if approval.response}
-									<p class="muted">Response: {approval.response.choiceId || 'answered'}{approval.respondedAt ? ` · ${formatDate(approval.respondedAt)}` : ''}</p>
-								{/if}
-								{#if isActionable(approval)}
-									<div class="toolbar">
-										{#each approval.choices as choice (choice.id)}
-											<button onclick={() => respond(approval.id, choice)} disabled={busyApproval !== ''} class={choice.kind === 'deny' || choice.id === 'deny' ? 'danger' : ''}>{busyApproval === `${approval.id}:${choice.id}` ? 'Sending…' : choiceLabel(choice)}</button>
-										{/each}
-									</div>
-								{:else if approval.status === 'pending' && approval.requestType === 'questionnaire'}
-									<p class="muted">Respond in the phone app for questionnaire requests.</p>
-								{/if}
-							</article>
-						{/each}
-					</div>
-				{/if}
-			</section>
-			{/if}
-
-			{#if shouldShowBillingPanel({ activePage, isOrgAdmin, isUserMode, billingStatus, billingError, billingPlan: billing?.plan })}
-			<details id="billing" class="panel secondary-panel" open>
-				<summary>
-					<span>
-						<span class="eyebrow">Billing</span>
-						<strong>Plan and settings</strong>
-					</span>
-					<span class="summary-count">{billing?.plan || '—'}</span>
-				</summary>
-				<div class="panel-body">
-					{#if billingError}
-						<div class="inline-error" role="alert">
-							<strong>Billing failed</strong>
-							<span>{billingError}</span>
-							<button type="button" class="secondary" onclick={loadBilling} disabled={billingStatus === 'loading'}>Retry billing</button>
-						</div>
-					{:else if billingStatus === 'loading'}
-						<div class="empty-state">Loading billing settings…</div>
-					{:else if billing}
-						<div class="billing-summary">
-							<div>
-								<p class="eyebrow">Current plan</p>
-								<h3>{billing.plan}</h3>
-								<p class="muted">Organization <code>{billing.organizationId}</code></p>
-							</div>
-							<div>
-								<p class="eyebrow">Retention</p>
-								<p><strong>{formatLimit(billing.limits.auditRetentionDays, 'days')}</strong> audit</p>
-								<p><strong>{formatLimit(billing.limits.approvalRetentionDays, 'days')}</strong> approvals</p>
-							</div>
-						</div>
-						<div class="usage-grid">
-							{#each billingUsageRows as row (row.label)}
-								<article class="usage-card">
-									<div class="request-meta-row">
-										<strong>{row.label}</strong>
-										<span>{row.used.toLocaleString()} / {formatLimit(row.limit)}</span>
-									</div>
-									<div class="usage-meter" aria-hidden="true"><span style:width={`${usagePercent(row.used, row.limit)}%`}></span></div>
-									<p class="muted">{row.help}</p>
-								</article>
-							{/each}
-						</div>
-						<div class="billing-actions">
-							<div class="link-card">
-								<strong>Billing portal</strong>
-								{#if billing.portalUrl}
-									<a class="button-link" href={billing.portalUrl}>Open portal</a>
-								{:else}
-									<p class="muted">Portal link is not configured for this plan yet.</p>
-								{/if}
-							</div>
-							<div class="link-card">
-								<strong>Invoices</strong>
-								{#if billing.invoicesUrl}
-									<a class="button-link" href={billing.invoicesUrl}>View invoices</a>
-								{:else}
-									<p class="muted">Invoice links appear here when a hosted billing provider is connected.</p>
-								{/if}
-							</div>
-							<div class="link-card highlight">
-								<strong>Need more seats or agents?</strong>
-								<p class="muted">Hosted plan limits are shown before you hit them.</p>
-								{#if billing.upgradeUrl}
-									<a class="button-link" href={billing.upgradeUrl}>Contact / upgrade</a>
-								{/if}
-							</div>
-						</div>
-					{/if}
-				</div>
-			</details>
-			{/if}
-
-			{#if activePage === 'admin' && isOrgAdmin}
-			<details id="audit" class="panel secondary-panel" open>
-				<summary>
-					<span>
-						<span class="eyebrow">Audit</span>
-						<strong>Security events</strong>
-					</span>
-					<span class="summary-count">{auditEvents.length}</span>
-				</summary>
-				<div class="panel-body">
-					<form class="agent-form" onsubmit={(event) => { event.preventDefault(); void loadAuditEvents(); }}>
-						<label>
-							<span>Event type filter</span>
-							<input bind:value={auditEventType} type="text" autocomplete="off" placeholder="team.created" />
-						</label>
-						<button type="submit" disabled={auditStatus === 'loading'}>{auditStatus === 'loading' ? 'Loading…' : 'Filter'}</button>
-						<button type="button" class="secondary" onclick={exportAuditEvents} disabled={auditExporting || auditStatus === 'loading'}>{auditExporting ? 'Exporting…' : 'Export CSV'}</button>
-					</form>
-					<p class="muted">Admins see only the authenticated organization. Exports include event id, actor user id, target id, timestamp, and JSON payload.</p>
-					{#if auditError}
-						<div class="inline-error" role="alert"><strong>Error</strong><span>{auditError}</span></div>
-					{/if}
-					{#if auditStatus === 'idle'}
-						<div class="empty-state">Connect to load audit events.</div>
-					{:else if auditStatus === 'loading'}
-						<div class="empty-state">Loading audit events…</div>
-					{:else if auditEvents.length === 0 && !auditError}
-						<div class="empty-state">No audit events match this filter yet.</div>
-					{:else}
-						<div class="item-list audit-list">
-							{#each auditEvents as event (event.eventId)}
-								<article class="item-card audit-card">
-									<div>
-										<strong>{event.eventType}</strong>
-										<p class="muted">{formatDate(event.createdAt)} · actor <code>{event.userId}</code></p>
-										<p class="muted">Target: <code>{event.targetId || event.organizationId}</code></p>
-										<p>{payloadLabel(event.payload)}</p>
-									</div>
-									<code>#{event.eventId}</code>
-								</article>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			</details>
-			{/if}
-
-			{#if activePage === 'setup'}
-			<details id="devices" class="panel" open>
-				<summary>
-					<span>
-						<span class="eyebrow">Step 1</span>
-						<strong>Pair your phone</strong>
-					</span>
-					<span class="summary-count">{devices.length}</span>
-				</summary>
-				<div class="panel-body">
-					<div class="pairing-card">
-						<div>
-							<h3>Open the mobile app and scan a QR</h3>
-							<p class="muted">Create a short-lived QR only when your phone is ready. Paired phones receive approval prompts.</p>
-						</div>
-						{#if pairing}
-							<div class="qr-wrap">
-								{#if pairing.qrDataUrl}
-									<img src={pairing.qrDataUrl} alt="Agent Tick phone pairing QR" />
-								{/if}
-								<p class="muted">Expires {formatDate(pairing.expiresAt)}. The pairing secret is hidden.</p>
-								<div class="toolbar">
-									<button class="secondary" onclick={createPairing} disabled={pairingStatus === 'loading'}>Renew</button>
-									<button class="ghost" onclick={clearPairing}>Clear</button>
-								</div>
-							</div>
-						{:else}
-							<button class="secondary" onclick={createPairing} disabled={pairingStatus === 'loading'}>{pairingStatus === 'loading' ? 'Creating QR…' : 'Create QR'}</button>
-						{/if}
-						{#if pairingError}
-							<p class="error" role="alert">{pairingError}</p>
-						{/if}
-					</div>
-
-					{#if devicesError}
-						<div class="inline-error" role="alert"><strong>Error</strong><span>{devicesError}</span></div>
-					{/if}
-					{#if devicesStatus === 'idle'}
-						<div class="empty-state">Connect to load paired devices.</div>
-					{:else if devicesStatus === 'loading'}
-						<div class="empty-state">Loading devices…</div>
-					{:else if devices.length === 0 && !devicesError}
-						<div class="empty-state">No paired devices yet.</div>
-					{:else}
-						<div class="item-list">
-							{#each devices as device (device.deviceId)}
-								<article class={['item-card', device.unpairedAt ? 'is-muted' : '']}>
-									<div>
-										<strong>{device.name || 'Phone'}</strong>
-										<code>{device.deviceId}</code>
-										<p class="muted">
-											{device.unpairedAt ? `Unpaired ${formatDate(device.unpairedAt)}` : `${device.pushNotifications ? 'Push on' : 'Push off'} · Paired ${formatDate(device.createdAt)}`}
-										</p>
-									</div>
-									{#if !device.unpairedAt}
-										<button class="secondary danger-text" onclick={() => revokeDevice(device)} disabled={busyDevice === device.deviceId}>{busyDevice === device.deviceId ? 'Revoking…' : 'Revoke'}</button>
-									{/if}
-								</article>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			</details>
-
-			<details id="agents" class="panel" open>
-				<summary>
-					<span>
-						<span class="eyebrow">Step 2</span>
-						<strong>Connect your agent</strong>
-					</span>
-					<span class="summary-count">{agents.length}</span>
-				</summary>
-				<div class="panel-body">
-					<form class="wizard-form simple-agent-form" onsubmit={createAgentToken}>
-						<div>
-							<p class="eyebrow">Agent setup</p>
-							<h3>Create one token, then copy the command into the agent terminal.</h3>
-							<p class="muted">For personal use, the defaults are enough. Organization routing stays tucked away below.</p>
-						</div>
-						<label>
-							<span>Agent name</span>
-							<input bind:value={agentName} type="text" autocomplete="off" placeholder="codex-laptop" />
-						</label>
-						<button type="submit" disabled={creatingAgent}>{creatingAgent ? 'Creating…' : 'Create setup command'}</button>
-						<details class="advanced-routing">
-							<summary>
-								<span>
-									<span class="eyebrow">Optional</span>
-									<strong>Organization routing</strong>
-								</span>
-							</summary>
-							<p class="muted">Use this only when the agent belongs to a team, project, or policy.</p>
-							<button type="button" class="secondary" onclick={loadRoutingOptions} disabled={teamsStatus === 'loading' || projectsStatus === 'loading' || policiesStatus === 'loading'}>Load team/project options</button>
-							<div class="routing-grid">
-								<label>
-									<span>Existing project</span>
-									<select bind:value={agentProjectID}>
-										<option value="">Default project</option>
-										{#each projects as project (project.projectId)}
-											<option value={project.projectId}>{project.name}</option>
-										{/each}
-									</select>
-								</label>
-								<label>
-									<span>Or create project</span>
-									<input bind:value={agentNewProjectName} type="text" autocomplete="off" placeholder="New project name" />
-								</label>
-								<label>
-									<span>Owner user ID</span>
-									<input bind:value={agentOwnerUserID} type="text" autocomplete="off" placeholder={session?.userId || 'usr_default'} />
-								</label>
-								<label>
-									<span>Team access</span>
-									<select bind:value={agentTeamID}>
-										<option value="">No team restriction</option>
-										{#each teams as team (team.teamId)}
-											<option value={team.teamId}>{team.name}</option>
-										{/each}
-									</select>
-								</label>
-								<label>
-									<span>Default approval policy</span>
-									<select bind:value={agentDefaultPolicy}>
-										<option value="">Use project or organization default</option>
-										{#each policies as policy (policy.policyId)}
-											<option value={policy.policyId}>{policy.name}</option>
-										{/each}
-									</select>
-								</label>
-							</div>
-						</details>
-					</form>
-					{#if agentActionError}
-						<p class="error" role="alert">{agentActionError}</p>
-					{/if}
-					{#if newAgentCredential}
-						<section class="setup-output" aria-live="polite">
-							<div class="panel-heading compact-heading">
-								<div>
-									<p class="eyebrow">Step 3</p>
-									<h3>Run this in the agent terminal</h3>
-								</div>
-								<button type="button" class="secondary" onclick={() => void copyText(setupExample, 'setup')}>{copiedSnippet === 'setup' ? 'Copied' : 'Copy'}</button>
-							</div>
-							<p class="muted">This token is shown once. Run setup, then send the test request and approve it on your phone.</p>
-							{#if copyError}
-								<p class="error" role="alert">{copyError}</p>
-							{/if}
-							<pre>{setupExample}</pre>
-							<details class="env-output">
-								<summary>Prefer environment variables?</summary>
-								<pre>{setupEnvCommand + '\n' + testCommand}</pre>
-							</details>
-						</section>
-					{/if}
-
-					{#if agentsError}
-						<div class="inline-error" role="alert"><strong>Error</strong><span>{agentsError}</span></div>
-					{/if}
-					{#if agentsStatus === 'idle'}
-						<div class="empty-state">Connect to load agent tokens.</div>
-					{:else if agentsStatus === 'loading'}
-						<div class="empty-state">Loading agents…</div>
-					{:else if agents.length === 0 && !agentsError}
-						<div class="empty-state">No agent tokens yet.</div>
-					{:else}
-						<div class="item-list">
-							{#each agents as agent (agent.agentId)}
-								<article class={['item-card', agent.revokedAt ? 'is-muted' : '']}>
-									<div>
-										<strong>{agent.name || 'agent'}</strong>
-										<code>{agent.agentId}</code>
-										<p class="muted">
-											{agent.revokedAt ? `Revoked ${formatDate(agent.revokedAt)}` : `Active · Created ${formatDate(agent.createdAt)}`}
-										</p>
-										<p class="muted">Owner: {agent.ownerUserId || 'default'} · Project: {projectNameForID(agent.projectId)} · Team: {teamNameForID(agent.teamId)}</p>
-										<p class="muted">Policy: {policyLabel(agent.defaultApprovalPolicy)} · Last request: {agent.lastRequestAt ? formatDate(agent.lastRequestAt) : 'never'}</p>
-										<p class="muted">Scopes: {agent.scopes.join(', ') || 'none'}</p>
-									</div>
-									{#if !agent.revokedAt}
-										<div class="toolbar">
-											<button class="secondary" onclick={() => rotateAgent(agent)} disabled={busyAgent !== ''}>{busyAgent === agent.agentId ? 'Working…' : 'Rotate'}</button>
-											<button class="secondary danger-text" onclick={() => revokeAgent(agent)} disabled={busyAgent !== ''}>{busyAgent === agent.agentId ? 'Working…' : 'Revoke'}</button>
-										</div>
-									{/if}
-								</article>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			</details>
-			{/if}
-
-			{#if activePage === 'organization'}
-			<section class="page-intro panel" aria-labelledby="organization-title">
-				<p class="eyebrow">Organization</p>
-				<h2 id="organization-title">Team routing, projects, and policies</h2>
-				<p class="muted">Only set these up when more than one person or project needs approval routing. Personal agents can keep using the default setup.</p>
-			</section>
-
-			<details id="teams" class="panel secondary-panel" open>
-				<summary>
-					<span>
-						<span class="eyebrow">Teams</span>
-						<strong>Team workspace</strong>
-					</span>
-					<span class="summary-count">{teams.length}</span>
-				</summary>
-				<div class="panel-body">
-					{#if organizationsError}
-						<div class="inline-error" role="alert"><strong>Organization</strong><span>{organizationsError}</span></div>
-					{:else if organizationsStatus === 'ready'}
-						<p class="muted">Managing <strong>{organizationLabel}</strong> as {organizations[0]?.role || 'owner'}.</p>
-					{/if}
-					<form class="agent-form" onsubmit={createOrganization}>
-						<label>
-							<span>Organization name</span>
-							<input bind:value={organizationName} type="text" autocomplete="organization" placeholder="Acme AI" />
-						</label>
-						<button type="submit" class="secondary" disabled={creatingOrganization}>{creatingOrganization ? 'Creating…' : 'Create Organization'}</button>
-					</form>
-					{#if organizationActionError}
-						<p class="error" role="alert">{organizationActionError}</p>
-					{/if}
-					<form class="agent-form" onsubmit={createTeam}>
-						<label>
-							<span>Team name</span>
-							<input bind:value={teamName} type="text" autocomplete="off" placeholder="Platform" />
-						</label>
-						<label>
-							<span>Description</span>
-							<input bind:value={teamDescription} type="text" autocomplete="off" placeholder="Optional context" />
-						</label>
-						<button type="submit" disabled={creatingTeam}>{creatingTeam ? 'Creating…' : 'Create Team'}</button>
-					</form>
-					{#if teamActionError}
-						<p class="error" role="alert">{teamActionError}</p>
-					{/if}
-					{#if teamsError}
-						<div class="inline-error" role="alert"><strong>Error</strong><span>{teamsError}</span></div>
-					{/if}
-					{#if teamsStatus === 'idle'}
-						<div class="empty-state">Connect to load teams.</div>
-					{:else if teamsStatus === 'loading'}
-						<div class="empty-state">Loading teams…</div>
-					{:else if teams.length === 0 && !teamsError}
-						<div class="empty-state">No teams yet. Small installs can keep using the default organization without creating one.</div>
-					{:else}
-						<div class="item-list">
-							{#each teams as team (team.teamId)}
-								<article class="item-card">
-									<div>
-										<strong>{team.name}</strong>
-										<code>{team.teamId}</code>
-										{#if team.description}
-											<p>{team.description}</p>
-										{/if}
-										<p class="muted">{projectCountForTeam(team.teamId)} projects · Created {formatDate(team.createdAt)}</p>
-									</div>
-									<button class="secondary" onclick={() => selectTeam(team.teamId)}>Details</button>
-								</article>
-							{/each}
-						</div>
-					{/if}
-					{#if selectedTeam}
-						<section class="detail-card" aria-label="Team details">
-							<div class="panel-heading">
-								<div>
-									<p class="eyebrow">Team detail</p>
-									<h3>{selectedTeam.name}</h3>
-								</div>
-								<button class="ghost" onclick={closeTeam}>Close</button>
-							</div>
-							<p class="muted">{selectedTeam.description || 'No description yet.'}</p>
-							<p><code>{selectedTeam.teamId}</code></p>
-							<p class="muted">Created {formatDate(selectedTeam.createdAt)} · Updated {formatDate(selectedTeam.updatedAt)}</p>
-							<p class="muted">Projects: {projects.filter((project) => project.teamId === selectedTeam.teamId).map((project) => project.name).join(', ') || 'none yet'}</p>
-							<div class="coverage-card">
-								<div class="panel-heading compact-heading">
-									<div>
-										<p class="eyebrow">Coverage</p>
-										<strong>{teamCoverage?.summary || 'No coverage data yet.'}</strong>
-									</div>
-									<button class="secondary" onclick={() => loadTeamPresence(selectedTeam.teamId)} disabled={teamPresenceStatus === 'loading'}>{teamPresenceStatus === 'loading' ? 'Refreshing…' : 'Refresh coverage'}</button>
-								</div>
-								<p class="muted">Preview uses coarse last-seen and manual availability. Mobile users can set Do Not Disturb or Off-call from Settings.</p>
-								{#if teamPresenceError}
-									<p class="error" role="alert">{teamPresenceError}</p>
-								{/if}
-								<form class="agent-form" onsubmit={saveOnCallSchedule}>
-									<label>
-										<span>Primary on-call user ID</span>
-										<input bind:value={onCallPrimaryUserID} type="text" autocomplete="off" placeholder="usr_..." />
-									</label>
-									<label>
-										<span>Secondary fallback user ID</span>
-										<input bind:value={onCallSecondaryUserID} type="text" autocomplete="off" placeholder="usr_..." />
-									</label>
-									<button type="submit" disabled={savingOnCall}>{savingOnCall ? 'Saving…' : 'Save on-call'}</button>
-								</form>
-								{#if onCallSchedules.length}
-									<p class="muted">Current on-call: primary {onCallSchedules[0].primaryUserId}{onCallSchedules[0].secondaryUserId ? ` · secondary ${onCallSchedules[0].secondaryUserId}` : ''}</p>
-								{/if}
-								{#if teamAvailability.length}
-									<div class="mini-list">
-										{#each teamAvailability as member (member.userId)}
-											<div class="mini-row">
-												<code>{member.userId}</code>
-												<span>{availabilityLabel(member)}</span>
-											</div>
-										{/each}
-									</div>
-								{/if}
-							</div>
-						</section>
-					{/if}
-				</div>
-			</details>
-
-			{#if isOrgAdmin}
-			<details id="invites" class="panel secondary-panel" open>
-				<summary>
-					<span><span class="eyebrow">Invite people</span><strong>Invite links and pending members</strong></span>
-					<span class="summary-count">{pendingMembers.length} pending</span>
-				</summary>
-				<div class="panel-body">
-					<form class="wizard-form" onsubmit={createInvite}>
-						<div>
-							<p class="eyebrow">Safe by default</p>
-							<h3>Create an invite link</h3>
-							<p class="muted">Invited users enter pending approval before they receive organization or team access.</p>
-						</div>
-						<label><span>Label</span><input bind:value={inviteLabel} type="text" autocomplete="off" placeholder="Backend onboarding link" /></label>
-						<label><span>Role after approval</span><select bind:value={inviteRole}><option value="viewer">Viewer</option><option value="approver">Approver</option>{#if isOrgOwner}<option value="admin">Admin</option>{/if}</select></label>
-						<label><span>Team after approval</span><select bind:value={inviteTeamID}><option value="">No team</option>{#each teams as team (team.teamId)}<option value={team.teamId}>{team.name}</option>{/each}</select></label>
-						<label><span>Max uses</span><input bind:value={inviteMaxUses} type="number" min="1" inputmode="numeric" placeholder="1" /></label>
-						<label><span>Expires at</span><input bind:value={inviteExpiresAt} type="datetime-local" /></label>
-						<label><span>Email restriction</span><input bind:value={inviteEmail} type="email" autocomplete="off" placeholder="person@example.com" /></label>
-						<label><span>Domain restriction</span><input bind:value={inviteDomain} type="text" autocomplete="off" placeholder="example.com" /></label>
-						<label class="checkbox-label"><input bind:checked={inviteApprovalRequired} type="checkbox" disabled={!isOrgOwner} /><span>Admin approval required{isOrgOwner ? '' : ' (owner only to disable)'}</span></label>
-						<button type="submit" disabled={creatingInvite}>{creatingInvite ? 'Creating…' : 'Create invite'}</button>
-					</form>
-					{#if newInviteURL}<div class="snippet-card"><p class="muted">Copy this URL now. The raw token is only shown once.</p><code>{newInviteURL}</code></div>{/if}
-					{#if invitesError}<p class="error" role="alert">{invitesError}</p>{/if}
-					<section class="detail-card" aria-label="Pending members">
-						<div class="panel-heading"><div><p class="eyebrow">Pending members</p><h3>Approve or reject access</h3></div><button class="secondary" onclick={loadPendingMembers}>Refresh</button></div>
-						<p class="muted">Pending users do not have access to organization resources until approved.</p>
-						{#if pendingMembersError}<p class="error" role="alert">{pendingMembersError}</p>{/if}
-						{#if pendingMembersStatus === 'loading'}<div class="empty-state">Loading pending members…</div>{:else if pendingMembers.length === 0}<div class="empty-state">No pending members.</div>{:else}<div class="item-list">{#each pendingMembers as request (request.requestId)}<article class="item-card"><div><strong>{request.userName || request.userEmail || request.userId}</strong><code>{request.userId}</code><p class="muted">Role: {request.requestedRole} · Teams: {(request.requestedTeamIds || []).map(teamNameForID).join(', ') || 'none'} · Accepted {formatDate(request.acceptedAt)}</p></div><div class="toolbar"><button onclick={() => decidePendingMember(request, true)} disabled={busyMembershipRequest !== ''}>{busyMembershipRequest === request.requestId ? 'Working…' : 'Approve'}</button><button class="secondary danger-text" onclick={() => decidePendingMember(request, false)} disabled={busyMembershipRequest !== ''}>{busyMembershipRequest === request.requestId ? 'Working…' : 'Reject'}</button></div></article>{/each}</div>{/if}
-					</section>
-					<section class="detail-card" aria-label="Active invites">
-						<div class="panel-heading"><div><p class="eyebrow">Active and reusable invites</p><h3>Shared links</h3></div><button class="secondary" onclick={loadInvites}>Refresh</button></div>
-						{#if invitesStatus === 'loading'}<div class="empty-state">Loading invites…</div>{:else if invites.length === 0}<div class="empty-state">No invite links yet.</div>{:else}<div class="item-list">{#each invites as invite (invite.inviteId)}<article class="item-card"><div><strong>{invite.label || invite.inviteId}</strong><code>{invite.inviteId}</code><p class="muted">Role: {invite.role} · Teams: {(invite.teamIds || []).map(teamNameForID).join(', ') || 'none'} · Uses: {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ' unlimited'} · Pending: {invite.pendingCount || 0} · Approved: {invite.approvedCount || 0}</p><p class="muted">{invite.revokedAt ? `Revoked ${formatDate(invite.revokedAt)}` : 'Active'} · Expires {invite.expiresAt ? formatDate(invite.expiresAt) : 'never'}</p></div>{#if !invite.revokedAt}<button class="secondary danger-text" onclick={() => revokeInvite(invite)}>Revoke</button>{/if}</article>{/each}</div>{/if}
-					</section>
-				</div>
-			</details>
-			{/if}
-
-			<details id="policies" class="panel secondary-panel">
-				<summary>
-					<span>
-						<span class="eyebrow">Policies</span>
-						<strong>Approval templates</strong>
-					</span>
-					<span class="summary-count">{policies.length}</span>
-				</summary>
-				<div class="panel-body">
-					<form class="wizard-form" onsubmit={createPolicy}>
-						<div>
-							<p class="eyebrow">Policy builder</p>
-							<h3>Start with a human-readable template.</h3>
-						</div>
-						<label>
-							<span>Policy name</span>
-							<input bind:value={policyName} type="text" autocomplete="off" placeholder="Backend team quorum" />
-						</label>
-						<label>
-							<span>Template</span>
-							<select bind:value={policyTemplate}>
-								<option value="owner-only">Just me</option>
-								<option value="any-team-member">Anyone on a team</option>
-								<option value="on-call">On-call person</option>
-								<option value="recently-active">Most recently active</option>
-								<option value="quorum">Require multiple approvals</option>
-								<option value="sequence">Multi-step flow</option>
-								<option value="risk-based">Risk-based flow</option>
-							</select>
-						</label>
-						<label>
-							<span>Team</span>
-							<select bind:value={policyTeamID}>
-								<option value="">No team</option>
-								{#each teams as team (team.teamId)}
-									<option value={team.teamId}>{team.name}</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>Quorum size</span>
-							<input bind:value={policyQuorum} type="number" min="1" inputmode="numeric" />
-						</label>
-						<label>
-							<span>Timeout seconds</span>
-							<input bind:value={policyTimeout} type="number" min="0" inputmode="numeric" />
-						</label>
-						<label>
-							<span>Escalation target</span>
-							<input bind:value={policyEscalationTarget} type="text" autocomplete="off" placeholder="on-call-backup@example.com" />
-						</label>
-						<label class="checkbox-label">
-							<input bind:checked={policyDenyVeto} type="checkbox" />
-							<span>Any denial blocks the command</span>
-						</label>
-						<button type="submit" disabled={creatingPolicy}>{creatingPolicy ? 'Creating…' : 'Create Policy'}</button>
-					</form>
-					{#if policyActionError}
-						<p class="error" role="alert">{policyActionError}</p>
-					{/if}
-					{#if policiesError}
-						<div class="inline-error" role="alert"><strong>Error</strong><span>{policiesError}</span></div>
-					{/if}
-					{#if policiesStatus === 'idle'}
-						<div class="empty-state">Connect to load approval policies.</div>
-					{:else if policiesStatus === 'loading'}
-						<div class="empty-state">Loading policies…</div>
-					{:else if policies.length === 0 && !policiesError}
-						<div class="empty-state">No policies yet. Create one from a template, then attach it to projects or agents.</div>
-					{:else}
-						<div class="item-list">
-							{#each policies as policy (policy.policyId)}
-								<article class="item-card">
-									<div>
-										<strong>{policy.name}</strong>
-										<code>{policy.policyId}</code>
-										<p class="muted">{policy.summary}</p>
-										<p class="muted">Template: {policyLabel(policy.template)} · Team: {teamNameForID(policy.teamId)}</p>
-									</div>
-									<button class="secondary" onclick={() => previewPolicy(policy.policyId)}>Preview</button>
-								</article>
-							{/each}
-						</div>
-					{/if}
-					{#if selectedPolicy || policyPreviewError}
-						<section class="detail-card" aria-label="Policy preview">
-							<div class="panel-heading">
-								<div>
-									<p class="eyebrow">Policy preview</p>
-									<h3>{selectedPolicy?.name || 'Preview unavailable'}</h3>
-								</div>
-								<button class="ghost" onclick={() => { selectedPolicyID = ''; policyPreview = null; policyPreviewError = ''; }}>Close</button>
-							</div>
-							{#if policyPreview}
-								<p>{policyPreview.summary}</p>
-								<p class="muted">Would notify: {policyPreview.notifies.join(', ')}</p>
-								{#if policyPreview.limitations?.length}
-									<p class="muted">Limitations: {policyPreview.limitations.join('; ')}</p>
-								{/if}
-							{:else if policyPreviewError}
-								<p class="error" role="alert">{policyPreviewError}</p>
-							{/if}
-						</section>
-					{/if}
-				</div>
-			</details>
-
-			<details id="projects" class="panel secondary-panel">
-				<summary>
-					<span>
-						<span class="eyebrow">Projects</span>
-						<strong>Project grouping</strong>
-					</span>
-					<span class="summary-count">{projects.length}</span>
-				</summary>
-				<div class="panel-body">
-					<form class="agent-form" onsubmit={createProject}>
-						<label>
-							<span>Project name</span>
-							<input bind:value={projectName} type="text" autocomplete="off" placeholder="Website" />
-						</label>
-						<label>
-							<span>Team</span>
-							<select bind:value={projectTeamID}>
-								<option value="">No team</option>
-								{#each teams as team (team.teamId)}
-									<option value={team.teamId}>{team.name}</option>
-								{/each}
-							</select>
-						</label>
-						<label>
-							<span>Description</span>
-							<input bind:value={projectDescription} type="text" autocomplete="off" placeholder="Optional context" />
-						</label>
-						<label>
-							<span>Default policy</span>
-							<select bind:value={projectDefaultPolicyID}>
-								<option value="">No project default</option>
-								{#each policies as policy (policy.policyId)}
-									<option value={policy.policyId}>{policy.name}</option>
-								{/each}
-							</select>
-						</label>
-						<button type="submit" disabled={creatingProject}>{creatingProject ? 'Creating…' : 'Create Project'}</button>
-					</form>
-					{#if projectActionError}
-						<p class="error" role="alert">{projectActionError}</p>
-					{/if}
-					{#if projectsError}
-						<div class="inline-error" role="alert"><strong>Error</strong><span>{projectsError}</span></div>
-					{/if}
-					{#if projectsStatus === 'idle'}
-						<div class="empty-state">Connect to load projects.</div>
-					{:else if projectsStatus === 'loading'}
-						<div class="empty-state">Loading projects…</div>
-					{:else if projects.length === 0 && !projectsError}
-						<div class="empty-state">No projects yet. Agent Tick creates a default project automatically for first-run simplicity.</div>
-					{:else}
-						<div class="item-list">
-							{#each projects as project (project.projectId)}
-								<article class="item-card">
-									<div>
-										<strong>{project.name}</strong>
-										<code>{project.slug}</code>
-										<p class="muted">{teamNameForID(project.teamId)} · Policy: {policyLabel(project.defaultPolicyId)} · {project.projectId}</p>
-										{#if project.description}
-											<p>{project.description}</p>
-										{/if}
-										<p class="muted">Created {formatDate(project.createdAt)}</p>
-									</div>
-									<button class="secondary" onclick={() => (selectedProjectID = project.projectId)}>Details</button>
-								</article>
-							{/each}
-						</div>
-					{/if}
-					{#if selectedProject}
-						<section class="detail-card" aria-label="Project details">
-							<div class="panel-heading">
-								<div>
-									<p class="eyebrow">Project detail</p>
-									<h3>{selectedProject.name}</h3>
-								</div>
-								<button class="ghost" onclick={() => (selectedProjectID = '')}>Close</button>
-							</div>
-							<p class="muted">{selectedProject.description || 'No description yet.'}</p>
-							<p><code>{selectedProject.projectId}</code> <code>{selectedProject.slug}</code></p>
-							<p class="muted">Team: {teamNameForID(selectedProject.teamId)} · Default policy: {policyLabel(selectedProject.defaultPolicyId)}</p>
-							<p class="muted">Created {formatDate(selectedProject.createdAt)} · Updated {formatDate(selectedProject.updatedAt)}</p>
-						</section>
-					{/if}
-				</div>
-			</details>
-			{/if}
-		</main>
 	{/if}
-</div>
+
+	{#if error}
+		<p class="error">{error}</p>
+	{/if}
+
+	<section class="card stack">
+		<h2>Create an agent token</h2>
+		<form class="row" onsubmit={(event) => { event.preventDefault(); void createAgentToken(); }}>
+			<input bind:value={agentName} aria-label="Agent name" />
+			<button type="submit">Create token</button>
+		</form>
+		{#if createdCredential}
+			<div class="token">
+				<p><strong>{createdCredential.name}</strong> ({createdCredential.agentId})</p>
+				<code>{createdCredential.token}</code>
+				<button onclick={copyToken}>Copy</button>
+				<p class="subtle">Use it with: <code>agent-tick setup --server {window.location.origin} --token {createdCredential.token}</code></p>
+			</div>
+		{/if}
+	</section>
+
+	<section class="card stack">
+		<div class="section-heading">
+			<h2>Approval requests</h2>
+			<button onclick={refreshApprovals}>Refresh approvals</button>
+		</div>
+		{#if approvals.length === 0}
+			<p class="subtle">No approval requests yet.</p>
+		{:else}
+			<ul class="approvals">
+				{#each approvals as approval}
+					<li>
+						<div>
+							<p class="eyebrow">{approval.status} · {approval.requester.name}</p>
+							<h3>{approval.title}</h3>
+							{#if approval.body}<p>{approval.body}</p>{/if}
+							{#if approval.command}<pre>{approval.command}</pre>{/if}
+							{#if approval.response}<p class="subtle">Response: {approval.response.choiceId ?? approval.response.message}</p>{/if}
+						</div>
+						{#if approval.status === 'pending'}
+							<div class="actions">
+								<button class="approve" onclick={() => respond(approval.id, 'approve')}>Approve</button>
+								<button class="reject" onclick={() => respond(approval.id, 'reject')}>Reject</button>
+							</div>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
+</main>
+
+<style>
+	:global(body) {
+		margin: 0;
+		font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+		background: #0f172a;
+		color: #e2e8f0;
+	}
+
+	.shell {
+		max-width: 1040px;
+		margin: 0 auto;
+		padding: 40px 20px;
+	}
+
+	.hero,
+	.section-heading,
+	.row,
+	.grid {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+	}
+
+	.grid {
+		align-items: flex-start;
+	}
+
+	.stack {
+		display: grid;
+		gap: 12px;
+	}
+
+	.card {
+		margin-top: 20px;
+		padding: 24px;
+		border: 1px solid rgba(148, 163, 184, 0.25);
+		border-radius: 18px;
+		background: rgba(15, 23, 42, 0.84);
+		box-shadow: 0 20px 60px rgba(2, 6, 23, 0.35);
+	}
+
+	.eyebrow,
+	.subtle {
+		color: #94a3b8;
+	}
+
+	.eyebrow {
+		margin: 0;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		font-size: 0.75rem;
+	}
+
+	h1,
+	h2,
+	h3,
+	p {
+		margin-top: 0;
+	}
+
+	input {
+		min-width: 260px;
+		padding: 10px 12px;
+		border: 1px solid #334155;
+		border-radius: 10px;
+		background: #020617;
+		color: #e2e8f0;
+	}
+
+	button {
+		padding: 10px 14px;
+		border: 0;
+		border-radius: 10px;
+		background: #38bdf8;
+		color: #082f49;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	button:disabled {
+		opacity: 0.6;
+		cursor: wait;
+	}
+
+	.error,
+	.warning {
+		padding: 12px 14px;
+		border-radius: 12px;
+	}
+
+	.error {
+		background: rgba(239, 68, 68, 0.14);
+		color: #fecaca;
+	}
+
+	.warning {
+		background: rgba(250, 204, 21, 0.12);
+		color: #fde68a;
+	}
+
+	.token {
+		display: grid;
+		gap: 8px;
+		padding: 12px;
+		border: 1px dashed #475569;
+		border-radius: 12px;
+	}
+
+	code,
+	pre {
+		padding: 3px 6px;
+		border-radius: 6px;
+		background: #020617;
+		color: #bae6fd;
+	}
+
+	pre {
+		overflow-x: auto;
+		padding: 12px;
+	}
+
+	.approvals {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: grid;
+		gap: 12px;
+	}
+
+	.approvals li {
+		display: flex;
+		justify-content: space-between;
+		gap: 20px;
+		padding: 16px;
+		border: 1px solid #334155;
+		border-radius: 14px;
+		background: rgba(2, 6, 23, 0.48);
+	}
+
+	.actions {
+		display: flex;
+		gap: 8px;
+		align-items: flex-start;
+	}
+
+	.approve {
+		background: #22c55e;
+		color: #052e16;
+	}
+
+	.reject {
+		background: #fb7185;
+		color: #4c0519;
+	}
+
+	@media (max-width: 760px) {
+		.hero,
+		.section-heading,
+		.row,
+		.grid,
+		.approvals li {
+			align-items: stretch;
+			flex-direction: column;
+		}
+
+		input {
+			min-width: 0;
+		}
+	}
+</style>

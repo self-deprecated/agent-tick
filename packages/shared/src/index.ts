@@ -145,3 +145,26 @@ export const WaitApprovalResponseSchema = z.object({
   terminal: z.boolean()
 });
 export type WaitApprovalResponse = z.infer<typeof WaitApprovalResponseSchema>;
+
+export const CreateAgentTokenSchema = z.object({
+  name: z.string().min(1),
+  scopes: z.array(z.string()).optional()
+});
+export type CreateAgentToken = z.input<typeof CreateAgentTokenSchema>;
+
+export const AgentTokenRecordSchema = z.object({
+  agentId: z.string(),
+  name: z.string(),
+  scopes: z.array(z.string()),
+  organizationId: z.string(),
+  ownerUserId: z.string().optional(),
+  lastRequestAt: z.string().optional(),
+  createdAt: z.string(),
+  revokedAt: z.string().optional()
+});
+export type AgentTokenRecord = z.infer<typeof AgentTokenRecordSchema>;
+
+export const AgentCredentialSchema = AgentTokenRecordSchema.extend({
+  token: z.string()
+});
+export type AgentCredential = z.infer<typeof AgentCredentialSchema>;
