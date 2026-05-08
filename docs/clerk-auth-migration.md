@@ -181,8 +181,8 @@ Implemented so far:
 - Project, team, and basic policy foundations with dashboard management.
 - Team member add/update APIs and dashboard management for local organization members.
 - Organization invite create/list/preview/accept/revoke APIs with hashed invite tokens and dashboard management.
-- Approval request create/list/get/respond/abandon/wait APIs.
-- Agent token create/list/revoke APIs, including optional project/team/default-policy scoping.
+- Approval request create/list/get/respond/abandon/wait APIs with local-organization scoping on detail and mutation routes.
+- Agent token create/list/revoke APIs, including optional project/team/default-policy scoping and owning-agent abandon checks.
 - Single-mode mobile pairing and device-token auth.
 - Clerk-mode device registration and push token APIs.
 - Short-lived opaque event tickets for event streams.
@@ -215,7 +215,7 @@ Product rebuilds to evaluate/port from the prototype:
 Operational hardening:
 
 - Rate limits on auth-sensitive endpoints.
-- Audit coverage review for all mutable routes.
+- Continue audit/authorization coverage review for all mutable routes.
 - Retention/cleanup for expired event tickets and pairing codes.
 - Docker release workflow and published npm CLI package.
 - Broaden mobile Jest/Expo coverage now that the pnpm harness runs in the workspace test suite.

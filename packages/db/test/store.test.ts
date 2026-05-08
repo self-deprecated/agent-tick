@@ -232,4 +232,23 @@ describe('AgentTickStore', () => {
     const responded = store.respondToApprovalRequest(request.id, { choiceId: 'approve' });
     expect(responded).toMatchObject({ id: request.id, status: 'responded', response: { choiceId: 'approve' } });
   });
+
+  it('scopes approval request lookup and mutation to organizations', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+    const otherOrg = store.createOrganizationForUser('usr_default', 'Other');
+
+    const request = store.createApprovalRequest({
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      requester: { name: 'agent', agentId: 'agent_test' },
+      title: 'Deploy?'
+    });
+
+    expect(store.getApprovalRequestForOrganization(request.id, DEFAULT_ORGANIZATION_ID)).toMatchObject({ id: request.id });
+    expect(store.getApprovalRequestForOrganization(request.id, otherOrg.organizationId)).toBeNull();
+    expect(store.respondToApprovalRequestForOrganization(request.id, otherOrg.organizationId, { choiceId: 'approve' })).toBeNull();
+    expect(store.abandonApprovalRequestForOrganization(request.id, otherOrg.organizationId, 'agent_test')).toBeNull();
+    expect(store.getApprovalRequest(request.id)).toMatchObject({ status: 'pending' });
+  });
 });

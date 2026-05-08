@@ -37,9 +37,9 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
   });
 
   app.get('/v1/approval-requests/:id', async (request, reply) => {
-    await requireAuth(request, config, store);
+    const auth = await requireAuth(request, config, store);
     const { id } = request.params as { id: string };
-    const approval = store.getApprovalRequest(id);
+    const approval = store.getApprovalRequestForOrganization(id, auth.organizationId);
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     return approval;
   });
@@ -48,7 +48,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
     const auth = await requireHuman(request, config, store);
     const { id } = request.params as { id: string };
     const input = RespondApprovalRequestSchema.parse(request.body);
-    const approval = store.respondToApprovalRequest(id, input, auth.userId ?? 'usr_default');
+    const approval = store.respondToApprovalRequestForOrganization(id, auth.organizationId, input, auth.userId ?? 'usr_default');
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     return approval;
   });
@@ -56,22 +56,27 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
   app.post('/v1/approval-requests/:id/abandon', async (request, reply) => {
     const auth = await requireAuth(request, config, store);
     const { id } = request.params as { id: string };
-    const approval = store.abandonApprovalRequest(id, auth.agentId ?? auth.userId ?? 'unknown');
+    const existing = store.getApprovalRequestForOrganization(id, auth.organizationId);
+    if (!existing) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
+    if (auth.agentId && existing.requester.agentId !== auth.agentId) {
+      return reply.status(403).send({ error: { code: 'forbidden', message: 'Agent tokens can only abandon requests they created', requestId: request.id } });
+    }
+    const approval = store.abandonApprovalRequestForOrganization(id, auth.organizationId, auth.agentId ?? auth.userId ?? 'unknown');
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     return approval;
   });
 
   app.get('/v1/approval-requests/:id/wait', async (request, reply) => {
-    await requireAuth(request, config, store);
+    const auth = await requireAuth(request, config, store);
     const { id } = request.params as { id: string };
     const timeoutMs = timeoutFromQuery(request.query);
     const deadline = Date.now() + timeoutMs;
-    let approval = store.getApprovalRequest(id);
+    let approval = store.getApprovalRequestForOrganization(id, auth.organizationId);
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
 
     while (approval.status === 'pending' && Date.now() < deadline) {
       await sleep(Math.min(250, Math.max(25, deadline - Date.now())));
-      approval = store.getApprovalRequest(id);
+      approval = store.getApprovalRequestForOrganization(id, auth.organizationId);
       if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     }
 

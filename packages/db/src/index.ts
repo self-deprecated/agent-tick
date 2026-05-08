@@ -808,36 +808,64 @@ export class AgentTickStore {
   }
 
   getApprovalRequest(id: string): ApprovalRequest | null {
-    const row = this.db.prepare('SELECT * FROM approval_requests WHERE id = ?').get(id) as ApprovalRow | undefined;
+    const row = this.approvalRow(id);
+    return row ? mapApprovalRow(row) : null;
+  }
+
+  getApprovalRequestForOrganization(id: string, organizationId: string): ApprovalRequest | null {
+    const row = this.approvalRow(id, organizationId);
     return row ? mapApprovalRow(row) : null;
   }
 
   respondToApprovalRequest(id: string, response: RespondApprovalRequest, responderUserId = DEFAULT_USER_ID, now = new Date().toISOString()): ApprovalRequest | null {
+    const row = this.approvalRow(id);
+    return row ? this.respondToApprovalRow(row, response, responderUserId, now) : null;
+  }
+
+  respondToApprovalRequestForOrganization(id: string, organizationId: string, response: RespondApprovalRequest, responderUserId = DEFAULT_USER_ID, now = new Date().toISOString()): ApprovalRequest | null {
+    const row = this.approvalRow(id, organizationId);
+    return row ? this.respondToApprovalRow(row, response, responderUserId, now) : null;
+  }
+
+  abandonApprovalRequest(id: string, actorId: string, now = new Date().toISOString()): ApprovalRequest | null {
+    const row = this.approvalRow(id);
+    return row ? this.abandonApprovalRow(row, actorId, now) : null;
+  }
+
+  abandonApprovalRequestForOrganization(id: string, organizationId: string, actorId: string, now = new Date().toISOString()): ApprovalRequest | null {
+    const row = this.approvalRow(id, organizationId);
+    return row ? this.abandonApprovalRow(row, actorId, now) : null;
+  }
+
+  private approvalRow(id: string, organizationId?: string): ApprovalRow | null {
+    const row = organizationId
+      ? (this.db.prepare('SELECT * FROM approval_requests WHERE id = ? AND organization_id = ?').get(id, organizationId) as ApprovalRow | undefined)
+      : (this.db.prepare('SELECT * FROM approval_requests WHERE id = ?').get(id) as ApprovalRow | undefined);
+    return row ?? null;
+  }
+
+  private respondToApprovalRow(row: ApprovalRow, response: RespondApprovalRequest, responderUserId: string, now: string): ApprovalRequest {
     const parsed = RespondApprovalRequestSchema.parse(response);
-    const current = this.getApprovalRequest(id);
-    if (!current) return null;
-    const organization = this.db.prepare('SELECT organization_id FROM approval_requests WHERE id = ?').get(id) as { organization_id: string } | undefined;
+    const current = mapApprovalRow(row);
     if (current.status !== 'pending') return current;
     if (parsed.choiceId && !current.choices.some((choice) => choice.id === parsed.choiceId)) {
       throw new Error(`unknown choiceId: ${parsed.choiceId}`);
     }
     this.db
-      .prepare('UPDATE approval_requests SET status = ?, response_json = ?, responded_at = ? WHERE id = ? AND status = ?')
-      .run('responded', JSON.stringify(parsed), now, id, 'pending');
-    this.writeAuditEvent(organization?.organization_id ?? DEFAULT_ORGANIZATION_ID, responderUserId, 'approval.responded', id, parsed, now);
-    return this.getApprovalRequest(id);
+      .prepare('UPDATE approval_requests SET status = ?, response_json = ?, responded_at = ? WHERE id = ? AND organization_id = ? AND status = ?')
+      .run('responded', JSON.stringify(parsed), now, row.id, row.organization_id, 'pending');
+    this.writeAuditEvent(row.organization_id, responderUserId, 'approval.responded', row.id, parsed, now);
+    return this.getApprovalRequestForOrganization(row.id, row.organization_id) ?? missingApproval(row.id);
   }
 
-  abandonApprovalRequest(id: string, actorId: string, now = new Date().toISOString()): ApprovalRequest | null {
-    const current = this.getApprovalRequest(id);
-    if (!current) return null;
-    const organization = this.db.prepare('SELECT organization_id FROM approval_requests WHERE id = ?').get(id) as { organization_id: string } | undefined;
+  private abandonApprovalRow(row: ApprovalRow, actorId: string, now: string): ApprovalRequest {
+    const current = mapApprovalRow(row);
     if (current.status !== 'pending') return current;
     this.db
-      .prepare('UPDATE approval_requests SET status = ?, responded_at = ?, response_json = ? WHERE id = ? AND status = ?')
-      .run('abandoned', now, JSON.stringify({ message: 'abandoned' }), id, 'pending');
-    this.writeAuditEvent(organization?.organization_id ?? DEFAULT_ORGANIZATION_ID, actorId, 'approval.abandoned', id, {}, now);
-    return this.getApprovalRequest(id);
+      .prepare('UPDATE approval_requests SET status = ?, responded_at = ?, response_json = ? WHERE id = ? AND organization_id = ? AND status = ?')
+      .run('abandoned', now, JSON.stringify({ message: 'abandoned' }), row.id, row.organization_id, 'pending');
+    this.writeAuditEvent(row.organization_id, actorId, 'approval.abandoned', row.id, {}, now);
+    return this.getApprovalRequestForOrganization(row.id, row.organization_id) ?? missingApproval(row.id);
   }
 
   registerDevice(input: DeviceRegistrationInput, now = new Date().toISOString()): DeviceRecord {

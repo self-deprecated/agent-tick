@@ -351,6 +351,69 @@ describe('server skeleton', () => {
     expect(response.json()).toMatchObject({ status: 'abandoned' });
   });
 
+  it('scopes approval request detail and mutation routes to the authenticated organization and owning agent', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+    const otherOrg = await app.inject({ method: 'POST', url: '/v1/organizations', payload: { name: 'Other' } });
+    const otherOrganizationId = otherOrg.json().organizationId as string;
+
+    const ownerTokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'owner agent' } });
+    const ownerToken = ownerTokenResponse.json().token as string;
+    const requestResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { requester: { name: 'owner agent' }, title: 'Deploy?' }
+    });
+    const requestId = requestResponse.json().id as string;
+
+    const otherOrgTokenResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/agent-tokens',
+      headers: { 'x-agent-tick-organization-id': otherOrganizationId },
+      payload: { name: 'other org agent' }
+    });
+    const otherOrgToken = otherOrgTokenResponse.json().token as string;
+    const otherOrgGet = await app.inject({
+      method: 'GET',
+      url: `/v1/approval-requests/${requestId}`,
+      headers: { authorization: `Bearer ${otherOrgToken}` }
+    });
+    expect(otherOrgGet.statusCode).toBe(404);
+
+    const otherOrgWait = await app.inject({
+      method: 'GET',
+      url: `/v1/approval-requests/${requestId}/wait?timeoutMs=0`,
+      headers: { authorization: `Bearer ${otherOrgToken}` }
+    });
+    expect(otherOrgWait.statusCode).toBe(404);
+
+    const otherOrgHumanRespond = await app.inject({
+      method: 'POST',
+      url: `/v1/approval-requests/${requestId}/responses`,
+      headers: { 'x-agent-tick-organization-id': otherOrganizationId },
+      payload: { choiceId: 'approve' }
+    });
+    expect(otherOrgHumanRespond.statusCode).toBe(404);
+
+    const peerTokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'peer agent' } });
+    const peerAbandon = await app.inject({
+      method: 'POST',
+      url: `/v1/approval-requests/${requestId}/abandon`,
+      headers: { authorization: `Bearer ${peerTokenResponse.json().token}` },
+      payload: {}
+    });
+    expect(peerAbandon.statusCode).toBe(403);
+
+    const ownerAbandon = await app.inject({
+      method: 'POST',
+      url: `/v1/approval-requests/${requestId}/abandon`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {}
+    });
+    expect(ownerAbandon.statusCode).toBe(200);
+    expect(ownerAbandon.json()).toMatchObject({ status: 'abandoned' });
+  });
+
   it('allows a human admin to respond to an approval request', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
     const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
