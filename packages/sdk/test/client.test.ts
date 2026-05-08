@@ -205,7 +205,7 @@ describe('AgentTickClient', () => {
             membership: { organizationId: 'org_123', name: 'Production', userId: 'usr_123', role: 'admin', status: 'pending_approval', createdAt: '2026-01-01T00:00:00.000Z' }
           });
         }
-        if (url.includes('/v1/invites/invite_secret')) return jsonResponse({ organizationId: 'org_123', organizationName: 'Production', role: 'admin', approvalRequired: true, teamIds: ['team_123'] });
+        if (url.includes('/v1/invites/invite_secret')) return jsonResponse({ organizationName: 'Production', role: 'admin', approvalRequired: true });
         if (url.includes('/v1/organization-membership-requests/mreq_123/approve')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'approved', acceptedAt: '2026-01-01T00:00:00.000Z' });
         if (url.includes('/v1/organization-membership-requests/mreq_123/reject')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'rejected', acceptedAt: '2026-01-01T00:00:00.000Z' });
         if (url.endsWith('/v1/organization-membership-requests')) return jsonResponse([{ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], status: 'pending_approval', acceptedAt: '2026-01-01T00:00:00.000Z' }]);
@@ -216,7 +216,7 @@ describe('AgentTickClient', () => {
 
     await expect(client.createOrganizationInvite({ label: 'Teammate', role: 'admin', teamIds: ['team_123'] })).resolves.toMatchObject({ inviteId: 'inv_123', teamIds: ['team_123'] });
     await expect(client.listOrganizationInvites()).resolves.toEqual([expect.objectContaining({ inviteId: 'inv_123' })]);
-    await expect(client.previewInvite('invite_secret')).resolves.toMatchObject({ organizationName: 'Production' });
+    await expect(client.previewInvite('invite_secret')).resolves.toEqual({ organizationName: 'Production', role: 'admin', approvalRequired: true });
     await expect(client.acceptInvite('invite_secret')).resolves.toMatchObject({ status: 'pending_approval', membership: { role: 'admin' } });
     await expect(client.listMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123' })]);
     await expect(client.approveMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'approved' });

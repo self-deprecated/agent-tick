@@ -97,13 +97,9 @@ export const CreateOrganizationInviteSchema = z.object({
 export type CreateOrganizationInvite = z.input<typeof CreateOrganizationInviteSchema>;
 
 export const InvitePreviewSchema = z.object({
-  organizationId: z.string(),
   organizationName: z.string(),
-  label: z.string().optional(),
   role: OrganizationRoleSchema.or(z.string()),
   approvalRequired: z.boolean().default(true),
-  teamIds: z.array(z.string()).optional(),
-  email: z.string().email().optional(),
   expiresAt: z.string().optional()
 });
 export type InvitePreview = z.infer<typeof InvitePreviewSchema>;

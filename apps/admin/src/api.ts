@@ -209,7 +209,6 @@ export interface InvitePreview {
 	organizationName: string;
 	role: OrganizationRole;
 	approvalRequired: boolean;
-	teamIds?: string[];
 	expiresAt?: string;
 }
 

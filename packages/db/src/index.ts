@@ -123,13 +123,9 @@ export interface CreateOrganizationInviteInput {
 }
 
 export interface InvitePreviewRecord {
-  organizationId: string;
   organizationName: string;
-  label: string | undefined;
   role: string;
   approvalRequired: boolean;
-  teamIds: string[];
-  email: string | undefined;
   expiresAt: string | undefined;
 }
 
@@ -566,13 +562,9 @@ export class AgentTickStore {
     const row = this.findUsableInvite(token, now);
     if (!row) return null;
     return {
-      organizationId: row.organization_id,
       organizationName: row.organization_name,
-      label: row.label ?? undefined,
       role: row.role,
       approvalRequired: Boolean(row.approval_required),
-      teamIds: this.listInviteTeamIds(row.invite_id),
-      email: row.email ?? undefined,
       expiresAt: row.expires_at ?? undefined
     };
   }

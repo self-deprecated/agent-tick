@@ -66,7 +66,11 @@ describe('AgentTickStore', () => {
     expect(invite.url).toBe(`https://tick.example.com/invite/${invite.token}`);
     expect(JSON.stringify(store.db.prepare('SELECT * FROM organization_invites').all())).not.toContain(invite.token);
     expect(invite.teamIds).toEqual([team.teamId]);
-    expect(store.previewInvite(invite.token!)).toMatchObject({ organizationId: created.organizationId, organizationName: 'Production', role: 'admin', approvalRequired: true, teamIds: [team.teamId] });
+    const preview = store.previewInvite(invite.token!);
+    expect(preview).toMatchObject({ organizationName: 'Production', role: 'admin', approvalRequired: true });
+    expect(preview).not.toHaveProperty('organizationId');
+    expect(preview).not.toHaveProperty('teamIds');
+    expect(preview).not.toHaveProperty('email');
     const bob = store.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
     const accepted = store.acceptInvite(invite.token!, bob.userId);
     expect(accepted).toMatchObject({ status: 'pending_approval', membership: { organizationId: created.organizationId, userId: bob.userId, role: 'admin', status: 'pending_approval' } });

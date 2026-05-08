@@ -222,7 +222,10 @@ describe('server skeleton', () => {
 
     const preview = await app.inject({ method: 'GET', url: `/v1/invites/${encodeURIComponent(invite.json().token)}` });
     expect(preview.statusCode).toBe(200);
-    expect(preview.json()).toMatchObject({ organizationId, organizationName: 'Production', role: 'admin' });
+    expect(preview.json()).toMatchObject({ organizationName: 'Production', role: 'admin' });
+    expect(preview.json()).not.toHaveProperty('organizationId');
+    expect(preview.json()).not.toHaveProperty('teamIds');
+    expect(preview.json()).not.toHaveProperty('email');
 
     const revoked = await app.inject({ method: 'POST', url: `/v1/organization-invites/${invite.json().inviteId}/revoke`, headers: { 'x-agent-tick-organization-id': organizationId }, payload: {} });
     expect(revoked.statusCode).toBe(200);
