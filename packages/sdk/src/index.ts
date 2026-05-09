@@ -125,7 +125,7 @@ export class AgentTickClient {
     this.#baseUrl = normalizeBaseUrl(options.baseUrl);
     this.#tokenProvider = options.tokenProvider;
     this.#organizationIdProvider = options.organizationIdProvider;
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? globalThis.fetch?.bind(globalThis);
     if (!this.#fetch) {
       throw new Error('A fetch implementation is required');
     }
