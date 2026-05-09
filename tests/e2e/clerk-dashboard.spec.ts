@@ -1,8 +1,11 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Browser, type Page } from '@playwright/test';
 
 const email = process.env.AGENT_TICK_E2E_CLERK_EMAIL;
 const password = process.env.AGENT_TICK_E2E_CLERK_PASSWORD;
+const inviteeEmail = process.env.AGENT_TICK_E2E_CLERK_INVITEE_EMAIL;
+const inviteePassword = process.env.AGENT_TICK_E2E_CLERK_INVITEE_PASSWORD;
 const hasClerkCredentials = Boolean(email && password);
+const hasInviteeCredentials = Boolean(inviteeEmail && inviteePassword);
 
 test('Clerk sign-in lands on a usable dashboard', async ({ page, baseURL }) => {
 	test.skip(!hasClerkCredentials, 'Set AGENT_TICK_E2E_CLERK_EMAIL/PASSWORD for Clerk dashboard smoke tests');
@@ -11,12 +14,7 @@ test('Clerk sign-in lands on a usable dashboard', async ({ page, baseURL }) => {
 	await expect(page.getByText('Human approvals for agent actions')).toBeVisible();
 	await expect(page.getByText('__PUBLIC_URL__')).toHaveCount(0);
 
-	await page.getByRole('button', { name: /sign in to agent tick/i }).click();
-	await page.waitForURL(/accounts\.dev\/sign-in/, { timeout: 30_000 });
-	await page.getByRole('textbox', { name: /email/i }).fill(email!);
-	await page.getByRole('textbox', { name: /^password$/i }).fill(password!);
-	await page.getByRole('button', { name: /^continue$/i }).click();
-	await page.waitForURL(baseURL ?? '**', { timeout: 60_000 });
+	await signIn(page, email!, password!, baseURL);
 
 	await expect(page.getByText('Signed in with Clerk.')).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Organization' })).toBeVisible();
@@ -26,7 +24,7 @@ test('Clerk sign-in lands on a usable dashboard', async ({ page, baseURL }) => {
 test('dashboard can create local resources and approve an agent request', async ({ page, request, baseURL }) => {
 	test.skip(!hasClerkCredentials, 'Set AGENT_TICK_E2E_CLERK_EMAIL/PASSWORD for Clerk dashboard smoke tests');
 
-	await signIn(page);
+	await signIn(page, email!, password!, baseURL);
 	const stamp = Date.now();
 
 	await page.getByLabel('Invite label').fill(`E2E Invite ${stamp}`);
@@ -67,17 +65,59 @@ test('dashboard can create local resources and approve an agent request', async 
 	expect(created.ok()).toBeTruthy();
 
 	await page.getByRole('button', { name: 'Refresh approvals' }).click();
-	await expect(page.getByRole('heading', { name: `E2E approval ${stamp}` })).toBeVisible();
-	await page.getByRole('button', { name: 'Approve' }).first().click();
-	await expect(page.getByText('Response: approve')).toBeVisible();
+	const approvalCard = page.locator('li', { hasText: `E2E approval ${stamp}` });
+	await expect(approvalCard.getByRole('heading', { name: `E2E approval ${stamp}` })).toBeVisible();
+	await approvalCard.getByRole('button', { name: 'Approve' }).click();
+	await expect(approvalCard.getByText('Response: approve')).toBeVisible();
 });
 
-async function signIn(page: import('@playwright/test').Page): Promise<void> {
-	await page.goto('/', { waitUntil: 'networkidle' });
-	await page.getByRole('button', { name: /sign in to agent tick/i }).click();
-	await page.waitForURL(/accounts\.dev\/sign-in/, { timeout: 30_000 });
-	await page.getByRole('textbox', { name: /email/i }).fill(email!);
-	await page.getByRole('textbox', { name: /^password$/i }).fill(password!);
+test('Clerk invite acceptance creates a pending member that an admin can approve', async ({ browser, page, baseURL }) => {
+	test.skip(!hasClerkCredentials || !hasInviteeCredentials, 'Set owner and invitee Clerk credentials for invite E2E tests');
+
+	await signIn(page, email!, password!, baseURL);
+	const stamp = Date.now();
+	const organizationName = await page.locator('#organization-select option:checked').innerText();
+
+	await page.getByLabel('Invite label').fill(`E2E Member Invite ${stamp}`);
+	await page.getByLabel('Invite email').fill(inviteeEmail!);
+	await page.getByRole('button', { name: 'Create invite' }).click();
+	const inviteURL = await page.locator('.token code').first().innerText();
+	const invitePath = new URL(inviteURL).pathname;
+
+	const inviteePage = await newSignedOutPage(browser);
+	await inviteePage.goto(invitePath, { waitUntil: 'networkidle' });
+	await expect(inviteePage.getByText(organizationName.replace(/ \(.+\)$/, ''))).toBeVisible();
+	await signIn(inviteePage, inviteeEmail!, inviteePassword!, baseURL);
+	await expect(inviteePage.getByText(/pending admin approval/i)).toBeVisible({ timeout: 30_000 });
+
+	await page.getByRole('button', { name: 'Refresh pending members' }).click();
+	const pendingMembersSection = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Pending members' }) });
+	const pendingMember = pendingMembersSection.locator('.item-card', { hasText: inviteeEmail! });
+	await expect(pendingMember).toBeVisible();
+	await pendingMember.getByRole('button', { name: 'Approve' }).click();
+	await expect(pendingMember).toHaveCount(0);
+
+	await inviteePage.goto('/', { waitUntil: 'domcontentloaded' });
+	await expect(inviteePage.locator('#organization-select')).toContainText(organizationName.replace(/ \(.+\)$/, ''), { timeout: 30_000 });
+});
+
+async function signIn(page: Page, userEmail: string, userPassword: string, baseURL?: string): Promise<void> {
+	if (!page.url().startsWith('http')) await page.goto('/', { waitUntil: 'networkidle' });
+	if (!page.url().includes('accounts.dev')) {
+		await page.getByRole('button', { name: /sign in to agent tick/i }).click();
+		await page.waitForURL(/accounts\.dev\/sign-in/, { timeout: 30_000 });
+	}
+	await page.getByRole('textbox', { name: /email/i }).fill(userEmail);
+	await page.getByRole('textbox', { name: /^password$/i }).fill(userPassword);
 	await page.getByRole('button', { name: /^continue$/i }).click();
+	if (baseURL) {
+		const { host } = new URL(baseURL);
+		await page.waitForURL((url) => url.host === host, { timeout: 60_000 });
+	}
 	await expect(page.getByText('Signed in with Clerk.')).toBeVisible({ timeout: 60_000 });
+}
+
+async function newSignedOutPage(browser: Browser): Promise<Page> {
+	const context = await browser.newContext();
+	return context.newPage();
 }

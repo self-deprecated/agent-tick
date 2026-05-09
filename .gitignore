@@ -4,6 +4,8 @@ node_modules/
 .expo/
 dist/
 coverage/
+test-results/
+playwright-report/
 package-lock.json
 devbox.lock
 apps/server/public/admin/*
