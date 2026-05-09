@@ -775,6 +775,28 @@
 		if (onboardingStatus.stage === 'needs_mobile_app') return 'Install and sign into the mobile app';
 		return 'Ready for your first approval request';
 	}
+
+	function agentSetupTitle(): string {
+		if (!isCustomerMode()) return 'Create an agent token';
+		if (onboardingStatus?.hasCliHeartbeat) return 'Agent connected';
+		if (onboardingStatus?.hasAgentToken) return 'Run the setup command';
+		return 'Create an agent token';
+	}
+
+	function agentSetupDescription(): string {
+		if (!isCustomerMode()) return 'Use one token per machine or agent. You can revoke it any time.';
+		if (onboardingStatus?.hasCliHeartbeat) return 'Your CLI has checked in successfully. Agent setup is complete, so the next step is mobile sign-in.';
+		if (onboardingStatus?.hasAgentToken) return 'Use the one-time token below if it is still visible, or create a replacement token only if you lost it.';
+		return 'Use one token per machine or agent. Agent Tick will reveal the setup command after creation.';
+	}
+
+	function showAgentTokenForm(): boolean {
+		return !isCustomerMode() || showAdvancedWorkspace || !onboardingStatus?.hasAgentToken;
+	}
+
+	function showCreatedCredential(): boolean {
+		return Boolean(createdCredential && (!isCustomerMode() || !onboardingStatus?.hasCliHeartbeat));
+	}
 </script>
 
 <svelte:head>
@@ -1190,47 +1212,58 @@
 	<section class="card stack primary-card">
 		<div>
 			<p class="eyebrow">Connect your agent</p>
-			<h2>Create an agent token</h2>
-			<p class="subtle">Use one token per machine or agent. You can revoke it any time.</p>
+			<h2>{agentSetupTitle()}</h2>
+			<p class="subtle">{agentSetupDescription()}</p>
 		</div>
-		<form class="stack" onsubmit={(event) => { event.preventDefault(); void createAgentToken(); }}>
-			<div class="row">
-				<input bind:value={agentName} aria-label="Agent name" />
-				<button type="submit">Create token</button>
+		{#if isCustomerMode() && onboardingStatus?.hasCliHeartbeat}
+			<div class="upgrade-panel" data-testid="agent-connected">
+				<div>
+					<strong>CLI setup complete</strong>
+					<p class="subtle">Agent Tick received a request from your token. You can create more tokens later from team settings or self-hosted admin mode.</p>
+				</div>
 			</div>
-			{#if !isCustomerMode() || showAdvancedWorkspace}
-				<div class="row">
-					<label for="agent-project" class="inline-label">Project</label>
-					<select id="agent-project" bind:value={agentProjectId}>
-						<option value="">Any project</option>
-						{#each projects as project (project.projectId)}
-							<option value={project.projectId}>{project.name} ({project.slug})</option>
-						{/each}
-					</select>
-					<label for="agent-team" class="inline-label">Team</label>
-					<select id="agent-team" bind:value={agentTeamId}>
-						<option value="">Any team</option>
-						{#each teams as team (team.teamId)}
-							<option value={team.teamId}>{team.name} ({team.slug})</option>
-						{/each}
-					</select>
-					<label for="agent-policy" class="inline-label">Policy</label>
-					<select id="agent-policy" bind:value={agentPolicyId}>
-						<option value="">Default policy</option>
-						{#each policies as policy (policy.policyId)}
-							<option value={policy.policyId}>{policy.name}</option>
-						{/each}
-					</select>
+		{:else}
+			{#if showAgentTokenForm()}
+				<form class="stack" onsubmit={(event) => { event.preventDefault(); void createAgentToken(); }}>
+					<div class="row">
+						<input bind:value={agentName} aria-label="Agent name" />
+						<button type="submit">Create token</button>
+					</div>
+					{#if !isCustomerMode() || showAdvancedWorkspace}
+						<div class="row">
+							<label for="agent-project" class="inline-label">Project</label>
+							<select id="agent-project" bind:value={agentProjectId}>
+								<option value="">Any project</option>
+								{#each projects as project (project.projectId)}
+									<option value={project.projectId}>{project.name} ({project.slug})</option>
+								{/each}
+							</select>
+							<label for="agent-team" class="inline-label">Team</label>
+							<select id="agent-team" bind:value={agentTeamId}>
+								<option value="">Any team</option>
+								{#each teams as team (team.teamId)}
+									<option value={team.teamId}>{team.name} ({team.slug})</option>
+								{/each}
+							</select>
+							<label for="agent-policy" class="inline-label">Policy</label>
+							<select id="agent-policy" bind:value={agentPolicyId}>
+								<option value="">Default policy</option>
+								{#each policies as policy (policy.policyId)}
+									<option value={policy.policyId}>{policy.name}</option>
+								{/each}
+							</select>
+						</div>
+					{/if}
+				</form>
+			{/if}
+			{#if showCreatedCredential() && createdCredential}
+				<div class="token">
+					<p><strong>{createdCredential.name}</strong> ({createdCredential.agentId})</p>
+					<code>{createdCredential.token}</code>
+					<button onclick={copyToken}>Copy</button>
+					<p class="subtle">Use it with: <code>agent-tick setup --server {window.location.origin} --token {createdCredential.token}</code></p>
 				</div>
 			{/if}
-		</form>
-		{#if createdCredential}
-			<div class="token">
-				<p><strong>{createdCredential.name}</strong> ({createdCredential.agentId})</p>
-				<code>{createdCredential.token}</code>
-				<button onclick={copyToken}>Copy</button>
-				<p class="subtle">Use it with: <code>agent-tick setup --server {window.location.origin} --token {createdCredential.token}</code></p>
-			</div>
 		{/if}
 		{#if agentTokens.length > 0}
 			<ul class="item-list">
