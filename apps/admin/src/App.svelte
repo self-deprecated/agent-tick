@@ -73,6 +73,7 @@
 	let newPolicyRequiredApprovals = $state(1);
 	let newPolicyProjectId = $state('');
 	let newPolicyTeamId = $state('');
+	let policyActionId = $state('');
 	let createdCredential = $state<AgentCredential | undefined>();
 	let pairingToken = $state<PairingToken | undefined>();
 	let adminToken = $state('');
@@ -638,6 +639,19 @@
 		}
 	}
 
+	async function updatePolicyStatus(policy: PolicyRecord, changes: { enabled?: boolean; archived?: boolean }): Promise<void> {
+		policyActionId = policy.policyId;
+		error = '';
+		try {
+			await client().updatePolicy(policy.policyId, changes);
+			await Promise.all([refreshPolicies(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		} finally {
+			policyActionId = '';
+		}
+	}
+
 	function projectLabel(projectId: string): string {
 		const project = projects.find((entry) => entry.projectId === projectId);
 		return project ? `${project.name} (${project.slug})` : projectId;
@@ -1109,14 +1123,22 @@
 				</ul>
 			{/if}
 		</section>
-		<section class="card stack">
+		<section class="card stack" data-testid="approval-rules">
 			<div class="section-heading">
-				<h2>Policies</h2>
+				<div>
+					<p class="eyebrow">Approval rules</p>
+					<h2>Route approvals to the right humans</h2>
+					<p class="subtle">Start simple, then scope rules by project or team when your organization grows.</p>
+				</div>
 				<button onclick={refreshPolicies}>Refresh policies</button>
 			</div>
-			<form class="stack" onsubmit={(event) => { event.preventDefault(); void createPolicy(); }}>
+			<form class="setup-panel stack" data-testid="approval-rule-form" onsubmit={(event) => { event.preventDefault(); void createPolicy(); }}>
+				<div>
+					<h3>Create a rule</h3>
+					<p class="subtle">Choose a clear name, quorum, and optional routing scope.</p>
+				</div>
 				<div class="row">
-					<input bind:value={newPolicyName} aria-label="Policy name" placeholder="Policy name" />
+					<input bind:value={newPolicyName} aria-label="Policy name" placeholder="Production deploys" />
 					<label for="policy-required-approvals" class="inline-label">Required approvals</label>
 					<input id="policy-required-approvals" bind:value={newPolicyRequiredApprovals} type="number" min="1" max="10" />
 				</div>
@@ -1143,16 +1165,25 @@
 			{:else}
 				<ul class="item-list">
 					{#each policies as policy (policy.policyId)}
-						<li class="item-card" class:is-muted={Boolean(policy.archivedAt)}>
+						<li class="item-card" class:is-muted={Boolean(policy.archivedAt)} data-testid="approval-rule-row">
 							<div>
 								<strong>{policy.name}</strong>
 								<p class="subtle">
 									{policy.policyId} · {policy.requiredApprovals} approval{policy.requiredApprovals === 1 ? '' : 's'}
+									{policy.enabled ? ' · active' : ' · paused'}
 									{policy.projectId ? ` · project ${projectLabel(policy.projectId)}` : ''}
 									{policy.teamId ? ` · team ${teamLabel(policy.teamId)}` : ''}
 									{policy.archivedAt ? ` · archived ${new Date(policy.archivedAt).toLocaleString()}` : ''}
 								</p>
 								{#if policy.description}<p>{policy.description}</p>{/if}
+							</div>
+							<div class="row compact-actions">
+								<button type="button" disabled={policyActionId === policy.policyId || Boolean(policy.archivedAt)} onclick={() => void updatePolicyStatus(policy, { enabled: !policy.enabled })}>
+									{policy.enabled ? 'Pause' : 'Resume'}
+								</button>
+								<button type="button" class="danger-button" disabled={policyActionId === policy.policyId || Boolean(policy.archivedAt)} onclick={() => void updatePolicyStatus(policy, { archived: true })}>
+									Archive
+								</button>
 							</div>
 						</li>
 					{/each}
@@ -1593,6 +1624,17 @@
 
 	.danger-text {
 		color: #b91c1c;
+	}
+
+	.compact-actions {
+		flex-wrap: nowrap;
+		align-items: flex-start;
+	}
+
+	.danger-button {
+		background: #fff1f2;
+		color: #b91c1c;
+		border-color: #fecdd3;
 	}
 
 	.item-card.is-muted {
