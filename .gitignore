@@ -13,3 +13,4 @@ agent-tick.json.tmp
 agent-tick.db
 agent-tick.db-shm
 agent-tick.db-wal
+.env
