@@ -23,6 +23,8 @@
 		type TeamRecord
 	} from '@agent-tick/sdk';
 	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
+	import AccountEntryCard from './components/AccountEntryCard.svelte';
+	import SetupChecklist from './components/SetupChecklist.svelte';
 	import type { AdminConfig } from './app';
 	import { inviteTokenFromLocation } from './inviteRouting';
 	import { inviteAcceptedMessage } from './inviteStatus';
@@ -817,20 +819,7 @@
 					<button onclick={signOut}>Sign out</button>
 				</div>
 			{:else}
-				<div class="auth-copy" data-testid="account-entry">
-					<p class="eyebrow">Agent Tick</p>
-					<h2>Sign in or create account</h2>
-					<p class="subtle">Create your account first. Then Agent Tick will guide you through one agent token, one CLI setup command, and the mobile app.</p>
-					<p class="subtle">Approvals, rules, and team settings stay hidden until there is something real to configure.</p>
-				</div>
-				<div class="clerk-card stack" aria-label="Clerk account entry">
-					<p class="eyebrow">Secured by Clerk</p>
-					<button class="provider-button" onclick={() => void signInWithClerk()}>Continue with GitHub</button>
-					<button class="provider-button" onclick={() => void signInWithClerk()}>Continue with Google</button>
-					<button class="provider-button" onclick={() => void signInWithClerk()}>Continue with Apple</button>
-					<div class="divider">or continue with email</div>
-					<button onclick={() => void signInWithClerk()}>Sign in or create account</button>
-				</div>
+				<AccountEntryCard onSignIn={signInWithClerk} />
 			{/if}
 		</section>
 	{/if}
@@ -919,20 +908,11 @@
 				<h2>{onboardingStageTitle()}</h2>
 				<p class="subtle">Agent Tick stays focused on setup until your account, CLI, and mobile app are ready. Approval requests are hidden until a real agent can send them to your phone.</p>
 			</div>
-			<div class="setup-steps">
-				<div class="setup-step" data-testid="onboarding-create-token" class:is-complete={onboardingStatus?.hasAgentToken}>
-					<strong>1. Create an agent token</strong>
-					<span>Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs.</span>
-				</div>
-				<div class="setup-step" data-testid="onboarding-cli-setup" class:is-complete={onboardingStatus?.hasCliHeartbeat}>
-					<strong>2. Run the CLI setup command</strong>
-					<span>Agent Tick marks the CLI connected after the token is used by your agent or a test request.</span>
-				</div>
-				<div class="setup-step" data-testid="onboarding-mobile-app" class:is-complete={onboardingStatus?.hasMobileDevice}>
-					<strong>3. Install and sign into mobile</strong>
-					<span>The mobile app is the primary approval surface. Use the same Clerk account on your phone.</span>
-				</div>
-			</div>
+			<SetupChecklist
+				hasAgentToken={onboardingStatus?.hasAgentToken}
+				hasCliHeartbeat={onboardingStatus?.hasCliHeartbeat}
+				hasMobileDevice={onboardingStatus?.hasMobileDevice}
+			/>
 			{#if onboardingStatus?.stage === 'needs_mobile_app'}
 				<div class="upgrade-panel" data-testid="mobile-required">
 					<div>
@@ -1459,84 +1439,19 @@
 			rgba(255, 255, 255, 0.94);
 	}
 
-	.auth-copy {
-		max-width: 34rem;
-	}
-
-	.clerk-card {
-		min-width: min(100%, 340px);
-		padding: 18px;
-		border: 1px solid #e5e7eb;
-		border-radius: 22px;
-		background: rgba(255, 255, 255, 0.86);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-	}
-
-	.provider-button {
-		width: 100%;
-		background: #ffffff;
-		color: #111827;
-		border: 1px solid #d8e2f3;
-		box-shadow: none;
-	}
-
-	.divider {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		color: #94a3b8;
-		font-size: 0.82rem;
-		font-weight: 800;
-	}
-
-	.divider::before,
-	.divider::after {
-		content: '';
-		height: 1px;
-		background: #e2e8f0;
-		flex: 1;
-	}
-
 	.customer-start {
 		background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.92));
 	}
 
-	.setup-steps {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 12px;
-	}
-
-	.setup-step,
 	.upgrade-panel {
 		border: 1px solid #dbeafe;
 		border-radius: 18px;
-		background: #ffffff;
 		padding: 16px;
+		color: #334155;
 	}
 
-	.setup-step {
-		display: grid;
-		gap: 8px;
-	}
-
-	.setup-step.is-complete {
-		border-color: #bbf7d0;
-		background: #f0fdf4;
-	}
-
-	.setup-step.is-complete strong {
-		color: #166534;
-	}
-
-	.setup-step strong,
 	.upgrade-panel strong {
 		color: #1d4ed8;
-	}
-
-	.setup-step span {
-		color: #475569;
-		line-height: 1.45;
 	}
 
 	.upgrade-panel {
@@ -1666,10 +1581,6 @@
 		.upgrade-panel {
 			align-items: stretch;
 			flex-direction: column;
-		}
-
-		.setup-steps {
-			grid-template-columns: 1fr;
 		}
 
 		input,
