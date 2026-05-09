@@ -6,7 +6,7 @@ services:
       dockerfile: apps/server/Dockerfile
     environment:
       AGENT_TICK_MODE: ${AGENT_TICK_MODE:-single}
-      AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL:-http://localhost:${AGENT_TICK_PORT:-8787}}
+      AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL:-http://localhost:8787}
       AGENT_TICK_DATABASE_URL: file:/data/agent-tick.db
       AGENT_TICK_ADMIN_TOKEN: ${AGENT_TICK_ADMIN_TOKEN:-${AGENT_TICK_TOKEN:-}}
       AGENT_TICK_MAX_ACTIVE_MEMBERS: ${AGENT_TICK_MAX_ACTIVE_MEMBERS:-}
