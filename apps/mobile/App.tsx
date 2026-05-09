@@ -212,6 +212,7 @@ function AgentTickApp({
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [loadedSessionServerURL, setLoadedSessionServerURL] = useState("");
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("checking");
   const [notificationStatus, setNotificationStatus] =
@@ -268,33 +269,8 @@ function AgentTickApp({
     const restoreSettings = async () => {
       try {
         const savedServerURL = (await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer;
-        const scopedKeys = mobileSessionStorageKeys(savedServerURL);
-        const entries = await AsyncStorage.multiGet([
-          scopedKeys.token,
-          scopedKeys.deviceID,
-          scopedKeys.organizationID,
-          scopedKeys.pushStatus,
-        ]);
-        const entryValue = (key: string) => entries.find(([entryKey]) => entryKey === key)?.[1];
-        const savedToken = entryValue(scopedKeys.token);
-        const savedDeviceID = entryValue(scopedKeys.deviceID);
-        const savedOrganizationID = entryValue(scopedKeys.organizationID);
-        const savedPushStatus = entryValue(scopedKeys.pushStatus);
-
         if (!cancelled) {
           setServerURL(savedServerURL);
-          if (savedToken) {
-            setToken(savedToken);
-          }
-          if (savedDeviceID) {
-            setDeviceID(savedDeviceID);
-          }
-          if (savedOrganizationID) {
-            setSelectedOrganizationID(savedOrganizationID);
-          }
-          if (isPushStatus(savedPushStatus)) {
-            setPushStatus(savedPushStatus);
-          }
         }
       } finally {
         if (!cancelled) {
@@ -308,6 +284,42 @@ function AgentTickApp({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded) {
+      return;
+    }
+
+    let cancelled = false;
+    const activeServerURL = normalizeServerURL(serverURL);
+    const restoreSessionForServer = async () => {
+      const scopedKeys = mobileSessionStorageKeys(activeServerURL);
+      const entries = await AsyncStorage.multiGet([
+        scopedKeys.token,
+        scopedKeys.deviceID,
+        scopedKeys.organizationID,
+        scopedKeys.pushStatus,
+      ]);
+      if (cancelled || normalizeServerURL(serverURL) !== activeServerURL) {
+        return;
+      }
+      const entryValue = (key: string) => entries.find(([entryKey]) => entryKey === key)?.[1];
+      setToken(entryValue(scopedKeys.token) ?? "");
+      setDeviceID(entryValue(scopedKeys.deviceID) ?? "");
+      setSelectedOrganizationID(entryValue(scopedKeys.organizationID) ?? "");
+      const savedPushStatus = entryValue(scopedKeys.pushStatus);
+      setPushStatus(isPushStatus(savedPushStatus) ? savedPushStatus : "idle");
+      setLoadedSessionServerURL(activeServerURL);
+    };
+
+    if (loadedSessionServerURL !== activeServerURL) {
+      void restoreSessionForServer();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadedSessionServerURL, serverURL, settingsLoaded]);
 
   useEffect(() => {
     void refreshNotificationStatus(setNotificationStatus);
@@ -371,19 +383,20 @@ function AgentTickApp({
   }, [onRuntimeAuthConfig, serverURL, settingsLoaded]);
 
   useEffect(() => {
-    if (!settingsLoaded) {
+    const activeServerURL = normalizeServerURL(serverURL);
+    if (!settingsLoaded || loadedSessionServerURL !== activeServerURL) {
       return;
     }
 
-    const scopedKeys = mobileSessionStorageKeys(serverURL);
+    const scopedKeys = mobileSessionStorageKeys(activeServerURL);
     void AsyncStorage.multiSet([
-      [serverURLStorageKey, serverURL],
+      [serverURLStorageKey, activeServerURL],
       [scopedKeys.token, token],
       [scopedKeys.deviceID, deviceID],
       [scopedKeys.organizationID, selectedOrganizationID],
       [scopedKeys.pushStatus, pushStatus],
     ]);
-  }, [deviceID, pushStatus, selectedOrganizationID, serverURL, settingsLoaded, token]);
+  }, [deviceID, loadedSessionServerURL, pushStatus, selectedOrganizationID, serverURL, settingsLoaded, token]);
 
   const refreshOrganizations = useCallback(async () => {
     if (runtimeAuthConfig?.authProvider !== "clerk") {
@@ -892,16 +905,7 @@ function AgentTickApp({
     const previousServerURL = normalizeServerURL(serverURL);
     const nextServerURL = normalizeServerURL(value);
     if (previousServerURL !== nextServerURL) {
-      if (deviceID) {
-        void bestEffortUnregisterDevice({
-          activeDeviceID: deviceID,
-          activeServerURL: previousServerURL,
-          activeToken: token,
-          authProvider: runtimeAuthConfig?.authProvider,
-        });
-      }
-      void clearStoredSessionForServer(previousServerURL);
-      void clearStoredSessionForServer(nextServerURL);
+      setLoadedSessionServerURL("");
       setDeviceID("");
       setToken("");
       setPushStatus("idle");
