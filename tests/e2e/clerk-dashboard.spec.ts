@@ -69,6 +69,16 @@ test('dashboard can create local resources and approve an agent request', async 
 	await expect(approvalCard.getByRole('heading', { name: `E2E approval ${stamp}` })).toBeVisible();
 	await approvalCard.getByRole('button', { name: 'Approve' }).click();
 	await expect(approvalCard.getByText('Response: approve')).toBeVisible();
+
+	const agentTokensSection = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Create an agent token' }) });
+	const agentTokenCard = agentTokensSection.locator('.item-card', { hasText: `E2E Agent ${stamp}` });
+	await agentTokenCard.getByRole('button', { name: 'Revoke' }).click();
+	await expect(agentTokenCard.getByText(/revoked/i)).toBeVisible();
+
+	const invitesSection = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Invites' }) });
+	const inviteCard = invitesSection.locator('.item-card', { hasText: `E2E Invite ${stamp}` });
+	await inviteCard.getByRole('button', { name: 'Revoke' }).click();
+	await expect(inviteCard.getByText(/revoked/i)).toBeVisible();
 });
 
 test('Clerk invite acceptance creates a pending member that an admin can approve', async ({ browser, page, baseURL }) => {
