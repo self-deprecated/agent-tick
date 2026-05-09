@@ -4,6 +4,7 @@ import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-ca
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
+import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -174,10 +175,10 @@ function LoadingScreen() {
 
 function secureTokenCache(namespace: string) {
   return {
-    getToken: (key: string) => AsyncStorage.getItem(`${namespace}.${key}`),
-    saveToken: (key: string, value: string) => AsyncStorage.setItem(`${namespace}.${key}`, value),
+    getToken: (key: string) => SecureStore.getItemAsync(`${namespace}.${key}`),
+    saveToken: (key: string, value: string) => SecureStore.setItemAsync(`${namespace}.${key}`, value),
     clearToken: (key: string) => {
-      void AsyncStorage.removeItem(`${namespace}.${key}`);
+      void SecureStore.deleteItemAsync(`${namespace}.${key}`);
     },
   };
 }
