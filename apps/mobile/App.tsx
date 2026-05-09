@@ -102,14 +102,17 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const loadBootstrap = async () => {
-      const savedServerURL = (await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer;
-      let authConfig: RuntimeAuthConfig | null = null;
-      try {
-        authConfig = await fetchRuntimeAuthConfig(savedServerURL);
-      } catch {
-        authConfig = null;
-      }
-      if (!cancelled) setBootstrap({ serverURL: savedServerURL, authConfig, loaded: true });
+      const savedServerURL = normalizeServerURL((await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer);
+      const savedAuthConfig = await fetchRuntimeAuthConfigIfAvailable(savedServerURL);
+      const shouldKeepSavedServer =
+        savedServerURL === defaultServer ||
+        savedAuthConfig?.authProvider === "clerk" ||
+        (await hasSavedLocalSession(savedServerURL));
+      const serverURL = shouldKeepSavedServer ? savedServerURL : defaultServer;
+      const authConfig = serverURL === savedServerURL
+        ? savedAuthConfig
+        : await fetchRuntimeAuthConfigIfAvailable(serverURL);
+      if (!cancelled) setBootstrap({ serverURL, authConfig, loaded: true });
     };
     void loadBootstrap();
     return () => {
@@ -118,7 +121,9 @@ export default function App() {
   }, []);
 
   const handleRuntimeAuthConfig = useCallback((serverURL: string, authConfig: RuntimeAuthConfig | null) => {
-    setBootstrap({ serverURL, authConfig, loaded: true });
+    const normalizedServerURL = normalizeServerURL(serverURL);
+    void AsyncStorage.setItem(serverURLStorageKey, normalizedServerURL);
+    setBootstrap({ serverURL: normalizedServerURL, authConfig, loaded: true });
   }, []);
 
   if (!bootstrap.loaded) {
@@ -140,7 +145,7 @@ export default function App() {
 
   if (normalizeServerURL(bootstrap.serverURL) === defaultServer) {
     return (
-      <HostedOnboardingScreen
+      <CloudFirstOnboardingScreen
         error={bootstrap.authConfig ? "Agent Tick Cloud did not advertise Clerk sign-in." : "Could not reach Agent Tick Cloud."}
         onServerSelected={handleRuntimeAuthConfig}
       />
@@ -183,7 +188,21 @@ function LoadingScreen() {
   );
 }
 
-function HostedOnboardingScreen({
+async function fetchRuntimeAuthConfigIfAvailable(serverURL: string) {
+  try {
+    return await fetchRuntimeAuthConfig(serverURL);
+  } catch {
+    return null;
+  }
+}
+
+async function hasSavedLocalSession(serverURL: string) {
+  const keys = mobileSessionStorageKeys(serverURL);
+  const entries = await AsyncStorage.multiGet([keys.token, keys.deviceID]);
+  return entries.some(([, value]) => Boolean(value));
+}
+
+function CloudFirstOnboardingScreen({
   error,
   onServerSelected,
 }: {
@@ -197,26 +216,21 @@ function HostedOnboardingScreen({
   const retryHosted = async () => {
     setSubmitting(true);
     setCustomError(null);
-    try {
-      onServerSelected(defaultServer, await fetchRuntimeAuthConfig(defaultServer));
-    } catch (err) {
-      setCustomError(err instanceof Error ? err.message : "Could not reach Agent Tick Cloud");
-    } finally {
-      setSubmitting(false);
+    const config = await fetchRuntimeAuthConfigIfAvailable(defaultServer);
+    if (config) {
+      onServerSelected(defaultServer, config);
+    } else {
+      setCustomError("Could not reach Agent Tick Cloud");
     }
+    setSubmitting(false);
   };
 
   const useSelfHostedServer = async () => {
     const nextServerURL = normalizeServerURL(customServerURL);
     setSubmitting(true);
     setCustomError(null);
-    try {
-      onServerSelected(nextServerURL, await fetchRuntimeAuthConfig(nextServerURL));
-    } catch {
-      onServerSelected(nextServerURL, null);
-    } finally {
-      setSubmitting(false);
-    }
+    onServerSelected(nextServerURL, await fetchRuntimeAuthConfigIfAvailable(nextServerURL));
+    setSubmitting(false);
   };
 
   return (
@@ -968,6 +982,25 @@ function AgentTickApp({
     if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.();
   }, [bestEffortUnregisterDevice, clearStoredSessionForServer, onForgetClerkSession, runtimeAuthConfig?.authProvider]);
 
+  const useCloudSignIn = useCallback(async () => {
+    if (deviceID) {
+      void bestEffortUnregisterDevice();
+    }
+    await clearStoredSessionForServer();
+    setLoadedSessionServerURL("");
+    setDeviceID("");
+    setToken("");
+    setPushStatus("idle");
+    setOrganizations([]);
+    setSelectedOrganizationID("");
+    setRequests([]);
+    setHistory([]);
+    setSelectedID(null);
+    setConnectionStatus("checking");
+    const config = await fetchRuntimeAuthConfigIfAvailable(defaultServer);
+    onRuntimeAuthConfig?.(defaultServer, config);
+  }, [bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, onRuntimeAuthConfig]);
+
   const selectOrganization = useCallback((organizationID: string) => {
     if (organizationID === selectedOrganizationID) return;
     if (runtimeAuthConfig?.authProvider === "clerk" && deviceID) {
@@ -1104,6 +1137,7 @@ function AgentTickApp({
             setScannerLocked(false);
             setScreen("scanner");
           }}
+          onUseCloud={() => void useCloudSignIn()}
           pairingCode={pairingCode}
           pushStatus={pushStatus}
           authProvider={runtimeAuthConfig?.authProvider}

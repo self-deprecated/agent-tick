@@ -57,6 +57,7 @@ export function SettingsScreen({
   onRequestNotifications,
   onSendTestNotification,
   onScanPairing,
+  onUseCloud,
   pairingCode,
   pushStatus,
   deviceID,
@@ -83,6 +84,7 @@ export function SettingsScreen({
   onRequestNotifications: () => void;
   onSendTestNotification: () => void;
   onScanPairing: () => void;
+  onUseCloud?: () => void;
   pairingCode: string;
   pushStatus: PushStatus;
   deviceID: string;
@@ -167,6 +169,11 @@ export function SettingsScreen({
           <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
             <Text style={styles.secondaryActionText}>{isClerkMode ? "Sign Out" : "Forget Device"}</Text>
           </Pressable>
+          {!isClerkMode && onUseCloud ? (
+            <Pressable onPress={onUseCloud} style={styles.secondaryActionButton}>
+              <Text style={styles.secondaryActionText}>Use Agent Tick Cloud</Text>
+            </Pressable>
+          ) : null}
         </View>
         <View style={styles.settingsSection}>
           <Text style={styles.sectionHeading}>Workspace</Text>
@@ -262,6 +269,11 @@ export function SettingsScreen({
         <Pressable onPress={onCheck} style={styles.primaryButton}>
           <Text style={styles.primaryButtonText}>Check Connection</Text>
         </Pressable>
+        {onUseCloud ? (
+          <Pressable onPress={onUseCloud} style={styles.secondaryActionButton}>
+            <Text style={styles.secondaryActionText}>Use Agent Tick Cloud</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={styles.settingsSection}>
