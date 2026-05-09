@@ -700,7 +700,7 @@
 		<div>
 			<p class="eyebrow">Agent Tick</p>
 			<h1>Human approvals for agent actions</h1>
-			<p class="subtle">TypeScript server preview. Create an agent token, run the npm CLI, and approve pending requests here.</p>
+			<p class="subtle">Create agent tokens, review approval requests, manage teams and policies, and invite teammates from one dashboard.</p>
 		</div>
 		<button onclick={load} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
 	</header>
@@ -767,7 +767,7 @@
 				{#if organizations.length > 0}
 					<label for="organization-select">Active local organization</label>
 					<select id="organization-select" bind:value={selectedOrganizationId} onchange={(event) => void selectOrganization(event.currentTarget.value)}>
-						{#each organizations as membership}
+						{#each organizations as membership (membership.organizationId)}
 							<option value={membership.organizationId}>{membership.name} ({membership.role})</option>
 						{/each}
 					</select>
@@ -794,7 +794,7 @@
 				<button onclick={refreshMyMembershipRequests}>Refresh requests</button>
 			</div>
 			<ul class="item-list">
-				{#each myMembershipRequests as request}
+				{#each myMembershipRequests as request (request.requestId)}
 					<li class="item-card" class:is-muted={request.status !== 'pending_approval'}>
 						<div>
 							<strong>{request.organizationName ?? request.organizationId}</strong>
@@ -830,7 +830,7 @@
 					</select>
 					<select bind:value={newInviteTeamId} aria-label="Invite team">
 						<option value="">No team</option>
-						{#each teams as team}
+						{#each teams as team (team.teamId)}
 							<option value={team.teamId}>{team.name}</option>
 						{/each}
 					</select>
@@ -850,7 +850,7 @@
 				<p class="subtle">No active or historical invites yet.</p>
 			{:else}
 				<ul class="item-list">
-					{#each organizationInvites as invite}
+					{#each organizationInvites as invite (invite.inviteId)}
 						<li class="item-card" class:is-muted={Boolean(invite.revokedAt)}>
 							<div>
 								<strong>{invite.label ?? invite.email ?? invite.domain ?? invite.inviteId}</strong>
@@ -875,7 +875,7 @@
 				<p class="subtle">No pending organization membership requests.</p>
 			{:else}
 				<ul class="item-list">
-					{#each membershipRequests as request}
+					{#each membershipRequests as request (request.requestId)}
 						<li class="item-card">
 							<div>
 								<strong>{request.userName ?? request.userEmail ?? request.userId}</strong>
@@ -904,7 +904,7 @@
 				<p class="subtle">No projects yet. Projects let agent tokens and approvals carry local workspace context.</p>
 			{:else}
 				<ul class="item-list">
-					{#each projects as project}
+					{#each projects as project (project.projectId)}
 						<li class="item-card" class:is-muted={Boolean(project.archivedAt)}>
 							<div>
 								<strong>{project.name}</strong>
@@ -931,14 +931,14 @@
 				<form class="row" onsubmit={(event) => { event.preventDefault(); void addTeamMember(); }}>
 					<label for="team-member-team" class="inline-label">Team</label>
 					<select id="team-member-team" bind:value={selectedTeamForMember}>
-						{#each teams as team}
+						{#each teams as team (team.teamId)}
 							<option value={team.teamId}>{team.name}</option>
 						{/each}
 					</select>
 					<label for="team-member-user" class="inline-label">Member</label>
 					<select id="team-member-user" bind:value={selectedUserForTeam}>
 						<option value="">Choose organization member</option>
-						{#each organizationMembers as member}
+						{#each organizationMembers as member (member.userId)}
 							<option value={member.userId}>{member.name || member.userId} ({member.role})</option>
 						{/each}
 					</select>
@@ -950,7 +950,7 @@
 					<button type="submit">Add member</button>
 				</form>
 				<ul class="item-list">
-					{#each teams as team}
+					{#each teams as team (team.teamId)}
 						<li class="item-card" class:is-muted={Boolean(team.archivedAt)}>
 							<div>
 								<strong>{team.name}</strong>
@@ -958,7 +958,7 @@
 								{#if team.description}<p>{team.description}</p>{/if}
 								{#if teamMembers[team.teamId]?.length}
 									<div class="member-list">
-										{#each teamMembers[team.teamId] as member}
+										{#each teamMembers[team.teamId] as member (member.userId)}
 											<span class="member-pill">
 												{member.userId} ({member.role})
 												{#if member.role !== 'owner'}
@@ -989,14 +989,14 @@
 					<label for="policy-project" class="inline-label">Project</label>
 					<select id="policy-project" bind:value={newPolicyProjectId}>
 						<option value="">Any project</option>
-						{#each projects as project}
+						{#each projects as project (project.projectId)}
 							<option value={project.projectId}>{project.name} ({project.slug})</option>
 						{/each}
 					</select>
 					<label for="policy-team" class="inline-label">Team</label>
 					<select id="policy-team" bind:value={newPolicyTeamId}>
 						<option value="">Any team</option>
-						{#each teams as team}
+						{#each teams as team (team.teamId)}
 							<option value={team.teamId}>{team.name} ({team.slug})</option>
 						{/each}
 					</select>
@@ -1007,7 +1007,7 @@
 				<p class="subtle">No policies yet. Create a local approval policy to start modeling quorum and project/team routing.</p>
 			{:else}
 				<ul class="item-list">
-					{#each policies as policy}
+					{#each policies as policy (policy.policyId)}
 						<li class="item-card" class:is-muted={Boolean(policy.archivedAt)}>
 							<div>
 								<strong>{policy.name}</strong>
@@ -1052,21 +1052,21 @@
 				<label for="agent-project" class="inline-label">Project</label>
 				<select id="agent-project" bind:value={agentProjectId}>
 					<option value="">Any project</option>
-					{#each projects as project}
+					{#each projects as project (project.projectId)}
 						<option value={project.projectId}>{project.name} ({project.slug})</option>
 					{/each}
 				</select>
 				<label for="agent-team" class="inline-label">Team</label>
 				<select id="agent-team" bind:value={agentTeamId}>
 					<option value="">Any team</option>
-					{#each teams as team}
+					{#each teams as team (team.teamId)}
 						<option value={team.teamId}>{team.name} ({team.slug})</option>
 					{/each}
 				</select>
 				<label for="agent-policy" class="inline-label">Policy</label>
 				<select id="agent-policy" bind:value={agentPolicyId}>
 					<option value="">Default policy</option>
-					{#each policies as policy}
+					{#each policies as policy (policy.policyId)}
 						<option value={policy.policyId}>{policy.name}</option>
 					{/each}
 				</select>
@@ -1082,7 +1082,7 @@
 		{/if}
 		{#if agentTokens.length > 0}
 			<ul class="item-list">
-				{#each agentTokens as token}
+				{#each agentTokens as token (token.agentId)}
 					<li class="item-card" class:is-muted={Boolean(token.revokedAt)}>
 						<div>
 							<strong>{token.name}</strong>
@@ -1109,7 +1109,7 @@
 			<p class="subtle">No approval requests yet.</p>
 		{:else}
 			<ul class="approvals">
-				{#each approvals as approval}
+				{#each approvals as approval (approval.id)}
 					<li>
 						<div>
 							<p class="eyebrow">{approval.status} · {approval.requester.name}</p>
@@ -1139,7 +1139,7 @@
 			<p class="subtle">No audit events yet.</p>
 		{:else}
 			<ul class="item-list">
-				{#each auditEvents as event}
+				{#each auditEvents as event (event.eventId)}
 					<li class="item-card audit-card">
 						<div>
 							<strong>{event.eventType}</strong>
@@ -1158,8 +1158,11 @@
 	:global(body) {
 		margin: 0;
 		font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-		background: #0f172a;
-		color: #e2e8f0;
+		background:
+			radial-gradient(circle at 12% 0%, rgba(59, 130, 246, 0.18), transparent 30rem),
+			radial-gradient(circle at 90% 8%, rgba(20, 184, 166, 0.14), transparent 28rem),
+			linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
+		color: #111827;
 	}
 
 	.shell {
@@ -1190,15 +1193,16 @@
 	.card {
 		margin-top: 20px;
 		padding: 24px;
-		border: 1px solid rgba(148, 163, 184, 0.25);
-		border-radius: 18px;
-		background: rgba(15, 23, 42, 0.84);
-		box-shadow: 0 20px 60px rgba(2, 6, 23, 0.35);
+		border: 1px solid rgba(148, 163, 184, 0.28);
+		border-radius: 24px;
+		background: rgba(255, 255, 255, 0.92);
+		box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
+		backdrop-filter: blur(10px);
 	}
 
 	.eyebrow,
 	.subtle {
-		color: #94a3b8;
+		color: #64748b;
 	}
 
 	.eyebrow {
@@ -1219,20 +1223,21 @@
 	select {
 		min-width: 260px;
 		padding: 10px 12px;
-		border: 1px solid #334155;
-		border-radius: 10px;
-		background: #020617;
-		color: #e2e8f0;
+		border: 1px solid #d6e0ef;
+		border-radius: 12px;
+		background: #ffffff;
+		color: #111827;
 	}
 
 	button {
 		padding: 10px 14px;
 		border: 0;
-		border-radius: 10px;
-		background: #38bdf8;
-		color: #082f49;
-		font-weight: 700;
+		border-radius: 999px;
+		background: linear-gradient(135deg, #2563eb, #0f766e);
+		color: white;
+		font-weight: 800;
 		cursor: pointer;
+		box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
 	}
 
 	button:disabled {
@@ -1247,29 +1252,32 @@
 	}
 
 	.error {
-		background: rgba(239, 68, 68, 0.14);
-		color: #fecaca;
+		border: 1px solid #fecaca;
+		background: #fff2f0;
+		color: #991b1b;
 	}
 
 	.warning {
-		background: rgba(250, 204, 21, 0.12);
-		color: #fde68a;
+		border: 1px solid #fde68a;
+		background: #fff7d6;
+		color: #854d0e;
 	}
 
 	.token {
 		display: grid;
 		gap: 8px;
 		padding: 12px;
-		border: 1px dashed #475569;
-		border-radius: 12px;
+		border: 1px dashed #bfdbfe;
+		border-radius: 16px;
+		background: #eff6ff;
 	}
 
 	code,
 	pre {
 		padding: 3px 6px;
-		border-radius: 6px;
-		background: #020617;
-		color: #bae6fd;
+		border-radius: 8px;
+		background: #eaf2ff;
+		color: #1e3a8a;
 	}
 
 	pre {
@@ -1292,9 +1300,10 @@
 		justify-content: space-between;
 		gap: 20px;
 		padding: 16px;
-		border: 1px solid #334155;
-		border-radius: 14px;
-		background: rgba(2, 6, 23, 0.48);
+		border: 1px solid #dbeafe;
+		border-radius: 18px;
+		background: #f8fbff;
+		color: #334155;
 	}
 
 	.actions {
@@ -1315,9 +1324,10 @@
 		align-items: center;
 		gap: 6px;
 		padding: 4px 8px;
-		border: 1px solid #334155;
+		border: 1px solid #bfdbfe;
 		border-radius: 999px;
-		color: #cbd5e1;
+		background: #eff6ff;
+		color: #334155;
 		font-size: 0.85rem;
 	}
 
@@ -1329,7 +1339,7 @@
 	}
 
 	.danger-text {
-		color: #fb7185;
+		color: #b91c1c;
 	}
 
 	.item-card.is-muted {
@@ -1341,18 +1351,14 @@
 	}
 
 	.approve {
-		background: #22c55e;
-		color: #052e16;
+		background: linear-gradient(135deg, #16a34a, #15803d);
+		color: white;
 	}
 
-	.reject {
-		background: #fb7185;
-		color: #4c0519;
-	}
-
+	.reject,
 	.danger {
-		background: #f97316;
-		color: #431407;
+		background: linear-gradient(135deg, #dc2626, #b91c1c);
+		color: white;
 	}
 
 	@media (max-width: 760px) {

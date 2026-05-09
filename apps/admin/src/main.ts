@@ -16,10 +16,12 @@ mount(App, {
 });
 
 function normaliseConfig(input: Partial<AdminConfig> | undefined): AdminConfig {
-	const mode: AdminMode = input?.mode === 'clerk' ? 'clerk' : 'single';
+	const configuredMode = input?.mode?.trim();
+	const mode: AdminMode = configuredMode === 'clerk' ? 'clerk' : 'single';
+	const configuredPublicURL = input?.publicURL?.trim();
 	return {
 		mode,
-		publicURL: input?.publicURL?.trim() || window.location.origin,
+		publicURL: configuredPublicURL && !configuredPublicURL.startsWith('__') ? configuredPublicURL : window.location.origin,
 		authProvider: input?.authProvider,
 		clerkPublishableKey: input?.clerkPublishableKey
 	};

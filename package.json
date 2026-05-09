@@ -7,15 +7,21 @@
     "build": "corepack pnpm -r --sort build",
     "typecheck": "corepack pnpm -r --sort typecheck",
     "test": "corepack pnpm -r --sort test",
+    "test:e2e": "playwright test",
     "dev:server": "corepack pnpm --filter @agent-tick/server dev",
     "dev:admin": "corepack pnpm --filter agent-tick-admin dev"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^24.10.0",
     "typescript": "6.0.3",
     "vitest": "^4.0.14"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3", "esbuild", "unrs-resolver"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "unrs-resolver"
+    ]
   }
 }
