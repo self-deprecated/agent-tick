@@ -9,7 +9,7 @@ test('single mode dashboard works with an admin token', async ({ page, request, 
 	test.skip(!adminToken, 'Set AGENT_TICK_E2E_ADMIN_TOKEN for single-mode dashboard smoke tests');
 
 	await page.goto('/', { waitUntil: 'networkidle' });
-	await expect(page.getByText('Human approvals for agent actions')).toBeVisible();
+	await expect(page.getByRole('heading', { name: /approve agent actions without slowing down/i })).toBeVisible();
 	await expect(page.getByText('__PUBLIC_URL__')).toHaveCount(0);
 
 	await page.getByLabel('Admin token').fill(adminToken!);

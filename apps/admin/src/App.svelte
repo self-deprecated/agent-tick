@@ -79,6 +79,7 @@
 	let error = $state('');
 	let clerk = $state<ClerkJS | undefined>();
 	let clerkSignedIn = $state(false);
+	let showAdvancedWorkspace = $state(false);
 	let eventSource: EventSource | undefined;
 	let eventStreamOrganizationId = '';
 	let eventStreamRefreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -689,6 +690,18 @@
 		if (err instanceof Error) return err.message;
 		return String(err);
 	}
+
+	function isCustomerMode(): boolean {
+		return runtimeConfig?.authProvider === 'clerk';
+	}
+
+	function hasDashboardAccess(): boolean {
+		return Boolean(runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn));
+	}
+
+	function showWorkspaceAdmin(): boolean {
+		return hasDashboardAccess() && (!isCustomerMode() || showAdvancedWorkspace);
+	}
 </script>
 
 <svelte:head>
@@ -699,36 +712,43 @@
 	<header class="hero">
 		<div>
 			<p class="eyebrow">Agent Tick</p>
-			<h1>Human approvals for agent actions</h1>
-			<p class="subtle">Create agent tokens, review approval requests, manage teams and policies, and invite teammates from one dashboard.</p>
+			<h1>Approve agent actions without slowing down</h1>
+			<p class="subtle">Connect your AI agent, sign in on mobile, and approve risky commands from wherever you are.</p>
 		</div>
 		<button onclick={load} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
 	</header>
 
 	{#if runtimeConfig}
-		<section class="card grid">
-			<div>
-				<h2>Runtime</h2>
-				<p><strong>Mode:</strong> {runtimeConfig.mode}</p>
-				<p><strong>Auth provider:</strong> {runtimeConfig.authProvider}</p>
-				{#if runtimeConfig.publicURL}<p><strong>Public URL:</strong> {runtimeConfig.publicURL}</p>{/if}
-				<p><strong>Admin origin:</strong> {initialConfig.publicURL}</p>
-			</div>
+		<section class="card grid welcome-card">
 			{#if runtimeConfig.mode === 'single'}
+				<div>
+					<p class="eyebrow">Self-hosted admin</p>
+					<h2>Everything is unlocked on your server</h2>
+					<p class="subtle">Use the admin token to manage local users, teams, policies, devices, and agent tokens.</p>
+				</div>
 				<form class="stack" onsubmit={(event) => { event.preventDefault(); void saveAdminToken(); }}>
 					<label for="admin-token">Admin token</label>
 					<input id="admin-token" bind:value={adminToken} type="password" autocomplete="off" placeholder="Optional for localhost single mode" />
 					<button type="submit">Save token</button>
 				</form>
+			{:else if clerkSignedIn}
+				<div>
+					<p class="eyebrow">Solo workspace</p>
+					<h2>You're signed in and ready to connect an agent</h2>
+					<p class="subtle">This dashboard is focused on your personal approval workflow. Team administration is available when you upgrade or self-host.</p>
+				</div>
+				<div class="actions">
+					<button class="secondary" onclick={() => { showAdvancedWorkspace = !showAdvancedWorkspace; }}>{showAdvancedWorkspace ? 'Hide team settings' : 'Team settings'}</button>
+					<button onclick={signOut}>Sign out</button>
+				</div>
 			{:else}
+				<div>
+					<p class="eyebrow">Agent Tick</p>
+					<h2>Sign in to start approving agent actions</h2>
+					<p class="subtle">Create an account, connect your first agent, then use the mobile app for quick approvals.</p>
+				</div>
 				<div class="stack">
-					{#if clerkSignedIn}
-						<p class="subtle">Signed in with Clerk.</p>
-						<button onclick={signOut}>Sign out</button>
-					{:else}
-						<p class="warning">Sign in to Agent Tick to manage approvals.</p>
-						<button onclick={() => void signInWithClerk()}>Sign in to Agent Tick</button>
-					{/if}
+					<button onclick={() => void signInWithClerk()}>Sign in or create account</button>
 				</div>
 			{/if}
 		</section>
@@ -760,10 +780,10 @@
 		</section>
 	{/if}
 
-	{#if runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn)}
+	{#if showWorkspaceAdmin()}
 		<section class="card grid">
 			<div class="stack">
-				<h2>Organization</h2>
+				<h2>{isCustomerMode() ? 'Team workspace settings' : 'Organization'}</h2>
 				{#if organizations.length > 0}
 					<label for="organization-select">Active local organization</label>
 					<select id="organization-select" bind:value={selectedOrganizationId} onchange={(event) => void selectOrganization(event.currentTarget.value)}>
@@ -787,7 +807,7 @@
 		</section>
 	{/if}
 
-	{#if runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn) && myMembershipRequests.length > 0}
+	{#if showWorkspaceAdmin() && myMembershipRequests.length > 0}
 		<section class="card stack">
 			<div class="section-heading">
 				<h2>Your organization requests</h2>
@@ -811,7 +831,38 @@
 		<p class="error">{error}</p>
 	{/if}
 
-	{#if runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn)}
+	{#if hasDashboardAccess() && isCustomerMode()}
+		<section class="card stack customer-start">
+			<div>
+				<p class="eyebrow">Start here</p>
+				<h2>Your approval workflow</h2>
+				<p class="subtle">You only need two things: an agent token on your machine, and the mobile app signed into this same account.</p>
+			</div>
+			<div class="setup-steps">
+				<div class="setup-step">
+					<strong>1. Create an agent token</strong>
+					<span>Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs.</span>
+				</div>
+				<div class="setup-step">
+					<strong>2. Sign in on mobile</strong>
+					<span>Open the Agent Tick mobile app and sign in with this Clerk account. Production accounts do not need pairing codes.</span>
+				</div>
+				<div class="setup-step">
+					<strong>3. Approve requests</strong>
+					<span>When your agent asks for approval, it appears here and on your phone with clear Approve or Reject actions.</span>
+				</div>
+			</div>
+			<div class="upgrade-panel">
+				<div>
+					<strong>Need teams, projects, policies, or invites?</strong>
+					<p class="subtle">Those are collaboration features. Upgrade the hosted account when billing is enabled, or self-host Agent Tick to unlock every admin control.</p>
+				</div>
+				<a class="button-link" href="https://agenttick.sh" target="_blank" rel="noreferrer">View plans</a>
+			</div>
+		</section>
+	{/if}
+
+	{#if showWorkspaceAdmin()}
 		<section class="card stack">
 			<div class="section-heading">
 				<h2>Invites</h2>
@@ -1026,7 +1077,7 @@
 		</section>
 	{/if}
 
-	{#if runtimeConfig?.authProvider !== 'clerk' || clerkSignedIn}
+	{#if hasDashboardAccess()}
 	{#if runtimeConfig?.mode === 'single'}
 	<section class="card stack">
 		<h2>Pair a phone</h2>
@@ -1041,36 +1092,42 @@
 	</section>
 	{/if}
 
-	<section class="card stack">
-		<h2>Create an agent token</h2>
+	<section class="card stack primary-card">
+		<div>
+			<p class="eyebrow">Connect your agent</p>
+			<h2>Create an agent token</h2>
+			<p class="subtle">Use one token per machine or agent. You can revoke it any time.</p>
+		</div>
 		<form class="stack" onsubmit={(event) => { event.preventDefault(); void createAgentToken(); }}>
 			<div class="row">
 				<input bind:value={agentName} aria-label="Agent name" />
 				<button type="submit">Create token</button>
 			</div>
-			<div class="row">
-				<label for="agent-project" class="inline-label">Project</label>
-				<select id="agent-project" bind:value={agentProjectId}>
-					<option value="">Any project</option>
-					{#each projects as project (project.projectId)}
-						<option value={project.projectId}>{project.name} ({project.slug})</option>
-					{/each}
-				</select>
-				<label for="agent-team" class="inline-label">Team</label>
-				<select id="agent-team" bind:value={agentTeamId}>
-					<option value="">Any team</option>
-					{#each teams as team (team.teamId)}
-						<option value={team.teamId}>{team.name} ({team.slug})</option>
-					{/each}
-				</select>
-				<label for="agent-policy" class="inline-label">Policy</label>
-				<select id="agent-policy" bind:value={agentPolicyId}>
-					<option value="">Default policy</option>
-					{#each policies as policy (policy.policyId)}
-						<option value={policy.policyId}>{policy.name}</option>
-					{/each}
-				</select>
-			</div>
+			{#if !isCustomerMode() || showAdvancedWorkspace}
+				<div class="row">
+					<label for="agent-project" class="inline-label">Project</label>
+					<select id="agent-project" bind:value={agentProjectId}>
+						<option value="">Any project</option>
+						{#each projects as project (project.projectId)}
+							<option value={project.projectId}>{project.name} ({project.slug})</option>
+						{/each}
+					</select>
+					<label for="agent-team" class="inline-label">Team</label>
+					<select id="agent-team" bind:value={agentTeamId}>
+						<option value="">Any team</option>
+						{#each teams as team (team.teamId)}
+							<option value={team.teamId}>{team.name} ({team.slug})</option>
+						{/each}
+					</select>
+					<label for="agent-policy" class="inline-label">Policy</label>
+					<select id="agent-policy" bind:value={agentPolicyId}>
+						<option value="">Default policy</option>
+						{#each policies as policy (policy.policyId)}
+							<option value={policy.policyId}>{policy.name}</option>
+						{/each}
+					</select>
+				</div>
+			{/if}
 		</form>
 		{#if createdCredential}
 			<div class="token">
@@ -1263,6 +1320,53 @@
 		color: #854d0e;
 	}
 
+	.welcome-card,
+	.primary-card,
+	.customer-start {
+		border-color: rgba(37, 99, 235, 0.22);
+	}
+
+	.customer-start {
+		background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.92));
+	}
+
+	.setup-steps {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 12px;
+	}
+
+	.setup-step,
+	.upgrade-panel {
+		border: 1px solid #dbeafe;
+		border-radius: 18px;
+		background: #ffffff;
+		padding: 16px;
+	}
+
+	.setup-step {
+		display: grid;
+		gap: 8px;
+	}
+
+	.setup-step strong,
+	.upgrade-panel strong {
+		color: #1d4ed8;
+	}
+
+	.setup-step span {
+		color: #475569;
+		line-height: 1.45;
+	}
+
+	.upgrade-panel {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		background: #f8fbff;
+	}
+
 	.token {
 		display: grid;
 		gap: 8px;
@@ -1367,9 +1471,14 @@
 		.row,
 		.grid,
 		.approvals li,
-		.item-card {
+		.item-card,
+		.upgrade-panel {
 			align-items: stretch;
 			flex-direction: column;
+		}
+
+		.setup-steps {
+			grid-template-columns: 1fr;
 		}
 
 		input,
