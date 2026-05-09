@@ -23,7 +23,8 @@ const ConfigSchema = z.object({
   expiredInviteRetentionDays: z.coerce.number().int().nonnegative().optional(),
   retentionCleanupIntervalMinutes: z.coerce.number().int().positive().default(60),
   rateLimitWindowMs: z.coerce.number().int().positive().default(60_000),
-  rateLimitMaxRequests: z.coerce.number().int().positive().optional()
+  rateLimitMaxRequests: z.coerce.number().int().positive().optional(),
+  testAuth: z.boolean().default(false)
 });
 
 export type ServerConfig = Omit<z.infer<typeof ConfigSchema>, 'adminDistDir'> & {
@@ -53,10 +54,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     expiredInviteRetentionDays: optionalEnv(env.AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS),
     retentionCleanupIntervalMinutes: optionalEnv(env.AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES),
     rateLimitWindowMs: optionalEnv(env.AGENT_TICK_RATE_LIMIT_WINDOW_MS),
-    rateLimitMaxRequests: optionalEnv(env.AGENT_TICK_RATE_LIMIT_MAX_REQUESTS)
+    rateLimitMaxRequests: optionalEnv(env.AGENT_TICK_RATE_LIMIT_MAX_REQUESTS),
+    testAuth: env.AGENT_TICK_TEST_AUTH === '1' || env.AGENT_TICK_TEST_AUTH === 'true'
   });
 
-  if (parsed.mode === 'clerk' && (!parsed.clerkPublishableKey || !parsed.clerkSecretKey)) {
+  if (parsed.mode === 'clerk' && !parsed.testAuth && (!parsed.clerkPublishableKey || !parsed.clerkSecretKey)) {
     throw new Error('AGENT_TICK_MODE=clerk requires AGENT_TICK_CLERK_PUBLISHABLE_KEY and AGENT_TICK_CLERK_SECRET_KEY');
   }
 

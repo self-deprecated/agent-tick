@@ -27,6 +27,7 @@ import {
   OrganizationInviteRecordSchema,
   OrganizationMembershipRequestRecordSchema,
   OrganizationMembershipSchema,
+  OnboardingStatusSchema,
   PairDeviceRequestSchema,
   PairingTokenSchema,
   PolicyRecordSchema,
@@ -73,6 +74,7 @@ import {
   type OrganizationInviteRecord,
   type OrganizationMembership,
   type OrganizationMembershipRequestRecord,
+  type OnboardingStatus,
   type PairDeviceRequest,
   type PairingToken,
   type PolicyRecord,
@@ -152,6 +154,10 @@ export class AgentTickClient {
 
   getBillingStatus(): Promise<BillingStatus> {
     return this.#request('GET', '/v1/billing', BillingStatusSchema);
+  }
+
+  getOnboardingStatus(): Promise<OnboardingStatus> {
+    return this.#request('GET', '/v1/onboarding', OnboardingStatusSchema);
   }
 
   sendHeartbeat(input: HeartbeatRequest = {}): Promise<HeartbeatResponse> {
@@ -439,6 +445,7 @@ export type {
   OrganizationInviteRecord,
   OrganizationMembership,
   OrganizationMembershipRequestRecord,
+  OnboardingStatus,
   PairDeviceRequest,
   PairingToken,
   PolicyRecord,

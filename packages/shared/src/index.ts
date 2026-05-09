@@ -37,7 +37,8 @@ export const AuthConfigSchema = z.object({
   mode: AgentTickModeSchema,
   authProvider: AuthProviderSchema,
   publicURL: z.string().optional(),
-  clerkPublishableKey: z.string().optional()
+  clerkPublishableKey: z.string().optional(),
+  testAuth: z.boolean().optional()
 });
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 
@@ -515,3 +516,18 @@ export const AvailabilityRecordSchema = z.object({
   updatedAt: z.string()
 });
 export type AvailabilityRecord = z.infer<typeof AvailabilityRecordSchema>;
+
+export const OnboardingStageSchema = z.enum(['needs_agent_token', 'needs_cli_setup', 'needs_mobile_app', 'ready_for_first_request']);
+export type OnboardingStage = z.infer<typeof OnboardingStageSchema>;
+
+export const OnboardingStatusSchema = z.object({
+  stage: OnboardingStageSchema,
+  hasAgentToken: z.boolean(),
+  hasCliHeartbeat: z.boolean(),
+  hasMobileDevice: z.boolean(),
+  canUseWebApprovals: z.boolean(),
+  activeAgentTokenCount: z.number().int().min(0),
+  connectedAgentCount: z.number().int().min(0),
+  activeMobileDeviceCount: z.number().int().min(0)
+});
+export type OnboardingStatus = z.infer<typeof OnboardingStatusSchema>;

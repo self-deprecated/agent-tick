@@ -13,11 +13,13 @@ import { registerEventRoutes } from './routes/events.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerOrganizationRoutes } from './routes/organizations.js';
+import { registerOnboardingRoutes } from './routes/onboarding.js';
 import { registerPairingRoutes } from './routes/pairing.js';
 import { registerPolicyRoutes } from './routes/policies.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerTeamRoutes } from './routes/teams.js';
+import { registerTestSupportRoutes } from './routes/testSupport.js';
 import { createInviteEmailSender, type InviteEmailSender } from './services/inviteEmail.js';
 import { createApprovalNotifier, type ApprovalNotifier } from './services/notifications.js';
 
@@ -46,6 +48,7 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
     });
   });
   registerRateLimitHook(app, config);
+  await registerTestSupportRoutes(app, { config, store });
 
   app.get('/healthz', async () => ({ status: 'ok' as const, time: new Date().toISOString() }));
 
@@ -53,7 +56,8 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
     mode: config.mode,
     authProvider: config.authProvider,
     publicURL: config.publicURL,
-    clerkPublishableKey: config.mode === 'clerk' ? config.clerkPublishableKey : undefined
+    clerkPublishableKey: config.mode === 'clerk' ? config.clerkPublishableKey : undefined,
+    testAuth: config.testAuth || undefined
   }));
 
   await registerMeRoutes(app, { config, store });
@@ -61,6 +65,7 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
   await registerInviteRoutes(app, { config, store, inviteEmailSender });
   await registerAgentTokenRoutes(app, { config, store });
   await registerBillingRoutes(app, { config, store });
+  await registerOnboardingRoutes(app, { config, store });
   await registerApprovalRoutes(app, { config, store, notifier });
   await registerDeviceRoutes(app, { config, store });
   await registerPairingRoutes(app, { config, store });

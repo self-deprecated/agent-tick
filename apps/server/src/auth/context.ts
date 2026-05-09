@@ -73,6 +73,31 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
     });
   }
 
+  if (config.testAuth && bearer?.startsWith('test_')) {
+    const subject = bearer.slice('test_'.length) || 'user';
+    const emailHeader = request.headers['x-agent-tick-test-email'];
+    const nameHeader = request.headers['x-agent-tick-test-name'];
+    const email = (Array.isArray(emailHeader) ? emailHeader[0] : emailHeader) || `${subject}@example.test`;
+    const name = (Array.isArray(nameHeader) ? nameHeader[0] : nameHeader) || subject;
+    const identity = store.loginOrCreateClerkIdentity({
+      issuer: 'agent-tick-test',
+      subject,
+      email,
+      emailVerified: true,
+      name
+    });
+    return applySelectedOrganization(request, store, {
+      source: 'clerk',
+      isHuman: true,
+      userId: identity.userId,
+      organizationId: identity.organizationId,
+      role: identity.role,
+      provider: 'clerk',
+      providerIssuer: 'agent-tick-test',
+      providerSubject: subject
+    });
+  }
+
   if (config.mode === 'clerk' && bearer) {
     const clerkAuth = await verifyClerkSession(bearer, config, store);
     return clerkAuth ? applySelectedOrganization(request, store, clerkAuth) : null;

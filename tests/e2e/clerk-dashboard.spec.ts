@@ -14,15 +14,16 @@ test('Clerk sign-in lands on a polished solo workflow', async ({ page, baseURL }
 	await signIn(page, email!, password!, baseURL);
 
 	await expect(page.getByRole('heading', { name: /you're signed in and ready/i })).toBeVisible();
-	await expect(page.getByRole('heading', { name: 'Your approval workflow' })).toBeVisible();
-	await expect(page.getByText('2. Sign in on mobile', { exact: true })).toBeVisible();
+	await expect(page.getByTestId('solo-onboarding')).toBeVisible();
+	await expect(page.getByTestId('onboarding-create-token')).toBeVisible();
+	await expect(page.getByTestId('onboarding-mobile-app')).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Create an agent token' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Runtime' })).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: 'Invites' })).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: 'Pending members' })).toHaveCount(0);
 });
 
-test('solo dashboard can connect an agent and approve a request', async ({ page, request, baseURL }) => {
+test('solo dashboard can connect an agent and keeps approvals locked until mobile setup', async ({ page, request, baseURL }) => {
 	test.skip(!hasClerkCredentials, 'Set AGENT_TICK_E2E_CLERK_EMAIL/PASSWORD for Clerk dashboard smoke tests');
 
 	await signIn(page, email!, password!, baseURL);
@@ -49,11 +50,9 @@ test('solo dashboard can connect an agent and approve a request', async ({ page,
 	});
 	expect(created.ok()).toBeTruthy();
 
-	await page.getByRole('button', { name: 'Refresh approvals' }).click();
-	const approvalCard = page.locator('li', { hasText: `E2E approval ${stamp}` });
-	await expect(approvalCard.getByRole('heading', { name: `E2E approval ${stamp}` })).toBeVisible();
-	await approvalCard.getByRole('button', { name: 'Approve' }).click();
-	await expect(approvalCard.getByText('Response: approve')).toBeVisible();
+	await page.reload({ waitUntil: 'domcontentloaded' });
+	await expect(page.getByTestId('mobile-required')).toBeVisible();
+	await expect(page.getByTestId('approval-requests')).toHaveCount(0);
 
 	const agentTokensSection = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Create an agent token' }) });
 	const agentTokenCard = agentTokensSection.locator('.item-card', { hasText: `E2E Agent ${stamp}` });

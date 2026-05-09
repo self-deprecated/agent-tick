@@ -10,10 +10,12 @@
 		type AuditEventRecord,
 		type AuthConfig,
 		type BillingStatus,
+		type DeviceRecord,
 		type InvitePreview,
 		type OrganizationInviteRecord,
 		type OrganizationMembership,
 		type OrganizationMembershipRequestRecord,
+		type OnboardingStatus,
 		type PairingToken,
 		type PolicyRecord,
 		type ProjectRecord,
@@ -28,6 +30,7 @@
 
 	const adminTokenStorageKey = 'agent_tick_admin_token';
 	const organizationStorageKey = 'agent_tick_organization_id';
+	const testAuthTokenStorageKey = 'agent_tick_test_auth_token';
 
 	let { config: initialConfig }: { config: AdminConfig } = $props();
 	let runtimeConfig = $state<AuthConfig | undefined>();
@@ -35,6 +38,8 @@
 	let agentTokens = $state<AgentTokenRecord[]>([]);
 	let auditEvents = $state<AuditEventRecord[]>([]);
 	let billingStatus = $state<BillingStatus | undefined>();
+	let devices = $state<DeviceRecord[]>([]);
+	let onboardingStatus = $state<OnboardingStatus | undefined>();
 	let organizations = $state<OrganizationMembership[]>([]);
 	let organizationInvites = $state<OrganizationInviteRecord[]>([]);
 	let organizationMembers = $state<OrganizationMembership[]>([]);
@@ -71,6 +76,7 @@
 	let createdCredential = $state<AgentCredential | undefined>();
 	let pairingToken = $state<PairingToken | undefined>();
 	let adminToken = $state('');
+	let testAuthToken = $state('');
 	let agentName = $state('Local agent');
 	let agentProjectId = $state('');
 	let agentTeamId = $state('');
@@ -89,6 +95,7 @@
 		return new AgentTickClient({
 			baseUrl: window.location.origin,
 			tokenProvider: async () => {
+				if (runtimeConfig?.testAuth && testAuthToken) return testAuthToken;
 				if (runtimeConfig?.authProvider === 'clerk') return (await clerk?.session?.getToken()) ?? null;
 				return adminToken || null;
 			},
@@ -98,6 +105,7 @@
 
 	onMount(() => {
 		adminToken = localStorage.getItem(adminTokenStorageKey) ?? '';
+		testAuthToken = localStorage.getItem(testAuthTokenStorageKey) ?? '';
 		selectedOrganizationId = localStorage.getItem(organizationStorageKey) ?? '';
 		syncInviteTokenFromLocation();
 		const onHashChange = () => syncInviteTokenFromLocation();
@@ -171,7 +179,10 @@
 		error = '';
 		try {
 			runtimeConfig = await client().getAuthConfig();
-			if (runtimeConfig.authProvider === 'clerk') {
+			if (runtimeConfig.testAuth && testAuthToken) {
+				clerkSignedIn = true;
+				await refreshWorkspace();
+			} else if (runtimeConfig.authProvider === 'clerk') {
 				await initialiseClerk(runtimeConfig);
 			} else {
 				await refreshWorkspace();
@@ -212,6 +223,8 @@
 		agentTokens = [];
 		auditEvents = [];
 		billingStatus = undefined;
+		devices = [];
+		onboardingStatus = undefined;
 		organizations = [];
 		organizationInvites = [];
 		organizationMembers = [];
@@ -225,6 +238,8 @@
 		selectedOrganizationId = '';
 		createdCredential = undefined;
 		clerkSignedIn = false;
+		testAuthToken = '';
+		localStorage.removeItem(testAuthTokenStorageKey);
 	}
 
 	async function signInWithClerk(): Promise<void> {
@@ -238,7 +253,7 @@
 
 	async function refreshWorkspace(): Promise<void> {
 		await refreshOrganizations();
-		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshBilling(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests(), refreshMyMembershipRequests()]);
+		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshBilling(), refreshDevices(), refreshOnboarding(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests(), refreshMyMembershipRequests()]);
 		void ensureEventStream();
 	}
 
@@ -377,6 +392,32 @@
 			billingStatus = await client().getBillingStatus();
 		} catch {
 			billingStatus = undefined;
+		}
+	}
+
+	async function refreshDevices(): Promise<void> {
+		try {
+			devices = await client().listDevices();
+		} catch {
+			devices = [];
+		}
+	}
+
+	async function refreshOnboarding(): Promise<void> {
+		try {
+			onboardingStatus = await client().getOnboardingStatus();
+		} catch {
+			onboardingStatus = undefined;
+		}
+	}
+
+	async function registerDemoMobileDevice(): Promise<void> {
+		error = '';
+		try {
+			if (runtimeConfig?.testAuth) await client().registerDevice({ deviceName: 'Mobile app', platform: 'test' });
+			await Promise.all([refreshDevices(), refreshOnboarding(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
 		}
 	}
 
@@ -653,7 +694,7 @@
 				...(agentTeamId ? { teamId: agentTeamId } : {}),
 				...(agentPolicyId ? { defaultApprovalPolicy: agentPolicyId } : {})
 			});
-			await Promise.all([refreshAgentTokens(), refreshAuditEvents()]);
+			await Promise.all([refreshAgentTokens(), refreshOnboarding(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -664,7 +705,7 @@
 		try {
 			await client().revokeAgentToken(agentId);
 			if (createdCredential?.agentId === agentId) createdCredential = undefined;
-			await Promise.all([refreshAgentTokens(), refreshAuditEvents()]);
+			await Promise.all([refreshAgentTokens(), refreshOnboarding(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
 		}
@@ -705,6 +746,18 @@
 
 	function showWorkspaceAdmin(): boolean {
 		return hasDashboardAccess() && hasCollaborationFeatures() && (!isCustomerMode() || showAdvancedWorkspace);
+	}
+
+	function showApprovalWorkflow(): boolean {
+		return hasDashboardAccess() && (!isCustomerMode() || onboardingStatus?.canUseWebApprovals === true);
+	}
+
+	function onboardingStageTitle(): string {
+		if (!onboardingStatus) return 'Checking setup…';
+		if (onboardingStatus.stage === 'needs_agent_token') return 'Create your first agent token';
+		if (onboardingStatus.stage === 'needs_cli_setup') return 'Run the CLI setup command';
+		if (onboardingStatus.stage === 'needs_mobile_app') return 'Install and sign into the mobile app';
+		return 'Ready for your first approval request';
 	}
 </script>
 
@@ -840,33 +893,50 @@
 	{/if}
 
 	{#if hasDashboardAccess() && isCustomerMode()}
-		<section class="card stack customer-start">
+		<section class="card stack customer-start onboarding-card" data-testid="solo-onboarding">
 			<div>
 				<p class="eyebrow">Start here</p>
-				<h2>Your approval workflow</h2>
-				<p class="subtle">You only need two things: an agent token on your machine, and the mobile app signed into this same account.</p>
+				<h2>{onboardingStageTitle()}</h2>
+				<p class="subtle">Agent Tick stays focused on setup until your account, CLI, and mobile app are ready. Approval requests are hidden until a real agent can send them to your phone.</p>
 			</div>
 			<div class="setup-steps">
-				<div class="setup-step">
+				<div class="setup-step" data-testid="onboarding-create-token" class:is-complete={onboardingStatus?.hasAgentToken}>
 					<strong>1. Create an agent token</strong>
 					<span>Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs.</span>
 				</div>
-				<div class="setup-step">
-					<strong>2. Sign in on mobile</strong>
-					<span>Open the Agent Tick mobile app and sign in with this Clerk account. Production accounts do not need pairing codes.</span>
+				<div class="setup-step" data-testid="onboarding-cli-setup" class:is-complete={onboardingStatus?.hasCliHeartbeat}>
+					<strong>2. Run the CLI setup command</strong>
+					<span>Agent Tick marks the CLI connected after the token is used by your agent or a test request.</span>
 				</div>
-				<div class="setup-step">
-					<strong>3. Approve requests</strong>
-					<span>When your agent asks for approval, it appears here and on your phone with clear Approve or Reject actions.</span>
+				<div class="setup-step" data-testid="onboarding-mobile-app" class:is-complete={onboardingStatus?.hasMobileDevice}>
+					<strong>3. Install and sign into mobile</strong>
+					<span>The mobile app is the primary approval surface. Use the same Clerk account on your phone.</span>
 				</div>
 			</div>
-			<div class="upgrade-panel">
-				<div>
-					<strong>Need teams, projects, policies, or invites?</strong>
-					<p class="subtle">Those are collaboration features. Upgrade the hosted account when billing is enabled, or self-host Agent Tick to unlock every admin control.</p>
+			{#if onboardingStatus?.stage === 'needs_mobile_app'}
+				<div class="upgrade-panel" data-testid="mobile-required">
+					<div>
+						<strong>Waiting for mobile sign-in</strong>
+						<p class="subtle">Install Agent Tick mobile and sign in with the same account. This button refreshes setup state, and registers a deterministic device only in test mode.</p>
+					</div>
+					<button onclick={() => void registerDemoMobileDevice()}>I installed the mobile app</button>
 				</div>
-				<a class="button-link" href="https://agenttick.sh" target="_blank" rel="noreferrer">View plans</a>
-			</div>
+			{:else if onboardingStatus?.stage === 'ready_for_first_request'}
+				<div class="upgrade-panel" data-testid="setup-complete">
+					<div>
+						<strong>Setup complete</strong>
+						<p class="subtle">You can now send a real test request from the CLI. Web approvals can be enabled as a secondary surface later.</p>
+					</div>
+					<button onclick={refreshApprovals}>Check for requests</button>
+				</div>
+			{:else}
+				<div class="upgrade-panel" data-testid="approvals-locked">
+					<div>
+						<strong>Approvals are locked until setup is complete</strong>
+						<p class="subtle">No empty queue, policies, or audit console yet. Complete the current setup step first.</p>
+					</div>
+				</div>
+			{/if}
 		</section>
 	{/if}
 
@@ -1165,7 +1235,8 @@
 		{/if}
 	</section>
 
-	<section class="card stack">
+	{#if showApprovalWorkflow()}
+	<section class="card stack" data-testid="approval-requests">
 		<div class="section-heading">
 			<h2>Approval requests</h2>
 			<button onclick={refreshApprovals}>Refresh approvals</button>
@@ -1194,7 +1265,9 @@
 			</ul>
 		{/if}
 	</section>
+	{/if}
 
+	{#if !isCustomerMode() || showAdvancedWorkspace}
 	<section class="card stack">
 		<div class="section-heading">
 			<h2>Audit events</h2>
@@ -1216,6 +1289,7 @@
 			</ul>
 		{/if}
 	</section>
+	{/if}
 	{/if}
 </main>
 
