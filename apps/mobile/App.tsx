@@ -61,6 +61,7 @@ import {
   fetchRuntimeAuthConfig,
   mobileSessionStorageKeyList,
   mobileSessionStorageKeys,
+  hostedServerURL,
   normalizeServerURL,
   serverURLStorageKey,
   type RuntimeAuthConfig,
@@ -69,7 +70,7 @@ import { mobileEventStreamsAvailable, subscribeToMobileEventStream } from "./mob
 
 type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
-const defaultServer = "http://localhost:8787";
+const defaultServer = hostedServerURL;
 const approvalCategoryID = "approval-request";
 
 type ClerkTokenProvider = () => Promise<string | null>;
@@ -137,6 +138,15 @@ export default function App() {
     );
   }
 
+  if (normalizeServerURL(bootstrap.serverURL) === defaultServer) {
+    return (
+      <HostedOnboardingScreen
+        error={bootstrap.authConfig ? "Agent Tick Cloud did not advertise Clerk sign-in." : "Could not reach Agent Tick Cloud."}
+        onServerSelected={handleRuntimeAuthConfig}
+      />
+    );
+  }
+
   return (
     <AgentTickApp
       initialServerURL={bootstrap.serverURL}
@@ -168,6 +178,76 @@ function LoadingScreen() {
       <View style={styles.emptyState}>
         <ActivityIndicator />
         <Text style={styles.subtitle}>Loading Agent Tick…</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function HostedOnboardingScreen({
+  error,
+  onServerSelected,
+}: {
+  error: string;
+  onServerSelected: (serverURL: string, authConfig: RuntimeAuthConfig | null) => void;
+}) {
+  const [customServerURL, setCustomServerURL] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [customError, setCustomError] = useState<string | null>(null);
+
+  const retryHosted = async () => {
+    setSubmitting(true);
+    setCustomError(null);
+    try {
+      onServerSelected(defaultServer, await fetchRuntimeAuthConfig(defaultServer));
+    } catch (err) {
+      setCustomError(err instanceof Error ? err.message : "Could not reach Agent Tick Cloud");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const useSelfHostedServer = async () => {
+    const nextServerURL = normalizeServerURL(customServerURL);
+    setSubmitting(true);
+    setCustomError(null);
+    try {
+      onServerSelected(nextServerURL, await fetchRuntimeAuthConfig(nextServerURL));
+    } catch {
+      onServerSelected(nextServerURL, null);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.shell}>
+      <StatusBar style="dark" />
+      <View style={styles.hostedOnboarding}>
+        <Text style={styles.brand}>Agent Tick</Text>
+        <Text style={styles.detailTitle}>Sign in to Agent Tick</Text>
+        <Text style={styles.bodyText}>
+          The mobile app signs in to Agent Tick Cloud by default. Use a custom server only when you self-host Agent Tick.
+        </Text>
+        <Text style={styles.errorText}>{error}</Text>
+        {customError ? <Text style={styles.errorText}>{customError}</Text> : null}
+        <Pressable disabled={submitting} onPress={() => void retryHosted()} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>{submitting ? "Checking…" : "Retry Cloud Sign-in"}</Text>
+        </Pressable>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Self-hosted server URL</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            inputMode="url"
+            onChangeText={setCustomServerURL}
+            placeholder="http://192.168.1.20:8787"
+            style={styles.input}
+            value={customServerURL}
+          />
+          <Pressable disabled={submitting} onPress={() => void useSelfHostedServer()} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonText}>Use Self-hosted Server</Text>
+          </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -1672,6 +1752,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 48,
     paddingHorizontal: 12,
+  },
+  hostedOnboarding: {
+    gap: 14,
+    padding: 24,
+  },
+  fieldGroup: {
+    gap: 8,
+    marginTop: 12,
+  },
+  label: {
+    color: "#545044",
+    fontSize: 13,
+    fontWeight: "800",
+    textTransform: "uppercase",
   },
   header: {
     alignItems: "center",

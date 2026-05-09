@@ -1,9 +1,9 @@
-import { clerkTokenCacheKey, fetchRuntimeAuthConfig, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeServerURL } from "./mobileAuth";
+import { clerkTokenCacheKey, fetchRuntimeAuthConfig, hostedServerURL, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeServerURL } from "./mobileAuth";
 
 describe("mobile auth config", () => {
   it("normalizes server URLs", () => {
     expect(normalizeServerURL(" https://tick.example.com/// ")).toBe("https://tick.example.com");
-    expect(normalizeServerURL(" ")).toBe("http://localhost:8787");
+    expect(normalizeServerURL(" ")).toBe(hostedServerURL);
   });
 
   it("namespaces mobile session state by normalized server URL", () => {

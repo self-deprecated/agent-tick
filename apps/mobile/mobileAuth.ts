@@ -1,5 +1,6 @@
 export type MobileAuthProvider = "local" | "clerk";
 
+export const hostedServerURL = "https://agenttick.sh";
 export const serverURLStorageKey = "agent-tick.serverURL";
 
 export type RuntimeAuthConfig = {
@@ -26,7 +27,7 @@ export async function fetchRuntimeAuthConfig(serverURL: string, fetchImpl: typeo
 
 export function normalizeServerURL(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
-  return trimmed || "http://localhost:8787";
+  return trimmed || hostedServerURL;
 }
 
 export function mobileSessionStorageKeys(serverURL: string) {
