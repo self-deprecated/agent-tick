@@ -803,12 +803,18 @@
 					<button onclick={signOut}>Sign out</button>
 				</div>
 			{:else}
-				<div>
+				<div class="auth-copy" data-testid="account-entry">
 					<p class="eyebrow">Agent Tick</p>
-					<h2>Sign in to start approving agent actions</h2>
-					<p class="subtle">Create an account, connect your first agent, then use the mobile app for quick approvals.</p>
+					<h2>Sign in or create account</h2>
+					<p class="subtle">Create your account first. Then Agent Tick will guide you through one agent token, one CLI setup command, and the mobile app.</p>
+					<p class="subtle">Approvals, rules, and team settings stay hidden until there is something real to configure.</p>
 				</div>
-				<div class="stack">
+				<div class="clerk-card stack" aria-label="Clerk account entry">
+					<p class="eyebrow">Secured by Clerk</p>
+					<button class="provider-button" onclick={() => void signInWithClerk()}>Continue with GitHub</button>
+					<button class="provider-button" onclick={() => void signInWithClerk()}>Continue with Google</button>
+					<button class="provider-button" onclick={() => void signInWithClerk()}>Continue with Apple</button>
+					<div class="divider">or continue with email</div>
 					<button onclick={() => void signInWithClerk()}>Sign in or create account</button>
 				</div>
 			{/if}
@@ -1414,6 +1420,52 @@
 		border-color: rgba(37, 99, 235, 0.22);
 	}
 
+	.welcome-card {
+		position: relative;
+		overflow: hidden;
+		background:
+			linear-gradient(90deg, rgba(244, 63, 94, 0.08), rgba(124, 58, 237, 0.08), rgba(6, 182, 212, 0.08)) top / 100% 8px no-repeat,
+			rgba(255, 255, 255, 0.94);
+	}
+
+	.auth-copy {
+		max-width: 34rem;
+	}
+
+	.clerk-card {
+		min-width: min(100%, 340px);
+		padding: 18px;
+		border: 1px solid #e5e7eb;
+		border-radius: 22px;
+		background: rgba(255, 255, 255, 0.86);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+	}
+
+	.provider-button {
+		width: 100%;
+		background: #ffffff;
+		color: #111827;
+		border: 1px solid #d8e2f3;
+		box-shadow: none;
+	}
+
+	.divider {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		color: #94a3b8;
+		font-size: 0.82rem;
+		font-weight: 800;
+	}
+
+	.divider::before,
+	.divider::after {
+		content: '';
+		height: 1px;
+		background: #e2e8f0;
+		flex: 1;
+	}
+
 	.customer-start {
 		background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.92));
 	}
@@ -1435,6 +1487,15 @@
 	.setup-step {
 		display: grid;
 		gap: 8px;
+	}
+
+	.setup-step.is-complete {
+		border-color: #bbf7d0;
+		background: #f0fdf4;
+	}
+
+	.setup-step.is-complete strong {
+		color: #166534;
 	}
 
 	.setup-step strong,
