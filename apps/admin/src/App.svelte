@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import {
 		AgentTickApiError,
 		AgentTickClient,
@@ -79,7 +79,6 @@
 	let error = $state('');
 	let clerk = $state<ClerkJS | undefined>();
 	let clerkSignedIn = $state(false);
-	let signInElement = $state<HTMLDivElement | undefined>();
 	let eventSource: EventSource | undefined;
 	let eventStreamOrganizationId = '';
 	let eventStreamRefreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -199,10 +198,7 @@
 				})();
 			}
 		});
-		await tick();
-		if (!nextClerk.isSignedIn && signInElement) {
-			nextClerk.mountSignIn(signInElement);
-		} else if (nextClerk.isSignedIn) {
+		if (nextClerk.isSignedIn) {
 			await refreshWorkspace();
 			await maybeAcceptInviteAfterSignIn();
 		}
@@ -228,8 +224,15 @@
 		selectedOrganizationId = '';
 		createdCredential = undefined;
 		clerkSignedIn = false;
-		await tick();
-		if (clerk && signInElement) clerk.mountSignIn(signInElement);
+	}
+
+	async function signInWithClerk(): Promise<void> {
+		if (!clerk) return;
+		await clerk.redirectToSignIn({
+			redirectUrl: window.location.href,
+			signInFallbackRedirectUrl: window.location.href,
+			signUpFallbackRedirectUrl: window.location.href
+		});
 	}
 
 	async function refreshWorkspace(): Promise<void> {
@@ -723,8 +726,8 @@
 						<p class="subtle">Signed in with Clerk.</p>
 						<button onclick={signOut}>Sign out</button>
 					{:else}
-						<p class="warning">Sign in with Clerk to manage Agent Tick approvals.</p>
-						<div class="clerk-card" bind:this={signInElement}></div>
+						<p class="warning">Sign in to Agent Tick to manage approvals.</p>
+						<button onclick={() => void signInWithClerk()}>Sign in to Agent Tick</button>
 					{/if}
 				</div>
 			{/if}
