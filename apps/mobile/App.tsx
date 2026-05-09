@@ -905,6 +905,15 @@ function AgentTickApp({
     const previousServerURL = normalizeServerURL(serverURL);
     const nextServerURL = normalizeServerURL(value);
     if (previousServerURL !== nextServerURL) {
+      if (deviceID) {
+        void bestEffortUnregisterDevice({
+          activeDeviceID: deviceID,
+          activeServerURL: previousServerURL,
+          activeToken: token,
+          authProvider: runtimeAuthConfig?.authProvider,
+        });
+      }
+      void clearStoredSessionForServer(previousServerURL);
       setLoadedSessionServerURL("");
       setDeviceID("");
       setToken("");
@@ -916,7 +925,7 @@ function AgentTickApp({
       setSelectedID(null);
       setConnectionStatus("checking");
     }
-    setServerURL(value);
+    setServerURL(nextServerURL);
   }, [bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
 
   const handlePairingScan = async (result: BarcodeScanningResult) => {
