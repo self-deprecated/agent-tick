@@ -249,6 +249,17 @@ export const CreatePolicySchema = z.object({
 });
 export type CreatePolicy = z.input<typeof CreatePolicySchema>;
 
+export const UpdatePolicySchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  projectId: z.string().nullable().optional(),
+  teamId: z.string().nullable().optional(),
+  requiredApprovals: z.number().int().min(1).max(10).optional(),
+  enabled: z.boolean().optional(),
+  archived: z.boolean().optional()
+});
+export type UpdatePolicy = z.input<typeof UpdatePolicySchema>;
+
 export const MeResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email().optional(),

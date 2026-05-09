@@ -23,6 +23,13 @@ test('team-scoped approval rule is stored and controls responder eligibility', a
   expect(policyResponse.ok()).toBeTruthy();
   const policy = await policyResponse.json() as { policyId: string };
 
+  const updatedPolicyResponse = await request.patch(`${baseURL}/v1/policies/${policy.policyId}`, {
+    headers: authHeaders(owner, org.organizationId),
+    data: { name: `Edited production rule ${stamp}`, requiredApprovals: 1, enabled: true }
+  });
+  expect(updatedPolicyResponse.ok()).toBeTruthy();
+  expect(await updatedPolicyResponse.json()).toMatchObject({ name: `Edited production rule ${stamp}`, requiredApprovals: 1 });
+
   const tokenResponse = await request.post(`${baseURL}/v1/agent-tokens`, {
     headers: authHeaders(owner, org.organizationId),
     data: { name: `Scoped Agent ${stamp}`, teamId: team.teamId, defaultApprovalPolicy: policy.policyId }
@@ -45,6 +52,6 @@ test('team-scoped approval rule is stored and controls responder eligibility', a
   expect(approved.ok()).toBeTruthy();
 
   const state = await readTestState(request, baseURL);
-  expect(rowsFor(state.policies, 'policy_id', policy.policyId)).toHaveLength(1);
+  expect(rowsFor(state.policies, 'policy_id', policy.policyId)[0]).toMatchObject({ name: `Edited production rule ${stamp}` });
   expect(rowsFor(state.approvals, 'title', `Scoped approval ${stamp}`)[0]).toMatchObject({ status: 'responded' });
 });

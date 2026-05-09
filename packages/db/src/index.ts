@@ -249,6 +249,19 @@ export interface CreatePolicyInput {
   enabled?: boolean;
 }
 
+export interface UpdatePolicyInput {
+  organizationId: string;
+  userId: string;
+  policyId: string;
+  name?: string;
+  description?: string;
+  projectId?: string | null;
+  teamId?: string | null;
+  requiredApprovals?: number;
+  enabled?: boolean;
+  archived?: boolean;
+}
+
 export interface DeviceRegistrationInput {
   userId: string;
   organizationId: string;
@@ -1047,6 +1060,31 @@ export class AgentTickStore {
   getPolicy(policyId: string): PolicyRecord | null {
     const row = this.db.prepare('SELECT * FROM policies WHERE policy_id = ?').get(policyId) as PolicyRow | undefined;
     return row ? mapPolicyRow(row) : null;
+  }
+
+  updatePolicy(input: UpdatePolicyInput, now = new Date().toISOString()): PolicyRecord | null {
+    const existing = this.db
+      .prepare('SELECT * FROM policies WHERE policy_id = ? AND organization_id = ?')
+      .get(input.policyId, input.organizationId) as PolicyRow | undefined;
+    if (!existing) return null;
+    if (input.projectId && !this.projectBelongsToOrganization(input.projectId, input.organizationId)) {
+      throw httpError(400, 'bad_request', 'Project is not in the selected organization');
+    }
+    if (input.teamId && !this.teamBelongsToOrganization(input.teamId, input.organizationId)) {
+      throw httpError(400, 'bad_request', 'Team is not in the selected organization');
+    }
+    const name = input.name?.trim() || existing.name;
+    const description = input.description === undefined ? existing.description : input.description.trim() || null;
+    const projectId = input.projectId === undefined ? existing.project_id : input.projectId || null;
+    const teamId = input.teamId === undefined ? existing.team_id : input.teamId || null;
+    const requiredApprovals = input.requiredApprovals === undefined ? existing.required_approvals : Math.min(Math.max(Math.trunc(input.requiredApprovals), 1), 10);
+    const enabled = input.enabled === undefined ? existing.enabled : input.enabled ? 1 : 0;
+    const archivedAt = input.archived === undefined ? existing.archived_at : input.archived ? (existing.archived_at ?? now) : null;
+    this.db
+      .prepare('UPDATE policies SET name = ?, description = ?, project_id = ?, team_id = ?, required_approvals = ?, enabled = ?, archived_at = ?, updated_at = ? WHERE policy_id = ? AND organization_id = ?')
+      .run(name, description, projectId, teamId, requiredApprovals, enabled, archivedAt, now, input.policyId, input.organizationId);
+    this.writeAuditEvent(input.organizationId, input.userId, 'policy.updated', input.policyId, { name, requiredApprovals, projectId, teamId, enabled: Boolean(enabled), archived: Boolean(archivedAt) }, now);
+    return this.getPolicy(input.policyId) ?? missingPolicy(input.policyId);
   }
 
   projectBelongsToOrganization(projectId: string, organizationId: string): boolean {

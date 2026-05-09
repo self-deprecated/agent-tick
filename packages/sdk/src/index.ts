@@ -41,6 +41,7 @@ import {
   TeamMembershipSchema,
   TeamRecordSchema,
   UpdateDevicePushTokenSchema,
+  UpdatePolicySchema,
   UpsertTeamMemberSchema,
   WaitApprovalResponseSchema,
   type AcceptInviteResponse,
@@ -86,6 +87,7 @@ import {
   type TeamMembership,
   type TeamRecord,
   type UpdateDevicePushToken,
+  type UpdatePolicy,
   type UpsertTeamMember,
   type WaitApprovalResponse
 } from '@agent-tick/shared';
@@ -313,6 +315,12 @@ export class AgentTickClient {
     });
   }
 
+  updatePolicy(policyId: string, input: UpdatePolicy): Promise<PolicyRecord> {
+    return this.#request('PATCH', `/v1/policies/${encodeURIComponent(policyId)}`, PolicyRecordSchema, {
+      body: UpdatePolicySchema.parse(input)
+    });
+  }
+
   createEventTicket(): Promise<EventTicketResponse> {
     return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
   }
@@ -457,6 +465,7 @@ export type {
   TeamMembership,
   TeamRecord,
   UpdateDevicePushToken,
+  UpdatePolicy,
   UpsertTeamMember,
   WaitApprovalResponse
 };
