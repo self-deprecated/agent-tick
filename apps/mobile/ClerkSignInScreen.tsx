@@ -1,4 +1,5 @@
 import { useSignIn, useSignUp, useSSO, type StartSSOFlowParams } from "@clerk/expo";
+import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
   Pressable,
@@ -17,10 +18,13 @@ type SSOProvider = {
   strategy: OAuthSSOStrategy;
 };
 
+WebBrowser.maybeCompleteAuthSession();
+
+export const ssoRedirectUrl = "agenttick://sso-callback";
+
 export const ssoProviders = [
   { label: "Continue with Google", strategy: "oauth_google" },
   { label: "Continue with GitHub", strategy: "oauth_github" },
-  { label: "Continue with Microsoft", strategy: "oauth_microsoft" },
   { label: "Continue with Apple", strategy: "oauth_apple" },
 ] satisfies SSOProvider[];
 
@@ -39,7 +43,7 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
 
   const clerkFetching = mode === "signIn" ? signInFetchStatus === "fetching" : signUpFetchStatus === "fetching";
   const canSubmit = !clerkFetching && !submitting && !ssoSubmitting;
-  const title = mode === "signIn" ? "Sign in with Clerk" : "Create an account";
+  const title = mode === "signIn" ? "Sign in to Agent Tick" : "Create an Agent Tick account";
   const submitLabel = submitting
     ? pendingVerification
       ? "Verifying…"
@@ -64,14 +68,14 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
     setError(null);
     setSsoSubmitting(strategy);
     try {
-      const result = await startSSOFlow({ strategy });
+      const result = await startSSOFlow({ strategy, redirectUrl: ssoRedirectUrl });
       if (result.createdSessionId && result.setActive) {
         await result.setActive({ session: result.createdSessionId });
         return;
       }
-      setError(ssoResultMessage(result.authSessionResult?.type));
+      setError(ssoResultMessage(result, ssoRedirectUrl));
     } catch (err) {
-      setError(clerkAuthErrorMessage(err, "Could not continue with the selected Clerk provider"));
+      setError(clerkAuthErrorMessage(err, "Could not continue with the selected sign-in provider"));
     } finally {
       setSsoSubmitting(null);
     }
@@ -119,7 +123,7 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
       if (sendResult.error) throw sendResult.error;
       setPendingVerification(true);
     } catch (err) {
-      setError(clerkAuthErrorMessage(err, mode === "signIn" ? "Could not sign in with Clerk" : "Could not create a Clerk account"));
+      setError(clerkAuthErrorMessage(err, mode === "signIn" ? "Could not sign in to Agent Tick" : "Could not create an Agent Tick account"));
     } finally {
       setSubmitting(false);
     }
@@ -207,13 +211,20 @@ export function clerkAuthErrorMessage(err: unknown, fallback: string): string {
 }
 
 function nextClerkStepMessage(flow: "sign-in" | "sign-up", status: string | null): string {
-  return `Additional Clerk ${flow} step required: ${status ?? "unknown"}`;
+  return `Additional ${flow} step required: ${status ?? "unknown"}`;
 }
 
-function ssoResultMessage(resultType: string | undefined): string {
-  if (resultType === "cancel" || resultType === "dismiss") return "Clerk provider sign-in was canceled.";
+function ssoResultMessage(
+  result: Awaited<ReturnType<ReturnType<typeof useSSO>["startSSOFlow"]>>,
+  redirectUrl: string,
+): string {
+  const resultType = result.authSessionResult?.type;
+  if (resultType === "cancel" || resultType === "dismiss") return "Provider sign-in was canceled.";
   if (resultType === "locked") return "Another sign-in window is already open.";
-  return "Additional Clerk provider step required.";
+  const signInStatus = result.signIn?.status ?? "unknown";
+  const signUpStatus = result.signUp?.status ?? "unknown";
+  const verificationStatus = result.signIn?.firstFactorVerification?.status ?? "unknown";
+  return `Provider sign-in did not create a session. Redirect: ${redirectUrl}. Browser result: ${resultType ?? "none"}. Sign-in: ${signInStatus}. Sign-up: ${signUpStatus}. Verification: ${verificationStatus}.`;
 }
 
 const styles = StyleSheet.create({

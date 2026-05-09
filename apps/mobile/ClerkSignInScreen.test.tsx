@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { ClerkSignInScreen, clerkAuthErrorMessage, ssoProviders } from "./ClerkSignInScreen";
+import { ClerkSignInScreen, clerkAuthErrorMessage, ssoProviders, ssoRedirectUrl } from "./ClerkSignInScreen";
 
 const mockSignInCreate = jest.fn();
 const mockSignInFinalize = jest.fn();
@@ -79,14 +79,13 @@ describe("ClerkSignInScreen", () => {
     fireEvent.press(screen.getByText("Continue with Google"));
 
     await waitFor(() => expect(mockSSOSetActive).toHaveBeenCalledWith({ session: "sess_sso" }));
-    expect(mockStartSSOFlow).toHaveBeenCalledWith({ strategy: "oauth_google" });
+    expect(mockStartSSOFlow).toHaveBeenCalledWith({ strategy: "oauth_google", redirectUrl: ssoRedirectUrl });
   });
 
   it("offers supported mobile OAuth providers without enterprise identifier requirements", async () => {
     expect(ssoProviders.map((provider) => provider.strategy)).toEqual([
       "oauth_google",
       "oauth_github",
-      "oauth_microsoft",
       "oauth_apple",
     ]);
     expect(ssoProviders.map((provider) => provider.strategy as string)).not.toContain("enterprise_sso");
@@ -100,7 +99,7 @@ describe("ClerkSignInScreen", () => {
     for (const provider of ssoProviders) {
       const view = render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
       fireEvent.press(screen.getByText(provider.label));
-      await waitFor(() => expect(mockStartSSOFlow).toHaveBeenLastCalledWith({ strategy: provider.strategy }));
+      await waitFor(() => expect(mockStartSSOFlow).toHaveBeenLastCalledWith({ strategy: provider.strategy, redirectUrl: ssoRedirectUrl }));
       view.unmount();
     }
   });
@@ -114,7 +113,7 @@ describe("ClerkSignInScreen", () => {
     render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
     fireEvent.press(screen.getByText("Continue with GitHub"));
 
-    await waitFor(() => expect(screen.getByText("Clerk provider sign-in was canceled.")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Provider sign-in was canceled.")).toBeTruthy());
   });
 
   it("supports email-code verification when creating a Clerk account", async () => {
