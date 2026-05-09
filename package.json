@@ -8,6 +8,7 @@
     "typecheck": "corepack pnpm -r --sort typecheck",
     "test": "corepack pnpm -r --sort test",
     "test:e2e": "playwright test",
+    "test:e2e:flows": "node scripts/run-product-flow-e2e.mjs",
     "dev:server": "corepack pnpm --filter @agent-tick/server dev",
     "dev:admin": "corepack pnpm --filter agent-tick-admin dev"
   },

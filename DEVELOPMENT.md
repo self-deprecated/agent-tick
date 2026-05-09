@@ -31,6 +31,16 @@ corepack pnpm test
 
 The root test command runs server/package/admin tests and the mobile Jest suite through the pnpm workspace.
 
+## Product-flow E2E tests
+
+The product-flow E2E suite runs against a temporary Clerk-mode server with deterministic test auth and a temporary SQLite database:
+
+```sh
+corepack pnpm test:e2e:flows
+```
+
+The script builds the admin and server, starts the server with `AGENT_TICK_TEST_AUTH=1`, waits for `/healthz`, runs `tests/e2e/flows`, then removes the temporary database. If Playwright browsers are not installed, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to a local Chromium binary or run `corepack pnpm exec playwright install`.
+
 ## Server
 
 Run the TypeScript server locally:
