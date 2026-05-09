@@ -41,8 +41,10 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
   const [ssoSubmitting, setSsoSubmitting] = useState<OAuthSSOStrategy | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const clerkLoaded = mode === "signIn" ? Boolean(signIn) : Boolean(signUp);
+  const ssoLoaded = Boolean(signIn && signUp);
   const clerkFetching = mode === "signIn" ? signInFetchStatus === "fetching" : signUpFetchStatus === "fetching";
-  const canSubmit = !clerkFetching && !submitting && !ssoSubmitting;
+  const canSubmit = clerkLoaded && !clerkFetching && !submitting && !ssoSubmitting;
   const title = mode === "signIn" ? "Sign in to Agent Tick" : "Create an Agent Tick account";
   const submitLabel = submitting
     ? pendingVerification
@@ -65,6 +67,10 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
 
   const submitSSO = async (strategy: OAuthSSOStrategy) => {
     if (submitting || ssoSubmitting) return;
+    if (!ssoLoaded) {
+      setError("Sign-in is still loading. Try again in a moment.");
+      return;
+    }
     setError(null);
     setSsoSubmitting(strategy);
     try {
@@ -172,9 +178,9 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
               key={provider.strategy}
               style={styles.ssoButton}
               onPress={() => void submitSSO(provider.strategy)}
-              disabled={Boolean(submitting || ssoSubmitting)}
+              disabled={Boolean(!ssoLoaded || submitting || ssoSubmitting)}
             >
-              <Text style={styles.ssoButtonText}>{ssoSubmitting === provider.strategy ? "Opening…" : provider.label}</Text>
+              <Text style={styles.ssoButtonText}>{ssoSubmitting === provider.strategy ? "Opening…" : !ssoLoaded ? "Loading sign-in…" : provider.label}</Text>
             </Pressable>
           ))}
         </View>

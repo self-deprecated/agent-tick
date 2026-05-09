@@ -30,11 +30,13 @@ jest.mock("@clerk/expo", () => ({
   useSignIn: () => ({
     errors: null,
     fetchStatus: "idle",
+    isLoaded: true,
     signIn: mockSignInResource,
   }),
   useSignUp: () => ({
     errors: null,
     fetchStatus: "idle",
+    isLoaded: true,
     signUp: mockSignUpResource,
   }),
   useSSO: () => ({
