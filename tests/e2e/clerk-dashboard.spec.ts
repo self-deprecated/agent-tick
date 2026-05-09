@@ -1,11 +1,8 @@
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const email = process.env.AGENT_TICK_E2E_CLERK_EMAIL;
 const password = process.env.AGENT_TICK_E2E_CLERK_PASSWORD;
-const inviteeEmail = process.env.AGENT_TICK_E2E_CLERK_INVITEE_EMAIL;
-const inviteePassword = process.env.AGENT_TICK_E2E_CLERK_INVITEE_PASSWORD;
 const hasClerkCredentials = Boolean(email && password);
-const hasInviteeCredentials = Boolean(inviteeEmail && inviteePassword);
 
 test('Clerk sign-in lands on a polished solo workflow', async ({ page, baseURL }) => {
 	test.skip(!hasClerkCredentials, 'Set AGENT_TICK_E2E_CLERK_EMAIL/PASSWORD for Clerk dashboard smoke tests');
@@ -64,46 +61,14 @@ test('solo dashboard can connect an agent and approve a request', async ({ page,
 	await expect(agentTokenCard.getByText(/revoked/i)).toBeVisible();
 });
 
-test('team administration is opt-in from the hosted solo dashboard', async ({ page, baseURL }) => {
+test('hosted solo dashboard locks collaboration behind upgrade', async ({ page, baseURL }) => {
 	test.skip(!hasClerkCredentials, 'Set AGENT_TICK_E2E_CLERK_EMAIL/PASSWORD for Clerk dashboard smoke tests');
 
 	await signIn(page, email!, password!, baseURL);
 	await expect(page.getByRole('heading', { name: 'Invites' })).toHaveCount(0);
-	await page.getByRole('button', { name: 'Team settings' }).click();
-	await expect(page.getByRole('heading', { name: 'Team workspace settings' })).toBeVisible();
-	await expect(page.getByRole('heading', { name: 'Invites' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Team settings' })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Upgrade for teams' })).toBeVisible();
 	await expect(page.getByText(/Need teams, projects, policies, or invites/)).toBeVisible();
-});
-
-test('Clerk invite acceptance creates a pending member that an admin can approve', async ({ browser, page, baseURL }) => {
-	test.skip(!hasClerkCredentials || !hasInviteeCredentials, 'Set owner and invitee Clerk credentials for invite E2E tests');
-
-	await signIn(page, email!, password!, baseURL);
-	await page.getByRole('button', { name: 'Team settings' }).click();
-	const stamp = Date.now();
-	const organizationName = await page.locator('#organization-select option:checked').innerText();
-
-	await page.getByLabel('Invite label').fill(`E2E Member Invite ${stamp}`);
-	await page.getByLabel('Invite email').fill(inviteeEmail!);
-	await page.getByRole('button', { name: 'Create invite' }).click();
-	const inviteURL = await page.locator('.token code').first().innerText();
-	const invitePath = new URL(inviteURL).pathname;
-
-	const inviteePage = await newSignedOutPage(browser);
-	await inviteePage.goto(invitePath, { waitUntil: 'networkidle' });
-	await expect(inviteePage.getByText(organizationName.replace(/ \(.+\)$/, ''))).toBeVisible();
-	await signIn(inviteePage, inviteeEmail!, inviteePassword!, baseURL);
-
-	await page.getByRole('button', { name: 'Refresh pending members' }).click();
-	const pendingMembersSection = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Pending members' }) });
-	const pendingMember = pendingMembersSection.locator('.item-card', { hasText: inviteeEmail! });
-	await expect(pendingMember).toBeVisible();
-	await pendingMember.getByRole('button', { name: 'Approve' }).click();
-	await expect(pendingMember).toHaveCount(0);
-
-	await inviteePage.goto('/', { waitUntil: 'domcontentloaded' });
-	await inviteePage.getByRole('button', { name: 'Team settings' }).click();
-	await expect(inviteePage.locator('#organization-select')).toContainText(organizationName.replace(/ \(.+\)$/, ''), { timeout: 30_000 });
 });
 
 async function signIn(page: Page, userEmail: string, userPassword: string, baseURL?: string): Promise<void> {
@@ -120,9 +85,4 @@ async function signIn(page: Page, userEmail: string, userPassword: string, baseU
 		await page.waitForURL((url) => url.host === host, { timeout: 60_000 });
 	}
 	await expect(page.getByRole('heading', { name: /you're signed in and ready/i })).toBeVisible({ timeout: 60_000 });
-}
-
-async function newSignedOutPage(browser: Browser): Promise<Page> {
-	const context = await browser.newContext();
-	return context.newPage();
 }

@@ -20,6 +20,13 @@ test('single mode dashboard works with an admin token', async ({ page, request, 
 	await expect(page.locator('.token code').filter({ hasText: /^pair_/ })).toBeVisible();
 
 	const stamp = Date.now();
+	await page.getByLabel('Invite label').fill(`Single Invite ${stamp}`);
+	await page.getByRole('button', { name: 'Create invite' }).click();
+	await expect(page.getByText('Invite created:')).toBeVisible();
+	const invitesSection = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Invites' }) });
+	const inviteCard = invitesSection.locator('.item-card', { hasText: `Single Invite ${stamp}` });
+	await expect(inviteCard).toBeVisible();
+
 	await page.getByLabel('Project name').fill(`Single Project ${stamp}`);
 	await page.getByRole('button', { name: 'Create project' }).click();
 	await expect(page.locator('strong', { hasText: `Single Project ${stamp}` })).toBeVisible();
@@ -55,4 +62,7 @@ test('single mode dashboard works with an admin token', async ({ page, request, 
 	await expect(approvalCard.getByRole('heading', { name: `Single approval ${stamp}` })).toBeVisible();
 	await approvalCard.getByRole('button', { name: 'Approve' }).click();
 	await expect(approvalCard.getByText('Response: approve')).toBeVisible();
+
+	await inviteCard.getByRole('button', { name: 'Revoke' }).click();
+	await expect(inviteCard.getByText(/revoked/i)).toBeVisible();
 });

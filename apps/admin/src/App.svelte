@@ -699,8 +699,12 @@
 		return Boolean(runtimeConfig && (runtimeConfig.authProvider !== 'clerk' || clerkSignedIn));
 	}
 
+	function hasCollaborationFeatures(): boolean {
+		return !isCustomerMode() || billingStatus?.plan !== 'solo';
+	}
+
 	function showWorkspaceAdmin(): boolean {
-		return hasDashboardAccess() && (!isCustomerMode() || showAdvancedWorkspace);
+		return hasDashboardAccess() && hasCollaborationFeatures() && (!isCustomerMode() || showAdvancedWorkspace);
 	}
 </script>
 
@@ -738,7 +742,11 @@
 					<p class="subtle">This dashboard is focused on your personal approval workflow. Team administration is available when you upgrade or self-host.</p>
 				</div>
 				<div class="actions">
-					<button class="secondary" onclick={() => { showAdvancedWorkspace = !showAdvancedWorkspace; }}>{showAdvancedWorkspace ? 'Hide team settings' : 'Team settings'}</button>
+					{#if hasCollaborationFeatures()}
+						<button class="secondary" onclick={() => { showAdvancedWorkspace = !showAdvancedWorkspace; }}>{showAdvancedWorkspace ? 'Hide team settings' : 'Team settings'}</button>
+					{:else}
+						<a class="button-link secondary-link" href="https://agenttick.sh" target="_blank" rel="noreferrer">Upgrade for teams</a>
+					{/if}
 					<button onclick={signOut}>Sign out</button>
 				</div>
 			{:else}
@@ -1295,6 +1303,12 @@
 		font-weight: 800;
 		cursor: pointer;
 		box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+	}
+
+	.secondary-link {
+		background: #ffffff;
+		color: #1d4ed8;
+		border: 1px solid #d8e2f3;
 	}
 
 	button:disabled {

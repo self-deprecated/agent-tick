@@ -14,7 +14,7 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
     requireOrganizationAdmin(auth);
     return {
       organizationId: auth.organizationId,
-      plan: 'self-hosted',
+      plan: config.mode === 'clerk' ? 'solo' : 'self-hosted',
       limits: {
         ...(config.maxActiveMembers ? { seats: config.maxActiveMembers } : {})
       },
