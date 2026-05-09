@@ -23,7 +23,9 @@ RUN pnpm --filter @agent-tick/shared build \
   && pnpm --filter @agent-tick/server build \
   && pnpm --filter agent-tick-admin build \
   && pnpm --filter @agent-tick/server deploy --prod --legacy /app-runtime \
-  && rm -rf /app-runtime/src /app-runtime/test
+  && rm -rf /app-runtime/src /app-runtime/test /app-runtime/public/admin \
+  && mkdir -p /app-runtime/public \
+  && cp -R apps/server/public/admin /app-runtime/public/admin
 
 FROM docker.io/library/node:24-bookworm-slim AS runtime
 
