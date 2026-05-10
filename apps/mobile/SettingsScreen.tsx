@@ -53,13 +53,18 @@ export function SettingsScreen({
   onCheck,
   onForgetDevice,
   onPairDevice,
+  onDiagnosticsEnabledChange,
   onRegisterPush,
   onRequestNotifications,
+  onSendDiagnosticSnapshot,
   onSendTestNotification,
   onScanPairing,
   onUseCloud,
   pairingCode,
   pushStatus,
+  diagnosticsEnabled = false,
+  diagnosticsEventCount = 0,
+  diagnosticsLastSentAt,
   deviceID,
   organizations = [],
   selectedOrganizationID = "",
@@ -80,13 +85,18 @@ export function SettingsScreen({
   onCheck: () => void;
   onForgetDevice: () => void;
   onPairDevice: () => void;
+  onDiagnosticsEnabledChange?: (enabled: boolean) => void;
   onRegisterPush: () => void;
   onRequestNotifications: () => void;
+  onSendDiagnosticSnapshot?: () => void;
   onSendTestNotification: () => void;
   onScanPairing: () => void;
   onUseCloud?: () => void;
   pairingCode: string;
   pushStatus: PushStatus;
+  diagnosticsEnabled?: boolean;
+  diagnosticsEventCount?: number;
+  diagnosticsLastSentAt?: string;
   deviceID: string;
   organizations?: OrganizationMembership[];
   selectedOrganizationID?: string;
@@ -98,12 +108,15 @@ export function SettingsScreen({
   token: string;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [diagnosticsRevealed, setDiagnosticsRevealed] = useState(diagnosticsEnabled);
   const isClerkMode = authProvider === "clerk";
   const isPaired = isClerkMode || !!deviceID;
 
   const notificationsSection = (
     <View style={styles.settingsSection}>
-      <Text style={styles.label}>Notifications</Text>
+      <Pressable onLongPress={() => setDiagnosticsRevealed(true)}>
+        <Text style={styles.label}>Notifications</Text>
+      </Pressable>
       <Text style={styles.notificationStatus}>
         {notificationStatus === "granted"
           ? "On"
@@ -133,6 +146,24 @@ export function SettingsScreen({
       <Pressable onPress={onRegisterPush} style={styles.secondaryActionButton}>
         <Text style={styles.secondaryActionText}>Register Push</Text>
       </Pressable>
+      {diagnosticsRevealed ? (
+        <View style={styles.diagnosticsPanel}>
+          <Text style={styles.sectionHeading}>Diagnostics</Text>
+          <Text style={styles.pairingHint}>
+            Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets.
+          </Text>
+          <Text style={styles.notificationStatus}>Status: {diagnosticsEnabled ? "Enabled" : "Disabled"}</Text>
+          <Text style={styles.pairingHint}>Buffered events: {diagnosticsEventCount}{diagnosticsLastSentAt ? ` · last sent ${diagnosticsLastSentAt}` : ""}</Text>
+          <View style={styles.notificationActions}>
+            <Pressable onPress={() => onDiagnosticsEnabledChange?.(!diagnosticsEnabled)} style={styles.secondaryActionButton}>
+              <Text style={styles.secondaryActionText}>{diagnosticsEnabled ? "Disable" : "Enable"}</Text>
+            </Pressable>
+            <Pressable onPress={onSendDiagnosticSnapshot} style={styles.secondaryActionButton}>
+              <Text style={styles.secondaryActionText}>Send Snapshot</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -490,6 +521,12 @@ const styles = StyleSheet.create({
     minHeight: 46,
     justifyContent: "center",
     paddingHorizontal: 12,
+  },
+  diagnosticsPanel: {
+    borderTopColor: "#e3dbc9",
+    borderTopWidth: 1,
+    gap: 10,
+    paddingTop: 12,
   },
   secondaryActionText: {
     color: "#202124",

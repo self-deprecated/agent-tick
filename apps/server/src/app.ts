@@ -12,6 +12,7 @@ import { registerDeviceRoutes } from './routes/devices.js';
 import { registerEventRoutes } from './routes/events.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerMeRoutes } from './routes/me.js';
+import { registerMobileDiagnosticsRoutes } from './routes/mobileDiagnostics.js';
 import { registerMobileSessionRoutes } from './routes/mobileSessions.js';
 import { registerOrganizationRoutes } from './routes/organizations.js';
 import { registerOnboardingRoutes } from './routes/onboarding.js';
@@ -63,6 +64,7 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
 
   await registerMeRoutes(app, { config, store });
   await registerMobileSessionRoutes(app, { config, store });
+  await registerMobileDiagnosticsRoutes(app, { config, store });
   await registerOrganizationRoutes(app, { config, store });
   await registerInviteRoutes(app, { config, store, inviteEmailSender });
   await registerAgentTokenRoutes(app, { config, store });
@@ -155,6 +157,7 @@ function rateLimitRule(method: string, routePath: string, config: ServerConfig):
   if (method === 'POST' && routePath === '/v1/invites/:token/accept') return rule(30);
   if (method === 'POST' && routePath === '/v1/devices/pair') return rule(30);
   if (method === 'POST' && routePath === '/v1/auth/mobile-session') return rule(60);
+  if (method === 'POST' && routePath === '/v1/mobile-diagnostics') return rule(120);
   if (method === 'POST' && routePath === '/v1/pairing-tokens') return rule(60);
   if (method === 'POST' && routePath === '/v1/events/ticket') return rule(60);
   return null;

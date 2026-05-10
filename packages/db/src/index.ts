@@ -238,6 +238,21 @@ export interface PolicyRecord {
   archivedAt: string | undefined;
 }
 
+export interface MobileDiagnosticInput {
+  organizationId: string;
+  userId: string;
+  deviceId?: string;
+  level: string;
+  area: string;
+  message: string;
+  metadata?: unknown;
+  createdAt: string;
+}
+
+export interface MobileDiagnosticRecord extends MobileDiagnosticInput {
+  diagnosticId: string;
+}
+
 export interface CreatePolicyInput {
   organizationId: string;
   userId: string;
@@ -404,6 +419,7 @@ export class AgentTickStore {
     ensureColumn(this.db, 'organization_invites', 'email_last_sent_at', 'ALTER TABLE organization_invites ADD COLUMN email_last_sent_at TEXT');
     ensureColumn(this.db, 'organization_invites', 'email_last_error', 'ALTER TABLE organization_invites ADD COLUMN email_last_error TEXT');
     ensureColumn(this.db, 'organization_invite_acceptances', 'requested_team_ids_json', "ALTER TABLE organization_invite_acceptances ADD COLUMN requested_team_ids_json TEXT NOT NULL DEFAULT '[]'");
+    this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
   }
@@ -1460,6 +1476,38 @@ export class AgentTickStore {
     return device;
   }
 
+  recordMobileDiagnostics(events: MobileDiagnosticInput[]): number {
+    if (events.length === 0) return 0;
+    const insert = this.db.prepare(`
+      INSERT INTO mobile_diagnostics(diagnostic_id, organization_id, user_id, device_id, level, area, message, metadata_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const tx = this.db.transaction((items: MobileDiagnosticInput[]) => {
+      for (const event of items) {
+        insert.run(
+          newID('diag'),
+          event.organizationId,
+          event.userId,
+          event.deviceId ?? null,
+          event.level,
+          event.area,
+          event.message,
+          event.metadata === undefined ? null : JSON.stringify(event.metadata),
+          event.createdAt
+        );
+      }
+      return items.length;
+    });
+    return tx(events) as number;
+  }
+
+  listMobileDiagnostics(organizationId: string, limit = 100): MobileDiagnosticRecord[] {
+    const rows = this.db
+      .prepare('SELECT * FROM mobile_diagnostics WHERE organization_id = ? ORDER BY created_at DESC LIMIT ?')
+      .all(organizationId, Math.min(Math.max(Math.trunc(limit), 1), 500)) as MobileDiagnosticRow[];
+    return rows.map(mapMobileDiagnosticRow);
+  }
+
   createPairingToken(userId: string, organizationId: string, now = new Date().toISOString(), ttlSeconds = 10 * 60): PairingTokenRecord {
     const token = `pair_${randomToken()}`;
     const expiresAt = new Date(new Date(now).getTime() + ttlSeconds * 1000).toISOString();
@@ -1785,6 +1833,20 @@ function mapAuditEventRow(row: AuditEventRow): AuditEventRecord {
     eventType: row.event_type,
     targetId: row.target_id,
     payload: parseJSON<unknown>(row.payload_json, {}),
+    createdAt: row.created_at
+  };
+}
+
+function mapMobileDiagnosticRow(row: MobileDiagnosticRow): MobileDiagnosticRecord {
+  return {
+    diagnosticId: row.diagnostic_id,
+    organizationId: row.organization_id,
+    userId: row.user_id,
+    ...(row.device_id ? { deviceId: row.device_id } : {}),
+    level: row.level,
+    area: row.area,
+    message: row.message,
+    ...(row.metadata_json ? { metadata: parseJSON<unknown>(row.metadata_json, undefined) } : {}),
     createdAt: row.created_at
   };
 }
@@ -2154,6 +2216,18 @@ interface ApprovalWaiterTokenRow {
   last_used_at: string | null;
 }
 
+interface MobileDiagnosticRow {
+  diagnostic_id: string;
+  organization_id: string;
+  user_id: string;
+  device_id: string | null;
+  level: string;
+  area: string;
+  message: string;
+  metadata_json: string | null;
+  created_at: string;
+}
+
 interface DeviceRow {
   device_id: string;
   user_id: string;
@@ -2504,4 +2578,20 @@ CREATE TABLE IF NOT EXISTS audit_events (
   payload_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );
+`;
+
+const MIGRATION_0002_MOBILE_DIAGNOSTICS = `
+CREATE TABLE IF NOT EXISTS mobile_diagnostics (
+  diagnostic_id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  device_id TEXT,
+  level TEXT NOT NULL,
+  area TEXT NOT NULL,
+  message TEXT NOT NULL,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS mobile_diagnostics_org_created_idx ON mobile_diagnostics(organization_id, created_at DESC);
 `;

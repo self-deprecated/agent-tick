@@ -11,7 +11,9 @@ const baseProps = {
   onForgetDevice: jest.fn(),
   onPairDevice: jest.fn(),
   onRegisterPush: jest.fn(),
+  onDiagnosticsEnabledChange: jest.fn(),
   onRequestNotifications: jest.fn(),
+  onSendDiagnosticSnapshot: jest.fn(),
   onSendTestNotification: jest.fn(),
   onScanPairing: jest.fn(),
   onUseCloud: jest.fn(),
@@ -119,6 +121,16 @@ describe("SettingsScreen — paired state", () => {
   it("shows Notifications section", () => {
     render(<SettingsScreen {...pairedProps} />);
     expect(screen.getByText("Notifications")).toBeTruthy();
+  });
+
+  it("reveals hidden diagnostics controls by long-pressing Notifications", () => {
+    const onDiagnosticsEnabledChange = jest.fn();
+    render(<SettingsScreen {...pairedProps} onDiagnosticsEnabledChange={onDiagnosticsEnabledChange} />);
+    expect(screen.queryByText("Diagnostics")).toBeNull();
+    fireEvent(screen.getByText("Notifications"), "longPress");
+    expect(screen.getByText("Diagnostics")).toBeTruthy();
+    fireEvent.press(screen.getAllByText("Enable").at(-1)!);
+    expect(onDiagnosticsEnabledChange).toHaveBeenCalledWith(true);
   });
 
   it("offers coarse availability controls with privacy copy", () => {

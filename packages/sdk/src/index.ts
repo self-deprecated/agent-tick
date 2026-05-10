@@ -11,6 +11,7 @@ import {
   BillingStatusSchema,
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
+  CreateMobileDiagnosticsSchema,
   CreateMobileSessionSchema,
   CreateApprovalResponseSchema,
   CreateOrganizationInviteSchema,
@@ -24,6 +25,7 @@ import {
   HeartbeatResponseSchema,
   InvitePreviewSchema,
   MeResponseSchema,
+  MobileDiagnosticsResponseSchema,
   MobileSessionResponseSchema,
   OrganizationInviteEmailResultSchema,
   OrganizationInviteRecordSchema,
@@ -59,6 +61,7 @@ import {
   type CreateAgentToken,
   type CreateApprovalRequest,
   type CreateApprovalResponse,
+  type CreateMobileDiagnostics,
   type CreateMobileSession,
   type CreateOrganization,
   type CreateOrganizationInvite,
@@ -74,6 +77,7 @@ import {
   type InviteEmailDelivery,
   type InvitePreview,
   type MeResponse,
+  type MobileDiagnosticsResponse,
   type MobileSessionResponse,
   type OrganizationInviteEmailResult,
   type OrganizationInviteRecord,
@@ -155,6 +159,12 @@ export class AgentTickClient {
     return this.#request('POST', '/v1/auth/mobile-session', MobileSessionResponseSchema, {
       body: CreateMobileSessionSchema.parse(input),
       includeOrganization: false
+    });
+  }
+
+  sendMobileDiagnostics(input: CreateMobileDiagnostics): Promise<MobileDiagnosticsResponse> {
+    return this.#request('POST', '/v1/mobile-diagnostics', MobileDiagnosticsResponseSchema, {
+      body: CreateMobileDiagnosticsSchema.parse(input)
     });
   }
 
@@ -446,6 +456,7 @@ export type {
   CreateAgentToken,
   CreateApprovalRequest,
   CreateApprovalResponse,
+  CreateMobileDiagnostics,
   CreateMobileSession,
   CreateOrganization,
   CreateOrganizationInvite,
@@ -461,6 +472,7 @@ export type {
   InviteEmailDelivery,
   InvitePreview,
   MeResponse,
+  MobileDiagnosticsResponse,
   MobileSessionResponse,
   OrganizationInviteEmailResult,
   OrganizationInviteRecord,

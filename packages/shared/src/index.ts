@@ -56,6 +56,37 @@ export const MobileSessionResponseSchema = z.object({
 });
 export type MobileSessionResponse = z.infer<typeof MobileSessionResponseSchema>;
 
+export const MobileDiagnosticLevelSchema = z.enum(['info', 'warn', 'error']);
+export type MobileDiagnosticLevel = z.infer<typeof MobileDiagnosticLevelSchema>;
+
+export const MobileDiagnosticEventSchema = z.object({
+  level: MobileDiagnosticLevelSchema,
+  area: z.string().min(1).max(80),
+  message: z.string().min(1).max(200),
+  at: z.string().datetime(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+export type MobileDiagnosticEvent = z.infer<typeof MobileDiagnosticEventSchema>;
+
+export const CreateMobileDiagnosticsSchema = z.object({
+  appVersion: z.string().max(80).optional(),
+  platform: z.string().max(40).optional(),
+  deviceModel: z.string().max(120).optional(),
+  serverURL: z.string().max(500).optional(),
+  authMode: z.string().max(40).optional(),
+  connectionStatus: z.string().max(40).optional(),
+  pushStatus: z.string().max(40).optional(),
+  notificationStatus: z.string().max(40).optional(),
+  lastErrorMessage: z.string().max(500).optional(),
+  events: z.array(MobileDiagnosticEventSchema).max(100).default([])
+});
+export type CreateMobileDiagnostics = z.input<typeof CreateMobileDiagnosticsSchema>;
+
+export const MobileDiagnosticsResponseSchema = z.object({
+  accepted: z.number().int().min(0)
+});
+export type MobileDiagnosticsResponse = z.infer<typeof MobileDiagnosticsResponseSchema>;
+
 export const OrganizationRoleSchema = z.enum(['owner', 'admin', 'approver', 'member', 'viewer']);
 export type OrganizationRole = z.infer<typeof OrganizationRoleSchema>;
 

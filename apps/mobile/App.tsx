@@ -67,6 +67,15 @@ import {
   type RuntimeAuthConfig,
 } from "./mobileAuth";
 import { mobileEventStreamsAvailable, subscribeToMobileEventStream } from "./mobileEvents";
+import {
+  diagnosticEvents,
+  diagnosticsEnabled as readDiagnosticsEnabled,
+  flushDiagnostics,
+  initializeDiagnostics,
+  recordDiagnostic,
+  sendDiagnosticSnapshot,
+  setDiagnosticsEnabled as saveDiagnosticsEnabled,
+} from "./diagnostics";
 
 type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
@@ -409,6 +418,9 @@ function AgentTickApp({
   const [notificationStatus, setNotificationStatus] =
     useState<NotificationStatus>("checking");
   const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
+  const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
+  const [diagnosticsEventCount, setDiagnosticsEventCount] = useState(0);
+  const [diagnosticsLastSentAt, setDiagnosticsLastSentAt] = useState("");
   const [availability, setAvailability] = useState<AvailabilityState>("available");
   const [error, setError] = useState<string | null>(null);
   const [scannerLocked, setScannerLocked] = useState(false);
@@ -513,6 +525,10 @@ function AgentTickApp({
   }, [loadedSessionServerURL, serverURL, settingsLoaded]);
 
   useEffect(() => {
+    void initializeDiagnostics().then((enabled) => {
+      setDiagnosticsEnabled(enabled);
+      setDiagnosticsEventCount(diagnosticEvents().length);
+    });
     void refreshNotificationStatus(setNotificationStatus);
     void Notifications.setNotificationCategoryAsync(approvalCategoryID, [
       {
@@ -660,7 +676,10 @@ function AgentTickApp({
       }
     } catch (err) {
       setConnectionStatus("disconnected");
-      setError(err instanceof Error ? err.message : "Failed to load requests");
+      const message = err instanceof Error ? err.message : "Failed to load requests";
+      recordDiagnostic("warn", "requests", "load_failed", { message });
+      setDiagnosticsEventCount(diagnosticEvents().length);
+      setError(message);
     } finally {
       if (visible) {
         setLoading(false);
@@ -693,6 +712,23 @@ function AgentTickApp({
     const timer = setInterval(heartbeat, 60_000);
     return () => clearInterval(timer);
   }, [deviceID, runtimeAuthConfig?.authProvider, sdk, settingsLoaded, token]);
+
+  useEffect(() => {
+    if (!settingsLoaded || !hasRequestAuth || !diagnosticsEnabled) {
+      return;
+    }
+    void flushDiagnostics(sdk, diagnosticsSnapshot({
+      serverURL,
+      authMode: runtimeAuthConfig?.authProvider,
+      connectionStatus,
+      pushStatus,
+      notificationStatus,
+      lastErrorMessage: error ?? undefined,
+    })).then((accepted) => {
+      if (accepted > 0) setDiagnosticsLastSentAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setDiagnosticsEventCount(diagnosticEvents().length);
+    }).catch(() => undefined);
+  }, [connectionStatus, diagnosticsEnabled, error, hasRequestAuth, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, sdk, serverURL, settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded || !hasRequestAuth || !mobileEventStreamsAvailable()) {
@@ -739,7 +775,10 @@ function AgentTickApp({
       setConnectionStatus("connected");
     } catch (err) {
       setConnectionStatus("disconnected");
-      setError(err instanceof Error ? err.message : "Failed to load history");
+      const message = err instanceof Error ? err.message : "Failed to load history";
+      recordDiagnostic("warn", "requests", "history_load_failed", { message });
+      setDiagnosticsEventCount(diagnosticEvents().length);
+      setError(message);
     } finally {
       setHistoryLoading(false);
     }
@@ -792,6 +831,8 @@ function AgentTickApp({
       setQuestionnaireAnswers({});
       void load({ visible: false });
     } catch (err) {
+      recordDiagnostic("warn", "requests", "response_failed", { message: err instanceof Error ? err.message : String(err), status: apiStatus(err) });
+      setDiagnosticsEventCount(diagnosticEvents().length);
       if (apiStatus(err) === 409) {
         void load({ visible: false });
         return;
@@ -820,6 +861,8 @@ function AgentTickApp({
           void load({ visible: false });
           return;
         }
+        recordDiagnostic("warn", "notifications", "action_response_failed", { message: err instanceof Error ? err.message : String(err), status: apiStatus(err) });
+        setDiagnosticsEventCount(diagnosticEvents().length);
         setNotificationTargetID(requestID);
         setSelectedID(requestID);
         setScreen("approvals");
@@ -1005,6 +1048,8 @@ function AgentTickApp({
       setNotificationStatus(toNotificationStatus(permissions));
       if (!permissions.granted) {
         setPushStatus("failed");
+        recordDiagnostic("warn", "notifications", "push_permission_denied");
+        setDiagnosticsEventCount(diagnosticEvents().length);
         return;
       }
 
@@ -1035,8 +1080,12 @@ function AgentTickApp({
         setDeviceID(responseBody.deviceId);
       }
       setPushStatus("registered");
+      recordDiagnostic("info", "notifications", "push_registered");
+      setDiagnosticsEventCount(diagnosticEvents().length);
     } catch (err) {
       setPushStatus("failed");
+      recordDiagnostic("error", "notifications", "push_registration_failed", { message: err instanceof Error ? err.message : String(err) });
+      setDiagnosticsEventCount(diagnosticEvents().length);
       Alert.alert(
         "Push registration failed",
         err instanceof Error ? err.message : "Could not register push notifications",
@@ -1144,6 +1193,31 @@ function AgentTickApp({
     setServerURL(nextServerURL);
   }, [bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
 
+  const toggleDiagnostics = useCallback(async (enabled: boolean) => {
+    await saveDiagnosticsEnabled(enabled);
+    setDiagnosticsEnabled(enabled);
+    recordDiagnostic("info", "diagnostics", enabled ? "enabled" : "disabled");
+    setDiagnosticsEventCount(diagnosticEvents().length);
+  }, []);
+
+  const sendDiagnostics = useCallback(async () => {
+    try {
+      const accepted = await sendDiagnosticSnapshot(sdk, diagnosticsSnapshot({
+        serverURL,
+        authMode: runtimeAuthConfig?.authProvider,
+        connectionStatus,
+        pushStatus,
+        notificationStatus,
+        lastErrorMessage: error ?? undefined,
+      }));
+      setDiagnosticsLastSentAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setDiagnosticsEventCount(diagnosticEvents().length);
+      Alert.alert("Diagnostics sent", `Sent ${accepted} diagnostic event${accepted === 1 ? "" : "s"}.`);
+    } catch (err) {
+      Alert.alert("Diagnostics failed", err instanceof Error ? err.message : "Could not send diagnostics");
+    }
+  }, [connectionStatus, error, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, sdk, serverURL]);
+
   const handlePairingScan = async (result: BarcodeScanningResult) => {
     if (pairingInFlight.current) {
       return;
@@ -1230,10 +1304,12 @@ function AgentTickApp({
           notificationStatus={notificationStatus}
           onAvailabilityChange={(state) => void updateAvailability(state as AvailabilityState)}
           onCheck={() => void checkConnection()}
+          onDiagnosticsEnabledChange={(enabled) => void toggleDiagnostics(enabled)}
           onForgetDevice={() => void forgetDevice()}
           onPairDevice={() => void pairDevice()}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
+          onSendDiagnosticSnapshot={() => void sendDiagnostics()}
           onSendTestNotification={() => void sendTestNotification()}
           onScanPairing={() => {
             pairingInFlight.current = false;
@@ -1243,6 +1319,9 @@ function AgentTickApp({
           onUseCloud={() => void useCloudSignIn()}
           pairingCode={pairingCode}
           pushStatus={pushStatus}
+          diagnosticsEnabled={diagnosticsEnabled}
+          diagnosticsEventCount={diagnosticsEventCount}
+          diagnosticsLastSentAt={diagnosticsLastSentAt}
           authProvider={runtimeAuthConfig?.authProvider}
           deviceID={deviceID}
           organizations={organizations}
@@ -1340,6 +1419,26 @@ function isUsableProjectID(value: unknown): value is string {
 function apiStatus(error: unknown): number | undefined {
   const status = (error as { status?: unknown }).status;
   return typeof status === "number" ? status : undefined;
+}
+
+function diagnosticsSnapshot(input: {
+  serverURL: string;
+  authMode?: string;
+  connectionStatus: ConnectionStatus;
+  pushStatus: PushStatus;
+  notificationStatus: NotificationStatus;
+  lastErrorMessage?: string;
+}) {
+  return {
+    appVersion: Constants.expoConfig?.version,
+    platform: Platform.OS,
+    serverURL: input.serverURL,
+    authMode: input.authMode,
+    connectionStatus: input.connectionStatus,
+    pushStatus: input.pushStatus,
+    notificationStatus: input.notificationStatus,
+    ...(input.lastErrorMessage ? { lastErrorMessage: input.lastErrorMessage } : {}),
+  };
 }
 
 async function refreshNotificationStatus(

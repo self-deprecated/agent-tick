@@ -55,6 +55,41 @@ describe('AgentTickClient', () => {
     });
   });
 
+  it('sends mobile diagnostics with auth and organization context', async () => {
+    const seen: { url?: string; method?: string; authorization?: string | null; organizationId?: string | null; body?: unknown } = {};
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      tokenProvider: () => 'mobile-session',
+      organizationIdProvider: () => 'org_123',
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        seen.url = String(input);
+        seen.method = init?.method;
+        seen.authorization = headers.get('Authorization');
+        seen.organizationId = headers.get('X-Agent-Tick-Organization-ID');
+        seen.body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        return jsonResponse({ accepted: 1 });
+      }
+    });
+
+    await expect(client.sendMobileDiagnostics({
+      platform: 'ios',
+      connectionStatus: 'connected',
+      events: [{ level: 'error', area: 'notifications', message: 'native_exception', at: '2026-01-01T00:00:00.000Z' }]
+    })).resolves.toEqual({ accepted: 1 });
+    expect(seen).toEqual({
+      method: 'POST',
+      url: 'https://tick.example.com/v1/mobile-diagnostics',
+      authorization: 'Bearer mobile-session',
+      organizationId: 'org_123',
+      body: {
+        platform: 'ios',
+        connectionStatus: 'connected',
+        events: [{ level: 'error', area: 'notifications', message: 'native_exception', at: '2026-01-01T00:00:00.000Z' }]
+      }
+    });
+  });
+
   it('parses structured API errors', async () => {
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com',

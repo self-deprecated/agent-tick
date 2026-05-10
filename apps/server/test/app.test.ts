@@ -128,6 +128,42 @@ describe('server skeleton', () => {
     expect(me.json()).toMatchObject({ userId: exchange.json().userId, organizationId: exchange.json().organizationId, role: 'owner' });
   });
 
+  it('accepts mobile diagnostics from an Agent Tick mobile session', async () => {
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }),
+      store: testStore()
+    });
+
+    const exchange = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/mobile-session',
+      payload: { clerkToken: 'test_mobile_user' }
+    });
+    const token = exchange.json().token as string;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/mobile-diagnostics',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        platform: 'ios',
+        connectionStatus: 'connected',
+        events: [{ level: 'error', area: 'notifications', message: 'native_exception', at: '2026-01-01T00:00:00.000Z' }]
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ accepted: 1 });
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/v1/mobile-diagnostics',
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual([expect.objectContaining({ level: 'error', area: 'notifications', message: 'native_exception' })]);
+  });
+
   it('rejects invalid and tampered Agent Tick mobile sessions', async () => {
     app = await buildApp({
       config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }),
