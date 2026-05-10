@@ -78,6 +78,7 @@ export function createProgram(): Command {
     .requiredOption('--title <title>', 'approval title')
     .option('--body <body>', 'approval body')
     .option('--command <command>', 'command or action to approve')
+    .option('--project <name>', 'project/repository display name')
     .option('--encrypt', 'encrypt title/body/command before sending with AGENT_TICK_E2EE_KEY or --e2ee-key')
     .option('--e2ee-key <key>', 'approval encryption key or passphrase [env: AGENT_TICK_E2EE_KEY]')
     .option('--generate-e2ee-key', 'print a new high-entropy approval encryption key and exit')
@@ -673,7 +674,9 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
   const created = await client.createApprovalRequest({
     requester: {
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
-      host: os.hostname()
+      host: os.hostname(),
+      workingDirectory: process.cwd(),
+      projectName: options.project ?? path.basename(process.cwd())
     },
     title: encryptedPayload ? 'Encrypted approval request' : options.title,
     ...(encryptedPayload ? { body: 'Open Agent Tick to decrypt this request.' } : options.body ? { body: options.body } : {}),
@@ -850,6 +853,7 @@ interface RequestOptions extends ClientOptions {
   title: string;
   body?: string;
   command?: string;
+  project?: string;
   encrypt?: boolean;
   e2eeKey?: string;
   generateE2eeKey?: boolean;
