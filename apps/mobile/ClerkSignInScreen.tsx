@@ -82,6 +82,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f6f0e5",
     flex: 1,
     paddingTop: Constants.statusBarHeight,
+    position: "relative",
   },
   nativeHeader: {
     gap: 8,
@@ -92,12 +93,19 @@ const styles = StyleSheet.create({
   nativeAuthFrame: {
     flex: 1,
     overflow: "hidden",
+    paddingBottom: 88,
   },
   serverSwitchPanel: {
     backgroundColor: "#f6f0e5",
     borderTopColor: "#ded6c6",
     borderTopWidth: 1,
+    bottom: 0,
+    elevation: 8,
+    left: 0,
     padding: 16,
+    position: "absolute",
+    right: 0,
+    zIndex: 10,
   },
   selfHostedForm: {
     gap: 10,
