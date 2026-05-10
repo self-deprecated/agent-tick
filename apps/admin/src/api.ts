@@ -33,6 +33,15 @@ export interface ResponsePayload {
 export type RequestType = 'approval' | 'questionnaire' | 'steer' | string;
 export type RequestStatus = 'pending' | 'responded' | 'expired' | 'abandoned' | string;
 
+export interface EncryptedApprovalPayload {
+	version: number;
+	algorithm: string;
+	keyId?: string;
+	nonce: string;
+	ciphertext: string;
+	aad?: string;
+}
+
 export interface ApprovalRequest {
 	id: string;
 	userId?: string;
@@ -41,6 +50,7 @@ export interface ApprovalRequest {
 	title: string;
 	body?: string;
 	command?: string;
+	encryptedPayload?: EncryptedApprovalPayload;
 	choices: Choice[];
 	questions?: Question[];
 	defaultChoice?: string;

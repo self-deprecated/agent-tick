@@ -798,10 +798,14 @@
 		}
 	}
 
-	async function respond(id: string, choiceId: string): Promise<void> {
+	async function respond(approval: ApprovalRequest, choiceId: string): Promise<void> {
 		error = '';
+		if (approval.encryptedPayload) {
+			error = 'Encrypted requests must be decrypted in the mobile app before approving or rejecting.';
+			return;
+		}
 		try {
-			await client().respondToApproval(id, { choiceId });
+			await client().respondToApproval(approval.id, { choiceId });
 			await Promise.all([refreshApprovals(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
@@ -1392,15 +1396,25 @@
 						<div>
 							<p class="eyebrow">{approval.status} · {approval.requester.name}</p>
 							<h3>{approval.title}</h3>
-							{#if approval.body}<p>{approval.body}</p>{/if}
-							{#if approval.command}<pre>{approval.command}</pre>{/if}
+							{#if approval.encryptedPayload}
+								<p class="encrypted-notice"><strong>Encrypted request.</strong> Open the mobile app and add the E2EE key in Settings to decrypt the title, body, and command before responding.</p>
+							{:else}
+								{#if approval.body}<p>{approval.body}</p>{/if}
+								{#if approval.command}<pre>{approval.command}</pre>{/if}
+							{/if}
 							{#if approval.response}<p class="subtle">Response: {approval.response.choiceId ?? approval.response.message}</p>{/if}
 						</div>
 						{#if approval.status === 'pending'}
-							<div class="actions">
-								<button class="approve" onclick={() => respond(approval.id, 'approve')}>Approve</button>
-								<button class="reject" onclick={() => respond(approval.id, 'reject')}>Reject</button>
-							</div>
+							{#if approval.encryptedPayload}
+								<div class="actions encrypted-actions">
+									<p class="subtle">Decrypt this request in the mobile app before approving or rejecting it.</p>
+								</div>
+							{:else}
+								<div class="actions">
+									<button class="approve" onclick={() => respond(approval, 'approve')}>Approve</button>
+									<button class="reject" onclick={() => respond(approval, 'reject')}>Reject</button>
+								</div>
+							{/if}
 						{/if}
 					</li>
 				{/each}
@@ -1634,6 +1648,15 @@
 		display: flex;
 		gap: 8px;
 		align-items: flex-start;
+	}
+
+	.encrypted-notice,
+	.encrypted-actions {
+		border: 1px solid #fde68a;
+		border-radius: 12px;
+		background: #fffbeb;
+		color: #92400e;
+		padding: 12px;
 	}
 
 	.member-list {
