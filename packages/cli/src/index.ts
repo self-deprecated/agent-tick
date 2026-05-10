@@ -387,7 +387,7 @@ function installPlanForTarget(target: InstallTarget): InstallPlan {
       target,
       status: 'enabled',
       description: `install Pi tool_call approval extension in ${extensionPath}`,
-      apply: () => writeFileEnsuringDir(extensionPath, piApprovalExtensionSource())
+      apply: () => installPackagedPiExtension(extensionPath)
     };
   }
   return {
@@ -464,8 +464,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function piApprovalExtensionSource(): string {
-  return `import { spawnSync } from 'node:child_process';\nimport type { ExtensionAPI } from '@earendil-works/pi-coding-agent';\n\nconst riskyPatterns = [/\\brm\\s+(-rf?|--recursive)/i, /\\bsudo\\b/i, /\\b(chmod|chown)\\b.*777/i, /\\b(git|jj)\\s+.*\\bpush\\b/i, /\\b(docker|podman)\\s+compose\\s+up\\b/i, /\\b(npm|pnpm|yarn|bun)\\s+(install|add)\\b/i];\n\nexport default function (pi: ExtensionAPI) {\n  pi.on('tool_call', async (event) => {\n    if (event.toolName !== 'bash') return undefined;\n    const command = String((event.input as { command?: unknown }).command ?? '');\n    if (!command || command.trim().startsWith('agent-tick ')) return undefined;\n    if (!riskyPatterns.some((pattern) => pattern.test(command))) return undefined;\n    const result = spawnSync('agent-tick', ['request', '--title', 'Approve Pi command?', '--body', 'Pi wants to run a risky command.', '--command', command, '--timeout', '30m'], { stdio: 'inherit' });\n    if (result.status === 0) return undefined;\n    return { block: true, reason: 'Agent Tick approval denied, timed out, or failed' };\n  });\n}\n`;
+async function installPackagedPiExtension(extensionPath: string): Promise<void> {
+  const source = await fs.readFile(packagedAssetPath('pi/agent-tick-approval.ts'), 'utf8');
+  await writeFileEnsuringDir(extensionPath, source);
+}
+
+function packagedAssetPath(relativePath: string): string {
+  return fileURLToPath(new URL(`../assets/${relativePath}`, import.meta.url));
 }
 
 export function agentInstructionBlock(target: string = 'agent'): string {

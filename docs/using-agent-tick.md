@@ -72,7 +72,7 @@ agent-tick install --no-login --target agents-md
 Supported install targets:
 
 - `claude` — enabled. Adds `PreToolUse` hooks in `~/.claude/settings.json` for risky `Bash` commands and `AskUserQuestion`, plus allow rules for Agent Tick CLI commands.
-- `pi` — enabled. Writes `~/.pi/agent/extensions/agent-tick-approval.ts`, a Pi `tool_call` extension for risky bash commands.
+- `pi` — enabled. Installs the repo-maintained `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`, a Pi `tool_call` extension for risky bash commands.
 - `codex` — scaffold only until its hook/config path is verified.
 - `gemini` — scaffold only until its hook/config path is verified.
 - `cursor` — scaffold only until its hook/config path is verified.

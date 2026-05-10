@@ -56,7 +56,7 @@ Verified source: Pi extension docs and examples. Pi auto-discovers TypeScript ex
 
 Installed by Agent Tick:
 
-- Writes `~/.pi/agent/extensions/agent-tick-approval.ts`
+- Copies the versioned repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts` to `~/.pi/agent/extensions/agent-tick-approval.ts`
 - The extension watches `bash` tool calls
 - Agent Tick commands are allowed
 - Risky bash commands call `agent-tick request` and block if approval is denied, times out, or fails
