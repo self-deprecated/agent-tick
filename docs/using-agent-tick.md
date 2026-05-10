@@ -15,7 +15,7 @@ The installer:
 1. Opens <https://agenttick.sh> in your browser.
 2. Lets you sign in and authorize CLI setup.
 3. Saves an Agent Tick `agent_...` token in `~/.config/agent-tick/config.json`.
-4. Offers to install approval instructions for local agents: Claude Code, Codex CLI, Gemini CLI, Pi, Cursor, OpenCode, or a local `AGENTS.md` file.
+4. Detects local agent configs and installs verified hook integrations. Claude Code and Pi hooks are enabled today; Codex, Gemini, Cursor, OpenCode, and generic `AGENTS.md` targets are visible as disabled scaffolds until verified.
 
 Global install alternative:
 
@@ -71,13 +71,13 @@ agent-tick install --no-login --target agents-md
 
 Supported install targets:
 
-- `claude` — user-level Claude Code instructions
-- `codex` — user-level Codex instructions
-- `gemini` — user-level Gemini CLI instructions
-- `pi` — user-level Pi skill
-- `cursor` — project Cursor rule
-- `opencode` — project `AGENTS.md` instructions
-- `agents-md` — project `AGENTS.md` instructions
+- `claude` — enabled. Adds `PreToolUse` hooks in `~/.claude/settings.json` for risky `Bash` commands and `AskUserQuestion`, plus allow rules for Agent Tick CLI commands.
+- `pi` — enabled. Writes `~/.pi/agent/extensions/agent-tick-approval.ts`, a Pi `tool_call` extension for risky bash commands.
+- `codex` — scaffold only until its hook/config path is verified.
+- `gemini` — scaffold only until its hook/config path is verified.
+- `cursor` — scaffold only until its hook/config path is verified.
+- `opencode` — scaffold only until its hook/config path is verified.
+- `agents-md` — scaffold only; plain instruction files are not treated as a real enforcement integration.
 
 ## Manual setup
 

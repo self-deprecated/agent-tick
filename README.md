@@ -14,7 +14,7 @@ Run one command on the machine where your coding agents run:
 npx @self-deprecated/agent-tick install
 ```
 
-The installer opens Agent Tick in your browser, connects this machine to your hosted Agent Tick account, and offers to install approval instructions for local AI coding agents such as Claude Code, Codex CLI, Gemini CLI, Pi, Cursor, OpenCode, or a local `AGENTS.md` file.
+The installer opens Agent Tick in your browser, connects this machine to your hosted Agent Tick account, detects local AI coding agents, and installs verified hook integrations where available. Claude Code and Pi currently get real pre-tool hooks; other detected agents are shown as disabled scaffolds until their hook/config path is verified.
 
 If you prefer a global install:
 
@@ -45,7 +45,10 @@ Approve or reject requests from the Agent Tick web dashboard. Mobile approval ap
 `agent-tick install` does two things:
 
 1. Runs browser-based CLI setup against `https://agenttick.sh` and saves an Agent Tick `agent_...` token locally in `~/.config/agent-tick/config.json`.
-2. Adds a small Agent Tick approval instruction block to the agent targets you choose, so coding agents know to call `agent-tick guard` or `agent-tick request` before risky actions.
+2. Detects local agent configs and installs verified hook integrations:
+   - Claude Code: adds `PreToolUse` hooks in `~/.claude/settings.json` for risky `Bash` calls and `AskUserQuestion`; adds allow rules for Agent Tick CLI commands so the approval command itself is never permission-gated.
+   - Pi: writes `~/.pi/agent/extensions/agent-tick-approval.ts`, a `tool_call` extension that gates risky bash commands through Agent Tick and always allows Agent Tick commands.
+   - Codex, Gemini, Cursor, OpenCode, generic `AGENTS.md`: detected and shown as disabled scaffolds until their hook/config behavior is verified.
 
 Useful installer options:
 
@@ -87,6 +90,7 @@ corepack pnpm build
 
 - [docs/using-agent-tick.md](./docs/using-agent-tick.md) — hosted-product usage flow
 - [docs/integrations.md](./docs/integrations.md) — CLI and integration examples
+- [docs/agent-install-research.md](./docs/agent-install-research.md) — verified hook install matrix and Preloop research
 - [SELFHOSTING.md](./SELFHOSTING.md) — run your own Agent Tick server
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — local development workflow
 - [docs/competitor-analysis.md](./docs/competitor-analysis.md) — market scan and setup inspiration

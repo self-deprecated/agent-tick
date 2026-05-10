@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { agentInstructionBlock, buildCliSetupURL, parseChoices, parseDurationMs } from '../src/index.js';
+import { agentInstructionBlock, buildCliSetupURL, isRiskyCommand, parseChoices, parseDurationMs } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -60,6 +60,14 @@ describe('install instructions', () => {
     expect(block).toContain('agent-tick guard -- <command and args>');
     expect(block).toContain('agent-tick request --title');
     expect(block).toContain('Do not include secrets');
+  });
+});
+
+describe('hook risk policy', () => {
+  it('detects risky commands and leaves simple reads alone', () => {
+    expect(isRiskyCommand('npm install')).toBe(true);
+    expect(isRiskyCommand('terraform apply')).toBe(true);
+    expect(isRiskyCommand('ls -la')).toBe(false);
   });
 });
 

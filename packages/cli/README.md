@@ -17,7 +17,7 @@ npm install -g @self-deprecated/agent-tick
 agent-tick install
 ```
 
-The installer opens <https://agenttick.sh>, saves a local Agent Tick token, and offers to install approval instructions for supported local coding agents.
+The installer opens <https://agenttick.sh>, saves a local Agent Tick token, detects local coding agents, and installs verified hook integrations. Claude Code and Pi are enabled today; other targets are shown as disabled scaffolds until verified.
 
 ## Use
 

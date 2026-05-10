@@ -49,10 +49,24 @@ export function createProgram(): Command {
     .option('--target <target>', 'agent to configure, repeatable: claude, codex, gemini, pi, cursor, opencode, agents-md', collectOption, [])
     .option('--all', 'configure every supported target without prompting')
     .option('--yes', 'accept defaults and do not prompt')
-    .option('--no-login', 'skip browser sign-in and only write agent instructions')
+    .option('--no-login', 'skip browser sign-in and only install agent hooks')
     .option('--dry-run', 'print planned changes without writing files')
     .action(async (options: InstallOptions) => {
       await runInstall(options);
+    });
+
+  const hook = program.command('hook').description('Internal hook entrypoints used by agent integrations');
+
+  hook
+    .command('claude-pre-tool-use')
+    .description('Claude Code PreToolUse hook for Agent Tick approvals')
+    .option('--timeout <duration>', 'approval wait timeout', '30m')
+    .action(async (options: { timeout?: string }) => {
+      try {
+        await runClaudePreToolUseHook(options);
+      } catch (error) {
+        printClaudePreToolDecision('deny', `Agent Tick hook failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     });
 
   program
@@ -261,20 +275,22 @@ async function runInstall(options: InstallOptions): Promise<void> {
     return;
   }
 
-  process.stdout.write('Step 2/2: install approval instructions for your agents.\n');
-  const plans = dedupePlansByPath(selected.map((target) => installPlanForTarget(target)));
+  process.stdout.write('Step 2/2: install agent hooks.\n');
+  const plans = selected.map((target) => installPlanForTarget(target));
   for (const plan of plans) {
-    if (options.dryRun) {
-      process.stdout.write(`[dry-run] would update ${plan.path}\n`);
+    if (plan.status === 'disabled') {
+      process.stdout.write(`skipped ${targetLabels[plan.target]}: ${plan.reason}\n`);
       continue;
     }
-    await appendInstallBlock(plan.path, plan.content);
-    process.stdout.write(`updated ${plan.path}\n`);
+    if (options.dryRun) {
+      process.stdout.write(`[dry-run] would ${plan.description}\n`);
+      continue;
+    }
+    await plan.apply();
+    process.stdout.write(`${plan.description}\n`);
   }
 
-  process.stdout.write('\nDone. Try this in any configured agent:\n');
-  process.stdout.write('  Before risky commands, ask Agent Tick approval with `agent-tick guard -- <command>`.\n');
-  process.stdout.write('  For decisions, use `agent-tick request --title "..." --body "..."`.\n');
+  process.stdout.write('\nDone. Agent Tick hook integrations auto-allow Agent Tick CLI commands and request approval for risky actions.\n');
 }
 
 async function selectInstallTargets(options: InstallOptions): Promise<InstallTarget[]> {
@@ -284,9 +300,13 @@ async function selectInstallTargets(options: InstallOptions): Promise<InstallTar
   if (options.yes) return defaultDetectedTargets();
 
   const detected = defaultDetectedTargets();
-  process.stdout.write('Detected/default agent targets:\n');
-  detected.forEach((target, index) => process.stdout.write(`  ${index + 1}. ${targetLabels[target]}\n`));
-  process.stdout.write('  all. Every supported target\n');
+  process.stdout.write('Detected agent targets:\n');
+  detected.forEach((target, index) => {
+    const plan = installPlanForTarget(target);
+    const suffix = plan.status === 'disabled' ? ` (scaffold only: ${plan.reason})` : '';
+    process.stdout.write(`  ${index + 1}. ${targetLabels[target]}${suffix}\n`);
+  });
+  process.stdout.write('  all. Every known target, including disabled scaffolds\n');
   process.stdout.write('  none. Skip agent instruction install\n');
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -316,9 +336,24 @@ function uniqueInstallTargets(values: string[]): InstallTarget[] {
 function defaultDetectedTargets(): InstallTarget[] {
   const detected: InstallTarget[] = [];
   for (const target of installTargets) {
-    if (target === 'agents-md' || commandExists(targetCommand(target))) detected.push(target);
+    if (isTargetDetected(target)) detected.push(target);
   }
   return detected.length ? detected : ['agents-md'];
+}
+
+function isTargetDetected(target: InstallTarget): boolean {
+  if (target === 'agents-md') return fileExistsSync(path.join(process.cwd(), 'AGENTS.md')) || fileExistsSync(path.join(process.cwd(), 'CLAUDE.md'));
+  if (target === 'claude') return commandExists('claude') || fileExistsSync(path.join(os.homedir(), '.claude', 'settings.json'));
+  if (target === 'codex') return commandExists('codex') || fileExistsSync(path.join(os.homedir(), '.codex', 'config.toml'));
+  if (target === 'gemini') return commandExists('gemini') || fileExistsSync(path.join(os.homedir(), '.gemini'));
+  if (target === 'pi') return commandExists('pi') || fileExistsSync(path.join(os.homedir(), '.pi', 'agent', 'settings.json'));
+  if (target === 'cursor') return commandExists('cursor') || fileExistsSync(path.join(process.cwd(), '.cursor'));
+  if (target === 'opencode') return commandExists('opencode') || fileExistsSync(path.join(os.homedir(), '.config', 'opencode'));
+  return false;
+}
+
+function fileExistsSync(filePath: string): boolean {
+  return spawnSync(process.platform === 'win32' ? 'cmd' : 'test', process.platform === 'win32' ? ['/c', 'if', 'exist', filePath, 'exit', '0'] : ['-e', filePath], { stdio: 'ignore' }).status === 0;
 }
 
 function targetCommand(target: InstallTarget): string {
@@ -332,32 +367,105 @@ function commandExists(command: string): boolean {
   return spawnSync(checker, args, { stdio: 'ignore' }).status === 0;
 }
 
-function dedupePlansByPath(plans: Array<{ path: string; content: string }>): Array<{ path: string; content: string }> {
-  const seen = new Set<string>();
-  return plans.filter((plan) => {
-    if (seen.has(plan.path)) return false;
-    seen.add(plan.path);
-    return true;
-  });
+type InstallPlan =
+  | { target: InstallTarget; status: 'enabled'; description: string; apply: () => Promise<void> }
+  | { target: InstallTarget; status: 'disabled'; reason: string; description: string; apply: () => Promise<void> };
+
+function installPlanForTarget(target: InstallTarget): InstallPlan {
+  if (target === 'claude') {
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    return {
+      target,
+      status: 'enabled',
+      description: `install Claude Code PreToolUse hooks in ${settingsPath}`,
+      apply: () => installClaudeHooks(settingsPath)
+    };
+  }
+  if (target === 'pi') {
+    const extensionPath = path.join(os.homedir(), '.pi', 'agent', 'extensions', 'agent-tick-approval.ts');
+    return {
+      target,
+      status: 'enabled',
+      description: `install Pi tool_call approval extension in ${extensionPath}`,
+      apply: () => writeFileEnsuringDir(extensionPath, piApprovalExtensionSource())
+    };
+  }
+  return {
+    target,
+    status: 'disabled',
+    reason: 'hook-based integration has not been verified yet',
+    description: `scaffolded ${targetLabels[target]} integration`,
+    apply: async () => undefined
+  };
 }
 
-function installPlanForTarget(target: InstallTarget): { path: string; content: string } {
-  const home = os.homedir();
-  const cwd = process.cwd();
-  const file = target === 'claude'
-    ? path.join(home, '.claude', 'CLAUDE.md')
-    : target === 'codex'
-      ? path.join(home, '.codex', 'AGENTS.md')
-      : target === 'gemini'
-        ? path.join(home, '.gemini', 'GEMINI.md')
-        : target === 'pi'
-          ? path.join(home, '.pi', 'agent', 'skills', 'agent-tick', 'SKILL.md')
-          : target === 'cursor'
-            ? path.join(cwd, '.cursor', 'rules', 'agent-tick.mdc')
-            : target === 'opencode'
-              ? path.join(cwd, 'AGENTS.md')
-              : path.join(cwd, 'AGENTS.md');
-  return { path: file, content: agentInstructionBlock(target) };
+async function installClaudeHooks(settingsPath: string): Promise<void> {
+  const settings = await readJSONFile(settingsPath);
+  const root = isPlainObject(settings) ? settings : {};
+  const hooks = isPlainObject(root.hooks) ? root.hooks : {};
+  hooks.PreToolUse = mergeClaudeHookGroups(hooks.PreToolUse, [
+    {
+      matcher: 'Bash',
+      hooks: [{ type: 'command', command: 'agent-tick hook claude-pre-tool-use', timeout: 1800, statusMessage: 'Checking Agent Tick approval policy' }]
+    },
+    {
+      matcher: 'AskUserQuestion',
+      hooks: [{ type: 'command', command: 'agent-tick hook claude-pre-tool-use', timeout: 1800, statusMessage: 'Routing question through Agent Tick' }]
+    }
+  ]);
+  root.hooks = hooks;
+  const permissions = isPlainObject(root.permissions) ? root.permissions : {};
+  permissions.allow = mergeStringArray(permissions.allow, [
+    'Bash(agent-tick:*)',
+    'Bash(npx @self-deprecated/agent-tick:*)',
+    'Bash(npm install -g @self-deprecated/agent-tick)'
+  ]);
+  root.permissions = permissions;
+  await writeJSONFile(settingsPath, root);
+}
+
+function mergeClaudeHookGroups(existing: unknown, additions: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const groups = Array.isArray(existing) ? [...existing.filter(isPlainObject)] : [];
+  for (const addition of additions) {
+    const key = JSON.stringify(addition);
+    if (!groups.some((group) => JSON.stringify(group) === key)) groups.push(addition);
+  }
+  return groups;
+}
+
+function mergeStringArray(existing: unknown, additions: string[]): string[] {
+  const values = Array.isArray(existing) ? existing.filter((value): value is string => typeof value === 'string') : [];
+  for (const addition of additions) {
+    if (!values.includes(addition)) values.push(addition);
+  }
+  return values;
+}
+
+async function readJSONFile(filePath: string): Promise<unknown> {
+  try {
+    return JSON.parse(await fs.readFile(filePath, 'utf8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw error;
+  }
+}
+
+async function writeJSONFile(filePath: string, value: unknown): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+async function writeFileEnsuringDir(filePath: string, content: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content, 'utf8');
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function piApprovalExtensionSource(): string {
+  return `import { spawnSync } from 'node:child_process';\nimport type { ExtensionAPI } from '@earendil-works/pi-coding-agent';\n\nconst riskyPatterns = [/\\brm\\s+(-rf?|--recursive)/i, /\\bsudo\\b/i, /\\b(chmod|chown)\\b.*777/i, /\\b(git|jj)\\s+.*\\bpush\\b/i, /\\b(docker|podman)\\s+compose\\s+up\\b/i, /\\b(npm|pnpm|yarn|bun)\\s+(install|add)\\b/i];\n\nexport default function (pi: ExtensionAPI) {\n  pi.on('tool_call', async (event) => {\n    if (event.toolName !== 'bash') return undefined;\n    const command = String((event.input as { command?: unknown }).command ?? '');\n    if (!command || command.trim().startsWith('agent-tick ')) return undefined;\n    if (!riskyPatterns.some((pattern) => pattern.test(command))) return undefined;\n    const result = spawnSync('agent-tick', ['request', '--title', 'Approve Pi command?', '--body', 'Pi wants to run a risky command.', '--command', command, '--timeout', '30m'], { stdio: 'inherit' });\n    if (result.status === 0) return undefined;\n    return { block: true, reason: 'Agent Tick approval denied, timed out, or failed' };\n  });\n}\n`;
 }
 
 export function agentInstructionBlock(target: string = 'agent'): string {
@@ -398,8 +506,124 @@ function escapeHTML(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
+async function runClaudePreToolUseHook(options: { timeout?: string }): Promise<void> {
+  const input = JSON.parse(await readStdin());
+  const toolName = typeof input.tool_name === 'string' ? input.tool_name : '';
+  if (toolName === 'Bash') {
+    await handleClaudeBashHook(input, options);
+    return;
+  }
+  if (toolName === 'AskUserQuestion') {
+    await handleClaudeAskUserQuestionHook(input, options);
+  }
+}
+
+async function handleClaudeBashHook(input: Record<string, unknown>, options: { timeout?: string }): Promise<void> {
+  const toolInput = isPlainObject(input.tool_input) ? input.tool_input : {};
+  const command = typeof toolInput.command === 'string' ? toolInput.command : '';
+  if (!command || isAgentTickCommand(command) || !isRiskyCommand(command)) {
+    printClaudePreToolDecision('allow', 'Allowed by Agent Tick hook policy');
+    return;
+  }
+  const finalRequest = await createHookApproval({
+    title: 'Approve Claude Code command?',
+    body: `Claude Code wants to run a command that matched Agent Tick's risky-command policy.\n\nWorking directory: ${String(input.cwd ?? '')}`,
+    command,
+    ...(options.timeout ? { timeout: options.timeout } : {})
+  });
+  if (exitCodeForRequest(finalRequest) === 0) {
+    printClaudePreToolDecision('allow', 'Approved in Agent Tick');
+  } else {
+    printClaudePreToolDecision('deny', 'Denied, timed out, or failed in Agent Tick');
+  }
+}
+
+async function handleClaudeAskUserQuestionHook(input: Record<string, unknown>, options: { timeout?: string }): Promise<void> {
+  const toolInput = isPlainObject(input.tool_input) ? input.tool_input : {};
+  const questions = Array.isArray(toolInput.questions) ? toolInput.questions.filter(isPlainObject) : [];
+  if (questions.length !== 1) return;
+  const question = questions[0];
+  if (!question) return;
+  const questionText = typeof question.question === 'string' ? question.question : 'Claude Code question';
+  const optionsList = Array.isArray(question.options) ? question.options.filter(isPlainObject) : [];
+  const choices = optionsList.map((option, index) => ({
+    id: `option_${index + 1}`,
+    label: typeof option.label === 'string' ? option.label : `Option ${index + 1}`,
+    kind: 'approve'
+  }));
+  choices.push({ id: 'cancel', label: 'Cancel / do not answer', kind: 'deny' });
+  const finalRequest = await createHookApproval({
+    title: questionText,
+    body: 'Claude Code asked a question. Choose the answer to send back to Claude.',
+    choices,
+    ...(options.timeout ? { timeout: options.timeout } : {})
+  });
+  const choiceId = finalRequest.response?.choiceId;
+  const selected = choices.find((choice) => choice.id === choiceId);
+  if (selected && selected.kind !== 'deny') {
+    printClaudePreToolDecision('allow', 'Answered through Agent Tick', {
+      ...toolInput,
+      answers: { [questionText]: selected.label }
+    });
+  } else {
+    printClaudePreToolDecision('deny', 'Question was denied, cancelled, timed out, or failed in Agent Tick');
+  }
+}
+
+async function createHookApproval(options: { title: string; body?: string; command?: string; timeout?: string; choices?: Array<{ id: string; label: string; kind: string }> }): Promise<ApprovalRequest> {
+  const { client, server } = await clientFromOptions({});
+  return createAndMaybeWait(client, server, {
+    title: options.title,
+    timeout: options.timeout ?? '30m',
+    choice: [],
+    silent: true,
+    ...(options.body ? { body: options.body } : {}),
+    ...(options.command ? { command: options.command } : {}),
+    ...(options.choices ? { hookChoices: options.choices } : {})
+  });
+}
+
+function printClaudePreToolDecision(permissionDecision: 'allow' | 'deny', permissionDecisionReason: string, updatedInput?: unknown): void {
+  const output: Record<string, unknown> = {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision,
+      permissionDecisionReason
+    }
+  };
+  if (updatedInput !== undefined && isPlainObject(output.hookSpecificOutput)) output.hookSpecificOutput.updatedInput = updatedInput;
+  process.stdout.write(`${JSON.stringify(output)}\n`);
+}
+
+function isAgentTickCommand(command: string): boolean {
+  const trimmed = command.trim();
+  return /^(agent-tick|npx\s+@self-deprecated\/agent-tick|npm\s+install\s+-g\s+@self-deprecated\/agent-tick)(\s|$)/.test(trimmed);
+}
+
+export function isRiskyCommand(command: string): boolean {
+  return riskyCommandPatterns.some((pattern) => pattern.test(command));
+}
+
+const riskyCommandPatterns = [
+  /\brm\s+(-rf?|--recursive)\b/i,
+  /\bsudo\b/i,
+  /\b(chmod|chown)\b.*\b777\b/i,
+  /\b(git|jj)\s+.*\bpush\b/i,
+  /\b(docker|podman)\s+compose\s+up\b/i,
+  /\b(kubectl|helm|terraform|tofu)\b/i,
+  /\b(npm|pnpm|yarn|bun)\s+(install|add|remove|update|upgrade)\b/i,
+  /\b(migrate|migration|deploy|release|publish)\b/i,
+  /\b\.env\b/i
+];
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks).toString('utf8') || '{}';
+}
+
 async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
-  const choices = parseChoices(options.choice);
+  const choices = options.hookChoices ?? parseChoices(options.choice);
   const created = await client.createApprovalRequest({
     requester: {
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
@@ -412,10 +636,12 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
   });
   const request = created.request;
 
-  if (options.json) {
-    process.stdout.write(`${JSON.stringify({ event: 'created', request, waiter: created.waiter })}\n`);
-  } else {
-    process.stdout.write(`created approval request ${request.id}: ${request.title}\n`);
+  if (!options.silent) {
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ event: 'created', request, waiter: created.waiter })}\n`);
+    } else {
+      process.stdout.write(`created approval request ${request.id}: ${request.title}\n`);
+    }
   }
 
   const timeoutMs = parseDurationMs(options.timeout);
@@ -423,13 +649,15 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
 
   const waitClient = created.waiter ? new AgentTickClient({ baseUrl: server, tokenProvider: () => created.waiter?.token }) : client;
   const waited = await waitClient.waitForApproval(request.id, { timeoutMs });
-  if (options.json) {
-    process.stdout.write(`${JSON.stringify({ event: waited.terminal ? 'terminal' : 'timeout', ...waited })}\n`);
-  } else if (!waited.terminal) {
-    process.stderr.write(`timed out waiting for approval request ${request.id}\n`);
-  } else {
-    const choice = waited.request.response?.choiceId ?? waited.request.response?.message ?? waited.request.status;
-    process.stdout.write(`approval request ${request.id} completed: ${choice}\n`);
+  if (!options.silent) {
+    if (options.json) {
+      process.stdout.write(`${JSON.stringify({ event: waited.terminal ? 'terminal' : 'timeout', ...waited })}\n`);
+    } else if (!waited.terminal) {
+      process.stderr.write(`timed out waiting for approval request ${request.id}\n`);
+    } else {
+      const choice = waited.request.response?.choiceId ?? waited.request.response?.message ?? waited.request.status;
+      process.stdout.write(`approval request ${request.id} completed: ${choice}\n`);
+    }
   }
   return waited.request;
 }
@@ -519,8 +747,10 @@ interface RequestOptions extends ClientOptions {
   body?: string;
   command?: string;
   choice?: string[];
+  hookChoices?: Array<{ id: string; label: string; kind: string }>;
   timeout?: string;
   json?: boolean;
+  silent?: boolean;
 }
 
 function isDirectExecution(): boolean {
