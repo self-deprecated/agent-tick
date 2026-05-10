@@ -63,6 +63,12 @@ describe('shared schemas', () => {
     expect(decryptApprovalPayload(payload, key)).toEqual({ title: 'Deploy?', body: 'Prod deploy', command: 'pnpm deploy' });
   });
 
+  it('supports shorter passphrases for manual encrypted request testing', () => {
+    const payload = createEncryptedApprovalPayload({ title: 'Manual test', command: 'echo ok' }, 'test-key', { nonce: new Uint8Array(12).fill(3) });
+    expect(decryptApprovalPayload(payload, 'test-key')).toEqual({ title: 'Manual test', command: 'echo ok' });
+    expect(() => decryptApprovalPayload(payload, 'wrong-key')).toThrow();
+  });
+
   it('validates encrypted approval payload envelopes', () => {
     const encryptedPayload = {
       version: 1,

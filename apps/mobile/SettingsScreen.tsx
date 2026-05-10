@@ -302,12 +302,12 @@ export function SettingsScreen({
         </View>
         <View style={styles.settingsSection}>
           <Text style={styles.sectionHeading}>End-to-end encryption</Text>
-          <Text style={styles.pairingHint}>Paste the shared approval encryption key for this device to decrypt encrypted request details locally.</Text>
+          <Text style={styles.pairingHint}>Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally.</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
             onChangeText={(value) => setE2eeKey?.(value.trim())}
-            placeholder="base64url key"
+            placeholder="key or passphrase"
             secureTextEntry
             style={styles.input}
             value={e2eeKey}

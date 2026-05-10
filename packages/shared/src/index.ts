@@ -1,5 +1,7 @@
 import { gcm } from '@noble/ciphers/aes.js';
 import { randomBytes } from '@noble/ciphers/utils.js';
+import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { z } from 'zod';
 
 export const AgentTickModeSchema = z.enum(['single', 'clerk']);
@@ -465,9 +467,17 @@ export function decryptApprovalPayload(payload: EncryptedApprovalPayload, key: s
 }
 
 function decodeEncryptionKey(key: string): Uint8Array {
-  const bytes = decodeBase64URL(key.trim());
-  if (bytes.length !== 32) throw new Error('Approval encryption key must be a 32-byte base64url value');
-  return bytes;
+  const trimmed = key.trim();
+  if (!trimmed) throw new Error('Approval encryption key or passphrase is required');
+  if (/^[A-Za-z0-9_-]+$/.test(trimmed)) {
+    try {
+      const bytes = decodeBase64URL(trimmed);
+      if (bytes.length === 32) return bytes;
+    } catch {
+      // Fall through to passphrase derivation.
+    }
+  }
+  return pbkdf2(sha256, new TextEncoder().encode(trimmed), new TextEncoder().encode('agent-tick-e2ee-passphrase-v1'), { c: 100_000, dkLen: 32 });
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {

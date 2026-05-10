@@ -79,8 +79,8 @@ export function createProgram(): Command {
     .option('--body <body>', 'approval body')
     .option('--command <command>', 'command or action to approve')
     .option('--encrypt', 'encrypt title/body/command before sending with AGENT_TICK_E2EE_KEY or --e2ee-key')
-    .option('--e2ee-key <key>', '32-byte base64url approval encryption key [env: AGENT_TICK_E2EE_KEY]')
-    .option('--generate-e2ee-key', 'print a new 32-byte base64url approval encryption key and exit')
+    .option('--e2ee-key <key>', 'approval encryption key or passphrase [env: AGENT_TICK_E2EE_KEY]')
+    .option('--generate-e2ee-key', 'print a new high-entropy approval encryption key and exit')
     .option('--encrypted-payload-json <json>', 'opaque end-to-end encrypted request envelope JSON')
     .option('--encrypted-payload-file <path>', 'read opaque end-to-end encrypted request envelope JSON from a file')
     .option('--choice <choice>', 'custom response choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
@@ -713,7 +713,7 @@ async function encryptedPayloadFromOptions(options: RequestOptions): Promise<Enc
   if (options.encrypt) {
     if (options.encryptedPayloadJson || options.encryptedPayloadFile) throw new Error('use either --encrypt or an existing encrypted payload, not both');
     const key = options.e2eeKey ?? process.env.AGENT_TICK_E2EE_KEY;
-    if (!key) throw new Error('--encrypt requires --e2ee-key or AGENT_TICK_E2EE_KEY');
+    if (!key) throw new Error('--encrypt requires --e2ee-key/--e2ee-passphrase or AGENT_TICK_E2EE_KEY');
     return createEncryptedApprovalPayload({
       title: options.title,
       ...(options.body ? { body: options.body } : {}),

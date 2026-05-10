@@ -160,7 +160,7 @@ describe("SettingsScreen — paired state", () => {
     const setE2eeKey = jest.fn();
     render(<SettingsScreen {...pairedProps} e2eeKey="" setE2eeKey={setE2eeKey} />);
     expect(screen.getByText("End-to-end encryption")).toBeTruthy();
-    fireEvent.changeText(screen.getByPlaceholderText("base64url key"), " key_123 ");
+    fireEvent.changeText(screen.getByPlaceholderText("key or passphrase"), " key_123 ");
     expect(setE2eeKey).toHaveBeenCalledWith("key_123");
   });
 
