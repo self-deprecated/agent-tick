@@ -31,7 +31,14 @@
     },
     "plugins": [
       "expo-notifications",
-      "expo-camera"
+      "expo-camera",
+      "expo-secure-store",
+      [
+        "@clerk/expo",
+        {
+          "appleSignIn": true
+        }
+      ]
     ],
     "extra": {
       "eas": {

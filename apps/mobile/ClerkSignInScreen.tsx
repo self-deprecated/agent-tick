@@ -1,7 +1,9 @@
 import { useSignIn, useSignUp, useSSO, type StartSSOFlowParams } from "@clerk/expo";
+import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  Platform,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -21,6 +23,17 @@ type SSOProvider = {
 WebBrowser.maybeCompleteAuthSession();
 
 export const ssoRedirectUrl = "agenttick://sso-callback";
+
+function makeSsoRedirectUrl(): string {
+  try {
+    return AuthSession.makeRedirectUri({
+      scheme: "agenttick",
+      path: "sso-callback",
+    });
+  } catch {
+    return ssoRedirectUrl;
+  }
+}
 
 export const ssoProviders = [
   { label: "Continue with Google", strategy: "oauth_google" },
@@ -45,6 +58,14 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
   const ssoLoaded = Boolean(signIn && signUp);
   const clerkFetching = mode === "signIn" ? signInFetchStatus === "fetching" : signUpFetchStatus === "fetching";
   const canSubmit = clerkLoaded && !clerkFetching && !submitting && !ssoSubmitting;
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
+
   const title = mode === "signIn" ? "Sign in to Agent Tick" : "Create an Agent Tick account";
   const submitLabel = submitting
     ? pendingVerification
@@ -74,15 +95,17 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
     setError(null);
     setSsoSubmitting(strategy);
     try {
-      const result = await startSSOFlow({ strategy, redirectUrl: ssoRedirectUrl });
+      const redirectUrl = makeSsoRedirectUrl();
+      const result = await startSSOFlow({ strategy, redirectUrl });
       if (result.createdSessionId && result.setActive) {
         await result.setActive({ session: result.createdSessionId });
         return;
       }
-      setError(ssoResultMessage(result, ssoRedirectUrl));
+      setError(ssoResultMessage(result, redirectUrl));
     } catch (err) {
       setError(clerkAuthErrorMessage(err, "Could not continue with the selected sign-in provider"));
     } finally {
+      void WebBrowser.dismissBrowser();
       setSsoSubmitting(null);
     }
   };
@@ -96,7 +119,7 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
         if (!signIn) throw new Error("Clerk is still loading");
         const result = await signIn.create({ identifier: email.trim(), password });
         if (result.error) throw result.error;
-        if (signIn.status === "complete") {
+        if ((result as { status?: string }).status === "complete" || signIn.status === "complete") {
           const finalizeResult = await signIn.finalize();
           if (finalizeResult.error) throw finalizeResult.error;
           return;
@@ -109,7 +132,7 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
       if (pendingVerification) {
         const result = await signUp.verifications.verifyEmailCode({ code: verificationCode.trim() });
         if (result.error) throw result.error;
-        if (signUp.status === "complete") {
+        if ((result as { status?: string }).status === "complete" || signUp.status === "complete") {
           const finalizeResult = await signUp.finalize();
           if (finalizeResult.error) throw finalizeResult.error;
           return;
@@ -120,7 +143,7 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
 
       const result = await signUp.create({ emailAddress: email.trim(), password });
       if (result.error) throw result.error;
-      if (signUp.status === "complete") {
+      if ((result as { status?: string }).status === "complete" || signUp.status === "complete") {
         const finalizeResult = await signUp.finalize();
         if (finalizeResult.error) throw finalizeResult.error;
         return;
