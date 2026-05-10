@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ClerkProvider, useAuth } from "@clerk/expo";
+import { ClerkProvider, useAuth, useClerk, useNativeSession } from "@clerk/expo";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
@@ -160,7 +160,43 @@ export default function App() {
 
 function ClerkBoundApp(props: AgentTickAppProps) {
   const { getToken, isLoaded, isSignedIn, signOut } = useAuth();
-  if (!isLoaded) {
+  const clerk = useClerk();
+  const nativeSession = useNativeSession();
+  const [syncingNativeSession, setSyncingNativeSession] = useState(false);
+
+  useEffect(() => {
+    if (!isLoaded || isSignedIn || !nativeSession.sessionId || syncingNativeSession) return;
+    let cancelled = false;
+    const syncNativeSession = async () => {
+      setSyncingNativeSession(true);
+      try {
+        console.info("[AgentTickMobile] Syncing native Clerk session", { sessionId: nativeSession.sessionId });
+        const clerkInternals = clerk as unknown as { __internal_reloadInitialResources?: () => Promise<unknown> };
+        if (typeof clerkInternals.__internal_reloadInitialResources === "function") {
+          await clerkInternals.__internal_reloadInitialResources();
+        }
+        if (!cancelled) await clerk.setActive({ session: nativeSession.sessionId });
+      } catch (err) {
+        console.info("[AgentTickMobile] Native Clerk session sync failed", { message: err instanceof Error ? err.message : String(err) });
+      } finally {
+        if (!cancelled) setSyncingNativeSession(false);
+      }
+    };
+    void syncNativeSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [clerk, isLoaded, isSignedIn, nativeSession.sessionId, syncingNativeSession]);
+
+  useEffect(() => {
+    if (isSignedIn) return;
+    const interval = setInterval(() => {
+      void nativeSession.refresh();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isSignedIn, nativeSession]);
+
+  if (!isLoaded || syncingNativeSession) {
     return <LoadingScreen />;
   }
   if (!isSignedIn) {
