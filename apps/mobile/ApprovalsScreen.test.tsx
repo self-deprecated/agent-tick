@@ -95,6 +95,7 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
 
     expect(screen.getByText("Encrypted approval request")).toBeTruthy();
     expect(screen.getByText("Encrypted request. Add your E2EE key in Settings to decrypt.")).toBeTruthy();
+    expect(screen.queryByText("Open Agent Tick to decrypt this request.")).toBeNull();
     expect(screen.queryByText("Restart prod?")).toBeNull();
     expect(screen.queryByText("Sensitive incident details")).toBeNull();
     expect(screen.queryByText("kubectl rollout restart deploy/api")).toBeNull();

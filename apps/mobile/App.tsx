@@ -1818,6 +1818,7 @@ export function ApprovalsScreen({
   const decrypted = useMemo(() => decryptedApprovalPlaintext(selected, e2eeKey), [e2eeKey, selected.id, selected.encryptedPayload]);
   const encryptedLocked = encrypted && !decrypted;
   const canRespond = !encryptedLocked && (encrypted ? true : canRespondToRequest(selected));
+  const dismissChoice = encryptedDismissChoice(selected);
 
   return (
     <View style={styles.approvalsPane}>
@@ -1908,7 +1909,7 @@ export function ApprovalsScreen({
           </Text>
         ) : null}
         {encryptedLocked ? <Text style={styles.errorText}>{encryptedLockMessage(selected, e2eeKey)}</Text> : null}
-        {(decrypted?.body ?? selected.body) ? <Text style={styles.bodyText}>{decrypted?.body ?? selected.body}</Text> : null}
+        {encryptedLocked ? null : (decrypted?.body ?? selected.body) ? <Text style={styles.bodyText}>{decrypted?.body ?? selected.body}</Text> : null}
         {(decrypted?.command ?? selected.command) ? (
           <Text selectable style={styles.commandText}>
             {decrypted?.command ?? selected.command}
@@ -1999,11 +2000,11 @@ export function ApprovalsScreen({
                 <Text style={styles.secondaryButtonText}>Add E2EE Key in Settings</Text>
               </Pressable>
             ) : null}
-            {(selected.choices ?? []).filter((choice) => choice.kind === "deny").map((choice) => (
-              <Pressable key={choice.id} onPress={() => onRespond(selected, choice)} style={[styles.choiceButton, styles.denyButton]}>
+            {dismissChoice ? (
+              <Pressable onPress={() => onRespond(selected, dismissChoice)} style={[styles.choiceButton, styles.denyButton]}>
                 <Text style={styles.choiceText}>Dismiss</Text>
               </Pressable>
-            ))}
+            ) : null}
           </View>
         ) : isQuestionnaireRequest(selected) ? (
           <Pressable
@@ -2041,6 +2042,10 @@ export function ApprovalsScreen({
       </View>
     </View>
   );
+}
+
+function encryptedDismissChoice(request: ApprovalRequest): Choice | null {
+  return (request.choices ?? []).find((choice) => choice.kind === "deny" || choice.id === "reject" || choice.id === "deny") ?? null;
 }
 
 function encryptedLockMessage(request: ApprovalRequest, key?: string) {
