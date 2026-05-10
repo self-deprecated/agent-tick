@@ -27,7 +27,7 @@
       "^expo/virtual/streams$": "<rootDir>/__mocks__/expo-winter.js"
     },
     "transformIgnorePatterns": [
-      "/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|react-native-svg))",
+      "/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|react-native-svg|@noble))",
       "/node_modules/react-native-reanimated/plugin/"
     ]
   },

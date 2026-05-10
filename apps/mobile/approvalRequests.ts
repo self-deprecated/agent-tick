@@ -58,6 +58,15 @@ export type ApprovalPolicyProgress = {
   votes?: ApprovalVoteRecord[];
 };
 
+export type EncryptedApprovalPayload = {
+  version: number;
+  algorithm: string;
+  keyId?: string;
+  nonce: string;
+  ciphertext: string;
+  aad?: string;
+};
+
 export type ApprovalRequest = {
   id: string;
   userId?: string;
@@ -66,6 +75,7 @@ export type ApprovalRequest = {
   title: string;
   body?: string;
   command?: string;
+  encryptedPayload?: EncryptedApprovalPayload;
   choices: Choice[];
   questions?: Question[];
   allowFreeformReply: boolean;

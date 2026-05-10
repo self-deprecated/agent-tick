@@ -1,3 +1,5 @@
+import { gcm } from '@noble/ciphers/aes.js';
+import { randomBytes } from '@noble/ciphers/utils.js';
 import { z } from 'zod';
 
 export const AgentTickModeSchema = z.enum(['single', 'clerk']);
@@ -418,6 +420,14 @@ export const ApprovalPolicyProgressSchema = z.object({
 });
 export type ApprovalPolicyProgress = z.infer<typeof ApprovalPolicyProgressSchema>;
 
+export const EncryptedApprovalPlaintextSchema = z.object({
+  title: z.string().min(1),
+  body: z.string().optional(),
+  command: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional()
+});
+export type EncryptedApprovalPlaintext = z.infer<typeof EncryptedApprovalPlaintextSchema>;
+
 export const EncryptedApprovalPayloadSchema = z.object({
   version: z.number().int().positive().default(1),
   algorithm: z.string().min(1).max(80),
@@ -427,6 +437,54 @@ export const EncryptedApprovalPayloadSchema = z.object({
   aad: z.string().max(5_000).optional()
 });
 export type EncryptedApprovalPayload = z.infer<typeof EncryptedApprovalPayloadSchema>;
+
+export function generateApprovalEncryptionKey(): string {
+  return encodeBase64URL(randomBytes(32));
+}
+
+export function createEncryptedApprovalPayload(input: EncryptedApprovalPlaintext, key: string, options: { keyId?: string; aad?: string; nonce?: Uint8Array } = {}): EncryptedApprovalPayload {
+  const plaintext = new TextEncoder().encode(JSON.stringify(EncryptedApprovalPlaintextSchema.parse(input)));
+  const keyBytes = decodeEncryptionKey(key);
+  const nonce = options.nonce ?? randomBytes(12);
+  const ciphertext = gcm(keyBytes, nonce).encrypt(plaintext);
+  return EncryptedApprovalPayloadSchema.parse({
+    version: 1,
+    algorithm: 'agent-tick-aes-256-gcm-v1',
+    keyId: options.keyId,
+    nonce: encodeBase64URL(nonce),
+    ciphertext: encodeBase64URL(ciphertext),
+    aad: options.aad
+  });
+}
+
+export function decryptApprovalPayload(payload: EncryptedApprovalPayload, key: string): EncryptedApprovalPlaintext {
+  const parsed = EncryptedApprovalPayloadSchema.parse(payload);
+  if (parsed.algorithm !== 'agent-tick-aes-256-gcm-v1') throw new Error(`Unsupported encrypted approval algorithm: ${parsed.algorithm}`);
+  const plaintext = gcm(decodeEncryptionKey(key), decodeBase64URL(parsed.nonce)).decrypt(decodeBase64URL(parsed.ciphertext));
+  return EncryptedApprovalPlaintextSchema.parse(JSON.parse(new TextDecoder().decode(plaintext)));
+}
+
+function decodeEncryptionKey(key: string): Uint8Array {
+  const bytes = decodeBase64URL(key.trim());
+  if (bytes.length !== 32) throw new Error('Approval encryption key must be a 32-byte base64url value');
+  return bytes;
+}
+
+function encodeBase64URL(bytes: Uint8Array): string {
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
+  const base64 = typeof btoa === 'function'
+    ? btoa(binary)
+    : (globalThis as unknown as { Buffer: { from(input: Uint8Array): { toString(encoding: string): string } } }).Buffer.from(bytes).toString('base64');
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function decodeBase64URL(value: string): Uint8Array {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  const binary = typeof atob === 'function'
+    ? atob(base64)
+    : (globalThis as unknown as { Buffer: { from(input: string, encoding: string): Uint8Array } }).Buffer.from(base64, 'base64');
+  return typeof binary === 'string' ? Uint8Array.from(binary, (char) => char.charCodeAt(0)) : new Uint8Array(binary);
+}
 
 export const ApprovalRequestSchema = z.object({
   id: z.string(),

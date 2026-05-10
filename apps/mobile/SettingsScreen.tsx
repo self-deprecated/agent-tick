@@ -48,6 +48,7 @@ export function SettingsScreen({
   availability,
   authProvider,
   connectionStatus,
+  e2eeKey = "",
   error,
   loading,
   notificationStatus,
@@ -74,6 +75,7 @@ export function SettingsScreen({
   serverURL,
   setPairingCode,
   setSelectedOrganizationID,
+  setE2eeKey,
   setServerURL,
   setToken,
   token,
@@ -82,6 +84,7 @@ export function SettingsScreen({
   availability?: AvailabilityState;
   authProvider?: string;
   connectionStatus: ConnectionStatus;
+  e2eeKey?: string;
   error: string | null;
   loading: boolean;
   notificationStatus: NotificationStatus;
@@ -108,6 +111,7 @@ export function SettingsScreen({
   serverURL: string;
   setPairingCode: (value: string) => void;
   setSelectedOrganizationID?: (value: string) => void;
+  setE2eeKey?: (value: string) => void;
   setServerURL: (value: string) => void;
   setToken: (value: string) => void;
   token: string;
@@ -295,6 +299,19 @@ export function SettingsScreen({
               </Pressable>
             ))}
           </View>
+        </View>
+        <View style={styles.settingsSection}>
+          <Text style={styles.sectionHeading}>End-to-end encryption</Text>
+          <Text style={styles.pairingHint}>Paste the shared approval encryption key for this device to decrypt encrypted request details locally.</Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={(value) => setE2eeKey?.(value.trim())}
+            placeholder="base64url key"
+            secureTextEntry
+            style={styles.input}
+            value={e2eeKey}
+          />
         </View>
         {notificationsSection}
       </ScrollView>

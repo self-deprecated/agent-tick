@@ -156,6 +156,14 @@ describe("SettingsScreen — paired state", () => {
     expect(onAvailabilityChange).toHaveBeenCalledWith("off-call");
   });
 
+  it("lets paired users save an E2EE decryption key", () => {
+    const setE2eeKey = jest.fn();
+    render(<SettingsScreen {...pairedProps} e2eeKey="" setE2eeKey={setE2eeKey} />);
+    expect(screen.getByText("End-to-end encryption")).toBeTruthy();
+    fireEvent.changeText(screen.getByPlaceholderText("base64url key"), " key_123 ");
+    expect(setE2eeKey).toHaveBeenCalledWith("key_123");
+  });
+
   it("shows saved accounts and switches between them", () => {
     const onSavedAccountSelect = jest.fn();
     const account = {

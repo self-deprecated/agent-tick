@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiErrorEnvelopeSchema, ApprovalRequestSchema, AuthConfigSchema, BillingStatusSchema, CreateApprovalRequestSchema, CreateMobileDiagnosticsSchema, InviteEmailDeliverySchema, OrganizationInviteEmailResultSchema, UpdateDevicePushTokenSchema } from '../src/index.js';
+import { ApiErrorEnvelopeSchema, ApprovalRequestSchema, AuthConfigSchema, BillingStatusSchema, CreateApprovalRequestSchema, CreateMobileDiagnosticsSchema, InviteEmailDeliverySchema, OrganizationInviteEmailResultSchema, UpdateDevicePushTokenSchema, createEncryptedApprovalPayload, decryptApprovalPayload, generateApprovalEncryptionKey } from '../src/index.js';
 
 describe('shared schemas', () => {
   it('validates public auth config', () => {
@@ -52,6 +52,15 @@ describe('shared schemas', () => {
     expect(() =>
       CreateApprovalRequestSchema.parse({ requester: { name: 'agent' }, title: '' })
     ).toThrow();
+  });
+
+  it('encrypts and decrypts approval request contents', () => {
+    const key = generateApprovalEncryptionKey();
+    const payload = createEncryptedApprovalPayload({ title: 'Deploy?', body: 'Prod deploy', command: 'pnpm deploy' }, key, { nonce: new Uint8Array(12).fill(7) });
+
+    expect(payload.algorithm).toBe('agent-tick-aes-256-gcm-v1');
+    expect(payload.ciphertext).not.toContain('Deploy');
+    expect(decryptApprovalPayload(payload, key)).toEqual({ title: 'Deploy?', body: 'Prod deploy', command: 'pnpm deploy' });
   });
 
   it('validates encrypted approval payload envelopes', () => {

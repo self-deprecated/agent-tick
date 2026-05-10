@@ -11,7 +11,7 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { AgentTickClient, type ApprovalRequest } from '@agent-tick/sdk';
-import { EncryptedApprovalPayloadSchema, type EncryptedApprovalPayload } from '@agent-tick/shared';
+import { EncryptedApprovalPayloadSchema, createEncryptedApprovalPayload, generateApprovalEncryptionKey, type EncryptedApprovalPayload } from '@agent-tick/shared';
 import { resolveServerAndToken, saveClientConfig } from './config.js';
 
 export function createProgram(): Command {
@@ -78,12 +78,19 @@ export function createProgram(): Command {
     .requiredOption('--title <title>', 'approval title')
     .option('--body <body>', 'approval body')
     .option('--command <command>', 'command or action to approve')
+    .option('--encrypt', 'encrypt title/body/command before sending with AGENT_TICK_E2EE_KEY or --e2ee-key')
+    .option('--e2ee-key <key>', '32-byte base64url approval encryption key [env: AGENT_TICK_E2EE_KEY]')
+    .option('--generate-e2ee-key', 'print a new 32-byte base64url approval encryption key and exit')
     .option('--encrypted-payload-json <json>', 'opaque end-to-end encrypted request envelope JSON')
     .option('--encrypted-payload-file <path>', 'read opaque end-to-end encrypted request envelope JSON from a file')
     .option('--choice <choice>', 'custom response choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
     .action(async (options: RequestOptions) => {
+      if (options.generateE2eeKey) {
+        process.stdout.write(`${generateApprovalEncryptionKey()}\n`);
+        return;
+      }
       const { client, server } = await clientFromOptions(options);
       const created = await createAndMaybeWait(client, server, options);
       process.exitCode = exitCodeForRequest(created);
@@ -662,15 +669,15 @@ async function readStdin(): Promise<string> {
 
 async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
   const choices = options.hookChoices ?? parseChoices(options.choice);
-  const encryptedPayload = await readEncryptedPayloadOption(options);
+  const encryptedPayload = await encryptedPayloadFromOptions(options);
   const created = await client.createApprovalRequest({
     requester: {
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
       host: os.hostname()
     },
-    title: options.title,
-    ...(options.body ? { body: options.body } : {}),
-    ...(options.command ? { command: options.command } : {}),
+    title: encryptedPayload ? 'Encrypted approval request' : options.title,
+    ...(encryptedPayload ? { body: 'Open Agent Tick to decrypt this request.' } : options.body ? { body: options.body } : {}),
+    ...(encryptedPayload || !options.command ? {} : { command: options.command }),
     ...(encryptedPayload ? { encryptedPayload } : {}),
     ...(choices.length ? { choices } : {})
   });
@@ -700,6 +707,20 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
     }
   }
   return waited.request;
+}
+
+async function encryptedPayloadFromOptions(options: RequestOptions): Promise<EncryptedApprovalPayload | undefined> {
+  if (options.encrypt) {
+    if (options.encryptedPayloadJson || options.encryptedPayloadFile) throw new Error('use either --encrypt or an existing encrypted payload, not both');
+    const key = options.e2eeKey ?? process.env.AGENT_TICK_E2EE_KEY;
+    if (!key) throw new Error('--encrypt requires --e2ee-key or AGENT_TICK_E2EE_KEY');
+    return createEncryptedApprovalPayload({
+      title: options.title,
+      ...(options.body ? { body: options.body } : {}),
+      ...(options.command ? { command: options.command } : {})
+    }, key);
+  }
+  return readEncryptedPayloadOption(options);
 }
 
 async function readEncryptedPayloadOption(options: RequestOptions): Promise<EncryptedApprovalPayload | undefined> {
@@ -825,6 +846,9 @@ interface RequestOptions extends ClientOptions {
   title: string;
   body?: string;
   command?: string;
+  encrypt?: boolean;
+  e2eeKey?: string;
+  generateE2eeKey?: boolean;
   encryptedPayloadJson?: string;
   encryptedPayloadFile?: string;
   choice?: string[];

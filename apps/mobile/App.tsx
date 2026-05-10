@@ -58,6 +58,7 @@ import {
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
 import { AgentTickClient, type AgentStatusUpdate, type OrganizationMembership } from "@agent-tick/sdk";
+import { decryptApprovalPayload } from "@agent-tick/shared";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
   fetchRuntimeAuthConfig,
@@ -413,6 +414,7 @@ function AgentTickApp({
   const [runtimeAuthConfig, setRuntimeAuthConfig] = useState<RuntimeAuthConfig | null>(initialAuthConfig ?? null);
   const [token, setToken] = useState("");
   const [deviceID, setDeviceID] = useState("");
+  const [e2eeKey, setE2eeKey] = useState("");
   const [pairingCode, setPairingCode] = useState("");
   const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
   const [selectedOrganizationID, setSelectedOrganizationID] = useState("");
@@ -516,6 +518,7 @@ function AgentTickApp({
       try {
         const savedServerURL = (await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer;
         const savedAccountJSON = await AsyncStorage.getItem(mobileAccountsStorageKey);
+        const savedE2EEKey = await AsyncStorage.getItem("agent-tick.e2eeKey");
         let parsedAccounts: unknown = [];
         try {
           parsedAccounts = savedAccountJSON ? JSON.parse(savedAccountJSON) : [];
@@ -524,6 +527,7 @@ function AgentTickApp({
         }
         if (!cancelled) {
           setSavedAccounts(normalizeSavedMobileAccounts(parsedAccounts));
+          setE2eeKey(savedE2EEKey ?? "");
           setServerURL(savedServerURL);
         }
       } finally {
@@ -682,6 +686,11 @@ function AgentTickApp({
       });
     }
   }, [deviceID, loadedSessionServerURL, organizations, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    void AsyncStorage.setItem("agent-tick.e2eeKey", e2eeKey);
+  }, [e2eeKey, settingsLoaded]);
 
   const switchSavedAccount = useCallback((account: SavedMobileAccount) => {
     interruptRealtime();
@@ -1425,6 +1434,7 @@ function AgentTickApp({
           availability={availability}
           connectionStatus={connectionStatus}
           error={error}
+          e2eeKey={e2eeKey}
           loading={loading}
           notificationStatus={notificationStatus}
           onAvailabilityChange={(state) => void updateAvailability(state as AvailabilityState)}
@@ -1455,6 +1465,7 @@ function AgentTickApp({
           serverURL={serverURL}
           setPairingCode={setPairingCode}
           setSelectedOrganizationID={selectOrganization}
+          setE2eeKey={setE2eeKey}
           setServerURL={handleServerURLChange}
           setToken={setToken}
           token={token}
@@ -1482,6 +1493,7 @@ function AgentTickApp({
           onRespond={(request, choice) => void respond(request, choice)}
           onSubmitQuestionnaire={(request) => void submitQuestionnaire(request)}
           projectGroups={projectGroups}
+          e2eeKey={e2eeKey}
           questionnaireAnswers={questionnaireAnswers}
           reply={reply}
           requests={visibleRequests}
@@ -1683,6 +1695,7 @@ function LatestStatusCard({ statusUpdates, compact = false }: { statusUpdates: A
 }
 
 export function ApprovalsScreen({
+  e2eeKey,
   error,
   loading,
   onRefresh,
@@ -1701,6 +1714,7 @@ export function ApprovalsScreen({
   setReply,
   setSelectedID,
 }: {
+  e2eeKey?: string;
   error: string | null;
   loading: boolean;
   onRefresh: () => void;
@@ -1739,6 +1753,7 @@ export function ApprovalsScreen({
 
   const canRespond = canRespondToRequest(selected);
   const responsibility = requestResponsibilityLabel(selected);
+  const decrypted = decryptedApprovalPlaintext(selected, e2eeKey);
 
   return (
     <View style={styles.approvalsPane}>
@@ -1796,7 +1811,7 @@ export function ApprovalsScreen({
         style={styles.approvalScroll}
       >
         <LatestStatusCard statusUpdates={statusUpdates} />
-        <Text style={styles.detailTitle}>{selected.title}</Text>
+        <Text style={styles.detailTitle}>{decrypted?.title ?? selected.title}</Text>
         <Text style={styles.detailMeta}>Requested by {requestRequesterLabel(selected)}</Text>
         <Text style={styles.detailMeta}>Project: {requestProjectLabel(selected)}</Text>
         {responsibility ? (
@@ -1828,10 +1843,11 @@ export function ApprovalsScreen({
             {selected.requester.workingDirectory}
           </Text>
         ) : null}
-        {selected.body ? <Text style={styles.bodyText}>{selected.body}</Text> : null}
-        {selected.command ? (
+        {selected.encryptedPayload && !decrypted ? <Text style={styles.errorText}>Encrypted request. Add your E2EE key in Settings to decrypt.</Text> : null}
+        {(decrypted?.body ?? selected.body) ? <Text style={styles.bodyText}>{decrypted?.body ?? selected.body}</Text> : null}
+        {(decrypted?.command ?? selected.command) ? (
           <Text selectable style={styles.commandText}>
-            {selected.command}
+            {decrypted?.command ?? selected.command}
           </Text>
         ) : null}
         {selected.metadata?.context ? (
@@ -1947,6 +1963,15 @@ export function ApprovalsScreen({
       </View>
     </View>
   );
+}
+
+function decryptedApprovalPlaintext(request: ApprovalRequest, key?: string) {
+  if (!request.encryptedPayload || !key?.trim()) return null;
+  try {
+    return decryptApprovalPayload(request.encryptedPayload, key);
+  } catch {
+    return null;
+  }
 }
 
 function RequestContextPanel({ request }: { request: ApprovalRequest }) {
