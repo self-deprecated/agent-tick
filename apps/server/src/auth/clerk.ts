@@ -14,7 +14,39 @@ export function clearClerkProfileCacheForTests(): void {
 
 export async function verifyClerkSession(token: string, config: ServerConfig, store: AgentTickStore): Promise<AuthContext | null> {
   if (config.mode !== 'clerk' || !looksLikeJWT(token)) return null;
+  return verifyClerkSessionJwt(token, config, store);
+}
 
+export async function verifyClerkLoginToken(token: string, config: ServerConfig, store: AgentTickStore): Promise<AuthContext | null> {
+  if (config.mode !== 'clerk') return null;
+  if (config.testAuth && token.startsWith('test_')) {
+    const subject = token.slice('test_'.length) || 'user';
+    const identity = store.loginOrCreateClerkIdentity({
+      issuer: 'agent-tick-test',
+      subject,
+      email: `${subject}@example.test`,
+      emailVerified: true,
+      name: subject
+    });
+    return {
+      source: 'clerk',
+      isHuman: true,
+      userId: identity.userId,
+      organizationId: identity.organizationId,
+      role: identity.role,
+      provider: 'clerk',
+      providerIssuer: 'agent-tick-test',
+      providerSubject: subject
+    };
+  }
+  if (looksLikeJWT(token)) {
+    const sessionAuth = await verifyClerkSessionJwt(token, config, store);
+    if (sessionAuth) return sessionAuth;
+  }
+  return verifyClerkClientToken(token, config, store);
+}
+
+async function verifyClerkSessionJwt(token: string, config: ServerConfig, store: AgentTickStore): Promise<AuthContext | null> {
   let payload: unknown;
   try {
     payload = await verifyToken(token, {
@@ -30,7 +62,41 @@ export async function verifyClerkSession(token: string, config: ServerConfig, st
   const issuer = stringClaim(payload, 'iss');
   const sessionId = stringClaim(payload, 'sid');
   if (!subject || !issuer) return null;
+  return authContextForClerkUser({ subject, issuer, sessionId, config, store });
+}
 
+async function verifyClerkClientToken(token: string, config: ServerConfig, store: AgentTickStore): Promise<AuthContext | null> {
+  if (!config.clerkSecretKey) return null;
+  try {
+    const clerk = createClerkClient({ secretKey: config.clerkSecretKey });
+    const client = await clerk.clients.verifyClient(token);
+    const session = client.sessions.find((candidate) => candidate.id === client.lastActiveSessionId) ?? client.sessions[0];
+    if (!session || session.status !== 'active') return null;
+    return authContextForClerkUser({
+      subject: session.userId,
+      issuer: clerkIssuer(config),
+      sessionId: session.id,
+      config,
+      store
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function authContextForClerkUser({
+  subject,
+  issuer,
+  sessionId,
+  config,
+  store
+}: {
+  subject: string;
+  issuer: string;
+  sessionId?: string | null;
+  config: ServerConfig;
+  store: AgentTickStore;
+}): Promise<AuthContext | null> {
   const profile = await fetchClerkProfile(subject, config);
   const identity = store.loginOrCreateClerkIdentity({
     issuer,
@@ -73,6 +139,20 @@ async function fetchClerkProfile(userId: string, config: ServerConfig): Promise<
 function stringClaim(payload: unknown, claim: string): string | null {
   const value = (payload as Record<string, unknown>)[claim];
   return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function clerkIssuer(config: ServerConfig): string {
+  const publishableKey = config.clerkPublishableKey;
+  if (publishableKey?.startsWith('pk_')) {
+    const encoded = publishableKey.split('_').slice(2).join('_');
+    try {
+      const decoded = Buffer.from(encoded, 'base64').toString('utf8').replace(/\$$/, '');
+      if (decoded) return `https://${decoded}`;
+    } catch {
+      // Fall through to a stable local issuer fallback.
+    }
+  }
+  return 'clerk';
 }
 
 function looksLikeJWT(token: string): boolean {

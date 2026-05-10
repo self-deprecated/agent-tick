@@ -11,6 +11,7 @@ import {
   BillingStatusSchema,
   CreateAgentTokenSchema,
   CreateApprovalRequestSchema,
+  CreateMobileSessionSchema,
   CreateApprovalResponseSchema,
   CreateOrganizationInviteSchema,
   CreateOrganizationSchema,
@@ -23,6 +24,7 @@ import {
   HeartbeatResponseSchema,
   InvitePreviewSchema,
   MeResponseSchema,
+  MobileSessionResponseSchema,
   OrganizationInviteEmailResultSchema,
   OrganizationInviteRecordSchema,
   OrganizationMembershipRequestRecordSchema,
@@ -57,6 +59,7 @@ import {
   type CreateAgentToken,
   type CreateApprovalRequest,
   type CreateApprovalResponse,
+  type CreateMobileSession,
   type CreateOrganization,
   type CreateOrganizationInvite,
   type CreatePolicy,
@@ -71,6 +74,7 @@ import {
   type InviteEmailDelivery,
   type InvitePreview,
   type MeResponse,
+  type MobileSessionResponse,
   type OrganizationInviteEmailResult,
   type OrganizationInviteRecord,
   type OrganizationMembership,
@@ -145,6 +149,13 @@ export class AgentTickClient {
 
   getMe(): Promise<MeResponse> {
     return this.#request('GET', '/v1/me', MeResponseSchema);
+  }
+
+  createMobileSession(input: CreateMobileSession): Promise<MobileSessionResponse> {
+    return this.#request('POST', '/v1/auth/mobile-session', MobileSessionResponseSchema, {
+      body: CreateMobileSessionSchema.parse(input),
+      includeOrganization: false
+    });
   }
 
   listAuditEvents(options: { limit?: number } = {}): Promise<AuditEventRecord[]> {
@@ -435,6 +446,7 @@ export type {
   CreateAgentToken,
   CreateApprovalRequest,
   CreateApprovalResponse,
+  CreateMobileSession,
   CreateOrganization,
   CreateOrganizationInvite,
   CreatePolicy,
@@ -449,6 +461,7 @@ export type {
   InviteEmailDelivery,
   InvitePreview,
   MeResponse,
+  MobileSessionResponse,
   OrganizationInviteEmailResult,
   OrganizationInviteRecord,
   OrganizationMembership,

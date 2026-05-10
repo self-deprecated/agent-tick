@@ -42,6 +42,20 @@ export const AuthConfigSchema = z.object({
 });
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 
+export const CreateMobileSessionSchema = z.object({
+  clerkToken: z.string().min(1)
+});
+export type CreateMobileSession = z.input<typeof CreateMobileSessionSchema>;
+
+export const MobileSessionResponseSchema = z.object({
+  token: z.string().min(1),
+  expiresAt: z.string().datetime(),
+  userId: z.string(),
+  organizationId: z.string(),
+  role: z.string()
+});
+export type MobileSessionResponse = z.infer<typeof MobileSessionResponseSchema>;
+
 export const OrganizationRoleSchema = z.enum(['owner', 'admin', 'approver', 'member', 'viewer']);
 export type OrganizationRole = z.infer<typeof OrganizationRoleSchema>;
 

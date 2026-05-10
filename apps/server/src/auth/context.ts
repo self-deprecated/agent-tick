@@ -3,6 +3,7 @@ import type { FastifyRequest } from 'fastify';
 import { DEFAULT_ORGANIZATION_ID, DEFAULT_USER_ID, type AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { verifyClerkSession } from './clerk.js';
+import { verifyMobileSession } from './mobileSession.js';
 
 export type AuthSource = 'loopback' | 'admin' | 'agent' | 'device' | 'clerk';
 
@@ -99,6 +100,8 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
   }
 
   if (config.mode === 'clerk' && bearer) {
+    const mobileAuth = verifyMobileSession(bearer, config, store);
+    if (mobileAuth) return applySelectedOrganization(request, store, mobileAuth);
     const clerkAuth = await verifyClerkSession(bearer, config, store);
     return clerkAuth ? applySelectedOrganization(request, store, clerkAuth) : null;
   }

@@ -22,6 +22,39 @@ describe('AgentTickClient', () => {
     expect(seen.headers?.get('X-Agent-Tick-Organization-ID')).toBe('org_123');
   });
 
+  it('exchanges Clerk login tokens for Agent Tick mobile sessions without organization headers', async () => {
+    const seen: { url?: string; method?: string; authorization?: string | null; organizationId?: string | null; body?: unknown } = {};
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      tokenProvider: () => 'existing-session',
+      organizationIdProvider: () => 'org_123',
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        seen.url = String(input);
+        seen.method = init?.method;
+        seen.authorization = headers.get('Authorization');
+        seen.organizationId = headers.get('X-Agent-Tick-Organization-ID');
+        seen.body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        return jsonResponse({
+          token: 'agent_tick_session',
+          expiresAt: '2026-01-01T00:00:00.000Z',
+          userId: 'usr_123',
+          organizationId: 'org_123',
+          role: 'owner'
+        });
+      }
+    });
+
+    await expect(client.createMobileSession({ clerkToken: 'clerk_session_or_client_token' })).resolves.toMatchObject({ token: 'agent_tick_session' });
+    expect(seen).toEqual({
+      method: 'POST',
+      url: 'https://tick.example.com/v1/auth/mobile-session',
+      authorization: 'Bearer existing-session',
+      organizationId: null,
+      body: { clerkToken: 'clerk_session_or_client_token' }
+    });
+  });
+
   it('parses structured API errors', async () => {
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com',

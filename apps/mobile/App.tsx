@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ClerkProvider, useAuth, useClerk, useNativeSession } from "@clerk/expo";
+import { ClerkProvider, useAuth, useNativeAuthEvents, useNativeSession } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
@@ -15,7 +16,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TurboModuleRegistry,
   View,
+  type TurboModule,
 } from "react-native";
 import {
   notificationDecision,
@@ -70,6 +73,25 @@ type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
 const defaultServer = hostedServerURL;
 const approvalCategoryID = "approval-request";
+const agentTickMobileSessionJwtKey = "__agent_tick_mobile_session_jwt";
+
+type NativeClerkModule = TurboModule & {
+  getClientToken?: () => Promise<string | null>;
+  getSession?: () => Promise<unknown>;
+  signOut?: () => Promise<void>;
+};
+
+function getNativeClerkModule(): NativeClerkModule | null {
+  try {
+    return TurboModuleRegistry.get<NativeClerkModule>("ClerkExpo");
+  } catch {
+    return null;
+  }
+}
+
+async function getNativeClerkClientToken(): Promise<string | null> {
+  return (await getNativeClerkModule()?.getClientToken?.().catch(() => null)) ?? null;
+}
 
 type ClerkTokenProvider = () => Promise<string | null>;
 
@@ -160,54 +182,106 @@ export default function App() {
 
 function ClerkBoundApp(props: AgentTickAppProps) {
   const { getToken, isLoaded, isSignedIn, signOut } = useAuth();
-  const clerk = useClerk();
   const nativeSession = useNativeSession();
-  const [syncingNativeSession, setSyncingNativeSession] = useState(false);
+  const nativeAuthEvents = useNativeAuthEvents();
+  const [clerkLoginToken, setClerkLoginToken] = useState<string | null>(null);
+  const [mobileSessionToken, setMobileSessionToken] = useState<string | null>(null);
+  const [signedOutManually, setSignedOutManually] = useState(false);
+  const wasNativeSignedIn = useRef(false);
+
+  const nativeSignedIn = nativeSession.isSignedIn || nativeAuthEvents.nativeAuthState?.type === "signedIn";
+  const hasClerkLogin = !signedOutManually && Boolean(isSignedIn || nativeSignedIn || clerkLoginToken || mobileSessionToken);
 
   useEffect(() => {
-    if (!isLoaded || isSignedIn || !nativeSession.sessionId || syncingNativeSession) return;
+    if (signedOutManually && !wasNativeSignedIn.current && (isSignedIn || nativeSignedIn)) setSignedOutManually(false);
+    wasNativeSignedIn.current = Boolean(isSignedIn || nativeSignedIn);
+  }, [isSignedIn, nativeSignedIn, signedOutManually]);
+
+  useEffect(() => {
+    if (!isLoaded || isSignedIn || mobileSessionToken || signedOutManually) return;
     let cancelled = false;
-    const syncNativeSession = async () => {
-      setSyncingNativeSession(true);
-      try {
-        console.info("[AgentTickMobile] Syncing native Clerk session", { sessionId: nativeSession.sessionId });
-        const clerkInternals = clerk as unknown as { __internal_reloadInitialResources?: () => Promise<unknown> };
-        if (typeof clerkInternals.__internal_reloadInitialResources === "function") {
-          await clerkInternals.__internal_reloadInitialResources();
-        }
-        if (!cancelled) await clerk.setActive({ session: nativeSession.sessionId });
-      } catch (err) {
-        console.info("[AgentTickMobile] Native Clerk session sync failed", { message: err instanceof Error ? err.message : String(err) });
-      } finally {
-        if (!cancelled) setSyncingNativeSession(false);
-      }
+    const restoreMobileSession = async () => {
+      const savedSession = (await tokenCache?.getToken(agentTickMobileSessionJwtKey)) || null;
+      if (cancelled || !savedSession) return;
+      setMobileSessionToken(savedSession);
+      console.info("[AgentTickMobile] Restored Agent Tick mobile session");
     };
-    void syncNativeSession();
+    void restoreMobileSession();
     return () => {
       cancelled = true;
     };
-  }, [clerk, isLoaded, isSignedIn, nativeSession.sessionId, syncingNativeSession]);
+  }, [isLoaded, isSignedIn, mobileSessionToken, signedOutManually]);
 
   useEffect(() => {
-    if (isSignedIn) return;
+    if (!isLoaded || isSignedIn || nativeSignedIn || signedOutManually || mobileSessionToken || clerkLoginToken) return;
     const interval = setInterval(() => {
       void nativeSession.refresh();
     }, 1000);
     return () => clearInterval(interval);
-  }, [isSignedIn, nativeSession]);
+  }, [clerkLoginToken, isLoaded, isSignedIn, mobileSessionToken, nativeSession, nativeSignedIn, signedOutManually]);
 
-  if (!isLoaded || syncingNativeSession) {
+  useEffect(() => {
+    if (!isLoaded || signedOutManually || mobileSessionToken || clerkLoginToken) return;
+    let cancelled = false;
+    const resolveClerkLoginToken = async () => {
+      const sessionToken = await getToken();
+      if (cancelled || sessionToken) {
+        if (sessionToken) setClerkLoginToken(sessionToken);
+        return;
+      }
+      if (!nativeSignedIn) return;
+      const nativeClientToken = await getNativeClerkClientToken();
+      if (!cancelled && nativeClientToken) setClerkLoginToken(nativeClientToken);
+    };
+    void resolveClerkLoginToken();
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkLoginToken, getToken, isLoaded, mobileSessionToken, nativeSignedIn, signedOutManually]);
+
+  useEffect(() => {
+    if (signedOutManually || mobileSessionToken || !clerkLoginToken) return;
+    let cancelled = false;
+    const createAgentTickSession = async () => {
+      const client = new AgentTickClient({ baseUrl: props.initialServerURL ?? defaultServer });
+      const session = await client.createMobileSession({ clerkToken: clerkLoginToken });
+      if (cancelled) return;
+      await tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token);
+      setMobileSessionToken(session.token);
+      console.info("[AgentTickMobile] Created Agent Tick mobile session");
+    };
+    void createAgentTickSession().catch((err) => {
+      console.info("[AgentTickMobile] Agent Tick mobile session exchange failed", { message: err instanceof Error ? err.message : String(err) });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkLoginToken, mobileSessionToken, props.initialServerURL, signedOutManually]);
+
+  const handleForgetClerkSession = useCallback(async () => {
+    setSignedOutManually(true);
+    setClerkLoginToken(null);
+    setMobileSessionToken(null);
+    await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
+    await getNativeClerkModule()?.signOut?.();
+    await signOut();
+  }, [signOut]);
+
+  if (!isLoaded) {
     return <LoadingScreen />;
   }
-  if (!isSignedIn) {
+  if (!hasClerkLogin) {
     return <ClerkSignInScreen serverURL={props.initialServerURL ?? defaultServer} />;
+  }
+  if (!mobileSessionToken) {
+    return <LoadingScreen />;
   }
   return (
     <AgentTickApp
       {...props}
-      clerkSignedIn={isSignedIn}
-      clerkTokenProvider={() => getToken()}
-      onForgetClerkSession={() => void signOut()}
+      clerkSignedIn={true}
+      clerkTokenProvider={async () => mobileSessionToken}
+      onForgetClerkSession={() => void handleForgetClerkSession()}
     />
   );
 }
@@ -549,6 +623,10 @@ function AgentTickApp({
   }, [refreshOrganizations, runtimeAuthConfig?.authProvider, settingsLoaded]);
 
   const load = useCallback(async (options?: { visible?: boolean }) => {
+    if (runtimeAuthConfig?.authProvider === "clerk" && !selectedOrganizationID) {
+      setConnectionStatus("checking");
+      return;
+    }
     const visible = options?.visible ?? false;
     if (visible) {
       setLoading(true);
@@ -591,7 +669,7 @@ function AgentTickApp({
         setLoading(false);
       }
     }
-  }, [notificationTargetID, pushStatus, sdk, selectedProjectID]);
+  }, [notificationTargetID, pushStatus, runtimeAuthConfig?.authProvider, sdk, selectedOrganizationID, selectedProjectID]);
 
   useEffect(() => {
     if (!settingsLoaded) {
@@ -608,7 +686,7 @@ function AgentTickApp({
   }, [hasRequestAuth, load, settingsLoaded]);
 
   useEffect(() => {
-    if (!settingsLoaded || (runtimeAuthConfig?.authProvider !== "clerk" && !token)) {
+    if (!settingsLoaded || !hasRequestAuth) {
       return;
     }
     const heartbeat = () => {

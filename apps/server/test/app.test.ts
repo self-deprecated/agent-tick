@@ -99,6 +99,64 @@ describe('server skeleton', () => {
     expect(() => loadConfig({ AGENT_TICK_MODE: 'clerk' })).toThrow(/CLERK_PUBLISHABLE_KEY/);
   });
 
+  it('exchanges a verified Clerk login for an Agent Tick mobile session token', async () => {
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }),
+      store: testStore()
+    });
+
+    const exchange = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/mobile-session',
+      payload: { clerkToken: 'test_mobile_user' }
+    });
+
+    expect(exchange.statusCode).toBe(200);
+    expect(exchange.json()).toMatchObject({
+      token: expect.stringMatching(/^ey/),
+      userId: expect.stringMatching(/^usr_/),
+      organizationId: expect.stringMatching(/^org_/),
+      role: 'owner'
+    });
+
+    const me = await app.inject({
+      method: 'GET',
+      url: '/v1/me',
+      headers: { authorization: `Bearer ${exchange.json().token}` }
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ userId: exchange.json().userId, organizationId: exchange.json().organizationId, role: 'owner' });
+  });
+
+  it('rejects invalid and tampered Agent Tick mobile sessions', async () => {
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }),
+      store: testStore()
+    });
+
+    const invalidExchange = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/mobile-session',
+      payload: { clerkToken: 'not-valid' }
+    });
+    expect(invalidExchange.statusCode).toBe(401);
+
+    const exchange = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/mobile-session',
+      payload: { clerkToken: 'test_mobile_user' }
+    });
+    const token = exchange.json().token as string;
+    const tamperedToken = `${token.slice(0, -1)}${token.endsWith('a') ? 'b' : 'a'}`;
+    const me = await app.inject({
+      method: 'GET',
+      url: '/v1/me',
+      headers: { authorization: `Bearer ${tamperedToken}` }
+    });
+    expect(me.statusCode).toBe(401);
+    expect(me.json()).toMatchObject({ error: { code: 'not_authenticated' } });
+  });
+
   it('rejects invalid Clerk bearer tokens in clerk mode', async () => {
     app = await buildApp({
       config: loadConfig({
