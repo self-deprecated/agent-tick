@@ -1,6 +1,5 @@
 import { gcm } from '@noble/ciphers/aes.js';
 import { randomBytes } from '@noble/ciphers/utils.js';
-import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { z } from 'zod';
 
@@ -477,7 +476,7 @@ function decodeEncryptionKey(key: string): Uint8Array {
       // Fall through to passphrase derivation.
     }
   }
-  return pbkdf2(sha256, new TextEncoder().encode(trimmed), new TextEncoder().encode('agent-tick-e2ee-passphrase-v1'), { c: 10_000, dkLen: 32 });
+  return sha256(new TextEncoder().encode(`agent-tick-e2ee-passphrase-v1:${trimmed}`));
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
