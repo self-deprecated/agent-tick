@@ -201,10 +201,10 @@ describe("project grouping helpers", () => {
     expect(second).toBeDefined();
     expect(third).toBeDefined();
     expect(requestProjectID(first!)).toBe("box:/work/a");
-    expect(requestProjectLabel(third!)).toBe("c · box");
+    expect(requestProjectLabel(third!)).toBe("c");
     expect(groupRequestsByProject(requests)).toEqual([
-      { id: "box:/work/a", label: "Alpha · box", requests: [first!, second!] },
-      { id: "box:/work/c", label: "c · box", requests: [third!] },
+      { id: "box:/work/a", label: "Alpha", requests: [first!, second!] },
+      { id: "box:/work/c", label: "c", requests: [third!] },
     ]);
   });
 });
@@ -231,7 +231,7 @@ describe("approval detail metadata helpers", () => {
 
     expect(requestCommandDetails(request)).toEqual([
       { label: "Command", value: "corepack pnpm test -- --runInBand" },
-      { label: "Project", value: "agent-tick · lattice" },
+      { label: "Project", value: "agent-tick" },
       { label: "Directory", value: "/work/agent-tick" },
       { label: "Host", value: "lattice" },
       { label: "Requested", value: "2026-04-19T12:00:00Z" },
@@ -258,7 +258,7 @@ describe("approval detail metadata helpers", () => {
     });
 
     expect(requestRequesterLabel(request)).toBe("agent-tick");
-    expect(requestProjectLabel(request)).toBe("agent-tick · lattice");
+    expect(requestProjectLabel(request)).toBe("agent-tick");
   });
 });
 

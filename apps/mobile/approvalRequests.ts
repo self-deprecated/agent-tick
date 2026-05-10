@@ -420,9 +420,8 @@ export function requestProjectLabel(request: ApprovalRequest) {
     return metadataProject;
   }
   const explicit = request.requester.projectName?.trim();
-  const host = request.requester.host?.trim();
   if (explicit) {
-    return host ? `${explicit} · ${host}` : explicit;
+    return explicit;
   }
   const cwd = request.requester.workingDirectory?.trim();
   if (!cwd) {
@@ -430,7 +429,7 @@ export function requestProjectLabel(request: ApprovalRequest) {
   }
   const parts = cwd.split(/[\\/]+/).filter(Boolean);
   const name = parts[parts.length - 1] || cwd;
-  return host ? `${name} · ${host}` : name;
+  return name;
 }
 
 export function groupRequestsByProject(requests: ApprovalRequest[]): ProjectGroup[] {
