@@ -102,7 +102,7 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
     expect(screen.getByText("Decrypt this request before approving or rejecting it.")).toBeTruthy();
     expect(screen.queryByText("Approve")).toBeNull();
     expect(screen.queryByText("Deny")).toBeNull();
-    fireEvent.press(screen.getByText("Dismiss"));
+    fireEvent.press(screen.getByText("Dismiss encrypted request"));
     expect(onRespond).toHaveBeenCalledWith(expect.objectContaining({ id: "req_1" }), expect.objectContaining({ id: "deny" }));
     fireEvent.press(screen.getByText("Add E2EE Key in Settings"));
     expect(onOpenSettings).toHaveBeenCalled();

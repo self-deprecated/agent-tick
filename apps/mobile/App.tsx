@@ -1995,14 +1995,12 @@ export function ApprovalsScreen({
         {encryptedLocked ? (
           <View style={styles.encryptedActionPanel}>
             <Text style={styles.actionHint}>Decrypt this request before approving or rejecting it.</Text>
+            <Pressable onPress={() => onRespond(selected, dismissChoice)} style={[styles.choiceButton, styles.denyButton]}>
+              <Text style={styles.choiceText}>Dismiss encrypted request</Text>
+            </Pressable>
             {onOpenSettings ? (
               <Pressable onPress={onOpenSettings} style={styles.secondaryButton}>
                 <Text style={styles.secondaryButtonText}>Add E2EE Key in Settings</Text>
-              </Pressable>
-            ) : null}
-            {dismissChoice ? (
-              <Pressable onPress={() => onRespond(selected, dismissChoice)} style={[styles.choiceButton, styles.denyButton]}>
-                <Text style={styles.choiceText}>Dismiss</Text>
               </Pressable>
             ) : null}
           </View>
@@ -2044,8 +2042,8 @@ export function ApprovalsScreen({
   );
 }
 
-function encryptedDismissChoice(request: ApprovalRequest): Choice | null {
-  return (request.choices ?? []).find((choice) => choice.kind === "deny" || choice.id === "reject" || choice.id === "deny") ?? null;
+function encryptedDismissChoice(request: ApprovalRequest): Choice {
+  return (request.choices ?? []).find((choice) => choice.kind === "deny" || choice.id === "reject" || choice.id === "deny") ?? { id: "reject", label: "Dismiss", kind: "deny" };
 }
 
 function encryptedLockMessage(request: ApprovalRequest, key?: string) {
