@@ -89,7 +89,9 @@ type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 
 const defaultServer = hostedServerURL;
 const approvalCategoryID = "approval-request";
+const approvalChannelID = "approval-requests";
 const agentTickMobileSessionJwtKey = "__agent_tick_mobile_session_jwt";
+const mobileInstallationIDStorageKey = "agent-tick.mobileInstallationID";
 
 type NativeClerkModule = TurboModule & {
   getClientToken?: () => Promise<string | null>;
@@ -585,6 +587,14 @@ function AgentTickApp({
       setDiagnosticsEventCount(diagnosticEvents().length);
     });
     void refreshNotificationStatus(setNotificationStatus);
+    if (Platform.OS === "android") {
+      void Notifications.setNotificationChannelAsync(approvalChannelID, {
+        name: "Approval requests",
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: "default",
+      }).catch(() => undefined);
+    }
     void Notifications.setNotificationCategoryAsync(approvalCategoryID, [
       {
         identifier: "approve",
@@ -1185,6 +1195,14 @@ function AgentTickApp({
         return;
       }
 
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync(approvalChannelID, {
+          name: "Approval requests",
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          sound: "default",
+        });
+      }
       const projectId = Constants.expoConfig?.extra?.eas?.projectId;
       if (!isUsableProjectID(projectId)) {
         setPushStatus("unsupported");
@@ -1197,16 +1215,26 @@ function AgentTickApp({
       const pushToken = await Notifications.getExpoPushTokenAsync(
         { projectId },
       );
+      const installationId = await mobileInstallationID();
       const trimmed = (overrideServerURL || serverURL).replace(/\/$/, "");
       const pushClient = runtimeAuthConfig?.authProvider === "clerk"
         ? sdk
         : new AgentTickClient({ baseUrl: trimmed, tokenProvider: () => activeToken });
-      if (activeDeviceID) {
+      if (runtimeAuthConfig?.authProvider === "clerk") {
+        const responseBody = await pushClient.registerDevice({
+          deviceName: `${Platform.OS} phone`,
+          platform: Platform.OS,
+          installationId,
+          expoPushToken: pushToken.data,
+        });
+        setDeviceID(responseBody.deviceId);
+      } else if (activeDeviceID) {
         await pushClient.updateDevicePushToken(activeDeviceID, { token: pushToken.data });
       } else {
         const responseBody = await pushClient.registerDevice({
           deviceName: `${Platform.OS} phone`,
           platform: Platform.OS,
+          installationId,
           expoPushToken: pushToken.data,
         });
         setDeviceID(responseBody.deviceId);
@@ -1546,6 +1574,14 @@ function selectApprovalID(
   return requests[0]?.id ?? null;
 }
 
+async function mobileInstallationID(): Promise<string> {
+  const existing = await AsyncStorage.getItem(mobileInstallationIDStorageKey);
+  if (existing) return existing;
+  const next = `install_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+  await AsyncStorage.setItem(mobileInstallationIDStorageKey, next);
+  return next;
+}
+
 function isUsableProjectID(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -1658,6 +1694,7 @@ async function notifyForNewRequests(
           data: { approvalRequestID: request.id },
           sound: true,
         },
+        ...(Platform.OS === "android" ? { channelId: approvalChannelID } : {}),
         trigger: null,
       });
     } catch {

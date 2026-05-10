@@ -502,6 +502,32 @@ describe('AgentTickStore', () => {
     expect(store.listPushDevicesForOrganization(DEFAULT_ORGANIZATION_ID)).toEqual([expect.objectContaining({ deviceId: second.deviceId, expoPushToken: 'ExponentPushToken[abc]' })]);
   });
 
+  it('keeps push devices scoped per organization for one mobile installation', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+    const other = store.createOrganizationForUser('usr_default', 'Other org');
+
+    const first = store.registerDevice({
+      userId: 'usr_default',
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      deviceName: 'iPhone',
+      installationId: 'install-1',
+      expoPushToken: 'ExponentPushToken[abc]'
+    });
+    const second = store.registerDevice({
+      userId: 'usr_default',
+      organizationId: other.organizationId,
+      deviceName: 'iPhone',
+      installationId: 'install-1',
+      expoPushToken: 'ExponentPushToken[abc]'
+    });
+
+    expect(second.deviceId).not.toBe(first.deviceId);
+    expect(store.listPushDevicesForOrganization(DEFAULT_ORGANIZATION_ID)).toEqual([expect.objectContaining({ deviceId: first.deviceId })]);
+    expect(store.listPushDevicesForOrganization(other.organizationId)).toEqual([expect.objectContaining({ deviceId: second.deviceId })]);
+  });
+
   it('abandons pending approval requests', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

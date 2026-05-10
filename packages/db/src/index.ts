@@ -433,6 +433,8 @@ export class AgentTickStore {
     ensureColumn(this.db, 'approval_requests', 'encrypted_payload_json', 'ALTER TABLE approval_requests ADD COLUMN encrypted_payload_json TEXT');
     this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
     this.db.exec(MIGRATION_0003_AGENT_STATUS_UPDATES);
+    this.db.exec('DROP INDEX IF EXISTS devices_user_installation_idx');
+    this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS devices_user_org_installation_idx ON devices(user_id, organization_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL');
     this.db.exec('CREATE INDEX IF NOT EXISTS audit_events_org_event_idx ON audit_events(organization_id, event_id)');
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
@@ -1475,15 +1477,15 @@ export class AgentTickStore {
   registerDevice(input: DeviceRegistrationInput, now = new Date().toISOString()): DeviceRecord {
     const existing = input.installationId
       ? (this.db
-          .prepare('SELECT * FROM devices WHERE user_id = ? AND installation_id = ? AND unregistered_at IS NULL')
-          .get(input.userId, input.installationId) as DeviceRow | undefined)
+          .prepare('SELECT * FROM devices WHERE user_id = ? AND organization_id = ? AND installation_id = ? AND unregistered_at IS NULL')
+          .get(input.userId, input.organizationId, input.installationId) as DeviceRow | undefined)
       : undefined;
     const deviceId = existing?.device_id ?? newID('dev');
     const expoPushToken = input.expoPushToken?.trim() || null;
 
     const tx = this.db.transaction(() => {
       if (expoPushToken) {
-        this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE expo_push_token = ?').run(now, expoPushToken);
+        this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE organization_id = ? AND expo_push_token = ?').run(now, input.organizationId, expoPushToken);
       }
       if (existing) {
         this.db
@@ -1595,8 +1597,11 @@ export class AgentTickStore {
   updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now = new Date().toISOString()): DeviceRecord | null {
     const token = expoPushToken.trim();
     const tx = this.db.transaction(() => {
-      if (token) this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE expo_push_token = ?').run(now, token);
-      this.db.prepare('UPDATE devices SET expo_push_token = ?, updated_at = ? WHERE device_id = ? AND user_id = ?').run(token || null, now, deviceId, userId);
+      if (token) {
+        const existing = this.db.prepare('SELECT organization_id FROM devices WHERE device_id = ? AND user_id = ? AND unregistered_at IS NULL').get(deviceId, userId) as { organization_id: string } | undefined;
+        if (existing) this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE organization_id = ? AND expo_push_token = ?').run(now, existing.organization_id, token);
+      }
+      this.db.prepare('UPDATE devices SET expo_push_token = ?, updated_at = ? WHERE device_id = ? AND user_id = ? AND unregistered_at IS NULL').run(token || null, now, deviceId, userId);
     });
     tx();
     const device = this.getDeviceForUser(deviceId, userId);
@@ -2689,7 +2694,7 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 CREATE INDEX IF NOT EXISTS devices_user_idx ON devices(user_id, unregistered_at);
-CREATE UNIQUE INDEX IF NOT EXISTS devices_user_installation_idx ON devices(user_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS devices_user_org_installation_idx ON devices(user_id, organization_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS audit_events (
   event_id INTEGER PRIMARY KEY AUTOINCREMENT,
