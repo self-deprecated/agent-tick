@@ -333,7 +333,18 @@ export function requestResponsibilityLabel(request: ApprovalRequest) {
   return "Pending";
 }
 
+export function isEncryptedApprovalRequest(request: ApprovalRequest) {
+  return Boolean(
+    request.encryptedPayload ||
+    request.metadata?.encrypted === "true" ||
+    (request.title === "Encrypted approval request" && request.body === "Open Agent Tick to decrypt this request.")
+  );
+}
+
 export function canRespondToRequest(request: ApprovalRequest) {
+  if (isEncryptedApprovalRequest(request)) {
+    return false;
+  }
   if (request.status !== "pending" || request.response) {
     return false;
   }

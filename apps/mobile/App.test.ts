@@ -2,6 +2,7 @@ import {
   buildQuestionnaireAnswers,
   canRespondToRequest,
   groupRequestsByProject,
+  isEncryptedApprovalRequest,
   normalizeApproval,
   policyProgressMessage,
   questionnaireReady,
@@ -357,6 +358,27 @@ describe("policy progress helpers", () => {
 });
 
 describe("request normalization and notification helpers", () => {
+  it("treats encrypted placeholders as encrypted even if ciphertext is missing", () => {
+    const request = normalizeApproval({
+      id: "req_encrypted_placeholder",
+      requester: { name: "Agent", agentId: "agent" },
+      requestType: "approval",
+      title: "Encrypted approval request",
+      body: "Open Agent Tick to decrypt this request.",
+      choices: [
+        { id: "approve", label: "Approve", kind: "approve" },
+        { id: "reject", label: "Reject", kind: "deny" },
+      ],
+      allowFreeformReply: false,
+      status: "pending",
+      createdAt: "2026-04-19T12:00:00Z",
+    });
+
+    expect(isEncryptedApprovalRequest(request)).toBe(true);
+    expect(canRespondToRequest(request)).toBe(false);
+    expect(supportsNotificationActions(request)).toBe(false);
+  });
+
   it("preserves steer request type and disables approve/deny notification actions", () => {
     const steer = normalizeApproval({
       id: "req_steer",

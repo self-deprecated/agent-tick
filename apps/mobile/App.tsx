@@ -32,6 +32,7 @@ import {
   buildQuestionnaireAnswers,
   canRespondToRequest,
   groupRequestsByProject,
+  isEncryptedApprovalRequest,
   isQuestionnaireRequest,
   normalizeApproval,
   normalizeApprovals,
@@ -756,6 +757,13 @@ function AgentTickApp({
         sdk.listStatusUpdates({ limit: 5 }).catch(() => [] as AgentStatusUpdate[]),
       ]);
       const pendingRequests = normalizeApprovals(pending).filter((request) => request.status === "pending");
+      recordDiagnostic("info", "requests", "loaded", {
+        pendingRequestCount: pendingRequests.length,
+        encryptedRequestCount: pendingRequests.filter(isEncryptedApprovalRequest).length,
+        encryptedPayloadCount: pendingRequests.filter((request) => Boolean(request.encryptedPayload)).length,
+        selectedRequestIsEncrypted: pendingRequests.some((request) => request.id === selectedID && isEncryptedApprovalRequest(request)),
+      });
+      setDiagnosticsEventCount(diagnosticEvents().length);
       setStatusUpdates(latestStatuses);
       await notifyForNewRequests(
         pendingRequests,
@@ -1792,9 +1800,10 @@ export function ApprovalsScreen({
   }
 
   const responsibility = requestResponsibilityLabel(selected);
+  const encrypted = isEncryptedApprovalRequest(selected);
   const decrypted = decryptedApprovalPlaintext(selected, e2eeKey);
-  const encryptedLocked = Boolean(selected.encryptedPayload && !decrypted);
-  const canRespond = !encryptedLocked && canRespondToRequest(selected);
+  const encryptedLocked = encrypted && !decrypted;
+  const canRespond = !encryptedLocked && (encrypted ? true : canRespondToRequest(selected));
 
   return (
     <View style={styles.approvalsPane}>
@@ -1884,7 +1893,7 @@ export function ApprovalsScreen({
             {selected.requester.workingDirectory}
           </Text>
         ) : null}
-        {selected.encryptedPayload && !decrypted ? <Text style={styles.errorText}>Encrypted request. Add your E2EE key in Settings to decrypt.</Text> : null}
+        {encryptedLocked ? <Text style={styles.errorText}>{encryptedLockMessage(selected, e2eeKey)}</Text> : null}
         {(decrypted?.body ?? selected.body) ? <Text style={styles.bodyText}>{decrypted?.body ?? selected.body}</Text> : null}
         {(decrypted?.command ?? selected.command) ? (
           <Text selectable style={styles.commandText}>
@@ -2013,6 +2022,12 @@ export function ApprovalsScreen({
       </View>
     </View>
   );
+}
+
+function encryptedLockMessage(request: ApprovalRequest, key?: string) {
+  if (!request.encryptedPayload) return "Encrypted request metadata is present, but this server response did not include ciphertext. Refresh after the server is upgraded, or ask the requester to resend.";
+  if (!key?.trim()) return "Encrypted request. Add your E2EE key in Settings to decrypt.";
+  return "Encrypted request. The configured E2EE key could not decrypt this request.";
 }
 
 function decryptedApprovalPlaintext(request: ApprovalRequest, key?: string) {
