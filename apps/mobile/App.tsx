@@ -1882,8 +1882,6 @@ export function ApprovalsScreen({
       >
         <LatestStatusCard statusUpdates={statusUpdates} dismissedStatusID={dismissedStatusID} onDismiss={onDismissStatus} />
         <Text style={styles.detailTitle}>{decrypted?.title ?? selected.title}</Text>
-        <Text style={styles.detailMeta}>Requested by {requestRequesterLabel(selected)}</Text>
-        <Text style={styles.detailMeta}>Project: {requestProjectLabel(selected)}</Text>
         {responsibility ? (
           <Text style={styles.responsibilityBadge}>{responsibility}</Text>
         ) : null}
@@ -1906,18 +1904,18 @@ export function ApprovalsScreen({
             </Text>
           ) : null}
         </View>
-        <RequestContextPanel request={selected} />
-        <PolicyProgressPanel request={selected} />
-        {selected.requester.workingDirectory ? (
-          <Text selectable numberOfLines={2} style={styles.cwdText}>
-            {selected.requester.workingDirectory}
-          </Text>
-        ) : null}
         {encryptedLocked ? <Text style={styles.errorText}>{encryptedLockMessage(selected, e2eeKey)}</Text> : null}
         {encryptedLocked ? null : (decrypted?.body ?? selected.body) ? <Text style={styles.bodyText}>{decrypted?.body ?? selected.body}</Text> : null}
         {(decrypted?.command ?? selected.command) ? (
           <Text selectable style={styles.commandText}>
             {decrypted?.command ?? selected.command}
+          </Text>
+        ) : null}
+        <RequestContextPanel request={selected} />
+        <PolicyProgressPanel request={selected} />
+        {selected.requester.workingDirectory ? (
+          <Text selectable numberOfLines={2} style={styles.cwdText}>
+            {selected.requester.workingDirectory}
           </Text>
         ) : null}
         {selected.metadata?.context ? (
