@@ -211,6 +211,7 @@
       <nav>
         <a href="#summary">Executive summary</a>
         <a href="#categories">Market categories</a>
+        <a href="#feature-matrix">Feature checkboxes</a>
         <a href="#competitors">Competitor cards</a>
         <a href="#setup">Setup patterns</a>
         <a href="#pricing">Pricing observations</a>
@@ -250,6 +251,19 @@
           <article class="card"><h3>MCP / agent governance gateways</h3><p>Preloop, Permit MCP Gateway, Airlock, call-a-human MCP, and lightweight open-source MCP human-in-the-loop servers.</p></article>
           <article class="card"><h3>Workflow automation platforms</h3><p>Zapier, n8n, Relay.app, EnforcedFlow, and approval gateways that live where business users already configure automations.</p></article>
           <article class="card"><h3>Framework/runtime primitives</h3><p>LangGraph interrupts, Cloudflare Agents `waitForApproval`, FastMCP Approval, PromptRails, and useworkflow hooks.</p></article>
+        </div>
+      </section>
+
+
+      <section class="section" id="feature-matrix">
+        <h2>Feature checkbox matrix</h2>
+        <p><strong>Question:</strong> is Agent Tick the only option that is source available, self-hostable, has its own app, and supports least privilege? <strong>Answer:</strong> not strictly. Preloop is the closest broad competitor that publicly claims all or almost all of those. But Agent Tick appears to be the clearest focused approval gate combining source-available licensing, Docker-first self-hosting, first-party dashboard/mobile approval apps, and agent-token/org/team/policy authorization without requiring a broader governance gateway or enterprise-only deployment.</p>
+        <p>Legend: ✅ clear public evidence/current capability; ◐ partial, enterprise-only, unclear, or assembled by the user; ❌ not found or not applicable in this scan.</p>
+        <div style="overflow:auto">
+          <table>
+            <thead><tr><th>Product</th><th>Source available / OSS</th><th>Self-hostable</th><th>Own approval app / UI</th><th>Mobile/native app</th><th>Least-privilege controls</th><th>Read</th></tr></thead>
+            <tbody id="featureRows"></tbody>
+          </table>
         </div>
       </section>
 
@@ -330,6 +344,29 @@
   </div>
 
   <script>
+
+    const featureRows = [
+      ['Agent Tick now','✅ BSL source-available repo','✅ Docker-first','✅ Dashboard','✅ Expo mobile app','✅ Agent tokens, org/team/policy eligibility, admin roles','Focused approval gate baseline'],
+      ['HumanLayer','❌ Not found','◐ Enterprise private VPC/on-prem mentioned by third-party listing','◐ API/CLI/React Embed; managed app unclear','❌ Not found','◐ Routing/permissions/RBAC on higher tiers','Strong SDK surface'],
+      ['Preloop','✅ Apache/open-source core claimed','✅ Self-hostable claimed','✅ Control-plane UI/approval surfaces claimed','✅ Mobile/watch approval claimed','✅ MCP firewall, allow/deny/approval policies, budgets','Closest broad checkbox competitor'],
+      ['gotoHuman','❌ Not found','❌ Managed SaaS','✅ Agent Inbox/templates','❌ Not found','◐ Team routing/workspaces; higher-tier controls','Strong managed app UX'],
+      ['Queuelo','❌ Not found','❌ Not found','✅ Dashboard','❌ Not found','◐ Agents/API keys; policy depth unclear','Simple hosted queue'],
+      ['Approve AI','❌ Not found','❌ Not found','◐ Workflows/no-code; app details unclear','❌ Not found','✅/◐ Passkeys, e-sign proof, RBAC/audit claims','High-assurance user approval'],
+      ['AwaitHuman','❌ Not found','❌ Not found','✅ Web dashboard/white-label embed claimed','✅ iOS/Android and desktop claimed','◐ Routing/audit; explicit least privilege unclear','Strong app/channel story'],
+      ['HumanAssist','❌ Not found','❌ Not found','◐ Platform UI implied','❌ Not found','◐ Agent-scoped keys/limits unclear','Limited public detail'],
+      ['HumanRail','❌ Not found','❌ Not found','◐ Worker/task UI implied','❌ Not found','❌ Not central','Worker marketplace'],
+      ['OKrunit','❌ Not found','◐ Dedicated instance enterprise, not self-host evidence','✅ Dashboard','❌ Not found','✅/◐ Rules, routing, teams, SSO/SAML, IP/geo controls','Workflow gateway'],
+      ['HITL Relay','❌ Not found','❌ FAQ says no on-prem/VPC currently','✅ App/local-agent model implied','◐ Local in-app/mobile-device model implied','◐ Agent-scoped keys, E2EE interactions','Privacy/E2EE angle'],
+      ['Permit MCP Gateway','❌ Not source available','✅/◐ On-prem/VPC on Enterprise','✅ Consent/admin UI','❌ Not found','✅ Strong authz/RBAC/ABAC/ReBAC/trust levels','Best least-privilege platform story'],
+      ['Zapier HITL','❌ Not source available','❌ SaaS','✅ Zapier workflow UI','◐ Zapier mobile exists; approval specificity unclear','◐ App auth/task permissions, not agent-token model','Best no-code distribution'],
+      ['n8n HITL','✅ Source-available n8n platform','✅ Self-hostable n8n','✅ Workflow UI','❌ Not found','◐ Workflow credentials/permissions; agent policy less direct','Strong self-host workflow alternative'],
+      ['LangGraph / LangChain','✅ Open-source libraries','✅ If you build/run it','❌ No first-party approval app','❌ No','◐ Depends on application code','Primitive, not product'],
+      ['FastMCP Approval','✅ Open-source/library','✅ In your MCP server','❌ Uses MCP client cards','❌ No','◐ Depends on app/server','Primitive, not product'],
+      ['Airlock','✅ Open source','✅ Self-hosted gateway','◐ TUI/webhook/chat channels; app unclear','❌ Not found','✅ Per-agent allowlists and approvals','Strong OSS least-privilege gateway'],
+      ['Open-source local MCP tools','✅ Open source','✅ Local/self-hosted MCP servers','◐ Browser/GUI/chat dialogs','❌ Generally no','◐ Limited/local','Easy local setup, weaker org/mobile/audit'],
+      ['Other managed approval/workflow products','❌ Usually not found','❌ Usually SaaS','✅/◐ Usually web UI','❌ Usually not found','◐ Varies by tier','Do not tick the full set']
+    ];
+
     const competitors = [
       {name:'HumanLayer', url:'https://humanlayer.dev/docs/integrations', category:'Dedicated HITL API + SDK', price:'Free tier via third-party listing; Premium $500/mo; Enterprise custom', ease:'High', agents:'Python/TypeScript SDK, OpenAI, LangChain, CrewAI, ControlFlow, Chainlit, Vercel AI SDK, Mastra, FastAPI, Flask', setup:'pip install humanlayer; TypeScript SDK; CLI; framework quickstarts', channels:'Slack, email, React embeds; Teams/SMS/RCS on higher tiers per listing', difference:'More SDK/framework-oriented; human-as-tool and omnichannel routing.', copy:'Decorator/helper SDKs, LangChain/CrewAI/Vercel AI SDK examples, React/embed widget'},
       {name:'Preloop', url:'https://preloop.ai/', category:'MCP / governance gateway', price:'Open-source core; Enterprise edition; fixed SaaS pricing not clear', ease:'High', agents:'OpenClaw, Hermes, Claude Code, Codex CLI, Cursor, Gemini CLI, Windsurf, Cline, OpenCode, any MCP runtime', setup:'Install CLI, run preloop agents discover; imports and rewrites local configs without SDK changes', channels:'Mobile, watch, Slack, Mattermost, email, custom webhook; async polling', difference:'Broader control plane: MCP firewall, model gateway, spend attribution, sessions, EU AI Act evidence.', copy:'Agent discovery, config backup, one-command MCP proxy insertion, policy templates'},
@@ -407,6 +444,8 @@
     }
 
     [search, category, ease].forEach(el => el.addEventListener('input', render));
+
+    document.getElementById('featureRows').innerHTML = featureRows.map(r => `<tr><td><strong>${r[0]}</strong></td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td><td>${r[5]}</td><td>${r[6]}</td></tr>`).join('');
     document.getElementById('sourcesList').innerHTML = sources.map(([name, url]) => `<li><a href="${url}">${name}</a></li>`).join('');
     render();
   </script>

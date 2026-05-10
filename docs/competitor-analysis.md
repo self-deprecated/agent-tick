@@ -17,6 +17,55 @@ The competitive market is already crowded in four overlapping buckets:
 
 The setup pattern worth copying most aggressively is **zero- or near-zero-code onboarding**: Preloop's `curl ... | sh` plus `preloop agents discover` that rewrites Claude Code/Cursor/Codex/Gemini/OpenCode configs; MCP servers that can be added with one `npx` command; Zapier/n8n nodes that non-developers can wire visually; and hosted products that create a secure review link without requiring reviewers to create accounts.
 
+
+## Feature checkbox matrix: source, self-hosting, app, least privilege
+
+Legend: ✅ = clear public evidence/current capability; ◐ = partial, enterprise-only, unclear, or depends on how you assemble it; ❌ = not found or not applicable in this scan.
+
+**Bottom line:** Agent Tick is not the only project that can plausibly tick these boxes. Preloop is the closest public competitor that claims source-available/open-source core, self-hosting, its own approval surfaces, and least-privilege policy controls. However, Agent Tick appears to be the clearest **focused approval gate** in this scan that combines source-available licensing, Docker-first self-hosting, first-party web/mobile approval apps, agent-token/org/team/policy authorization, and a simple CLI approval workflow without needing an enterprise tier or a broader MCP/model gateway.
+
+| Product | Source available / open source | Self-hostable | Own approval app / UI | Mobile/native app | Least-privilege controls | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Agent Tick now** | ✅ BSL source-available repo | ✅ Docker-first self-hosting | ✅ Dashboard | ✅ Expo mobile app | ✅ Agent tokens, org/team/policy eligibility, admin roles | Baseline: focused approval gate. |
+| HumanLayer | ❌ Not found | ◐ Enterprise private VPC/on-prem mentioned in third-party listing | ◐ API/CLI/React Embed; managed app unclear | ❌ Not found | ◐ Routing/permissions/RBAC on higher tiers | Strong SDK surface, not source/self-host-first. |
+| Preloop | ✅ Apache/open-source core claimed | ✅ Self-hostable claimed | ✅ Control-plane UI/approval surfaces claimed | ✅ Mobile/watch approval claimed | ✅ MCP firewall, allow/deny/approval policies, budgets | Closest broad competitor; much larger governance gateway scope. |
+| gotoHuman | ❌ Not found | ❌ Managed SaaS | ✅ Agent Inbox/templates | ❌ Not found | ◐ Team routing/workspaces; deeper controls on higher tiers | Strong app UX, not source/self-host. |
+| Queuelo | ❌ Not found | ❌ Not found | ✅ Dashboard | ❌ Not found | ◐ Agents/API keys; policy depth unclear | Simple hosted approval queue. |
+| Approve AI | ❌ Not found | ❌ Not found | ◐ Approval workflows/no-code; app details unclear | ❌ Not found | ✅/◐ Passkeys, e-sign proof, RBAC/audit claims | Best high-assurance user approval angle. |
+| AwaitHuman | ❌ Not found | ❌ Not found | ✅ Web dashboard/white-label embed claimed | ✅ iOS/Android and desktop claimed | ◐ Routing/audit; explicit least-privilege controls unclear | Strong omnichannel app story, SaaS/beta. |
+| HumanAssist | ❌ Not found | ❌ Not found | ◐ HITL platform UI implied | ❌ Not found | ◐ Agent-scoped keys/limits unclear | Similar direct HITL product; limited public detail. |
+| HumanRail | ❌ Not found | ❌ Not found | ◐ Worker/task UI implied | ❌ Not found | ❌ Not central | External worker handoff, not internal least-privilege approval. |
+| OKrunit | ❌ Not found | ◐ Dedicated instance enterprise, not self-host evidence | ✅ Dashboard | ❌ Not found | ✅/◐ Rules, routing, teams, SSO/SAML, IP/geo controls | Strong workflow gateway controls, SaaS-first. |
+| HITL Relay | ❌ Not found | ❌ FAQ says no on-prem/VPC currently | ✅ App/local-agent model implied | ◐ Local in-app/mobile-device model implied | ◐ Agent-scoped API keys, E2EE interactions | Privacy/E2EE angle; not self-host. |
+| HumanOps | ❌ Not found | ❌ Not found | ◐ Operator platform | ❌ Not found | ◐ Enterprise controls unclear | Marketplace/operator platform. |
+| CodeVF | ❌ Not found | ❌ Not found | ❌ API-first | ❌ Not found | ❌ Not central | Human verification API. |
+| Arahi AI | ❌ Not found | ❌ Not found | ✅ No-code automation platform | ❌ Not found | ◐ Business automation controls unclear | Approval feature inside broad SaaS platform. |
+| HumanLatch | ❌ Not found | ❌ Not found | ✅/◐ Control-plane UI implied | ❌ Not found | ✅ Policy scoring/routing/audit positioning | Public detail limited. |
+| Govyn approval workflows | ❌ Not found | ❌ Not found | ◐ Governance UI implied | ❌ Not found | ✅/◐ Approval workflow interception/policies | Governance product, limited setup evidence. |
+| Permit MCP Gateway | ❌ Not source available | ✅/◐ On-prem/VPC on Enterprise | ✅ Consent/admin UI | ❌ Not found | ✅ Strong authz/RBAC/ABAC/ReBAC/trust levels | HITL is Enterprise-only; excellent least-privilege story. |
+| Zapier Human in the Loop | ❌ Not source available | ❌ SaaS | ✅ Zapier workflow UI | ◐ Zapier mobile exists; approval-app specificity unclear | ◐ App auth/task permissions, not agent-token least privilege | Best no-code distribution. |
+| n8n HITL | ✅ Source-available n8n platform | ✅ Self-hostable n8n | ✅ Workflow UI | ❌ Not found | ◐ Workflow credentials/permissions; agent policy less direct | Strong workflow-native self-host alternative. |
+| Relay.app HITL | ❌ Not found | ❌ SaaS | ✅ Workflow UI | ❌ Not found | ◐ Workflow/app permissions | SaaS workflow feature. |
+| EnforcedFlow | ❌ Not found | ❌ Not found | ✅ Approval links/batch UI | ❌ Not found | ✅/◐ Scoped expiring links | Strong guest-link pattern. |
+| LangGraph / LangChain HITL | ✅ Open-source libraries | ✅ Self-hostable if you build/run it | ❌ No first-party approval app | ❌ No | ◐ Depends on application code | Primitive, not product. |
+| Cloudflare Agents HITL | ❌ Platform source not available | ❌ Cloudflare platform | ◐ Workflow/platform UI | ❌ Not found | ◐ Cloudflare IAM/platform controls | Runtime primitive, not approval product. |
+| FastMCP Approval | ✅ Open-source/library | ✅ Self-host in your MCP server | ❌ Uses MCP client approval cards | ❌ No | ◐ Depends on MCP server/app | Primitive, not centralized app. |
+| PromptRails approvals | ❌ Not found | ❌ Not found | ✅/◐ Platform UI implied | ❌ Not found | ◐ Checkpoint config | Embedded platform feature. |
+| useworkflow HITL | ❌ Not found | ◐ Depends on deployment | ❌ No approval app by itself | ❌ No | ◐ Depends on application code | SDK primitive. |
+| call-a-human-mcp | ✅ Open source | ✅ Local/self-hosted MCP server | ◐ Slack/Telegram/macOS dialogs, no central app | ❌ No | ◐ Limited/local | Good solo/local pattern, not org product. |
+| AndyRightNow HITL MCP | ✅ Open source | ✅ Local/self-hosted MCP server | ◐ Telegram/Slack/Discord/HTTP transports | ❌ No | ◐ Limited/local | Modular transports, not full product. |
+| Airlock | ✅ Open source | ✅ Self-hosted gateway | ◐ TUI/webhook/chat channels; app unclear | ❌ Not found | ✅ Per-agent allowlists and approvals | Strong least-privilege gateway, lacks first-party mobile approval app. |
+| human-loop-mcp | ✅ Open source | ✅ Local/self-hosted MCP server | ◐ Browser dialogs | ❌ No | ◐ Limited/local | Nice local browser UX. |
+| GongRzhe HITL MCP | ✅ Open source | ✅ Local/self-hosted MCP server | ◐ GUI dialogs | ❌ No | ◐ Limited/local | Local GUI only. |
+| TextForge | ❌ Not found | ❌ Not found | ✅ Email approval queue | ❌ Not found | ◐ Gmail OAuth/email-specific controls | Vertical email approval product. |
+
+### What this means for positioning
+
+- **Agent Tick should not claim to be the only source-available, self-hostable approval option.** Preloop, Airlock, n8n, LangGraph/LangChain, FastMCP, and several MCP projects satisfy parts of that claim.
+- **Agent Tick can more defensibly claim the focused combination:** source-available + Docker self-hosting + first-party dashboard/mobile approval app + least-privilege agent-token/team/policy model + simple CLI approval gate.
+- **The closest threat to the full checkbox set is Preloop**, but Preloop is a broader governance/model/MCP gateway. That can make Agent Tick's simpler setup and approval-focused UX a differentiator if Agent Tick closes the MCP/discovery gap.
+- **Open-source MCP tools beat Agent Tick on local setup simplicity today**, but they generally lack durable org/team approval state, mobile approval, audit history, and self-hosted dashboard product polish.
+
 ## Competitive matrix
 
 | Competitor | Category | Price / cost signal | Agents/harnesses and installation/ease | Approval channels / UX | Differences from Agent Tick | Setup ideas to copy |
