@@ -193,16 +193,10 @@ Runtime data lives in:
 
 Official distribution: npm.
 
-Preferred package:
+Package:
 
 ```text
-agent-tick
-```
-
-Fallback if the name is unavailable:
-
-```text
-@agent-tick/cli
+@self-deprecated/agent-tick
 ```
 
 The binary name remains:
@@ -214,11 +208,15 @@ agent-tick
 Current workspace-run examples:
 
 ```sh
-corepack pnpm --filter agent-tick build
-corepack pnpm --filter agent-tick exec agent-tick request --title "Deploy to production?"
+corepack pnpm --filter @self-deprecated/agent-tick build
+corepack pnpm --filter @self-deprecated/agent-tick exec agent-tick request --title "Deploy to production?"
 ```
 
-The CLI package is currently private; npm, global, and `npx` install examples should be restored only when publishing is intentionally enabled.
+End-user install example:
+
+```sh
+npm install -g @self-deprecated/agent-tick
+```
 
 The CLI package must stay lean:
 
@@ -901,7 +899,7 @@ Deliverables:
 
 Acceptance criteria:
 
-- `pnpm --filter agent-tick build` produces executable CLI
+- `pnpm --filter @self-deprecated/agent-tick build` produces executable CLI
 - local workspace/linked CLI can create a request against the TypeScript server
 - CLI package does not depend on server/db/admin/mobile packages
 

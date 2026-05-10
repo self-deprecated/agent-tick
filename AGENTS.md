@@ -60,11 +60,11 @@ Current implemented CLI commands only:
 - `agent-tick abandon`
 - `agent-tick guard`
 
-The CLI package is private/not published. In docs and examples that must work from this repo, use the workspace-built CLI:
+The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. For local repo development without a global install, use the workspace package name:
 
 ```sh
-corepack pnpm --filter agent-tick build
-corepack pnpm --filter agent-tick exec agent-tick setup --server http://localhost:8787 --token agent_...
+corepack pnpm --filter @self-deprecated/agent-tick build
+corepack pnpm --filter @self-deprecated/agent-tick exec agent-tick setup --server http://localhost:8787 --token agent_...
 ```
 
 Do not document or call missing commands such as `agent-tick mcp`, `agent-tick adapter`, or `agent-tick steer` as current functionality.
@@ -119,8 +119,8 @@ corepack pnpm --filter @agent-tick/server typecheck
 corepack pnpm --filter @agent-tick/server test
 corepack pnpm --filter @agent-tick/db typecheck
 corepack pnpm --filter @agent-tick/db test
-corepack pnpm --filter agent-tick typecheck
-corepack pnpm --filter agent-tick test
+corepack pnpm --filter @self-deprecated/agent-tick typecheck
+corepack pnpm --filter @self-deprecated/agent-tick test
 corepack pnpm --filter @agent-tick/mobile typecheck
 corepack pnpm --filter @agent-tick/mobile test --runInBand
 corepack pnpm --filter agent-tick-admin check

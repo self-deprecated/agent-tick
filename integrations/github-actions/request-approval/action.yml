@@ -22,6 +22,10 @@ inputs:
     description: How long to wait for a response, for example 30s, 10m, or 1h
     required: false
     default: 10m
+  install-cli:
+    description: Install @self-deprecated/agent-tick with npm if agent-tick is not already on PATH
+    required: false
+    default: "true"
 outputs:
   request-id:
     description: Created Agent Tick request ID
@@ -35,15 +39,20 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Check agent-tick CLI
+    - name: Ensure agent-tick CLI
       shell: bash
+      env:
+        INPUT_INSTALL_CLI: ${{ inputs.install-cli }}
       run: |
         set -euo pipefail
-        if ! command -v agent-tick >/dev/null 2>&1; then
+        if command -v agent-tick >/dev/null 2>&1; then
+          exit 0
+        fi
+        if [[ "$INPUT_INSTALL_CLI" != "true" ]]; then
           echo "agent-tick must be installed and available on PATH before using this action." >&2
-          echo "The TypeScript CLI package is not currently published for automatic installation." >&2
           exit 127
         fi
+        npm install -g @self-deprecated/agent-tick
     - name: Wait for approval
       id: request
       shell: bash

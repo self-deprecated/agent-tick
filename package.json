@@ -4,6 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.23.0",
   "scripts": {
+    "setup:local": "node scripts/bootstrap.mjs",
     "build": "corepack pnpm -r --sort build",
     "typecheck": "corepack pnpm -r --sort typecheck",
     "test": "corepack pnpm -r --sort test",

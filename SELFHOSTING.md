@@ -44,14 +44,14 @@ Start it:
 docker compose up -d
 ```
 
-Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. Create an agent token and configure your agent machine with the workspace-built CLI:
+Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. Install the CLI and configure your agent machine:
 
 ```sh
-corepack pnpm --filter agent-tick build
-node packages/cli/dist/index.js setup --server https://tick.example.com --token agent_...
+npm install -g @self-deprecated/agent-tick
+agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
-The CLI package is currently private in this repository; npm/`npx` installation should only be documented after publishing is intentionally enabled. The public product site is <https://agenttick.sh>, but self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
+The public product site is <https://agenttick.sh>, but self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
 
 ## Clerk multi-user mode
 
@@ -94,8 +94,8 @@ Start it with Docker Compose. The dashboard fetches `/v1/auth/config`, loads Cle
 After the server is running, set up an agent host with browser sign-in:
 
 ```sh
-corepack pnpm --filter agent-tick build
-node packages/cli/dist/index.js setup --login --server https://tick.example.com
+npm install -g @self-deprecated/agent-tick
+agent-tick setup --login --server https://tick.example.com
 ```
 
 The CLI opens the dashboard, waits while you sign in with Clerk, and saves the returned Agent Tick `agent_...` token after you click **Authorize CLI setup**. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick setup --server https://tick.example.com --token agent_...` instead.

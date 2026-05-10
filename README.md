@@ -12,13 +12,17 @@ Go to <https://agenttick.sh> when you want Agent Tick operated for you.
 
 Hosted-product flow:
 
-1. Sign in at <https://agenttick.sh>.
-2. Run `agent-tick setup --login`; the CLI opens a browser tab, asks you to authorize CLI setup, and saves an Agent Tick `agent_...` token locally.
-3. Sign in to the Agent Tick mobile app with the same Clerk account.
-4. Add `agent-tick request` or `agent-tick guard` around sensitive actions.
-5. Approve or reject requests from the mobile app, with the web dashboard as a secondary approval surface.
+1. Install the CLI on macOS, Linux, or Windows:
 
-The CLI package is currently private in this repository while publishing is deferred. Until a public npm package is intentionally released, local development and self-hosting examples use the workspace-built CLI.
+   ```sh
+   npm install -g @self-deprecated/agent-tick
+   ```
+
+2. Sign in at <https://agenttick.sh>.
+3. Run `agent-tick setup --login --server https://agenttick.sh`; the CLI opens a browser tab, asks you to authorize CLI setup, and saves an Agent Tick `agent_...` token locally.
+4. Open the Agent Tick mobile app from the TestFlight link your workspace owner provides, then sign in with the same account.
+5. Add `agent-tick request` or `agent-tick guard` around sensitive actions.
+6. Approve or reject requests from the mobile app, with the web dashboard as a secondary approval surface.
 
 ### Self-host Agent Tick
 
@@ -28,24 +32,23 @@ Use Docker Compose when you want to run Agent Tick yourself. See [SELFHOSTING.md
 docker compose up --build
 ```
 
-Open <http://localhost:8787>. In Clerk mode, configure the workspace-built CLI with browser sign-in:
+Open <http://localhost:8787>. Install and configure the CLI:
 
 ```sh
-corepack pnpm install
-corepack pnpm --filter agent-tick build
-node packages/cli/dist/index.js setup --login --server http://localhost:8787
+npm install -g @self-deprecated/agent-tick
+agent-tick setup --login --server http://localhost:8787
 ```
 
 The browser flow creates an Agent Tick agent token after you sign in and click **Authorize CLI setup**. In single-user mode, or for CI, you can still create a token in the dashboard and save it manually:
 
 ```sh
-node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
+agent-tick setup --server http://localhost:8787 --token agent_...
 ```
 
 Send an approval request:
 
 ```sh
-node packages/cli/dist/index.js request \
+agent-tick request \
   --title "Run command?" \
   --body "An agent wants to run npm install" \
   --command "npm install"
@@ -54,7 +57,7 @@ node packages/cli/dist/index.js request \
 Ask a multiple-choice question by repeating `--choice`:
 
 ```sh
-node packages/cli/dist/index.js request \
+agent-tick request \
   --title "Which rollout?" \
   --choice canary="Canary" \
   --choice blue_green="Blue/green" \
@@ -64,7 +67,7 @@ node packages/cli/dist/index.js request \
 Run a command only after approval:
 
 ```sh
-node packages/cli/dist/index.js guard \
+agent-tick guard \
   --title "Run migration?" \
   -- ./migrate.sh
 ```
@@ -104,6 +107,14 @@ Multi-user mode:
 - agents still use Agent Tick `agent_...` tokens
 
 ## Development
+
+One-command local bootstrap after cloning the repo:
+
+```sh
+node scripts/bootstrap.mjs
+```
+
+Development checks:
 
 ```sh
 corepack pnpm install

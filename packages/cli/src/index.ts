@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import os from 'node:os';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { AgentTickClient, type ApprovalRequest } from '@agent-tick/sdk';
 import { resolveServerAndToken, saveClientConfig } from './config.js';
@@ -333,7 +335,12 @@ interface RequestOptions extends ClientOptions {
   json?: boolean;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+function isDirectExecution(): boolean {
+  if (!process.argv[1]) return false;
+  return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+}
+
+if (isDirectExecution()) {
   createProgram().parseAsync(process.argv).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
