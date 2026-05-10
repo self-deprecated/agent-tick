@@ -205,6 +205,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   const [clerkLoginToken, setClerkLoginToken] = useState<string | null>(null);
   const [mobileSessionToken, setMobileSessionToken] = useState<string | null>(null);
   const [signedOutManually, setSignedOutManually] = useState(false);
+  const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [openSignInAfterSignOut, setOpenSignInAfterSignOut] = useState(false);
   const refreshedMobileSessionFromClerk = useRef(false);
   const wasNativeSignedIn = useRef(false);
@@ -280,17 +281,24 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }, [clerkLoginToken, mobileSessionToken, props.initialServerURL, signedOutManually]);
 
   const handleForgetClerkSession = useCallback(async (options?: { reopenSignIn?: boolean }) => {
-    setSignedOutManually(true);
-    setOpenSignInAfterSignOut(Boolean(options?.reopenSignIn));
+    const reopenSignIn = Boolean(options?.reopenSignIn);
+    setSignOutInProgress(true);
+    setOpenSignInAfterSignOut(false);
     refreshedMobileSessionFromClerk.current = false;
     setClerkLoginToken(null);
     setMobileSessionToken(null);
     await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
-    await getNativeClerkModule()?.signOut?.();
-    await signOut();
+    try {
+      await getNativeClerkModule()?.signOut?.();
+      await signOut();
+    } finally {
+      setSignedOutManually(true);
+      setOpenSignInAfterSignOut(reopenSignIn);
+      setSignOutInProgress(false);
+    }
   }, [signOut]);
 
-  if (!isLoaded) {
+  if (!isLoaded || signOutInProgress) {
     return <LoadingScreen />;
   }
   if (!hasClerkLogin) {

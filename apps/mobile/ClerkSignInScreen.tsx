@@ -38,11 +38,14 @@ export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", initia
       <View style={styles.shell}>
         <StatusBar style="dark" />
         <View style={styles.nativeHeader}>
+          <Pressable onPress={() => setShowAuthView(false)} style={styles.backButton}>
+            <Text style={styles.secondaryButtonText}>‹ Back</Text>
+          </Pressable>
           <Text style={styles.title}>Sign in to Agent Tick</Text>
           <Text style={styles.subtitle}>{serverURL}</Text>
         </View>
         <View style={styles.nativeAuthFrame}>
-          <AuthView mode="signInOrUp" isDismissable={false} />
+          <AuthView mode="signInOrUp" isDismissable={true} />
         </View>
       </View>
     );
@@ -113,6 +116,11 @@ const styles = StyleSheet.create({
   nativeAuthFrame: {
     flex: 1,
     overflow: "hidden",
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    minHeight: 36,
+    justifyContent: "center",
   },
   landingContent: {
     flex: 1,
