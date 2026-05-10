@@ -114,6 +114,14 @@ describe("notificationDecision", () => {
     ).toEqual({ kind: "open", requestID: "req_quorum" });
   });
 
+  it("ignores malformed native notification payloads", () => {
+    expect(notificationRequestID(null)).toBe("");
+    expect(notificationRequestID(undefined)).toBe("");
+    expect(notificationRequestID("req_123")).toBe("");
+    expect(notificationDecision({ actionIdentifier: "default", notification: null })).toBeNull();
+    expect(notificationDecision({ actionIdentifier: "approve", notification: { request: { content: { data: null } } } })).toBeNull();
+  });
+
   it("ignores notifications without approval ids", () => {
     expect(notificationDecision(notificationResponse("approve"))).toBeNull();
   });

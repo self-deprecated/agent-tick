@@ -9,14 +9,14 @@ export type PairingPayload = {
 };
 
 type NotificationResponseLike = {
-  actionIdentifier: string;
-  notification: {
-    request: {
-      content: {
-        data: Record<string, unknown>;
-      };
-    };
-  };
+  actionIdentifier?: string | null;
+  notification?: {
+    request?: {
+      content?: {
+        data?: unknown;
+      } | null;
+    } | null;
+  } | null;
 };
 
 type NotificationDecision =
@@ -53,7 +53,7 @@ function compactPairingPayload(payload: PairingPayload): PairingPayload {
 export function notificationDecision(
   response: NotificationResponseLike,
 ): NotificationDecision | null {
-  const id = notificationRequestID(response.notification.request.content.data);
+  const id = notificationRequestID(response.notification?.request?.content?.data);
   if (!id) {
     return null;
   }
@@ -64,9 +64,13 @@ export function notificationDecision(
   return { kind: "open", requestID: id };
 }
 
-export function notificationRequestID(data: Record<string, unknown>) {
+export function notificationRequestID(data: unknown) {
+  if (!data || typeof data !== "object") {
+    return "";
+  }
+  const fields = data as Record<string, unknown>;
   for (const key of ["approvalRequestID", "approvalRequestId", "requestId"]) {
-    const value = data[key];
+    const value = fields[key];
     if (typeof value === "string" && value.trim()) {
       return value;
     }

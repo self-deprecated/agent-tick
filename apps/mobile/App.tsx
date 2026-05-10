@@ -525,7 +525,7 @@ function AgentTickApp({
         buttonTitle: "Deny",
         options: { opensAppToForeground: false, isDestructive: true },
       },
-    ]);
+    ]).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -846,15 +846,17 @@ function AgentTickApp({
       },
     );
 
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      const decision = response ? notificationDecision(response) : null;
-      if (decision) {
-        const fallback = notificationFallbackState(decision.requestID);
-        setNotificationTargetID(fallback.notificationTargetID);
-        setSelectedID(fallback.selectedID);
-        setScreen(fallback.screen);
-      }
-    });
+    void Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        const decision = response ? notificationDecision(response) : null;
+        if (decision) {
+          const fallback = notificationFallbackState(decision.requestID);
+          setNotificationTargetID(fallback.notificationTargetID);
+          setSelectedID(fallback.selectedID);
+          setScreen(fallback.screen);
+        }
+      })
+      .catch(() => undefined);
 
     return () => subscription.remove();
   }, [respondByID]);
@@ -1343,8 +1345,12 @@ function apiStatus(error: unknown): number | undefined {
 async function refreshNotificationStatus(
   setNotificationStatus: (status: NotificationStatus) => void,
 ) {
-  const permissions = await Notifications.getPermissionsAsync();
-  setNotificationStatus(toNotificationStatus(permissions));
+  try {
+    const permissions = await Notifications.getPermissionsAsync();
+    setNotificationStatus(toNotificationStatus(permissions));
+  } catch {
+    setNotificationStatus("undetermined");
+  }
 }
 
 function toNotificationStatus(
@@ -1391,22 +1397,31 @@ async function notifyForNewRequests(
     return;
   }
 
-  const permissions = await Notifications.getPermissionsAsync();
+  let permissions: Notifications.NotificationPermissionsStatus;
+  try {
+    permissions = await Notifications.getPermissionsAsync();
+  } catch {
+    return;
+  }
   if (!permissions.granted) {
     return;
   }
 
   for (const request of newRequests) {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: request.command ? "Run Command?" : request.title,
-        body: notificationBody(request),
-        categoryIdentifier: supportsNotificationActions(request) ? approvalCategoryID : undefined,
-        data: { approvalRequestID: request.id },
-        sound: true,
-      },
-      trigger: null,
-    });
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: request.command ? "Run Command?" : request.title,
+          body: notificationBody(request),
+          categoryIdentifier: supportsNotificationActions(request) ? approvalCategoryID : undefined,
+          data: { approvalRequestID: request.id },
+          sound: true,
+        },
+        trigger: null,
+      });
+    } catch {
+      // Local notifications are opportunistic; polling/event-stream refresh still shows the request.
+    }
   }
 }
 
