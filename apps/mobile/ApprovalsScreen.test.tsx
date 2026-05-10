@@ -24,6 +24,7 @@ jest.mock("expo-notifications", () => ({
 }));
 jest.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 
+import { createEncryptedApprovalPayload, generateApprovalEncryptionKey } from "@agent-tick/shared";
 import { ApprovalsScreen, HistoryScreen } from "./App";
 import { groupRequestsByProject, normalizeApproval, type ApprovalRequest } from "./approvalRequests";
 
@@ -52,9 +53,10 @@ function approval(overrides: Partial<ApprovalRequest> = {}) {
   });
 }
 
-function renderApproval(request: ApprovalRequest, onRespond = jest.fn()) {
+function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options: { e2eeKey?: string } = {}) {
   render(
     <ApprovalsScreen
+      e2eeKey={options.e2eeKey}
       error={null}
       loading={false}
       onRefresh={jest.fn()}
@@ -78,6 +80,35 @@ function renderApproval(request: ApprovalRequest, onRespond = jest.fn()) {
 }
 
 describe("ApprovalsScreen policy-aware approval UI", () => {
+  it("shows an encrypted-request prompt until the local E2EE key is configured", () => {
+    const key = generateApprovalEncryptionKey();
+    renderApproval(approval({
+      title: "Encrypted approval request",
+      body: "Open Agent Tick to decrypt this request.",
+      encryptedPayload: createEncryptedApprovalPayload({ title: "Restart prod?", body: "Sensitive incident details", command: "kubectl rollout restart deploy/api" }, key),
+    }));
+
+    expect(screen.getByText("Encrypted approval request")).toBeTruthy();
+    expect(screen.getByText("Encrypted request. Add your E2EE key in Settings to decrypt.")).toBeTruthy();
+    expect(screen.queryByText("Restart prod?")).toBeNull();
+    expect(screen.queryByText("Sensitive incident details")).toBeNull();
+    expect(screen.queryByText("kubectl rollout restart deploy/api")).toBeNull();
+  });
+
+  it("decrypts encrypted request contents locally when the E2EE key is configured", () => {
+    const key = generateApprovalEncryptionKey();
+    renderApproval(approval({
+      title: "Encrypted approval request",
+      body: "Open Agent Tick to decrypt this request.",
+      encryptedPayload: createEncryptedApprovalPayload({ title: "Restart prod?", body: "Sensitive incident details", command: "kubectl rollout restart deploy/api" }, key),
+    }), jest.fn(), { e2eeKey: key });
+
+    expect(screen.getByText("Restart prod?")).toBeTruthy();
+    expect(screen.getByText("Sensitive incident details")).toBeTruthy();
+    expect(screen.getByText("kubectl rollout restart deploy/api")).toBeTruthy();
+    expect(screen.queryByText("Encrypted request. Add your E2EE key in Settings to decrypt.")).toBeNull();
+  });
+
   it("keeps the fast single-approver approve flow", () => {
     const onRespond = renderApproval(approval());
 
