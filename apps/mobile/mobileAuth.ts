@@ -1,6 +1,8 @@
 export type MobileAuthProvider = "local" | "clerk";
 
-export const hostedServerURL = "https://agenttick.sh";
+export const agentTickCloudServerURL = "https://agenttick.sh";
+export const hostedServerURL = agentTickCloudServerURL;
+export const selfHostedServerURLPreset = process.env.EXPO_PUBLIC_AGENT_TICK_SELF_HOSTED_SERVER_URL?.trim() ?? "";
 export const serverURLStorageKey = "agent-tick.serverURL";
 
 export type RuntimeAuthConfig = {

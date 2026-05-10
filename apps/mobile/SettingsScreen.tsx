@@ -189,7 +189,7 @@ export function SettingsScreen({
               autoCorrect={false}
               inputMode="url"
               onChangeText={setServerURL}
-              placeholder="http://192.168.1.20:8787"
+              placeholder="https://tick.example.com"
               style={styles.input}
               value={serverURL}
             />
@@ -292,7 +292,7 @@ export function SettingsScreen({
             autoCorrect={false}
             inputMode="url"
             onChangeText={setServerURL}
-            placeholder="http://192.168.1.20:8787"
+            placeholder="https://tick.example.com"
             style={styles.input}
             value={serverURL}
           />

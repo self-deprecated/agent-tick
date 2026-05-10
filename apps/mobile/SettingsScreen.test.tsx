@@ -37,7 +37,7 @@ describe("SettingsScreen — unpaired state", () => {
 
   it("shows server URL input", () => {
     render(<SettingsScreen {...unpairedProps} />);
-    expect(screen.getByPlaceholderText("http://192.168.1.20:8787")).toBeTruthy();
+    expect(screen.getByPlaceholderText("https://tick.example.com")).toBeTruthy();
   });
 
   it("shows Check Connection button", () => {
@@ -95,7 +95,7 @@ describe("SettingsScreen — paired state", () => {
 
   it("keeps server URL input available for server switching", () => {
     render(<SettingsScreen {...pairedProps} />);
-    expect(screen.getByPlaceholderText("http://192.168.1.20:8787")).toBeTruthy();
+    expect(screen.getByPlaceholderText("https://tick.example.com")).toBeTruthy();
   });
 
   it("hides manual pairing code input", () => {

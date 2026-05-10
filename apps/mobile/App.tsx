@@ -64,6 +64,7 @@ import {
   mobileSessionStorageKeys,
   hostedServerURL,
   normalizeServerURL,
+  selfHostedServerURLPreset,
   serverURLStorageKey,
   type RuntimeAuthConfig,
 } from "./mobileAuth";
@@ -135,8 +136,7 @@ export default function App() {
       const savedAuthConfig = await fetchRuntimeAuthConfigIfAvailable(savedServerURL);
       const shouldKeepSavedServer =
         savedServerURL === defaultServer ||
-        savedAuthConfig?.authProvider === "clerk" ||
-        (await hasSavedLocalSession(savedServerURL));
+        (savedAuthConfig?.authProvider !== "clerk" && (await hasSavedLocalSession(savedServerURL)));
       const serverURL = shouldKeepSavedServer ? savedServerURL : defaultServer;
       const authConfig = serverURL === savedServerURL
         ? savedAuthConfig
@@ -280,7 +280,8 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   if (!hasClerkLogin) {
     return (
       <ClerkSignInScreen
-        serverURL={props.initialServerURL ?? defaultServer}
+        serverURL={defaultServer}
+        selfHostedInitialURL={selfHostedInitialURL(props.initialServerURL)}
         onServerSelected={props.onRuntimeAuthConfig}
       />
     );
@@ -322,6 +323,12 @@ async function hasSavedLocalSession(serverURL: string) {
   const keys = mobileSessionStorageKeys(serverURL);
   const entries = await AsyncStorage.multiGet([keys.token, keys.deviceID]);
   return entries.some(([, value]) => Boolean(value));
+}
+
+function selfHostedInitialURL(serverURL?: string) {
+  const normalized = normalizeServerURL(serverURL ?? "");
+  if (normalized !== defaultServer) return normalized;
+  return selfHostedServerURLPreset;
 }
 
 function CloudFirstOnboardingScreen({
@@ -376,7 +383,7 @@ function CloudFirstOnboardingScreen({
             autoCorrect={false}
             inputMode="url"
             onChangeText={setCustomServerURL}
-            placeholder="http://192.168.1.20:8787"
+            placeholder="https://tick.example.com"
             style={styles.input}
             value={customServerURL}
           />

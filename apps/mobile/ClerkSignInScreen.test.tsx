@@ -67,4 +67,12 @@ describe("ClerkSignInScreen", () => {
       );
     });
   });
+
+  it("can prefill only the self-hosted server field", () => {
+    render(<ClerkSignInScreen serverURL="https://agenttick.sh" selfHostedInitialURL="http://localhost:8787" />);
+
+    expect(screen.getByText("https://agenttick.sh")).toBeTruthy();
+    fireEvent.press(screen.getByText("Use a self-hosted server instead"));
+    expect(screen.getByDisplayValue("http://localhost:8787")).toBeTruthy();
+  });
 });
