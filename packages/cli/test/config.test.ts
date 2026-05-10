@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { parseDurationMs } from '../src/index.js';
+import { buildCliSetupURL, parseDurationMs } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -34,6 +34,23 @@ describe('CLI config', () => {
       { AGENT_TICK_SERVER: 'https://env.example.com', AGENT_TICK_TOKEN: 'agent_env' }
     );
     expect(config).toEqual({ server: 'https://env.example.com', token: 'agent_env' });
+  });
+});
+
+describe('browser setup', () => {
+  it('builds a dashboard URL with local callback state and agent name', () => {
+    const url = new URL(buildCliSetupURL({
+      server: 'https://tick.example.com/app',
+      callbackURL: 'http://127.0.0.1:1234/agent-tick/setup/callback',
+      state: 'state_123',
+      name: 'Claude Code'
+    }));
+
+    expect(url.origin).toBe('https://tick.example.com');
+    expect(url.pathname).toBe('/');
+    expect(url.searchParams.get('cli_callback')).toBe('http://127.0.0.1:1234/agent-tick/setup/callback');
+    expect(url.searchParams.get('cli_state')).toBe('state_123');
+    expect(url.searchParams.get('cli_name')).toBe('Claude Code');
   });
 });
 

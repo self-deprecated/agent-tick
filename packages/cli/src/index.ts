@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 import os from 'node:os';
 import process from 'node:process';
 import { Command } from 'commander';
@@ -19,10 +21,18 @@ export function createProgram(): Command {
 
   program
     .command('setup')
-    .description('Save server URL and agent token for later commands')
-    .requiredOption('--server <url>', 'Agent Tick server URL')
-    .requiredOption('--token <token>', 'Agent Tick agent token')
-    .action(async (options: { server: string; token: string }) => {
+    .description('Sign in or save an Agent Tick server URL and agent token')
+    .option('--server <url>', 'Agent Tick server URL', 'https://agenttick.sh')
+    .option('--token <token>', 'Agent Tick agent token')
+    .option('--login', 'open browser sign-in and create an agent token')
+    .option('--name <name>', 'agent token name for browser sign-in', defaultAgentName())
+    .action(async (options: SetupOptions) => {
+      if (options.login) {
+        const result = await setupWithBrowser(options);
+        process.stdout.write(`saved Agent Tick config to ${result.path}\n`);
+        return;
+      }
+      if (!options.token) throw new Error('setup requires --token, or use --login to sign in with your browser');
       const path = await saveClientConfig({ server: options.server, token: options.token });
       process.stdout.write(`saved Agent Tick config to ${path}\n`);
     });
@@ -94,6 +104,116 @@ async function clientFromOptions(options: ClientOptions): Promise<{ client: Agen
   return { server, token, client: new AgentTickClient({ baseUrl: server, tokenProvider: () => token }) };
 }
 
+async function setupWithBrowser(options: SetupOptions): Promise<{ path: string }> {
+  const state = randomBytes(24).toString('base64url');
+  const callbackServer = await listenForSetupCallback({ expectedState: state, fallbackServer: options.server });
+  const loginURL = buildCliSetupURL({
+    server: options.server,
+    callbackURL: callbackServer.callbackURL,
+    state,
+    ...(options.name ? { name: options.name } : {})
+  });
+  process.stdout.write(`Opening ${loginURL}\n`);
+  process.stdout.write('Sign in in your browser. Agent Tick will redirect back here when setup is complete.\n');
+  openBrowser(loginURL);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error('Timed out waiting for browser sign-in. Run `agent-tick setup --login` again to retry.')), 5 * 60_000);
+  });
+  try {
+    return await Promise.race([callbackServer.result, timedOut]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    callbackServer.server.close();
+  }
+}
+
+function listenForSetupCallback(options: { expectedState: string; fallbackServer: string }): Promise<{
+  callbackURL: string;
+  server: Server;
+  result: Promise<{ path: string }>;
+}> {
+  const server = createServer();
+  const result = new Promise<{ path: string }>((resolve) => {
+    server.on('request', (request, response) => {
+      void (async () => {
+        const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
+        if (url.pathname !== '/agent-tick/setup/callback') {
+          response.writeHead(404, { 'content-type': 'text/plain' });
+          response.end('Not found');
+          return;
+        }
+        const params = await readCallbackParams(request, url);
+        const state = params.get('state') ?? '';
+        const token = params.get('token') ?? '';
+        const serverURL = params.get('server') ?? options.fallbackServer;
+        if (state !== options.expectedState || !token.startsWith('agent_')) {
+          response.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
+          response.end('<h1>Agent Tick setup failed</h1><p>Invalid setup callback. You can close this tab and retry <code>agent-tick setup --login</code>.</p>');
+          return;
+        }
+        const path = await saveClientConfig({ server: serverURL, token });
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        response.end('<h1>Agent Tick setup complete</h1><p>You can close this tab and return to your terminal.</p>');
+        resolve({ path });
+      })().catch((error: unknown) => {
+        response.writeHead(500, { 'content-type': 'text/html; charset=utf-8' });
+        response.end(`<h1>Agent Tick setup failed</h1><p>${escapeHTML(error instanceof Error ? error.message : String(error))}</p>`);
+      });
+    });
+  });
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        reject(new Error('Could not start local setup callback server'));
+        return;
+      }
+      resolve({ callbackURL: `http://127.0.0.1:${address.port}/agent-tick/setup/callback`, server, result });
+    });
+  });
+}
+
+async function readCallbackParams(request: IncomingMessage, url: URL): Promise<URLSearchParams> {
+  if (request.method !== 'POST') return url.searchParams;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.byteLength;
+    if (size > 16_384) throw new Error('Setup callback is too large');
+    chunks.push(buffer);
+  }
+  return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+}
+
+export function buildCliSetupURL(options: { server: string; callbackURL: string; state: string; name?: string }): string {
+  const url = new URL('/', options.server);
+  url.searchParams.set('cli_callback', options.callbackURL);
+  url.searchParams.set('cli_state', options.state);
+  if (options.name?.trim()) url.searchParams.set('cli_name', options.name.trim());
+  return url.toString();
+}
+
+function openBrowser(url: string): void {
+  const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
+  const child = spawn(command, args, { detached: true, stdio: 'ignore' });
+  child.on('error', () => {
+    process.stderr.write(`Could not open your browser automatically. Open this URL instead:\n${url}\n`);
+  });
+  child.unref();
+}
+
+function defaultAgentName(): string {
+  return `Agent on ${os.hostname() || 'local machine'}`;
+}
+
+function escapeHTML(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
 async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
   const created = await client.createApprovalRequest({
     requester: {
@@ -163,6 +283,12 @@ export function parseDurationMs(value: string | number | undefined): number {
 interface ClientOptions {
   server?: string;
   token?: string;
+}
+
+interface SetupOptions extends ClientOptions {
+  server: string;
+  login?: boolean;
+  name?: string;
 }
 
 interface RequestOptions extends ClientOptions {

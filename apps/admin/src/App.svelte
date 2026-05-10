@@ -53,6 +53,10 @@
 	let policies = $state<PolicyRecord[]>([]);
 	let selectedOrganizationId = $state('');
 	let inviteToken = $state('');
+	let cliSetup = $state<CliSetupRequest | undefined>();
+	let cliSetupStatus = $state<'idle' | 'authorizing' | 'complete' | 'error'>('idle');
+	let cliSetupError = $state('');
+	let cliSetupAttempted = false;
 	let invitePreview = $state<InvitePreview | undefined>();
 	let inviteAccepted = $state<AcceptInviteResponse | undefined>();
 	let inviteStatus = $state<'idle' | 'loading' | 'ready' | 'accepting' | 'accepted' | 'error'>('idle');
@@ -93,6 +97,7 @@
 	let eventStreamOrganizationId = '';
 	let eventStreamRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 	let eventStreamReconnectTimer: ReturnType<typeof setTimeout> | undefined;
+	type CliSetupRequest = { callbackURL: string; state: string; name: string };
 
 	function client(options: { includeOrganization?: boolean } = {}): AgentTickClient {
 		return new AgentTickClient({
@@ -111,6 +116,7 @@
 		testAuthToken = localStorage.getItem(testAuthTokenStorageKey) ?? '';
 		selectedOrganizationId = localStorage.getItem(organizationStorageKey) ?? '';
 		syncInviteTokenFromLocation();
+		syncCliSetupFromLocation();
 		const onHashChange = () => syncInviteTokenFromLocation();
 		window.addEventListener('hashchange', onHashChange);
 		void load();
@@ -119,6 +125,21 @@
 			stopEventStream();
 		};
 	});
+
+	function syncCliSetupFromLocation(): void {
+		const params = new URLSearchParams(window.location.search);
+		const callbackURL = params.get('cli_callback') ?? '';
+		const state = params.get('cli_state') ?? '';
+		if (!callbackURL || !state) return;
+		try {
+			const callback = new URL(callbackURL);
+			if (callback.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(callback.hostname)) throw new Error('Invalid callback URL');
+			cliSetup = { callbackURL: callback.toString(), state, name: params.get('cli_name')?.trim() || 'Local agent' };
+		} catch {
+			cliSetupStatus = 'error';
+			cliSetupError = 'The CLI setup callback URL is invalid. Please retry agent-tick setup --login.';
+		}
+	}
 
 	function syncInviteTokenFromLocation(): void {
 		const nextToken = inviteTokenFromLocation(window.location.pathname, window.location.hash);
@@ -258,6 +279,7 @@
 		await refreshOrganizations();
 		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshBilling(), refreshDevices(), refreshOnboarding(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests(), refreshMyMembershipRequests()]);
 		void ensureEventStream();
+		void maybeCompleteCliSetup();
 	}
 
 	function stopEventStream(): void {
@@ -700,6 +722,43 @@
 		}
 	}
 
+	async function maybeCompleteCliSetup(): Promise<void> {
+		if (!cliSetup || cliSetupAttempted || !selectedOrganizationId) return;
+		if (runtimeConfig?.authProvider === 'clerk' && !clerkSignedIn) return;
+		cliSetupAttempted = true;
+		cliSetupStatus = 'authorizing';
+		cliSetupError = '';
+		try {
+			const credential = await client().createAgentToken({ name: cliSetup.name });
+			cliSetupStatus = 'complete';
+			postCliSetupCallback(cliSetup.callbackURL, {
+				state: cliSetup.state,
+				server: window.location.origin,
+				token: credential.token,
+				agentId: credential.agentId
+			});
+		} catch (err) {
+			cliSetupStatus = 'error';
+			cliSetupError = messageForError(err);
+		}
+	}
+
+	function postCliSetupCallback(callbackURL: string, values: Record<string, string>): void {
+		const form = document.createElement('form');
+		form.method = 'POST';
+		form.action = callbackURL;
+		form.style.display = 'none';
+		for (const [name, value] of Object.entries(values)) {
+			const input = document.createElement('input');
+			input.type = 'hidden';
+			input.name = name;
+			input.value = value;
+			form.append(input);
+		}
+		document.body.append(form);
+		form.submit();
+	}
+
 	async function createAgentToken(): Promise<void> {
 		error = '';
 		createdCredential = undefined;
@@ -842,6 +901,26 @@
 				</div>
 			{:else}
 				<AccountEntryCard onSignIn={signInWithClerk} />
+			{/if}
+		</section>
+	{/if}
+
+	{#if cliSetup}
+		<section class="card stack" data-testid="cli-browser-setup">
+			<div class="section-heading">
+				<h2>CLI sign-in</h2>
+				{#if cliSetupStatus === 'error'}<button onclick={() => { cliSetupAttempted = false; void maybeCompleteCliSetup(); }}>Retry</button>{/if}
+			</div>
+			{#if runtimeConfig?.authProvider === 'clerk' && !clerkSignedIn}
+				<p class="warning">Sign in above to finish setting up the Agent Tick CLI. Agent Tick will redirect back to your terminal automatically.</p>
+			{:else if cliSetupStatus === 'authorizing'}
+				<p class="subtle">Creating an agent token for <strong>{cliSetup.name}</strong>…</p>
+			{:else if cliSetupStatus === 'complete'}
+				<p class="success">Setup complete. Redirecting back to your terminal…</p>
+			{:else if cliSetupStatus === 'error'}
+				<p class="error">{cliSetupError}</p>
+			{:else}
+				<p class="subtle">Preparing browser setup for <strong>{cliSetup.name}</strong>…</p>
 			{/if}
 		</section>
 	{/if}
