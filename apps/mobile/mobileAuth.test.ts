@@ -1,4 +1,4 @@
-import { agentTickCloudServerURL, clerkTokenCacheKey, fetchRuntimeAuthConfig, hostedServerURL, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeServerURL } from "./mobileAuth";
+import { agentTickCloudServerURL, clerkTokenCacheKey, fetchRuntimeAuthConfig, hostedServerURL, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeSavedMobileAccounts, normalizeServerURL, savedMobileAccountID, upsertSavedMobileAccount } from "./mobileAuth";
 
 describe("mobile auth config", () => {
   it("normalizes server URLs", () => {
@@ -21,6 +21,27 @@ describe("mobile auth config", () => {
       "agent-tick.session.https%3A%2F%2Ftick.example.com.organizationID",
       "agent-tick.session.https%3A%2F%2Ftick.example.com.pushStatus",
     ]);
+  });
+
+  it("tracks saved mobile accounts without storing bearer tokens", () => {
+    const first = upsertSavedMobileAccount([], {
+      serverURL: "https://tick.example.com/",
+      authProvider: "local",
+      deviceID: "dev_1",
+      label: "Example device",
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    });
+    const second = upsertSavedMobileAccount(first, {
+      serverURL: "https://agenttick.sh",
+      authProvider: "clerk",
+      organizationID: "org_1",
+      label: "Platform",
+      updatedAt: "2026-05-10T00:01:00.000Z",
+    });
+
+    expect(first[0]?.id).toBe(savedMobileAccountID({ serverURL: "https://tick.example.com", authProvider: "local", deviceID: "dev_1" }));
+    expect(JSON.stringify(second)).not.toContain("agent_");
+    expect(normalizeSavedMobileAccounts(JSON.parse(JSON.stringify(second))).map((account) => account.label)).toEqual(["Platform", "Example device"]);
   });
 
   it("namespaces Clerk token cache by server and publishable key", () => {

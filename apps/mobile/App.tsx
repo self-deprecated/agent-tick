@@ -61,13 +61,17 @@ import { AgentTickClient, type AgentStatusUpdate, type OrganizationMembership } 
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
   fetchRuntimeAuthConfig,
+  mobileAccountsStorageKey,
   mobileSessionStorageKeyList,
   mobileSessionStorageKeys,
   hostedServerURL,
+  normalizeSavedMobileAccounts,
   normalizeServerURL,
   selfHostedServerURLPreset,
   serverURLStorageKey,
+  upsertSavedMobileAccount,
   type RuntimeAuthConfig,
+  type SavedMobileAccount,
 } from "./mobileAuth";
 import { mobileEventStreamsAvailable, subscribeToMobileEventStream, type MobileEventStreamSubscription } from "./mobileEvents";
 import {
@@ -412,6 +416,7 @@ function AgentTickApp({
   const [pairingCode, setPairingCode] = useState("");
   const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
   const [selectedOrganizationID, setSelectedOrganizationID] = useState("");
+  const [savedAccounts, setSavedAccounts] = useState<SavedMobileAccount[]>([]);
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [statusUpdates, setStatusUpdates] = useState<AgentStatusUpdate[]>([]);
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
@@ -510,7 +515,15 @@ function AgentTickApp({
     const restoreSettings = async () => {
       try {
         const savedServerURL = (await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer;
+        const savedAccountJSON = await AsyncStorage.getItem(mobileAccountsStorageKey);
+        let parsedAccounts: unknown = [];
+        try {
+          parsedAccounts = savedAccountJSON ? JSON.parse(savedAccountJSON) : [];
+        } catch {
+          parsedAccounts = [];
+        }
         if (!cancelled) {
+          setSavedAccounts(normalizeSavedMobileAccounts(parsedAccounts));
           setServerURL(savedServerURL);
         }
       } finally {
@@ -653,7 +666,30 @@ function AgentTickApp({
       [scopedKeys.organizationID, selectedOrganizationID],
       [scopedKeys.pushStatus, pushStatus],
     ]);
-  }, [deviceID, loadedSessionServerURL, pushStatus, selectedOrganizationID, serverURL, settingsLoaded, token]);
+    const shouldSaveAccount = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(selectedOrganizationID) : Boolean(token || deviceID);
+    if (shouldSaveAccount) {
+      setSavedAccounts((current) => {
+        const organization = organizations.find((entry) => entry.organizationId === selectedOrganizationID);
+        const next = upsertSavedMobileAccount(current, {
+          serverURL: activeServerURL,
+          authProvider: runtimeAuthConfig?.authProvider ?? "local",
+          organizationID: selectedOrganizationID || undefined,
+          deviceID: deviceID || undefined,
+          label: organization?.name ?? "",
+        });
+        void AsyncStorage.setItem(mobileAccountsStorageKey, JSON.stringify(next));
+        return next;
+      });
+    }
+  }, [deviceID, loadedSessionServerURL, organizations, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
+
+  const switchSavedAccount = useCallback((account: SavedMobileAccount) => {
+    interruptRealtime();
+    setServerURL(account.serverURL);
+    setSelectedOrganizationID(account.organizationID ?? "");
+    setLoadedSessionServerURL("");
+    setScreen("approvals");
+  }, [interruptRealtime]);
 
   const refreshOrganizations = useCallback(async () => {
     if (runtimeAuthConfig?.authProvider !== "clerk") {
@@ -1385,6 +1421,7 @@ function AgentTickApp({
 
       {screen === "settings" ? (
         <SettingsScreen
+          accounts={savedAccounts}
           availability={availability}
           connectionStatus={connectionStatus}
           error={error}
@@ -1397,6 +1434,7 @@ function AgentTickApp({
           onPairDevice={() => void pairDevice()}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
+          onSavedAccountSelect={switchSavedAccount}
           onSendDiagnosticSnapshot={() => void sendDiagnostics()}
           onSendTestNotification={() => void sendTestNotification()}
           onScanPairing={() => {

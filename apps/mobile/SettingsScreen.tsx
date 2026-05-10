@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { SavedMobileAccount } from "./mobileAuth";
 import {
   ActivityIndicator,
   Pressable,
@@ -43,6 +44,7 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
 }
 
 export function SettingsScreen({
+  accounts = [],
   availability,
   authProvider,
   connectionStatus,
@@ -56,6 +58,7 @@ export function SettingsScreen({
   onDiagnosticsEnabledChange,
   onRegisterPush,
   onRequestNotifications,
+  onSavedAccountSelect,
   onSendDiagnosticSnapshot,
   onSendTestNotification,
   onScanPairing,
@@ -75,6 +78,7 @@ export function SettingsScreen({
   setToken,
   token,
 }: {
+  accounts?: SavedMobileAccount[];
   availability?: AvailabilityState;
   authProvider?: string;
   connectionStatus: ConnectionStatus;
@@ -88,6 +92,7 @@ export function SettingsScreen({
   onDiagnosticsEnabledChange?: (enabled: boolean) => void;
   onRegisterPush: () => void;
   onRequestNotifications: () => void;
+  onSavedAccountSelect?: (account: SavedMobileAccount) => void;
   onSendDiagnosticSnapshot?: () => void;
   onSendTestNotification: () => void;
   onScanPairing: () => void;
@@ -218,6 +223,27 @@ export function SettingsScreen({
             </Pressable>
           ) : null}
         </View>
+        {accounts.length > 0 ? (
+          <View style={styles.settingsSection}>
+            <Text style={styles.sectionHeading}>Accounts</Text>
+            <Text style={styles.pairingHint}>Switch between saved Agent Tick accounts and self-hosted sessions on this device.</Text>
+            <View style={styles.organizationList}>
+              {accounts.map((account) => {
+                const active = account.serverURL === serverURL && (!account.organizationID || account.organizationID === selectedOrganizationID);
+                return (
+                  <Pressable
+                    key={account.id}
+                    onPress={() => onSavedAccountSelect?.(account)}
+                    style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
+                  >
+                    <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{account.label}</Text>
+                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{account.authProvider} · {account.serverURL}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
         <View style={styles.settingsSection}>
           <Text style={styles.sectionHeading}>Workspace</Text>
           <Text style={styles.pairingHint}>

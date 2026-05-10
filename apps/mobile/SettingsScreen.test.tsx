@@ -156,6 +156,23 @@ describe("SettingsScreen — paired state", () => {
     expect(onAvailabilityChange).toHaveBeenCalledWith("off-call");
   });
 
+  it("shows saved accounts and switches between them", () => {
+    const onSavedAccountSelect = jest.fn();
+    const account = {
+      id: "local:https://tick.example.com:dev_1",
+      serverURL: "https://tick.example.com",
+      authProvider: "local",
+      label: "Example device",
+      deviceID: "dev_1",
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    };
+    render(<SettingsScreen {...pairedProps} accounts={[account]} serverURL="https://tick.example.com" onSavedAccountSelect={onSavedAccountSelect} />);
+    expect(screen.getByText("Accounts")).toBeTruthy();
+    expect(screen.getByText("Example device")).toBeTruthy();
+    fireEvent.press(screen.getByText("Example device"));
+    expect(onSavedAccountSelect).toHaveBeenCalledWith(account);
+  });
+
   it("shows Clerk organization choices without device pairing", () => {
     const onSelectOrganization = jest.fn();
     render(
