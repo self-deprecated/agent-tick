@@ -278,7 +278,12 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     return <LoadingScreen />;
   }
   if (!hasClerkLogin) {
-    return <ClerkSignInScreen serverURL={props.initialServerURL ?? defaultServer} />;
+    return (
+      <ClerkSignInScreen
+        serverURL={props.initialServerURL ?? defaultServer}
+        onServerSelected={props.onRuntimeAuthConfig}
+      />
+    );
   }
   if (!mobileSessionToken) {
     return <LoadingScreen />;
