@@ -1,6 +1,6 @@
 ---
 name: agent-tick
-description: Request out-of-band human approval through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, or when the user explicitly asks to gate work through Agent Tick. This skill covers the current TypeScript CLI commands: `agent-tick install`, `agent-tick setup`, `agent-tick request`, `agent-tick abandon`, and `agent-tick guard`.
+description: Request out-of-band human approval or send AFK progress updates through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, provide mobile-visible status while working away from the user, or when the user explicitly asks to gate work or send updates through Agent Tick. This skill covers the current TypeScript CLI commands: `agent-tick install`, `agent-tick setup`, `agent-tick request`, `agent-tick abandon`, `agent-tick guard`, and `agent-tick status`.
 ---
 
 # Agent Tick
@@ -88,9 +88,38 @@ agent-tick request \
 
 Treat denial or any selected `deny` choice as a hard stop unless the user gives a new instruction.
 
+## AFK Status Updates
+
+Use `agent-tick status` to send lightweight progress updates that do not ask for approval and do not block. This is useful during AFK/long-running work so the user can see that the agent is still working from the mobile app.
+
+Send concise updates at meaningful milestones, not after every small action:
+
+```sh
+agent-tick status --state working --next "Run typecheck" "Finished edits; validating now"
+```
+
+Use `--state done` at the end of a long task, or `--state blocked` when waiting on user input:
+
+```sh
+agent-tick status --state done "Implementation complete; tests passed"
+agent-tick status --state blocked --next "Wait for user decision" "Need clarification before changing the API shape"
+```
+
+If an integration has a stable chat/thread id, pass it with `--thread` or set `AGENT_TICK_THREAD_ID`. Otherwise the CLI scopes the thread to the current host and working directory.
+
+```sh
+agent-tick status \
+  --thread "$AGENT_TICK_THREAD_ID" \
+  --state working \
+  --next "Fix failing test" \
+  "Server route is implemented; checking failures"
+```
+
+The status message is visible to humans. Do not include secrets or sensitive logs.
+
 ## JSON Output
 
-Use `--json` when another script needs machine-readable events from `request` or `abandon`:
+Use `--json` when another script needs machine-readable events from `request`, `abandon`, or `status`:
 
 ```sh
 agent-tick request \
@@ -99,7 +128,7 @@ agent-tick request \
   --body "Deploy commit abc123 to production."
 ```
 
-The current CLI does not support JSON stdin adapter, MCP, constrained steering, context-file, project-routing, requester override, metadata flags, or freeform text replies. Do not use undocumented commands or flags.
+The current CLI does not support JSON stdin adapter, MCP, constrained steering, context-file, project-routing, requester override, or freeform text replies. Do not use undocumented commands or flags.
 
 ## Timeouts
 
@@ -113,6 +142,12 @@ Use `--timeout 0` on `request` to create a request without waiting.
 
 Do not retry repeatedly after timeouts unless the user asks. Repeated retries can spam the user's approval channel.
 
+For status updates, `--json` returns the accepted status update:
+
+```sh
+agent-tick status --json --state working "Running server tests"
+```
+
 ## Abandoning A Request
 
 Use `agent-tick abandon` to cancel a pending request by ID:
@@ -124,7 +159,7 @@ agent-tick abandon req_...
 ## Safety Rules
 
 - Do not use Agent Tick to approve its own setup command.
-- Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in approval titles, bodies, or command summaries.
+- Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in approval titles, bodies, status messages, or command summaries.
 - Do not continue a gated action after denial, timeout, CLI failure, or a non-zero `agent-tick` exit.
 - Do not replace Agent Tick with a normal prompt when the user asked for Agent Tick approval.
 - Use one approval for one meaningful action. Batch only when the full batch is clearly described.
