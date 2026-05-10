@@ -58,7 +58,7 @@ import {
 } from "./approvalRequests";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
-import { AgentTickClient, type AgentStatusUpdate, type OrganizationMembership } from "@agent-tick/sdk";
+import { AgentTickClient, type AgentStatusUpdate, type MeResponse, type OrganizationMembership } from "@agent-tick/sdk";
 import { decryptApprovalPayload } from "@agent-tick/shared";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
@@ -424,6 +424,7 @@ function AgentTickApp({
   const [e2eeFocusToken, setE2eeFocusToken] = useState(0);
   const [pairingCode, setPairingCode] = useState("");
   const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
+  const [currentAccountProfile, setCurrentAccountProfile] = useState<MeResponse | null>(null);
   const [selectedOrganizationID, setSelectedOrganizationID] = useState("");
   const [savedAccounts, setSavedAccounts] = useState<SavedMobileAccount[]>([]);
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
@@ -657,6 +658,7 @@ function AgentTickApp({
           });
         } else {
           setOrganizations([]);
+          setCurrentAccountProfile(null);
           setSelectedOrganizationID("");
         }
       } catch {
@@ -718,6 +720,7 @@ function AgentTickApp({
 
   const refreshOrganizations = useCallback(async () => {
     if (runtimeAuthConfig?.authProvider !== "clerk") {
+      setCurrentAccountProfile(null);
       setOrganizations([]);
       return;
     }
@@ -726,7 +729,11 @@ function AgentTickApp({
         baseUrl: serverURL,
         tokenProvider: async () => (await currentAuthToken()) || null,
       });
-      const memberships = await organizationClient.listOrganizations();
+      const [me, memberships] = await Promise.all([
+        organizationClient.getMe(),
+        organizationClient.listOrganizations(),
+      ]);
+      setCurrentAccountProfile(me);
       setOrganizations(memberships);
       setSelectedOrganizationID((current) => {
         if (current && memberships.some((membership) => membership.organizationId === current)) {
@@ -735,6 +742,7 @@ function AgentTickApp({
         return memberships[0]?.organizationId ?? "";
       });
     } catch {
+      setCurrentAccountProfile(null);
       setOrganizations([]);
     }
   }, [currentAuthToken, runtimeAuthConfig?.authProvider, serverURL]);
@@ -1300,6 +1308,7 @@ function AgentTickApp({
     setToken("");
     setPushStatus("idle");
     setOrganizations([]);
+    setCurrentAccountProfile(null);
     setSelectedOrganizationID("");
     setRequests([]);
     setHistory([]);
@@ -1317,6 +1326,7 @@ function AgentTickApp({
     setToken("");
     setPushStatus("idle");
     setOrganizations([]);
+    setCurrentAccountProfile(null);
     setSelectedOrganizationID("");
     setRequests([]);
     setHistory([]);
@@ -1357,6 +1367,7 @@ function AgentTickApp({
       setToken("");
       setPushStatus("idle");
       setOrganizations([]);
+      setCurrentAccountProfile(null);
       setSelectedOrganizationID("");
       setRequests([]);
       setHistory([]);
@@ -1502,6 +1513,7 @@ function AgentTickApp({
           diagnosticsEventCount={diagnosticsEventCount}
           diagnosticsLastSentAt={diagnosticsLastSentAt}
           authProvider={runtimeAuthConfig?.authProvider}
+          currentAccountProfile={currentAccountProfile}
           deviceID={deviceID}
           organizations={organizations}
           selectedOrganizationID={selectedOrganizationID}

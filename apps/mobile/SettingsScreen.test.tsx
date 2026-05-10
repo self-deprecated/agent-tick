@@ -83,9 +83,10 @@ describe("SettingsScreen — unpaired state", () => {
 });
 
 describe("SettingsScreen — paired state", () => {
-  it("shows Paired as <deviceID>", () => {
+  it("shows the current paired device account", () => {
     render(<SettingsScreen {...pairedProps} />);
-    expect(screen.getByText("Paired as device-abc-123")).toBeTruthy();
+    expect(screen.getByText("Current account")).toBeTruthy();
+    expect(screen.getByText("Device device-abc-123")).toBeTruthy();
   });
 
   it("shows Forget Device button", () => {
@@ -164,7 +165,7 @@ describe("SettingsScreen — paired state", () => {
     expect(setE2eeKey).toHaveBeenCalledWith("key_123");
   });
 
-  it("shows saved accounts and switches between them", () => {
+  it("opens the account switcher and switches saved accounts", () => {
     const onSavedAccountSelect = jest.fn();
     const account = {
       id: "local:https://tick.example.com:dev_1",
@@ -175,24 +176,30 @@ describe("SettingsScreen — paired state", () => {
       updatedAt: "2026-05-10T00:00:00.000Z",
     };
     render(<SettingsScreen {...pairedProps} accounts={[account]} serverURL="https://tick.example.com" onSavedAccountSelect={onSavedAccountSelect} />);
-    expect(screen.getByText("Accounts")).toBeTruthy();
+    expect(screen.getByText("Current account")).toBeTruthy();
+    expect(screen.queryByText("Saved accounts")).toBeNull();
+    fireEvent.press(screen.getByText("Switch accounts ›"));
+    expect(screen.getByText("Saved accounts")).toBeTruthy();
     expect(screen.getByText("Example device")).toBeTruthy();
     fireEvent.press(screen.getByText("Example device"));
     expect(onSavedAccountSelect).toHaveBeenCalledWith(account);
   });
 
-  it("lets Clerk users sign in with another account", () => {
+  it("shows the Clerk account summary and lets users add another account from the switcher", () => {
     const onSignInAnotherClerkAccount = jest.fn();
     render(
       <SettingsScreen
         {...unpairedProps}
         authProvider="clerk"
+        currentAccountProfile={{ name: "Ada Lovelace", email: "ada@example.com", authProvider: "clerk", source: "human" }}
         onSignInAnotherClerkAccount={onSignInAnotherClerkAccount}
       />,
     );
 
-    expect(screen.getByText("Signed in with Clerk")).toBeTruthy();
-    fireEvent.press(screen.getByText("Sign in with another account"));
+    expect(screen.getByText("Ada Lovelace")).toBeTruthy();
+    expect(screen.getByText(/ada@example.com/)).toBeTruthy();
+    fireEvent.press(screen.getByText("Switch accounts ›"));
+    fireEvent.press(screen.getByText("Add another account"));
     expect(onSignInAnotherClerkAccount).toHaveBeenCalled();
   });
 
@@ -207,7 +214,7 @@ describe("SettingsScreen — paired state", () => {
         setSelectedOrganizationID={onSelectOrganization}
       />,
     );
-    expect(screen.getByText("Signed in with Clerk")).toBeTruthy();
+    expect(screen.getByText("Clerk account")).toBeTruthy();
     expect(screen.getByText("Platform")).toBeTruthy();
     fireEvent.press(screen.getByText("Platform"));
     expect(onSelectOrganization).toHaveBeenCalledWith("org_1");

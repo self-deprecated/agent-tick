@@ -90,6 +90,12 @@ export interface HumanIdentityResult {
   role: string;
 }
 
+export interface UserProfileRecord {
+  userId: string;
+  email: string | undefined;
+  name: string | undefined;
+}
+
 export interface OrganizationRecord {
   organizationId: string;
   name: string;
@@ -557,6 +563,14 @@ export class AgentTickStore {
       .get(userId) as { organization_id: string; role: string } | undefined;
     if (!row) return { userId, organizationId: DEFAULT_ORGANIZATION_ID, role: 'owner' };
     return { userId, organizationId: row.organization_id, role: row.role };
+  }
+
+  userProfile(userId: string): UserProfileRecord | null {
+    const row = this.db
+      .prepare('SELECT id, email, name FROM users WHERE id = ?')
+      .get(userId) as { id: string; email: string | null; name: string | null } | undefined;
+    if (!row) return null;
+    return { userId: row.id, email: row.email ?? undefined, name: row.name ?? undefined };
   }
 
   listOrganizationsForUser(userId: string): OrganizationMembershipRecord[] {

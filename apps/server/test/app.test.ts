@@ -125,7 +125,13 @@ describe('server skeleton', () => {
       headers: { authorization: `Bearer ${exchange.json().token}` }
     });
     expect(me.statusCode).toBe(200);
-    expect(me.json()).toMatchObject({ userId: exchange.json().userId, organizationId: exchange.json().organizationId, role: 'owner' });
+    expect(me.json()).toMatchObject({
+      userId: exchange.json().userId,
+      organizationId: exchange.json().organizationId,
+      role: 'owner',
+      email: 'mobile_user@example.test',
+      name: 'mobile_user'
+    });
   });
 
   it('accepts mobile diagnostics from an Agent Tick mobile session', async () => {

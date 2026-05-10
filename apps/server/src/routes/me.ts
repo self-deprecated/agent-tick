@@ -12,8 +12,11 @@ export async function registerMeRoutes(app: FastifyInstance, { config, store }: 
   app.get('/v1/me', async (request) => {
     const auth = await requireHuman(request, config, store);
     const userId = auth.userId ?? 'usr_default';
+    const profile = store.userProfile(userId);
     return {
       userId,
+      ...(profile?.email ? { email: profile.email } : {}),
+      ...(profile?.name ? { name: profile.name } : {}),
       authProvider: config.authProvider,
       source: auth.source,
       organizationId: auth.organizationId,

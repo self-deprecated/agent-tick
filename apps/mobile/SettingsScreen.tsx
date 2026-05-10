@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { MeResponse } from "@agent-tick/sdk";
 import type { SavedMobileAccount } from "./mobileAuth";
 import {
   ActivityIndicator,
@@ -48,6 +49,7 @@ export function SettingsScreen({
   availability,
   authProvider,
   connectionStatus,
+  currentAccountProfile,
   e2eeFocusToken = 0,
   e2eeKey = "",
   error,
@@ -86,6 +88,7 @@ export function SettingsScreen({
   availability?: AvailabilityState;
   authProvider?: string;
   connectionStatus: ConnectionStatus;
+  currentAccountProfile?: Pick<MeResponse, "email" | "name" | "source" | "authProvider"> | null;
   e2eeFocusToken?: number;
   e2eeKey?: string;
   error: string | null;
@@ -121,6 +124,7 @@ export function SettingsScreen({
   token: string;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
   const [diagnosticsRevealed, setDiagnosticsRevealed] = useState(diagnosticsEnabled);
   const scrollRef = useRef<ScrollView | null>(null);
   const e2eeSectionY = useRef(0);
@@ -135,6 +139,9 @@ export function SettingsScreen({
   const isClerkMode = authProvider === "clerk";
   const isPaired = isClerkMode || !!deviceID;
   const shouldRemindNotifications = isPaired && (notificationStatus === "denied" || notificationStatus === "undetermined");
+
+  const currentAccountTitle = currentAccountLabel({ authProvider, currentAccountProfile, deviceID, serverURL });
+  const currentAccountMeta = currentAccountDetails({ authProvider, currentAccountProfile, selectedOrganizationID, serverURL });
 
   const notificationsSection = (
     <View style={styles.settingsSection}>
@@ -202,6 +209,63 @@ export function SettingsScreen({
     </View>
   );
 
+  if (accountsOpen) {
+    return (
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.settingsContent}
+        style={styles.settingsPane}
+      >
+        <View style={styles.settingsSection}>
+          <Pressable onPress={() => setAccountsOpen(false)} style={styles.backButton}>
+            <Text style={styles.secondaryActionText}>‹ Settings</Text>
+          </Pressable>
+          <Text style={styles.sectionHeading}>Accounts</Text>
+          <Text style={styles.pairingHint}>Choose a saved account or add another Agent Tick account on this device.</Text>
+        </View>
+        <View style={styles.settingsSection}>
+          <Text style={styles.label}>Current account</Text>
+          <View style={[styles.organizationButton, styles.organizationButtonActive]}>
+            <Text style={[styles.organizationName, styles.organizationNameActive]}>{currentAccountTitle}</Text>
+            <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
+          </View>
+          {isClerkMode && onSignInAnotherClerkAccount ? (
+            <Pressable onPress={onSignInAnotherClerkAccount} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>Add another account</Text>
+            </Pressable>
+          ) : onUseCloud ? (
+            <Pressable onPress={onUseCloud} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>Add Agent Tick Cloud account</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {accounts.length > 0 ? (
+          <View style={styles.settingsSection}>
+            <Text style={styles.sectionHeading}>Saved accounts</Text>
+            <View style={styles.organizationList}>
+              {accounts.map((account) => {
+                const active = account.serverURL === serverURL && (!account.organizationID || account.organizationID === selectedOrganizationID);
+                return (
+                  <Pressable
+                    key={account.id}
+                    onPress={() => {
+                      setAccountsOpen(false);
+                      onSavedAccountSelect?.(account);
+                    }}
+                    style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
+                  >
+                    <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{account.label}</Text>
+                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{account.authProvider} · {account.serverURL}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+      </ScrollView>
+    );
+  }
+
   if (isPaired) {
     return (
       <ScrollView
@@ -215,9 +279,12 @@ export function SettingsScreen({
             {loading ? <ActivityIndicator color="#202124" /> : null}
           </View>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          <Text style={styles.deviceStatus}>
-            {isClerkMode ? (deviceID ? `Signed in with Clerk · push device ${deviceID}` : "Signed in with Clerk") : `Paired as ${deviceID}`}
-          </Text>
+          <Pressable onPress={() => setAccountsOpen(true)} style={styles.accountSummaryButton}>
+            <Text style={styles.label}>Current account</Text>
+            <Text style={styles.accountSummaryName}>{currentAccountTitle}</Text>
+            <Text style={styles.accountSummaryMeta}>{currentAccountMeta}</Text>
+            <Text style={styles.accountSummaryAction}>Switch accounts ›</Text>
+          </Pressable>
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Server URL</Text>
             <TextInput
@@ -233,11 +300,6 @@ export function SettingsScreen({
           <Pressable onPress={onCheck} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Check Connection</Text>
           </Pressable>
-          {isClerkMode && onSignInAnotherClerkAccount ? (
-            <Pressable onPress={onSignInAnotherClerkAccount} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>Sign in with another account</Text>
-            </Pressable>
-          ) : null}
           <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
             <Text style={styles.secondaryActionText}>{isClerkMode ? "Sign Out" : "Forget Device"}</Text>
           </Pressable>
@@ -247,27 +309,6 @@ export function SettingsScreen({
             </Pressable>
           ) : null}
         </View>
-        {accounts.length > 0 ? (
-          <View style={styles.settingsSection}>
-            <Text style={styles.sectionHeading}>Accounts</Text>
-            <Text style={styles.pairingHint}>Switch between saved Agent Tick accounts and self-hosted sessions on this device.</Text>
-            <View style={styles.organizationList}>
-              {accounts.map((account) => {
-                const active = account.serverURL === serverURL && (!account.organizationID || account.organizationID === selectedOrganizationID);
-                return (
-                  <Pressable
-                    key={account.id}
-                    onPress={() => onSavedAccountSelect?.(account)}
-                    style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
-                  >
-                    <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{account.label}</Text>
-                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{account.authProvider} · {account.serverURL}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
         <View style={styles.settingsSection}>
           <Text style={styles.sectionHeading}>Workspace</Text>
           <Text style={styles.pairingHint}>
@@ -432,6 +473,39 @@ export function SettingsScreen({
   );
 }
 
+function currentAccountLabel({
+  authProvider,
+  currentAccountProfile,
+  deviceID,
+  serverURL,
+}: {
+  authProvider?: string;
+  currentAccountProfile?: Pick<MeResponse, "email" | "name"> | null;
+  deviceID: string;
+  serverURL: string;
+}) {
+  if (authProvider === "clerk") return currentAccountProfile?.name || currentAccountProfile?.email || "Clerk account";
+  return deviceID ? `Device ${deviceID}` : serverURL;
+}
+
+function currentAccountDetails({
+  authProvider,
+  currentAccountProfile,
+  selectedOrganizationID,
+  serverURL,
+}: {
+  authProvider?: string;
+  currentAccountProfile?: Pick<MeResponse, "email" | "source"> | null;
+  selectedOrganizationID?: string;
+  serverURL: string;
+}) {
+  const emailDomain = currentAccountProfile?.email?.split("@")[1];
+  const parts = authProvider === "clerk"
+    ? [currentAccountProfile?.email, "SSO: Clerk", emailDomain ? `Domain: ${emailDomain}` : undefined, selectedOrganizationID ? `Org ${selectedOrganizationID}` : undefined]
+    : ["Self-hosted", serverURL];
+  return parts.filter(Boolean).join(" · ") || serverURL;
+}
+
 function availabilityLabel(state: AvailabilityState) {
   switch (state) {
     case "do-not-disturb":
@@ -518,6 +592,34 @@ const styles = StyleSheet.create({
     color: "#202124",
     fontSize: 16,
     fontWeight: "900",
+  },
+  accountSummaryButton: {
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 5,
+    padding: 12,
+  },
+  accountSummaryName: {
+    color: "#202124",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  accountSummaryMeta: {
+    color: "#5f5a4f",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  accountSummaryAction: {
+    color: "#202124",
+    fontSize: 14,
+    fontWeight: "900",
+    marginTop: 4,
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    minHeight: 36,
+    justifyContent: "center",
   },
   pairingHint: {
     color: "#5f5a4f",
