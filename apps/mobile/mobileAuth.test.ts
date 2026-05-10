@@ -1,8 +1,8 @@
-import { agentTickCloudServerURL, clerkTokenCacheKey, fetchRuntimeAuthConfig, hostedServerURL, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeSavedMobileAccounts, normalizeServerURL, savedMobileAccountID, upsertSavedMobileAccount } from "./mobileAuth";
+import { agentTickHostedServerURL, clerkTokenCacheKey, fetchRuntimeAuthConfig, hostedServerURL, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeSavedMobileAccounts, normalizeServerURL, savedMobileAccountID, upsertSavedMobileAccount } from "./mobileAuth";
 
 describe("mobile auth config", () => {
   it("normalizes server URLs", () => {
-    expect(agentTickCloudServerURL).toBe("https://agenttick.sh");
+    expect(agentTickHostedServerURL).toBe("https://agenttick.sh");
     expect(hostedServerURL).toBe("https://agenttick.sh");
     expect(normalizeServerURL(" https://tick.example.com/// ")).toBe("https://tick.example.com");
     expect(normalizeServerURL(" ")).toBe(hostedServerURL);

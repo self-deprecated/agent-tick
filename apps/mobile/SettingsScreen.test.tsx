@@ -16,7 +16,7 @@ const baseProps = {
   onSendDiagnosticSnapshot: jest.fn(),
   onSendTestNotification: jest.fn(),
   onScanPairing: jest.fn(),
-  onUseCloud: jest.fn(),
+  onUseHosted: jest.fn(),
   pairingCode: "",
   pushStatus: "idle" as PushStatus,
   serverURL: "http://localhost:8787",
@@ -45,9 +45,9 @@ describe("SettingsScreen — unpaired state", () => {
     expect(screen.getByText("Check Connection")).toBeTruthy();
   });
 
-  it("offers Agent Tick Cloud as the primary escape hatch from self-hosted setup", () => {
+  it("offers agenttick.sh as the primary escape hatch from self-hosted setup", () => {
     render(<SettingsScreen {...unpairedProps} />);
-    expect(screen.getByText("Use Agent Tick Cloud")).toBeTruthy();
+    expect(screen.getByText("Use agenttick.sh")).toBeTruthy();
   });
 
   it("hides manual pairing code input by default (collapsed Advanced)", () => {

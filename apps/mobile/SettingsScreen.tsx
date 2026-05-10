@@ -67,7 +67,7 @@ export function SettingsScreen({
   onSendDiagnosticSnapshot,
   onSendTestNotification,
   onScanPairing,
-  onUseCloud,
+  onUseHosted,
   pairingCode,
   pushStatus,
   diagnosticsEnabled = false,
@@ -106,7 +106,7 @@ export function SettingsScreen({
   onSendTestNotification: () => void;
   onScanPairing: () => void;
   onSignInAnotherClerkAccount?: () => void;
-  onUseCloud?: () => void;
+  onUseHosted?: () => void;
   pairingCode: string;
   pushStatus: PushStatus;
   diagnosticsEnabled?: boolean;
@@ -233,9 +233,9 @@ export function SettingsScreen({
             <Pressable onPress={onSignInAnotherClerkAccount} style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Add another account</Text>
             </Pressable>
-          ) : onUseCloud ? (
-            <Pressable onPress={onUseCloud} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>Add Agent Tick Cloud account</Text>
+          ) : onUseHosted ? (
+            <Pressable onPress={onUseHosted} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>Add agenttick.sh account</Text>
             </Pressable>
           ) : null}
         </View>
@@ -303,9 +303,9 @@ export function SettingsScreen({
           <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
             <Text style={styles.secondaryActionText}>{isClerkMode ? "Sign Out" : "Forget Device"}</Text>
           </Pressable>
-          {!isClerkMode && onUseCloud ? (
-            <Pressable onPress={onUseCloud} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>Use Agent Tick Cloud</Text>
+          {!isClerkMode && onUseHosted ? (
+            <Pressable onPress={onUseHosted} style={styles.secondaryActionButton}>
+              <Text style={styles.secondaryActionText}>Use agenttick.sh</Text>
             </Pressable>
           ) : null}
         </View>
@@ -421,9 +421,9 @@ export function SettingsScreen({
         <Pressable onPress={onCheck} style={styles.primaryButton}>
           <Text style={styles.primaryButtonText}>Check Connection</Text>
         </Pressable>
-        {onUseCloud ? (
-          <Pressable onPress={onUseCloud} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>Use Agent Tick Cloud</Text>
+        {onUseHosted ? (
+          <Pressable onPress={onUseHosted} style={styles.secondaryActionButton}>
+            <Text style={styles.secondaryActionText}>Use agenttick.sh</Text>
           </Pressable>
         ) : null}
       </View>
@@ -484,7 +484,7 @@ function currentAccountLabel({
   deviceID: string;
   serverURL: string;
 }) {
-  if (authProvider === "clerk") return currentAccountProfile?.signInMethod ? `${currentAccountProfile.signInMethod} account` : currentAccountProfile?.email ? "Cloud account" : "Account";
+  if (authProvider === "clerk") return currentAccountProfile?.signInMethod ? `${currentAccountProfile.signInMethod} account` : "Account";
   return deviceID ? `Device ${deviceID}` : serverURL;
 }
 

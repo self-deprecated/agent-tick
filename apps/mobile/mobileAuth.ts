@@ -1,7 +1,7 @@
 export type MobileAuthProvider = "local" | "clerk";
 
-export const agentTickCloudServerURL = "https://agenttick.sh";
-export const hostedServerURL = agentTickCloudServerURL;
+export const agentTickHostedServerURL = "https://agenttick.sh";
+export const hostedServerURL = agentTickHostedServerURL;
 export const selfHostedServerURLPreset = process.env.EXPO_PUBLIC_AGENT_TICK_SELF_HOSTED_SERVER_URL?.trim() ?? "";
 export const serverURLStorageKey = "agent-tick.serverURL";
 export const mobileAccountsStorageKey = "agent-tick.mobileAccounts";
@@ -101,7 +101,7 @@ export function upsertSavedMobileAccount(accounts: SavedMobileAccount[], input: 
 }
 
 function accountLabel(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { email?: string; signInMethod?: string; organizationID?: string; deviceID?: string }) {
-  if (input.authProvider === "clerk") return input.signInMethod ? `${input.signInMethod} account` : input.email ? "Cloud account" : "Agent Tick Cloud";
+  if (input.authProvider === "clerk") return input.signInMethod ? `${input.signInMethod} account` : input.email ? "Account" : "agenttick.sh";
   return input.deviceID ? `${normalizeServerURL(input.serverURL)} · ${input.deviceID}` : normalizeServerURL(input.serverURL);
 }
 

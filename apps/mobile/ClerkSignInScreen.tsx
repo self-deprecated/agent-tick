@@ -58,7 +58,7 @@ export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", initia
           <Text style={styles.bodyText}>Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server.</Text>
         </View>
         <Pressable onPress={() => setShowAuthView(true)} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Sign in to Agent Tick Cloud</Text>
+          <Text style={styles.primaryButtonText}>Sign in to agenttick.sh</Text>
         </Pressable>
       </View>
       <View style={styles.selfHostedPanel}>

@@ -38,15 +38,15 @@ describe("ClerkSignInScreen", () => {
 
     expect(screen.getByText("Agent Tick")).toBeTruthy();
     expect(screen.getByText("https://agenttick.sh")).toBeTruthy();
-    expect(screen.getByText("Sign in to Agent Tick Cloud")).toBeTruthy();
+    expect(screen.getByText("Sign in to agenttick.sh")).toBeTruthy();
     expect(screen.getByText("Use a self-hosted server instead")).toBeTruthy();
     expect(screen.queryByText("Native Clerk AuthView signInOrUp false")).toBeNull();
   });
 
-  it("opens the hosted Clerk sign-in after tapping the cloud sign-in button", () => {
+  it("opens the hosted Clerk sign-in after tapping the hosted sign-in button", () => {
     render(<ClerkSignInScreen serverURL="https://agenttick.sh" />);
 
-    fireEvent.press(screen.getByText("Sign in to Agent Tick Cloud"));
+    fireEvent.press(screen.getByText("Sign in to agenttick.sh"));
 
     expect(screen.getByText("Sign in to Agent Tick")).toBeTruthy();
     expect(screen.getByText("Native Clerk AuthView signInOrUp false")).toBeTruthy();
@@ -57,7 +57,7 @@ describe("ClerkSignInScreen", () => {
 
     expect(screen.getByText("Sign in to Agent Tick")).toBeTruthy();
     expect(screen.getByText("Native Clerk AuthView signInOrUp false")).toBeTruthy();
-    expect(screen.queryByText("Sign in to Agent Tick Cloud")).toBeNull();
+    expect(screen.queryByText("Sign in to agenttick.sh")).toBeNull();
   });
 
   it("reports a self-hosted server to the app shell", async () => {

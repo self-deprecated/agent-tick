@@ -182,8 +182,8 @@ export default function App() {
 
   if (normalizeServerURL(bootstrap.serverURL) === defaultServer) {
     return (
-      <CloudFirstOnboardingScreen
-        error={bootstrap.authConfig ? "Agent Tick Cloud did not advertise Clerk sign-in." : "Could not reach Agent Tick Cloud."}
+      <HostedFirstOnboardingScreen
+        error={bootstrap.authConfig ? "agenttick.sh did not advertise Clerk sign-in." : "Could not reach agenttick.sh."}
         onServerSelected={handleRuntimeAuthConfig}
       />
     );
@@ -348,7 +348,7 @@ function selfHostedInitialURL(serverURL?: string) {
   return selfHostedServerURLPreset;
 }
 
-function CloudFirstOnboardingScreen({
+function HostedFirstOnboardingScreen({
   error,
   onServerSelected,
 }: {
@@ -366,7 +366,7 @@ function CloudFirstOnboardingScreen({
     if (config) {
       onServerSelected(defaultServer, config);
     } else {
-      setCustomError("Could not reach Agent Tick Cloud");
+      setCustomError("Could not reach agenttick.sh");
     }
     setSubmitting(false);
   };
@@ -386,12 +386,12 @@ function CloudFirstOnboardingScreen({
         <Text style={styles.brand}>Agent Tick</Text>
         <Text style={styles.detailTitle}>Sign in to Agent Tick</Text>
         <Text style={styles.bodyText}>
-          The mobile app signs in to Agent Tick Cloud by default. Use a custom server only when you self-host Agent Tick.
+          The mobile app signs in to agenttick.sh by default. Use a custom server only when you self-host Agent Tick.
         </Text>
         <Text style={styles.errorText}>{error}</Text>
         {customError ? <Text style={styles.errorText}>{customError}</Text> : null}
         <Pressable disabled={submitting} onPress={() => void retryHosted()} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>{submitting ? "Checking…" : "Retry Cloud Sign-in"}</Text>
+          <Text style={styles.primaryButtonText}>{submitting ? "Checking…" : "Retry sign-in"}</Text>
         </Pressable>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Self-hosted server URL</Text>
@@ -1322,7 +1322,7 @@ function AgentTickApp({
     if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.(options);
   }, [bestEffortUnregisterDevice, clearStoredSessionForServer, onForgetClerkSession, runtimeAuthConfig?.authProvider]);
 
-  const useCloudSignIn = useCallback(async () => {
+  const useHostedSignIn = useCallback(async () => {
     if (deviceID) {
       void bestEffortUnregisterDevice();
     }
@@ -1512,7 +1512,7 @@ function AgentTickApp({
             setScannerLocked(false);
             setScreen("scanner");
           }}
-          onUseCloud={() => void useCloudSignIn()}
+          onUseHosted={() => void useHostedSignIn()}
           pairingCode={pairingCode}
           pushStatus={pushStatus}
           diagnosticsEnabled={diagnosticsEnabled}
