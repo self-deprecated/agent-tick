@@ -73,6 +73,7 @@ export type ApprovalRequest = {
   expiresAt?: string;
   status: "pending" | "responded" | "expired" | "abandoned" | string;
   createdAt: string;
+  respondedAt?: string;
   response?: ApprovalResponse;
   metadata?: Record<string, string>;
   policyProgress?: ApprovalPolicyProgress;
@@ -333,6 +334,19 @@ export function canRespondToRequest(request: ApprovalRequest) {
     return true;
   }
   return progress.state === "pending" && progress.currentUserEligible !== false && !progress.currentUserHasVoted;
+}
+
+export function requestCommandDetails(request: ApprovalRequest) {
+  const rows: Array<{ label: string; value: string }> = [];
+  if (request.command?.trim()) rows.push({ label: "Command", value: request.command.trim() });
+  const project = requestProjectLabel(request);
+  if (project) rows.push({ label: "Project", value: project });
+  if (request.requester.workingDirectory?.trim()) rows.push({ label: "Directory", value: request.requester.workingDirectory.trim() });
+  if (request.requester.host?.trim()) rows.push({ label: "Host", value: request.requester.host.trim() });
+  if (request.createdAt) rows.push({ label: "Requested", value: request.createdAt });
+  if (request.respondedAt) rows.push({ label: "Responded", value: request.respondedAt });
+  rows.push({ label: "Request ID", value: request.id });
+  return rows;
 }
 
 export function requestVoteHistory(request: ApprovalRequest) {

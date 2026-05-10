@@ -5,6 +5,7 @@ import {
   normalizeApproval,
   policyProgressMessage,
   questionnaireReady,
+  requestCommandDetails,
   requestPolicySummary,
   requestResponsibilityLabel,
   requestStatusLabel,
@@ -208,6 +209,36 @@ describe("project grouping helpers", () => {
 });
 
 describe("approval detail metadata helpers", () => {
+  it("builds detailed command history rows", () => {
+    const request = normalizeApproval({
+      id: "req_cmd",
+      requester: {
+        name: "agent-tick",
+        agentId: "agent",
+        host: "lattice",
+        workingDirectory: "/work/agent-tick",
+        projectName: "agent-tick",
+      },
+      title: "Run tests?",
+      command: "corepack pnpm test -- --runInBand",
+      choices: [{ id: "approve", label: "Approve", kind: "approve" }],
+      allowFreeformReply: false,
+      status: "responded",
+      createdAt: "2026-04-19T12:00:00Z",
+      respondedAt: "2026-04-19T12:03:00Z",
+    });
+
+    expect(requestCommandDetails(request)).toEqual([
+      { label: "Command", value: "corepack pnpm test -- --runInBand" },
+      { label: "Project", value: "agent-tick · lattice" },
+      { label: "Directory", value: "/work/agent-tick" },
+      { label: "Host", value: "lattice" },
+      { label: "Requested", value: "2026-04-19T12:00:00Z" },
+      { label: "Responded", value: "2026-04-19T12:03:00Z" },
+      { label: "Request ID", value: "req_cmd" },
+    ]);
+  });
+
   it("keeps requester and project context separate to avoid duplicate host text", () => {
     const request = normalizeApproval({
       id: "req_project",

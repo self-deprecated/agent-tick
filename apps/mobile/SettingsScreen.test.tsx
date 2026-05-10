@@ -123,6 +123,20 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText("Notifications")).toBeTruthy();
   });
 
+  it("reminds paired users to enable notifications", () => {
+    const onRequestNotifications = jest.fn();
+    render(<SettingsScreen {...pairedProps} onRequestNotifications={onRequestNotifications} notificationStatus="undetermined" />);
+    expect(screen.getByText("Enable approval alerts")).toBeTruthy();
+    expect(screen.getByText(/urgent approval requests/)).toBeTruthy();
+    fireEvent.press(screen.getByText("Enable Notifications"));
+    expect(onRequestNotifications).toHaveBeenCalled();
+  });
+
+  it("does not show the notification reminder after notifications are enabled", () => {
+    render(<SettingsScreen {...pairedProps} notificationStatus="granted" />);
+    expect(screen.queryByText("Enable approval alerts")).toBeNull();
+  });
+
   it("reveals hidden diagnostics controls by long-pressing Notifications", () => {
     const onDiagnosticsEnabledChange = jest.fn();
     render(<SettingsScreen {...pairedProps} onDiagnosticsEnabledChange={onDiagnosticsEnabledChange} />);

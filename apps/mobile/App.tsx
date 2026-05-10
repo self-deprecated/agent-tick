@@ -38,6 +38,7 @@ import {
   notificationBody,
   policyProgressMessage,
   questionnaireReady,
+  requestCommandDetails,
   requestAgentLabel,
   requestOwnerLabel,
   requestPolicySummary,
@@ -2014,9 +2015,16 @@ export function HistoryScreen({
                 {request.requester.host || request.requester.name || "Agent"}
               </Text>
               {request.command ? (
-                <Text numberOfLines={2} style={styles.historyCommand}>
-                  {request.command}
-                </Text>
+                <View style={styles.historyCommandPanel}>
+                  {requestCommandDetails(request).map((detail) => (
+                    <View key={detail.label} style={styles.historyCommandRow}>
+                      <Text style={styles.historyCommandLabel}>{detail.label}</Text>
+                      <Text selectable numberOfLines={detail.label === "Command" ? 6 : 2} style={styles.historyCommandValue}>
+                        {detail.value}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
               ) : null}
               {requestVoteHistory(request).length > 0 ? (
                 <View style={styles.historyVotes}>
@@ -2257,7 +2265,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-  historyCommand: {
+  historyCommandPanel: {
+    backgroundColor: "#f7f1e4",
+    borderColor: "#e3dbc9",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 10,
+  },
+  historyCommandRow: {
+    gap: 3,
+  },
+  historyCommandLabel: {
+    color: "#6d6657",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  historyCommandValue: {
     color: "#202124",
     fontFamily: "monospace",
     fontSize: 13,

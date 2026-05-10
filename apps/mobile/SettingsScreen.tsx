@@ -111,12 +111,24 @@ export function SettingsScreen({
   const [diagnosticsRevealed, setDiagnosticsRevealed] = useState(diagnosticsEnabled);
   const isClerkMode = authProvider === "clerk";
   const isPaired = isClerkMode || !!deviceID;
+  const shouldRemindNotifications = isPaired && (notificationStatus === "denied" || notificationStatus === "undetermined");
 
   const notificationsSection = (
     <View style={styles.settingsSection}>
       <Pressable onLongPress={() => setDiagnosticsRevealed(true)}>
         <Text style={styles.label}>Notifications</Text>
       </Pressable>
+      {shouldRemindNotifications ? (
+        <View style={styles.notificationReminder}>
+          <Text style={styles.notificationReminderTitle}>Enable approval alerts</Text>
+          <Text style={styles.notificationReminderText}>
+            Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed.
+          </Text>
+          <Pressable onPress={onRequestNotifications} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>Enable Notifications</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <Text style={styles.notificationStatus}>
         {notificationStatus === "granted"
           ? "On"
@@ -456,6 +468,24 @@ const styles = StyleSheet.create({
     color: "#202124",
     fontSize: 18,
     fontWeight: "900",
+  },
+  notificationReminder: {
+    backgroundColor: "#fff6d8",
+    borderColor: "#e5c66a",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  notificationReminderTitle: {
+    color: "#202124",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  notificationReminderText: {
+    color: "#5f5a4f",
+    fontSize: 14,
+    lineHeight: 20,
   },
   notificationActions: {
     flexDirection: "row",
