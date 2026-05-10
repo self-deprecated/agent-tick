@@ -206,6 +206,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   const [mobileSessionToken, setMobileSessionToken] = useState<string | null>(null);
   const [signedOutManually, setSignedOutManually] = useState(false);
   const [openSignInAfterSignOut, setOpenSignInAfterSignOut] = useState(false);
+  const refreshedMobileSessionFromClerk = useRef(false);
   const wasNativeSignedIn = useRef(false);
 
   const nativeSignedIn = nativeSession.isSignedIn || nativeAuthEvents.nativeAuthState?.type === "signedIn";
@@ -239,7 +240,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }, [clerkLoginToken, isLoaded, isSignedIn, mobileSessionToken, nativeSession, nativeSignedIn, signedOutManually]);
 
   useEffect(() => {
-    if (!isLoaded || signedOutManually || mobileSessionToken || clerkLoginToken) return;
+    if (!isLoaded || signedOutManually || clerkLoginToken) return;
     let cancelled = false;
     const resolveClerkLoginToken = async () => {
       const sessionToken = await getToken();
@@ -255,20 +256,23 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoginToken, getToken, isLoaded, mobileSessionToken, nativeSignedIn, signedOutManually]);
+  }, [clerkLoginToken, getToken, isLoaded, nativeSignedIn, signedOutManually]);
 
   useEffect(() => {
-    if (signedOutManually || mobileSessionToken || !clerkLoginToken) return;
+    if (signedOutManually || !clerkLoginToken) return;
+    if (mobileSessionToken && refreshedMobileSessionFromClerk.current) return;
     let cancelled = false;
     const createAgentTickSession = async () => {
       const client = new AgentTickClient({ baseUrl: props.initialServerURL ?? defaultServer });
       const session = await client.createMobileSession({ clerkToken: clerkLoginToken });
       if (cancelled) return;
+      refreshedMobileSessionFromClerk.current = true;
       await tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token);
       setMobileSessionToken(session.token);
     };
     void createAgentTickSession().catch(() => {
-      setClerkLoginToken(null);
+      refreshedMobileSessionFromClerk.current = true;
+      if (!mobileSessionToken) setClerkLoginToken(null);
     });
     return () => {
       cancelled = true;
@@ -278,6 +282,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   const handleForgetClerkSession = useCallback(async (options?: { reopenSignIn?: boolean }) => {
     setSignedOutManually(true);
     setOpenSignInAfterSignOut(Boolean(options?.reopenSignIn));
+    refreshedMobileSessionFromClerk.current = false;
     setClerkLoginToken(null);
     setMobileSessionToken(null);
     await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
