@@ -193,8 +193,25 @@ describe('AgentTickStore', () => {
       '2026-05-08T00:00:00.000Z'
     );
 
-    expect(() => store!.respondToApprovalRequest(approval.id, { choiceId: 'approve' }, 'usr_default', '2026-05-08T00:01:00.000Z')).toThrow(/decrypted before responding/i);
-    expect(store.respondToApprovalRequest(approval.id, { choiceId: 'approve', encryptedPayloadAcknowledged: true }, 'usr_default', '2026-05-08T00:02:00.000Z')).toMatchObject({ status: 'responded' });
+    expect(() => store!.respondToApprovalRequest(approval.id, { choiceId: 'approve' }, 'usr_default', '2026-05-08T00:01:00.000Z')).toThrow(/decrypted before approving/i);
+    expect(store.respondToApprovalRequest(approval.id, { choiceId: 'reject' }, 'usr_default', '2026-05-08T00:02:00.000Z')).toMatchObject({ status: 'responded', response: { choiceId: 'reject' } });
+  });
+
+  it('allows encrypted approval after the client confirms decryption', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const approval = store.createApprovalRequest(
+      {
+        requester: { name: 'agent' },
+        title: 'Encrypted approval request',
+        encryptedPayload: { version: 1, algorithm: 'test', nonce: 'nonce', ciphertext: 'ciphertext' }
+      },
+      '2026-05-08T00:00:00.000Z'
+    );
+
+    expect(store.respondToApprovalRequest(approval.id, { choiceId: 'approve', encryptedPayloadAcknowledged: true }, 'usr_default', '2026-05-08T00:02:00.000Z')).toMatchObject({ status: 'responded', response: { choiceId: 'approve' } });
   });
 
   it('stores encrypted approval payloads without exposing plaintext in audit payloads', () => {

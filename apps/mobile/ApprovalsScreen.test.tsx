@@ -53,7 +53,7 @@ function approval(overrides: Partial<ApprovalRequest> = {}) {
   });
 }
 
-function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options: { e2eeKey?: string; onOpenSettings?: () => void } = {}) {
+function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options: { e2eeKey?: string; onOpenSettings?: () => void; statusUpdates?: any[]; dismissedStatusID?: string | null; onDismissStatus?: (statusID: string) => void } = {}) {
   render(
     <ApprovalsScreen
       e2eeKey={options.e2eeKey}
@@ -70,7 +70,9 @@ function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options
       selected={request}
       selectedID={request.id}
       selectedProjectID={null}
-      statusUpdates={[]}
+      statusUpdates={options.statusUpdates ?? []}
+      dismissedStatusID={options.dismissedStatusID}
+      onDismissStatus={options.onDismissStatus}
       setProjectID={jest.fn()}
       setQuestionnaireAnswer={jest.fn()}
       setReply={jest.fn()}
@@ -99,9 +101,31 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
     expect(screen.getByText("Decrypt this request before approving or rejecting it.")).toBeTruthy();
     expect(screen.queryByText("Approve")).toBeNull();
     expect(screen.queryByText("Deny")).toBeNull();
+    fireEvent.press(screen.getByText("Dismiss"));
+    expect(onRespond).toHaveBeenCalledWith(expect.objectContaining({ id: "req_1" }), expect.objectContaining({ id: "deny" }));
     fireEvent.press(screen.getByText("Add E2EE Key in Settings"));
     expect(onOpenSettings).toHaveBeenCalled();
-    expect(onRespond).not.toHaveBeenCalled();
+  });
+
+  it("dismisses the latest agent status card", () => {
+    const onDismissStatus = jest.fn();
+    renderApproval(approval(), jest.fn(), {
+      statusUpdates: [{
+        statusId: "stat_1",
+        organizationId: "org_1",
+        agentId: "agt_1",
+        agentName: "Agent",
+        threadId: "thread",
+        message: "Working",
+        state: "working",
+        createdAt: "2026-04-19T12:01:00Z",
+      }],
+      onDismissStatus,
+    });
+
+    expect(screen.getByText("Latest agent status")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Dismiss latest agent status"));
+    expect(onDismissStatus).toHaveBeenCalledWith("stat_1");
   });
 
   it("decrypts encrypted request contents locally when the E2EE key is configured", () => {

@@ -424,6 +424,7 @@ function AgentTickApp({
   const [savedAccounts, setSavedAccounts] = useState<SavedMobileAccount[]>([]);
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [statusUpdates, setStatusUpdates] = useState<AgentStatusUpdate[]>([]);
+  const [dismissedStatusID, setDismissedStatusID] = useState<string | null>(null);
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [selectedProjectID, setSelectedProjectID] = useState<string | null>(null);
@@ -1536,6 +1537,8 @@ function AgentTickApp({
           requests={visibleRequests}
           selectedProjectID={selectedProjectID}
           statusUpdates={statusUpdates}
+          dismissedStatusID={dismissedStatusID}
+          onDismissStatus={setDismissedStatusID}
           setProjectID={(projectID) => {
             setSelectedProjectID(projectID);
             setSelectedID(filterRequestsByProject(requests, projectID)[0]?.id ?? null);
@@ -1721,15 +1724,22 @@ function formatRequestTime(value?: string) {
   });
 }
 
-function LatestStatusCard({ statusUpdates, compact = false }: { statusUpdates: AgentStatusUpdate[]; compact?: boolean }) {
+function LatestStatusCard({ statusUpdates, compact = false, dismissedStatusID, onDismiss }: { statusUpdates: AgentStatusUpdate[]; compact?: boolean; dismissedStatusID?: string | null; onDismiss?: (statusID: string) => void }) {
   const latest = statusUpdates[0];
-  if (!latest) return null;
+  if (!latest || latest.statusId === dismissedStatusID) return null;
   const project = latest.projectName || latest.workingDirectory || latest.threadId;
   return (
     <View style={[styles.statusCard, compact ? styles.statusCardCompact : null]}>
       <View style={styles.statusCardHeader}>
         <Text style={styles.statusLabel}>Latest agent status</Text>
-        <Text style={styles.statusState}>{latest.state}</Text>
+        <View style={styles.statusHeaderActions}>
+          <Text style={styles.statusState}>{latest.state}</Text>
+          {onDismiss ? (
+            <Pressable accessibilityLabel="Dismiss latest agent status" onPress={() => onDismiss(latest.statusId)}>
+              <Text style={styles.statusDismiss}>×</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
       <Text style={styles.statusMessage}>{latest.message}</Text>
       {latest.nextStep ? <Text style={styles.statusNext}>Next: {latest.nextStep}</Text> : null}
@@ -1754,6 +1764,8 @@ export function ApprovalsScreen({
   requests,
   selectedProjectID,
   statusUpdates,
+  dismissedStatusID,
+  onDismissStatus,
   setProjectID,
   setQuestionnaireAnswer,
   selected,
@@ -1774,6 +1786,8 @@ export function ApprovalsScreen({
   requests: ApprovalRequest[];
   selectedProjectID: string | null;
   statusUpdates: AgentStatusUpdate[];
+  dismissedStatusID?: string | null;
+  onDismissStatus?: (statusID: string) => void;
   setProjectID: (projectID: string | null) => void;
   setQuestionnaireAnswer: (
     question: string,
@@ -1791,7 +1805,7 @@ export function ApprovalsScreen({
         {loading ? <ActivityIndicator color="#202124" /> : null}
         <Text style={styles.waitingTitle}>Waiting</Text>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        <LatestStatusCard statusUpdates={statusUpdates} compact />
+        <LatestStatusCard statusUpdates={statusUpdates} compact dismissedStatusID={dismissedStatusID} onDismiss={onDismissStatus} />
         <Pressable onPress={onRefresh} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonText}>Refresh</Text>
         </Pressable>
@@ -1860,7 +1874,7 @@ export function ApprovalsScreen({
         contentContainerStyle={styles.approvalContent}
         style={styles.approvalScroll}
       >
-        <LatestStatusCard statusUpdates={statusUpdates} />
+        <LatestStatusCard statusUpdates={statusUpdates} dismissedStatusID={dismissedStatusID} onDismiss={onDismissStatus} />
         <Text style={styles.detailTitle}>{decrypted?.title ?? selected.title}</Text>
         <Text style={styles.detailMeta}>Requested by {requestRequesterLabel(selected)}</Text>
         <Text style={styles.detailMeta}>Project: {requestProjectLabel(selected)}</Text>
@@ -1985,6 +1999,11 @@ export function ApprovalsScreen({
                 <Text style={styles.secondaryButtonText}>Add E2EE Key in Settings</Text>
               </Pressable>
             ) : null}
+            {(selected.choices ?? []).filter((choice) => choice.kind === "deny").map((choice) => (
+              <Pressable key={choice.id} onPress={() => onRespond(selected, choice)} style={[styles.choiceButton, styles.denyButton]}>
+                <Text style={styles.choiceText}>Dismiss</Text>
+              </Pressable>
+            ))}
           </View>
         ) : isQuestionnaireRequest(selected) ? (
           <Pressable
@@ -2487,6 +2506,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     textTransform: "uppercase",
+  },
+  statusHeaderActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  statusDismiss: {
+    color: "#6d6657",
+    fontSize: 22,
+    fontWeight: "900",
+    lineHeight: 24,
   },
   statusState: {
     color: "#1f6f5b",
