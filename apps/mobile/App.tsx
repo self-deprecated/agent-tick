@@ -1991,8 +1991,8 @@ export function ApprovalsScreen({
         ) : null}
       </ScrollView>
 
-      <View style={styles.actions}>
-        {encryptedLocked ? (
+      {encryptedLocked ? (
+        <View style={styles.encryptedActions}>
           <View style={styles.encryptedActionPanel}>
             <Text style={styles.actionHint}>Decrypt this request before approving or rejecting it.</Text>
             <Pressable onPress={() => onRespond(selected, dismissChoice)} style={[styles.choiceButton, styles.denyButton]}>
@@ -2004,7 +2004,10 @@ export function ApprovalsScreen({
               </Pressable>
             ) : null}
           </View>
-        ) : isQuestionnaireRequest(selected) ? (
+        </View>
+      ) : (
+        <View style={styles.actions}>
+        {isQuestionnaireRequest(selected) ? (
           <Pressable
             disabled={!questionnaireReady(selected, questionnaireAnswers)}
             onPress={() => onSubmitQuestionnaire(selected)}
@@ -2037,7 +2040,8 @@ export function ApprovalsScreen({
             {policyProgressMessage(selected) || "This request is read-only."}
           </Text>
         )}
-      </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -2840,8 +2844,13 @@ const styles = StyleSheet.create({
   choiceButtonDisabled: {
     backgroundColor: "#8e8778",
   },
+  encryptedActions: {
+    backgroundColor: "#f7f2e8",
+    borderTopColor: "#e3dbc9",
+    borderTopWidth: 1,
+    padding: 20,
+  },
   encryptedActionPanel: {
-    flex: 1,
     gap: 8,
   },
   actionHint: {
