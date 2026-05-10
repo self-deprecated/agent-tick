@@ -2,7 +2,7 @@
 
 Use this guide when you want to run Agent Tick yourself. If you want the managed product instead, start at <https://agenttick.sh>.
 
-Agent Tick is Docker-first. The server image runs the TypeScript API server, serves the built Svelte dashboard, and stores SQLite data in `/data/agent-tick.db`.
+Agent Tick can run either as the published Docker image or as the Nix flake package/NixOS module. The server runs the TypeScript API server, serves the built Svelte dashboard, and stores SQLite data in a local SQLite database.
 
 ## Single-user local mode
 
@@ -114,9 +114,58 @@ AGENT_TICK_PORT=8787 \
 docker compose up -d
 ```
 
+## NixOS module
+
+This repository exposes a flake package and NixOS module:
+
+```nix
+{
+  inputs.agent-tick.url = "github:self-deprecated/agent-tick";
+
+  outputs = { self, nixpkgs, agent-tick, ... }: {
+    nixosConfigurations.example = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        agent-tick.nixosModules.default
+        {
+          services.agent-tick = {
+            enable = true;
+            mode = "single";
+            host = "127.0.0.1";
+            port = 8787;
+            publicUrl = "https://agenttick.sh";
+
+            # Secret env file from agenix/sops-nix/etc.
+            # Example contents: AGENT_TICK_ADMIN_TOKEN=...
+            secretEnvironmentFile = "/run/agenix/agent-tick-env";
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+Non-secret settings should go in Nix options. Secrets should go in the environment file, for example:
+
+```env
+AGENT_TICK_ADMIN_TOKEN=change-me
+# AGENT_TICK_CLERK_SECRET_KEY=sk_...
+# AGENT_TICK_SESSION_SECRET=...
+```
+
+You can also run the packaged server directly:
+
+```sh
+AGENT_TICK_MODE=single \
+AGENT_TICK_PUBLIC_URL=http://127.0.0.1:8787 \
+AGENT_TICK_DATABASE_URL=file:./agent-tick.db \
+nix run .
+```
+
 ## Data and backup
 
-SQLite data is in the `agent_tick_data` Docker volume. Back up the volume regularly. It contains users, Clerk identity mappings, organizations, agent token hashes, approval history, device registrations, and audit events.
+SQLite data is in the `agent_tick_data` Docker volume for Docker deployments, or `/var/lib/agent-tick/agent-tick.db` by default for the NixOS module. Back up the database regularly. It contains users, Clerk identity mappings, organizations, agent token hashes, approval history, device registrations, and audit events.
 
 By default, operational history is retained indefinitely except short-lived event tickets and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites that have no acceptance history.
 
