@@ -682,6 +682,10 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
     ...(choices.length ? { choices } : {})
   });
   const request = created.request;
+  if (encryptedPayload && !request.encryptedPayload) {
+    await client.abandonApproval(request.id).catch(() => undefined);
+    throw new Error('Server did not preserve encryptedPayload. Upgrade/restart the Agent Tick server before using --encrypt. The placeholder request was abandoned.');
+  }
 
   if (!options.silent) {
     if (options.json) {
