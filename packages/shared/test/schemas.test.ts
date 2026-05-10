@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiErrorEnvelopeSchema, AuthConfigSchema, BillingStatusSchema, CreateApprovalRequestSchema, CreateMobileDiagnosticsSchema, InviteEmailDeliverySchema, OrganizationInviteEmailResultSchema, UpdateDevicePushTokenSchema } from '../src/index.js';
+import { ApiErrorEnvelopeSchema, ApprovalRequestSchema, AuthConfigSchema, BillingStatusSchema, CreateApprovalRequestSchema, CreateMobileDiagnosticsSchema, InviteEmailDeliverySchema, OrganizationInviteEmailResultSchema, UpdateDevicePushTokenSchema } from '../src/index.js';
 
 describe('shared schemas', () => {
   it('validates public auth config', () => {
@@ -52,6 +52,40 @@ describe('shared schemas', () => {
     expect(() =>
       CreateApprovalRequestSchema.parse({ requester: { name: 'agent' }, title: '' })
     ).toThrow();
+  });
+
+  it('validates encrypted approval payload envelopes', () => {
+    const encryptedPayload = {
+      version: 1,
+      algorithm: 'x25519-xsalsa20poly1305',
+      keyId: 'org-key-1',
+      nonce: 'base64-nonce',
+      ciphertext: 'base64-ciphertext'
+    };
+
+    expect(
+      CreateApprovalRequestSchema.parse({
+        requester: { name: 'agent' },
+        title: 'Encrypted approval request',
+        encryptedPayload
+      }).encryptedPayload
+    ).toEqual(encryptedPayload);
+
+    expect(
+      ApprovalRequestSchema.parse({
+        id: 'req_1',
+        organizationId: 'org_1',
+        requester: { name: 'agent', agentId: 'agt_1' },
+        title: 'Encrypted approval request',
+        encryptedPayload,
+        choices: [
+          { id: 'approve', label: 'Approve' },
+          { id: 'reject', label: 'Reject', kind: 'deny' }
+        ],
+        status: 'pending',
+        createdAt: '2026-05-08T00:00:00.000Z'
+      }).encryptedPayload
+    ).toEqual(encryptedPayload);
   });
 
   it('requires custom approval choices to include a deny kind', () => {

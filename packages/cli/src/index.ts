@@ -11,6 +11,7 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { AgentTickClient, type ApprovalRequest } from '@agent-tick/sdk';
+import { EncryptedApprovalPayloadSchema, type EncryptedApprovalPayload } from '@agent-tick/shared';
 import { resolveServerAndToken, saveClientConfig } from './config.js';
 
 export function createProgram(): Command {
@@ -77,6 +78,8 @@ export function createProgram(): Command {
     .requiredOption('--title <title>', 'approval title')
     .option('--body <body>', 'approval body')
     .option('--command <command>', 'command or action to approve')
+    .option('--encrypted-payload-json <json>', 'opaque end-to-end encrypted request envelope JSON')
+    .option('--encrypted-payload-file <path>', 'read opaque end-to-end encrypted request envelope JSON from a file')
     .option('--choice <choice>', 'custom response choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
@@ -659,6 +662,7 @@ async function readStdin(): Promise<string> {
 
 async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
   const choices = options.hookChoices ?? parseChoices(options.choice);
+  const encryptedPayload = await readEncryptedPayloadOption(options);
   const created = await client.createApprovalRequest({
     requester: {
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
@@ -667,6 +671,7 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
     title: options.title,
     ...(options.body ? { body: options.body } : {}),
     ...(options.command ? { command: options.command } : {}),
+    ...(encryptedPayload ? { encryptedPayload } : {}),
     ...(choices.length ? { choices } : {})
   });
   const request = created.request;
@@ -695,6 +700,19 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
     }
   }
   return waited.request;
+}
+
+async function readEncryptedPayloadOption(options: RequestOptions): Promise<EncryptedApprovalPayload | undefined> {
+  if (options.encryptedPayloadJson && options.encryptedPayloadFile) {
+    throw new Error('use either --encrypted-payload-json or --encrypted-payload-file, not both');
+  }
+  const raw = options.encryptedPayloadJson ?? (options.encryptedPayloadFile ? await fs.readFile(options.encryptedPayloadFile, 'utf8') : undefined);
+  if (!raw) return undefined;
+  try {
+    return EncryptedApprovalPayloadSchema.parse(JSON.parse(raw));
+  } catch (error) {
+    throw new Error(`invalid encrypted payload JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function exitCodeForRequest(request: ApprovalRequest): number {
@@ -807,6 +825,8 @@ interface RequestOptions extends ClientOptions {
   title: string;
   body?: string;
   command?: string;
+  encryptedPayloadJson?: string;
+  encryptedPayloadFile?: string;
   choice?: string[];
   hookChoices?: Array<{ id: string; label: string; kind: string }>;
   timeout?: string;

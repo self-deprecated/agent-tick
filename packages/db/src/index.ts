@@ -430,6 +430,7 @@ export class AgentTickStore {
     ensureColumn(this.db, 'organization_invites', 'email_last_sent_at', 'ALTER TABLE organization_invites ADD COLUMN email_last_sent_at TEXT');
     ensureColumn(this.db, 'organization_invites', 'email_last_error', 'ALTER TABLE organization_invites ADD COLUMN email_last_error TEXT');
     ensureColumn(this.db, 'organization_invite_acceptances', 'requested_team_ids_json', "ALTER TABLE organization_invite_acceptances ADD COLUMN requested_team_ids_json TEXT NOT NULL DEFAULT '[]'");
+    ensureColumn(this.db, 'approval_requests', 'encrypted_payload_json', 'ALTER TABLE approval_requests ADD COLUMN encrypted_payload_json TEXT');
     this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
     this.db.exec(MIGRATION_0003_AGENT_STATUS_UPDATES);
     this.db.exec('CREATE INDEX IF NOT EXISTS audit_events_org_event_idx ON audit_events(organization_id, event_id)');
@@ -1224,14 +1225,17 @@ export class AgentTickStore {
     const organizationId = input.organizationId ?? DEFAULT_ORGANIZATION_ID;
     const requesterAgentId = input.agentId ?? parsed.requester.agentId ?? 'agent_unknown';
     const choices = parsed.choices?.length ? parsed.choices : defaultChoices();
+    const title = parsed.encryptedPayload ? 'Encrypted approval request' : parsed.title;
+    const body = parsed.encryptedPayload ? 'Open Agent Tick to decrypt this request.' : parsed.body ?? null;
+    const command = parsed.encryptedPayload ? null : parsed.command ?? null;
     this.db
       .prepare(
         `INSERT INTO approval_requests(
           id, organization_id, user_id, requester_name, requester_agent_id, requester_host,
           requester_working_directory, requester_project_name, requester_project_id, request_type,
-          title, body, command, choices_json, default_choice, allow_freeform_reply, expires_at,
+          title, body, command, encrypted_payload_json, choices_json, default_choice, allow_freeform_reply, expires_at,
           risk, metadata_json, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -1244,9 +1248,10 @@ export class AgentTickStore {
         parsed.requester.projectName ?? null,
         parsed.requester.projectId ?? null,
         parsed.requestType,
-        parsed.title,
-        parsed.body ?? null,
-        parsed.command ?? null,
+        title,
+        body,
+        command,
+        parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null,
         JSON.stringify(choices),
         parsed.defaultChoice ?? null,
         parsed.allowFreeformReply ? 1 : 0,
@@ -1256,7 +1261,14 @@ export class AgentTickStore {
         'pending',
         now
       );
-    this.writeAuditEvent(organizationId, input.userId ?? requesterAgentId, 'approval.created', id, { title: parsed.title }, now);
+    this.writeAuditEvent(
+      organizationId,
+      input.userId ?? requesterAgentId,
+      'approval.created',
+      id,
+      parsed.encryptedPayload ? { encrypted: true, algorithm: parsed.encryptedPayload.algorithm, keyId: parsed.encryptedPayload.keyId } : { title: parsed.title },
+      now
+    );
     return this.getApprovalRequest(id, undefined, now) ?? missingApproval(id);
   }
 
@@ -1970,6 +1982,7 @@ function mapApprovalRow(row: ApprovalRow, policyProgress?: ApprovalPolicyProgres
     title: row.title,
     body: row.body ?? undefined,
     command: row.command ?? undefined,
+    encryptedPayload: parseJSON(row.encrypted_payload_json, undefined),
     choices: parseJSON<Choice[]>(row.choices_json, defaultChoices()),
     defaultChoice: row.default_choice ?? undefined,
     allowFreeformReply: row.allow_freeform_reply === 1,
@@ -2377,6 +2390,7 @@ interface ApprovalRow {
   title: string;
   body: string | null;
   command: string | null;
+  encrypted_payload_json: string | null;
   choices_json: string;
   default_choice: string | null;
   allow_freeform_reply: number;
@@ -2582,6 +2596,7 @@ CREATE TABLE IF NOT EXISTS approval_requests (
   title TEXT NOT NULL,
   body TEXT,
   command TEXT,
+  encrypted_payload_json TEXT,
   choices_json TEXT NOT NULL,
   default_choice TEXT,
   allow_freeform_reply INTEGER NOT NULL DEFAULT 0,

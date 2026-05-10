@@ -418,6 +418,16 @@ export const ApprovalPolicyProgressSchema = z.object({
 });
 export type ApprovalPolicyProgress = z.infer<typeof ApprovalPolicyProgressSchema>;
 
+export const EncryptedApprovalPayloadSchema = z.object({
+  version: z.number().int().positive().default(1),
+  algorithm: z.string().min(1).max(80),
+  keyId: z.string().min(1).max(200).optional(),
+  nonce: z.string().min(1).max(500),
+  ciphertext: z.string().min(1).max(200_000),
+  aad: z.string().max(5_000).optional()
+});
+export type EncryptedApprovalPayload = z.infer<typeof EncryptedApprovalPayloadSchema>;
+
 export const ApprovalRequestSchema = z.object({
   id: z.string(),
   organizationId: z.string().optional(),
@@ -427,6 +437,7 @@ export const ApprovalRequestSchema = z.object({
   title: z.string(),
   body: z.string().optional(),
   command: z.string().optional(),
+  encryptedPayload: EncryptedApprovalPayloadSchema.optional(),
   choices: z.array(ChoiceSchema),
   defaultChoice: z.string().optional(),
   allowFreeformReply: z.boolean().default(false),
@@ -450,6 +461,7 @@ export const CreateApprovalRequestSchema = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
   command: z.string().optional(),
+  encryptedPayload: EncryptedApprovalPayloadSchema.optional(),
   choices: z.array(ChoiceSchema).optional(),
   defaultChoice: z.string().optional(),
   allowFreeformReply: z.boolean().optional(),

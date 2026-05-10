@@ -64,9 +64,9 @@ export function createExpoPushNotifier({ store, fetch: fetchImpl = globalThis.fe
         body: JSON.stringify(
           targets.map((to) => ({
             to,
-            title: request.title,
-            body: request.body ?? request.command ?? 'Approval requested',
-            data: { requestId: request.id, type: 'approval_request' }
+            title: request.encryptedPayload ? 'Encrypted approval request' : request.title,
+            body: request.encryptedPayload ? 'Open Agent Tick to decrypt and review.' : request.body ?? request.command ?? 'Approval requested',
+            data: { requestId: request.id, type: 'approval_request', encrypted: Boolean(request.encryptedPayload) }
           }))
         )
       });
@@ -87,16 +87,24 @@ export function createWebhookApprovalNotifier({ url, publicURL, fetch: fetchImpl
         body: JSON.stringify({
           type: 'approval.created',
           organizationId: request.organizationId,
-          request: {
-            id: request.id,
-            title: request.title,
-            body: request.body,
-            command: request.command,
-            requester: request.requester,
-            risk: request.risk,
-            metadata: request.metadata,
-            createdAt: request.createdAt
-          },
+          request: request.encryptedPayload
+            ? {
+                id: request.id,
+                encrypted: true,
+                requester: request.requester,
+                risk: request.risk,
+                createdAt: request.createdAt
+              }
+            : {
+                id: request.id,
+                title: request.title,
+                body: request.body,
+                command: request.command,
+                requester: request.requester,
+                risk: request.risk,
+                metadata: request.metadata,
+                createdAt: request.createdAt
+              },
           ...(publicURL ? { url: `${publicURL.replace(/\/+$/, '')}/approvals/${encodeURIComponent(request.id)}` } : {})
         })
       });

@@ -179,6 +179,40 @@ describe('AgentTickStore', () => {
     expect(store.respondToApprovalRequestForOrganization(approval.id, created.organizationId, { choiceId: 'approve' }, 'usr_default')).toMatchObject({ status: 'responded' });
   });
 
+  it('stores encrypted approval payloads without exposing plaintext in audit payloads', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const approval = store.createApprovalRequest(
+      {
+        requester: { name: 'agent' },
+        title: 'plaintext secret title',
+        body: 'plaintext secret body',
+        command: 'plaintext secret command',
+        encryptedPayload: {
+          version: 1,
+          algorithm: 'x25519-xsalsa20poly1305',
+          keyId: 'org-key-1',
+          nonce: 'nonce',
+          ciphertext: 'ciphertext'
+        }
+      },
+      '2026-05-08T00:00:00.000Z'
+    );
+
+    expect(approval).toMatchObject({ title: 'Encrypted approval request', body: 'Open Agent Tick to decrypt this request.' });
+    expect(approval.command).toBeUndefined();
+    expect(approval.encryptedPayload).toMatchObject({ algorithm: 'x25519-xsalsa20poly1305', ciphertext: 'ciphertext' });
+    expect(JSON.stringify(store.db.prepare('SELECT title, body, command FROM approval_requests WHERE id = ?').get(approval.id))).not.toContain('plaintext secret');
+    expect(store.getApprovalRequest(approval.id)?.encryptedPayload).toMatchObject({ keyId: 'org-key-1', nonce: 'nonce' });
+    expect(store.listAuditEvents(DEFAULT_ORGANIZATION_ID).find((event) => event.eventType === 'approval.created')?.payload).toEqual({
+      encrypted: true,
+      algorithm: 'x25519-xsalsa20poly1305',
+      keyId: 'org-key-1'
+    });
+  });
+
   it('expires pending approvals before reads and rejects late responses', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();
