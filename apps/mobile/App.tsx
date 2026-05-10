@@ -4,7 +4,6 @@ import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-ca
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
-import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -57,7 +56,6 @@ import type { ConnectionStatus, NotificationStatus, PushStatus } from "./Setting
 import { AgentTickClient, type OrganizationMembership } from "@agent-tick/sdk";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
-  clerkTokenCacheKey,
   fetchRuntimeAuthConfig,
   mobileSessionStorageKeyList,
   mobileSessionStorageKeys,
@@ -131,9 +129,8 @@ export default function App() {
   }
 
   if (bootstrap.authConfig?.authProvider === "clerk" && bootstrap.authConfig.clerkPublishableKey) {
-    const cacheKey = clerkTokenCacheKey(bootstrap.serverURL, bootstrap.authConfig.clerkPublishableKey);
     return (
-      <ClerkProvider publishableKey={bootstrap.authConfig.clerkPublishableKey} tokenCache={secureTokenCache(cacheKey)}>
+      <ClerkProvider publishableKey={bootstrap.authConfig.clerkPublishableKey}>
         <ClerkBoundApp
           initialServerURL={bootstrap.serverURL}
           initialAuthConfig={bootstrap.authConfig}
@@ -162,7 +159,10 @@ export default function App() {
 }
 
 function ClerkBoundApp(props: AgentTickAppProps) {
-  const { getToken, isSignedIn, signOut } = useAuth();
+  const { getToken, isLoaded, isSignedIn, signOut } = useAuth();
+  if (!isLoaded) {
+    return <LoadingScreen />;
+  }
   if (!isSignedIn) {
     return <ClerkSignInScreen serverURL={props.initialServerURL ?? defaultServer} />;
   }
@@ -265,16 +265,6 @@ function CloudFirstOnboardingScreen({
       </View>
     </SafeAreaView>
   );
-}
-
-function secureTokenCache(namespace: string) {
-  return {
-    getToken: (key: string) => SecureStore.getItemAsync(`${namespace}.${key}`),
-    saveToken: (key: string, value: string) => SecureStore.setItemAsync(`${namespace}.${key}`, value),
-    clearToken: (key: string) => {
-      void SecureStore.deleteItemAsync(`${namespace}.${key}`);
-    },
-  };
 }
 
 function AgentTickApp({
