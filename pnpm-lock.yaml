@@ -58,7 +58,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared
       '@clerk/expo':
-        specifier: ^3.2.10
+        specifier: 3.2.10
         version: 3.2.10(af47fd40d1e81d7b86a1b6d6f143cb57)
       '@react-native-async-storage/async-storage':
         specifier: 2.2.0

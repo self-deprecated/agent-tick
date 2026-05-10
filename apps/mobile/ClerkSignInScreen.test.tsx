@@ -40,6 +40,14 @@ jest.mock("expo-web-browser", () => ({
   openAuthSessionAsync: mockOpenAuthSessionAsync,
 }));
 
+jest.mock("@clerk/expo/native", () => {
+  const React = require("react");
+  const { Text } = require("react-native");
+  return {
+    AuthView: () => React.createElement(Text, null, "Native Clerk AuthView"),
+  };
+});
+
 jest.mock("@clerk/expo", () => ({
   useClerk: () => ({ setActive: mockSetActive }),
   useSignIn: () => ({
@@ -69,6 +77,13 @@ describe("ClerkSignInScreen", () => {
     mockSignUpResource.createdSessionId = null;
   });
 
+  it("renders Clerk native AuthView by default", () => {
+    render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+
+    expect(screen.getByText("Native Clerk AuthView")).toBeTruthy();
+    expect(screen.getByText("Use classic sign-in instead")).toBeTruthy();
+  });
+
   it("finalizes a completed Clerk sign-in session", async () => {
     mockSignInCreate.mockImplementation(async () => {
       mockSignInResource.status = "complete";
@@ -76,7 +91,7 @@ describe("ClerkSignInScreen", () => {
     });
     mockSignInFinalize.mockResolvedValue({ error: null });
 
-    render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+    render(<ClerkSignInScreen serverURL="https://tick.example.com" preferNativeAuth={false} />);
     fireEvent.changeText(screen.getByPlaceholderText("Email"), "ada@example.com");
     fireEvent.changeText(screen.getByPlaceholderText("Password"), "correct horse battery staple");
     fireEvent.press(screen.getByText("Sign in"));
@@ -95,7 +110,7 @@ describe("ClerkSignInScreen", () => {
     });
     mockOpenAuthSessionAsync.mockResolvedValue({ type: "success", url: "agenttick://sso-callback?rotating_token_nonce=nonce" });
 
-    render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+    render(<ClerkSignInScreen serverURL="https://tick.example.com" preferNativeAuth={false} />);
     fireEvent.press(screen.getByText("Continue with Google"));
 
     await waitFor(() => expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_sso" }));
@@ -118,7 +133,7 @@ describe("ClerkSignInScreen", () => {
     mockOpenAuthSessionAsync.mockResolvedValue({ type: "success", url: "agenttick://sso-callback?rotating_token_nonce=nonce" });
 
     for (const provider of ssoProviders) {
-      const view = render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+      const view = render(<ClerkSignInScreen serverURL="https://tick.example.com" preferNativeAuth={false} />);
       fireEvent.press(screen.getByText(provider.label));
       await waitFor(() => expect(mockSignInCreate).toHaveBeenLastCalledWith({ strategy: provider.strategy, redirectUrl: ssoRedirectUrl }));
       view.unmount();
@@ -131,7 +146,7 @@ describe("ClerkSignInScreen", () => {
     });
     mockOpenAuthSessionAsync.mockResolvedValue({ type: "cancel" });
 
-    render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+    render(<ClerkSignInScreen serverURL="https://tick.example.com" preferNativeAuth={false} />);
     fireEvent.press(screen.getByText("Continue with GitHub"));
 
     await waitFor(() => expect(screen.getByText("Provider sign-in was canceled.")).toBeTruthy());
@@ -146,7 +161,7 @@ describe("ClerkSignInScreen", () => {
     });
     mockSignUpFinalize.mockResolvedValue({ error: null });
 
-    render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
+    render(<ClerkSignInScreen serverURL="https://tick.example.com" preferNativeAuth={false} />);
     fireEvent.press(screen.getByText("Create account instead"));
     fireEvent.changeText(screen.getByPlaceholderText("Email"), "grace@example.com");
     fireEvent.changeText(screen.getByPlaceholderText("Password"), "correct horse battery staple");

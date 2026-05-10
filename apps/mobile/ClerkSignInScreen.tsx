@@ -1,4 +1,5 @@
 import { useClerk, useSignIn, useSignUp, type StartSSOFlowParams } from "@clerk/expo";
+import { AuthView } from "@clerk/expo/native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
@@ -41,7 +42,7 @@ export const ssoProviders = [
   { label: "Continue with Apple", strategy: "oauth_apple" },
 ] satisfies SSOProvider[];
 
-export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
+export function ClerkSignInScreen({ serverURL, preferNativeAuth = Platform.OS !== "web" }: { serverURL: string; preferNativeAuth?: boolean }) {
   const { fetchStatus: signInFetchStatus, signIn } = useSignIn();
   const { fetchStatus: signUpFetchStatus, signUp } = useSignUp();
   const { setActive } = useClerk();
@@ -50,6 +51,7 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
   const [password, setPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingVerification, setPendingVerification] = useState(false);
+  const [useNativeAuth, setUseNativeAuth] = useState(preferNativeAuth);
   const [submitting, setSubmitting] = useState(false);
   const [ssoSubmitting, setSsoSubmitting] = useState<OAuthSSOStrategy | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +167,24 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
     }
   };
 
+  if (useNativeAuth) {
+    return (
+      <SafeAreaView style={styles.shell}>
+        <StatusBar style="dark" />
+        <View style={styles.nativeHeader}>
+          <Text style={styles.title}>Sign in to Agent Tick</Text>
+          <Text style={styles.subtitle}>{serverURL}</Text>
+        </View>
+        <View style={styles.nativeAuthFrame}>
+          <AuthView mode="signInOrUp" isDismissable={false} />
+        </View>
+        <Pressable onPress={() => setUseNativeAuth(false)} style={styles.linkButton}>
+          <Text style={styles.linkButtonText}>Use classic sign-in instead</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.shell}>
       <StatusBar style="dark" />
@@ -269,11 +289,27 @@ type OAuthSessionInput = {
 async function startOAuthSession({ strategy, redirectUrl, signIn, signUp }: OAuthSessionInput): Promise<SSOFlowResult> {
   if (!signIn || !signUp) throw new Error("Clerk is still loading");
   console.info("[AgentTickMobile] Creating Clerk OAuth sign-in", { strategy, redirectUrl });
-  const signInResult = await withTimeout(
-    signIn.create({ strategy, redirectUrl }),
-    15000,
-    "Timed out while creating Clerk OAuth sign-in",
-  );
+  const signInSso = (signIn as unknown as {
+    sso?: (params: { strategy: OAuthSSOStrategy; redirectUrl: string; redirectCallbackUrl: string }) => Promise<{ error: unknown | null }>;
+  }).sso;
+  const signInResult = typeof signInSso === "function"
+    ? await withLoggedFetch(
+      () => withTimeout(
+        signInSso({ strategy, redirectUrl, redirectCallbackUrl: redirectUrl }),
+        15000,
+        "Timed out while starting Clerk OAuth sign-in with sso()",
+      ),
+      "signIn.sso",
+    )
+    : await withLoggedFetch(
+      () => withTimeout(
+        signIn.create({ strategy, redirectUrl }),
+        15000,
+        "Timed out while creating Clerk OAuth sign-in",
+      ),
+      "signIn.create",
+    );
+  if ("error" in signInResult && signInResult.error) throw signInResult.error;
   console.info("[AgentTickMobile] Clerk OAuth sign-in created", summarizeSignInCreateResult(signInResult, signIn));
   const verification = (signInResult as { firstFactorVerification?: { externalVerificationRedirectURL?: URL | string } }).firstFactorVerification
     ?? (signIn as { firstFactorVerification?: { externalVerificationRedirectURL?: URL | string } }).firstFactorVerification;
@@ -360,6 +396,41 @@ function summarizeClerkHookState(input: {
     signUpCreatedSessionId: Boolean(input.signUp?.createdSessionId),
     signInFirstFactorStatus: input.signIn?.firstFactorVerification?.status ?? null,
   };
+}
+
+async function withLoggedFetch<T>(run: () => Promise<T>, label: string): Promise<T> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const startedAt = Date.now();
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const method = init?.method ?? (typeof input === "object" && "method" in input ? input.method : "GET");
+    console.info("[AgentTickMobile] Clerk fetch start", { label, method, url });
+    try {
+      const response = await originalFetch(input, init);
+      console.info("[AgentTickMobile] Clerk fetch complete", {
+        label,
+        method,
+        url,
+        status: response.status,
+        ms: Date.now() - startedAt,
+      });
+      return response;
+    } catch (err) {
+      console.info("[AgentTickMobile] Clerk fetch error", {
+        label,
+        method,
+        url,
+        ms: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  }) as typeof fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -462,6 +533,16 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: "center",
     padding: 24,
+  },
+  nativeHeader: {
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 12,
+  },
+  nativeAuthFrame: {
+    flex: 1,
+    overflow: "hidden",
   },
   title: {
     color: "#202124",
