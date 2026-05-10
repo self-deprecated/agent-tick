@@ -37,7 +37,7 @@ export async function resolveServerAndToken(options: { server?: string; token?: 
   const config = await loadClientConfig(env);
   const server = normalizeServer(options.server ?? env.AGENT_TICK_SERVER ?? config.server ?? 'http://localhost:8787');
   const token = (options.token ?? env.AGENT_TICK_TOKEN ?? config.token ?? '').trim();
-  if (!token) throw new Error('Agent token is required. Run `agent-tick setup --server <url> --token <token>` or set AGENT_TICK_TOKEN.');
+  if (!token) throw new Error('Agent token is required. Run `agent-tick setup --login --server <url>`, run `agent-tick setup --server <url> --token <token>`, or set AGENT_TICK_TOKEN.');
   return { server, token };
 }
 

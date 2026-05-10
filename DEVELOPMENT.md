@@ -101,11 +101,17 @@ corepack pnpm --filter agent-tick build
 Run it from the package during development:
 
 ```sh
-node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
+node packages/cli/dist/index.js setup --login --server http://localhost:8787
 node packages/cli/dist/index.js request --title "Deploy?"
 ```
 
-The CLI intentionally does not start the server. The official server distribution is Docker. The CLI package is currently private in this repository; update README/SELFHOSTING/docs when public npm publishing is intentionally enabled.
+For single-mode/manual setup or CI, pass a dashboard-created token directly:
+
+```sh
+node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
+```
+
+The browser setup flow opens the dashboard, asks the signed-in user to click **Authorize CLI setup**, and saves the returned `agent_...` token to `~/.config/agent-tick/config.json` unless `AGENT_TICK_CONFIG` is set. The CLI intentionally does not start the server. The official server distribution is Docker. The CLI package is currently private in this repository; update README/SELFHOSTING/docs when public npm publishing is intentionally enabled.
 
 ## Docker
 
@@ -130,4 +136,4 @@ corepack pnpm --filter @agent-tick/mobile typecheck
 corepack pnpm --filter @agent-tick/mobile test --runInBand
 ```
 
-The mobile app discovers runtime auth config, namespaces local session state by server URL, supports Clerk sign-in/account creation/OAuth buttons, and registers/unregisters devices for push flows.
+The mobile app discovers runtime auth config, namespaces local session state by server URL, signs in with Clerk in hosted/Clerk mode, exchanges that login for an Agent Tick mobile session, and registers/unregisters devices for push flows. For the happy path, set up the CLI with `agent-tick setup --login`, then sign in to mobile with the same Clerk account before sending the first request.

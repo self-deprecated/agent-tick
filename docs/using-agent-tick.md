@@ -9,23 +9,29 @@ Agent Tick can be used as a managed product or as a self-hosted service.
 
 Use the managed product when you do not want to operate the server, database, dashboard, or mobile push infrastructure yourself.
 
-1. Go to <https://agenttick.sh>.
-2. Sign in and create or select your organization.
-3. Create an agent token for each agent host, CI workflow, or automation context that needs to request approvals.
-4. Configure the CLI with the hosted Agent Tick server URL and the generated `agent_...` token.
-5. Wrap sensitive actions with `agent-tick request` or `agent-tick guard`.
-6. Review requests in the dashboard or mobile app.
+1. Go to <https://agenttick.sh> and sign in.
+2. Run the CLI browser setup command on the machine or agent host that needs approvals:
+
+   ```sh
+   agent-tick setup --login
+   ```
+
+   The CLI starts a localhost callback, opens the dashboard in your browser, and waits. After you sign in and click **Authorize CLI setup**, the dashboard creates an Agent Tick `agent_...` token and posts it back to the CLI. The token is saved in `~/.config/agent-tick/config.json` by default.
+3. Sign in to the Agent Tick mobile app with the same account. Mobile is the primary approval surface.
+4. Wrap sensitive actions with `agent-tick request` or `agent-tick guard`.
+5. Review requests in the mobile app or, secondarily, the dashboard.
 
 Current CLI commands:
 
 ```sh
-agent-tick setup --server https://agenttick.sh --token agent_...
+agent-tick setup --login
+agent-tick setup --server https://agenttick.sh --token agent_... # manual/CI setup
 agent-tick request --title "Deploy production?" --body "Deploy commit abc123" --command "deploy production"
 agent-tick guard --title "Run migration?" -- ./migrate.sh
 agent-tick abandon req_...
 ```
 
-The npm CLI package is not yet published from this repository. Until publishing is enabled, repository examples that can be run today use the workspace-built CLI with `corepack pnpm --filter agent-tick exec agent-tick ...`.
+The npm CLI package is not yet published from this repository. Until publishing is enabled, repository examples that can be run today use the workspace-built CLI after `corepack pnpm --filter agent-tick build`, for example `node packages/cli/dist/index.js setup --login --server http://localhost:8787`.
 
 ## Self-hosted flow
 
@@ -34,8 +40,8 @@ Use self-hosting when you want Agent Tick on your own infrastructure.
 1. Choose `single` mode for a local/single-admin deployment or `clerk` mode for multi-user human sign-in.
 2. Set `AGENT_TICK_PUBLIC_URL` to your deployment URL.
 3. Start the Docker Compose stack.
-4. Create an agent token in the dashboard.
-5. Configure agents or CI jobs with that token.
+4. In Clerk mode, run `agent-tick setup --login --server <your-url>` and authorize setup in the browser. In single mode or CI, create an agent token in the dashboard and run `agent-tick setup --server <your-url> --token agent_...`.
+5. Sign in to mobile for approvals, then configure agents or CI jobs to use `agent-tick request` or `agent-tick guard`.
 
 See [SELFHOSTING.md](../SELFHOSTING.md) for environment variables, Docker commands, backup notes, and security guidance.
 

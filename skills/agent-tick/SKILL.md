@@ -17,7 +17,15 @@ command -v agent-tick
 
 If it is missing, tell the user to install or build the `agent-tick` CLI for this project and stop. Do not bypass approval just because the CLI is unavailable.
 
-If the user gives a setup command from the dashboard, run it exactly once. The server may be the hosted product at `https://agenttick.sh` or the user's self-hosted URL:
+For an interactive machine in hosted/Clerk mode, prefer browser setup:
+
+```sh
+agent-tick setup --login --server https://agenttick.sh
+```
+
+The CLI opens the dashboard, the user signs in with Clerk, clicks **Authorize CLI setup**, and the dashboard returns a newly-created Agent Tick `agent_...` token to the CLI over a localhost callback. The CLI saves it to `~/.config/agent-tick/config.json` by default.
+
+If the user gives a setup command from the dashboard, run it exactly once. For CI, headless hosts, single-mode self-hosting, or manual setup, the server may be the hosted product at `https://agenttick.sh` or the user's self-hosted URL:
 
 ```sh
 agent-tick setup --server https://agenttick.sh --token agent_...

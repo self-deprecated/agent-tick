@@ -4,6 +4,24 @@ Agent Tick currently supports the TypeScript CLI commands `setup`, `request`, `a
 
 For product-vs-self-hosting setup flows, see [Using Agent Tick](./using-agent-tick.md). The public product site is <https://agenttick.sh>.
 
+## CLI setup
+
+For interactive developer machines in hosted/Clerk mode, use browser setup:
+
+```sh
+agent-tick setup --login --server https://agenttick.sh
+```
+
+The CLI opens a browser tab, the user signs in with Clerk, clicks **Authorize CLI setup**, and the dashboard returns a newly-created Agent Tick `agent_...` token to the CLI over a localhost callback. The CLI saves it to `~/.config/agent-tick/config.json` by default.
+
+For CI, headless hosts, or single-mode self-hosting, create an agent token in the dashboard and save it manually:
+
+```sh
+agent-tick setup --server https://tick.example.com --token agent_...
+```
+
+After CLI setup, sign in to the mobile app with the same Clerk account so approval requests can reach the primary mobile approval surface.
+
 ## Outbound notification sinks
 
 ### Approval notification webhook
