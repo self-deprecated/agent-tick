@@ -1,6 +1,5 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { ClerkSignInScreen, clerkAuthErrorMessage, ssoProviders, ssoRedirectUrl } from "./ClerkSignInScreen";
 
 const mockSignInCreate = jest.fn();
 const mockSignInFinalize = jest.fn();
@@ -8,25 +7,41 @@ const mockSignUpCreate = jest.fn();
 const mockSignUpSendEmailCode = jest.fn();
 const mockSignUpVerifyEmailCode = jest.fn();
 const mockSignUpFinalize = jest.fn();
-const mockStartSSOFlow = jest.fn();
-const mockSSOSetActive = jest.fn();
+const mockOpenAuthSessionAsync = jest.fn();
+const mockSetActive = jest.fn();
 
 const mockSignInResource = {
   status: "needs_identifier",
   create: mockSignInCreate,
   finalize: mockSignInFinalize,
+  reload: jest.fn(),
+  createdSessionId: null as string | null,
+  firstFactorVerification: {
+    externalVerificationRedirectURL: "https://clerk.example/sso/start",
+    status: "unverified",
+  },
 };
 const mockSignUpResource = {
   status: "missing_requirements",
   create: mockSignUpCreate,
   finalize: mockSignUpFinalize,
+  createdSessionId: null as string | null,
   verifications: {
     sendEmailCode: mockSignUpSendEmailCode,
     verifyEmailCode: mockSignUpVerifyEmailCode,
   },
 };
 
+jest.mock("expo-web-browser", () => ({
+  maybeCompleteAuthSession: jest.fn(),
+  warmUpAsync: jest.fn(),
+  coolDownAsync: jest.fn(),
+  dismissBrowser: jest.fn(),
+  openAuthSessionAsync: mockOpenAuthSessionAsync,
+}));
+
 jest.mock("@clerk/expo", () => ({
+  useClerk: () => ({ setActive: mockSetActive }),
   useSignIn: () => ({
     errors: null,
     fetchStatus: "idle",
@@ -39,16 +54,19 @@ jest.mock("@clerk/expo", () => ({
     isLoaded: true,
     signUp: mockSignUpResource,
   }),
-  useSSO: () => ({
-    startSSOFlow: mockStartSSOFlow,
-  }),
 }));
+
+const { ClerkSignInScreen, clerkAuthErrorMessage, ssoProviders, ssoRedirectUrl } = require("./ClerkSignInScreen") as typeof import("./ClerkSignInScreen");
 
 describe("ClerkSignInScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSignInResource.status = "needs_identifier";
+    mockSignInResource.createdSessionId = null;
+    mockSignInResource.firstFactorVerification.status = "unverified";
+    mockSignInResource.firstFactorVerification.externalVerificationRedirectURL = "https://clerk.example/sso/start";
     mockSignUpResource.status = "missing_requirements";
+    mockSignUpResource.createdSessionId = null;
   });
 
   it("finalizes a completed Clerk sign-in session", async () => {
@@ -71,17 +89,18 @@ describe("ClerkSignInScreen", () => {
   });
 
   it("activates completed Clerk SSO sessions", async () => {
-    mockStartSSOFlow.mockResolvedValue({
-      createdSessionId: "sess_sso",
-      setActive: mockSSOSetActive,
-      authSessionResult: { type: "success", url: "agenttick://sso-callback" },
+    mockSignInResource.createdSessionId = "sess_sso";
+    mockSignInCreate.mockResolvedValue({
+      firstFactorVerification: { externalVerificationRedirectURL: "https://clerk.example/sso/start" },
     });
+    mockOpenAuthSessionAsync.mockResolvedValue({ type: "success", url: "agenttick://sso-callback?rotating_token_nonce=nonce" });
 
     render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
     fireEvent.press(screen.getByText("Continue with Google"));
 
-    await waitFor(() => expect(mockSSOSetActive).toHaveBeenCalledWith({ session: "sess_sso" }));
-    expect(mockStartSSOFlow).toHaveBeenCalledWith({ strategy: "oauth_google", redirectUrl: ssoRedirectUrl });
+    await waitFor(() => expect(mockSetActive).toHaveBeenCalledWith({ session: "sess_sso" }));
+    expect(mockSignInCreate).toHaveBeenCalledWith({ strategy: "oauth_google", redirectUrl: ssoRedirectUrl });
+    expect(mockOpenAuthSessionAsync).toHaveBeenCalledWith("https://clerk.example/sso/start", ssoRedirectUrl);
   });
 
   it("offers supported mobile OAuth providers without enterprise identifier requirements", async () => {
@@ -92,25 +111,25 @@ describe("ClerkSignInScreen", () => {
     ]);
     expect(ssoProviders.map((provider) => provider.strategy as string)).not.toContain("enterprise_sso");
 
-    mockStartSSOFlow.mockResolvedValue({
-      createdSessionId: "sess_sso",
-      setActive: mockSSOSetActive,
-      authSessionResult: { type: "success", url: "agenttick://sso-callback" },
+    mockSignInResource.createdSessionId = "sess_sso";
+    mockSignInCreate.mockResolvedValue({
+      firstFactorVerification: { externalVerificationRedirectURL: "https://clerk.example/sso/start" },
     });
+    mockOpenAuthSessionAsync.mockResolvedValue({ type: "success", url: "agenttick://sso-callback?rotating_token_nonce=nonce" });
 
     for (const provider of ssoProviders) {
       const view = render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
       fireEvent.press(screen.getByText(provider.label));
-      await waitFor(() => expect(mockStartSSOFlow).toHaveBeenLastCalledWith({ strategy: provider.strategy, redirectUrl: ssoRedirectUrl }));
+      await waitFor(() => expect(mockSignInCreate).toHaveBeenLastCalledWith({ strategy: provider.strategy, redirectUrl: ssoRedirectUrl }));
       view.unmount();
     }
   });
 
   it("shows provider cancellation errors", async () => {
-    mockStartSSOFlow.mockResolvedValue({
-      createdSessionId: null,
-      authSessionResult: { type: "cancel" },
+    mockSignInCreate.mockResolvedValue({
+      firstFactorVerification: { externalVerificationRedirectURL: "https://clerk.example/sso/start" },
     });
+    mockOpenAuthSessionAsync.mockResolvedValue({ type: "cancel" });
 
     render(<ClerkSignInScreen serverURL="https://tick.example.com" />);
     fireEvent.press(screen.getByText("Continue with GitHub"));

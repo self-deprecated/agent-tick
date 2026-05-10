@@ -1,4 +1,4 @@
-import { useSignIn, useSignUp, useSSO, type StartSSOFlowParams } from "@clerk/expo";
+import { useClerk, useSignIn, useSignUp, type StartSSOFlowParams } from "@clerk/expo";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
@@ -44,7 +44,7 @@ export const ssoProviders = [
 export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
   const { fetchStatus: signInFetchStatus, signIn } = useSignIn();
   const { fetchStatus: signUpFetchStatus, signUp } = useSignUp();
-  const { startSSOFlow } = useSSO();
+  const { setActive } = useClerk();
   const [mode, setMode] = useState<ClerkAuthMode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -97,11 +97,11 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
     try {
       const redirectUrl = makeSsoRedirectUrl();
       console.info("[AgentTickMobile] Starting Clerk SSO", { strategy, redirectUrl });
-      const result = await startSSOFlow({ strategy, redirectUrl });
+      const result = await startOAuthSession({ strategy, redirectUrl, signIn, signUp });
       console.info("[AgentTickMobile] Clerk SSO result", summarizeSsoResult(result));
       const createdSessionId = result.createdSessionId ?? sessionIdFromAuthSessionResult(result.authSessionResult);
-      if (createdSessionId && result.setActive) {
-        await result.setActive({ session: createdSessionId });
+      if (createdSessionId) {
+        await setActive({ session: createdSessionId });
         console.info("[AgentTickMobile] Clerk SSO session activated");
         return;
       }
@@ -248,7 +248,49 @@ function nextClerkStepMessage(flow: "sign-in" | "sign-up", status: string | null
   return `Additional ${flow} step required: ${status ?? "unknown"}`;
 }
 
-type SSOFlowResult = Awaited<ReturnType<ReturnType<typeof useSSO>["startSSOFlow"]>>;
+type ClerkSignInResource = NonNullable<ReturnType<typeof useSignIn>["signIn"]>;
+type ClerkSignUpResource = NonNullable<ReturnType<typeof useSignUp>["signUp"]>;
+type SSOFlowResult = {
+  createdSessionId: string | null;
+  authSessionResult: WebBrowser.WebBrowserAuthSessionResult | null;
+  signIn?: ClerkSignInResource;
+  signUp?: ClerkSignUpResource;
+};
+
+type OAuthSessionInput = {
+  strategy: OAuthSSOStrategy;
+  redirectUrl: string;
+  signIn: ClerkSignInResource | undefined;
+  signUp: ClerkSignUpResource | undefined;
+};
+
+async function startOAuthSession({ strategy, redirectUrl, signIn, signUp }: OAuthSessionInput): Promise<SSOFlowResult> {
+  if (!signIn || !signUp) throw new Error("Clerk is still loading");
+  const signInResult = await signIn.create({ strategy, redirectUrl });
+  const verification = (signInResult as { firstFactorVerification?: { externalVerificationRedirectURL?: URL | string } }).firstFactorVerification
+    ?? (signIn as { firstFactorVerification?: { externalVerificationRedirectURL?: URL | string } }).firstFactorVerification;
+  const externalVerificationRedirectURL = verification?.externalVerificationRedirectURL;
+  if (!externalVerificationRedirectURL) throw new Error("Missing external verification redirect URL for SSO flow");
+
+  const authSessionResult = await WebBrowser.openAuthSessionAsync(externalVerificationRedirectURL.toString(), redirectUrl);
+  if (authSessionResult.type !== "success" || !authSessionResult.url) return { createdSessionId: null, authSessionResult, signIn, signUp };
+
+  const params = new URL(authSessionResult.url).searchParams;
+  const rotatingTokenNonce = params.get("rotating_token_nonce") ?? "";
+  const callbackSessionId = params.get("created_session_id");
+  if (rotatingTokenNonce) await (signIn as unknown as { reload: (input: { rotatingTokenNonce: string }) => Promise<unknown> }).reload({ rotatingTokenNonce });
+
+  const signInAfterReload = signIn as { status?: string; createdSessionId?: string | null; firstFactorVerification?: { status?: string } };
+  if (signInAfterReload.firstFactorVerification?.status === "transferable") {
+    await signUp.create({ transfer: true });
+  }
+  return {
+    createdSessionId: callbackSessionId ?? signIn.createdSessionId ?? signUp.createdSessionId ?? null,
+    authSessionResult,
+    signIn,
+    signUp,
+  };
+}
 
 function sessionIdFromAuthSessionResult(authSessionResult: SSOFlowResult["authSessionResult"]): string | null {
   if (authSessionResult?.type !== "success" || !authSessionResult.url) return null;
