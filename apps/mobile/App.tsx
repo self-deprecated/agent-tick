@@ -1489,6 +1489,7 @@ function AgentTickApp({
         <ApprovalsScreen
           error={error}
           loading={loading}
+          onOpenSettings={() => setScreen("settings")}
           onRefresh={() => void load({ visible: true })}
           onRespond={(request, choice) => void respond(request, choice)}
           onSubmitQuestionnaire={(request) => void submitQuestionnaire(request)}
@@ -1698,6 +1699,7 @@ export function ApprovalsScreen({
   e2eeKey,
   error,
   loading,
+  onOpenSettings,
   onRefresh,
   onRespond,
   onSubmitQuestionnaire,
@@ -1717,6 +1719,7 @@ export function ApprovalsScreen({
   e2eeKey?: string;
   error: string | null;
   loading: boolean;
+  onOpenSettings?: () => void;
   onRefresh: () => void;
   onRespond: (request: ApprovalRequest, choice: Choice) => void;
   onSubmitQuestionnaire: (request: ApprovalRequest) => void;
@@ -1751,9 +1754,10 @@ export function ApprovalsScreen({
     );
   }
 
-  const canRespond = canRespondToRequest(selected);
   const responsibility = requestResponsibilityLabel(selected);
   const decrypted = decryptedApprovalPlaintext(selected, e2eeKey);
+  const encryptedLocked = Boolean(selected.encryptedPayload && !decrypted);
+  const canRespond = !encryptedLocked && canRespondToRequest(selected);
 
   return (
     <View style={styles.approvalsPane}>
@@ -1927,7 +1931,16 @@ export function ApprovalsScreen({
       </ScrollView>
 
       <View style={styles.actions}>
-        {isQuestionnaireRequest(selected) ? (
+        {encryptedLocked ? (
+          <View style={styles.encryptedActionPanel}>
+            <Text style={styles.actionHint}>Decrypt this request before approving or rejecting it.</Text>
+            {onOpenSettings ? (
+              <Pressable onPress={onOpenSettings} style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonText}>Add E2EE Key in Settings</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : isQuestionnaireRequest(selected) ? (
           <Pressable
             disabled={!questionnaireReady(selected, questionnaireAnswers)}
             onPress={() => onSubmitQuestionnaire(selected)}
@@ -2741,6 +2754,10 @@ const styles = StyleSheet.create({
   },
   choiceButtonDisabled: {
     backgroundColor: "#8e8778",
+  },
+  encryptedActionPanel: {
+    flex: 1,
+    gap: 8,
   },
   actionHint: {
     color: "#5f5a4f",

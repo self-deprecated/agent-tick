@@ -53,11 +53,12 @@ function approval(overrides: Partial<ApprovalRequest> = {}) {
   });
 }
 
-function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options: { e2eeKey?: string } = {}) {
+function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options: { e2eeKey?: string; onOpenSettings?: () => void } = {}) {
   render(
     <ApprovalsScreen
       e2eeKey={options.e2eeKey}
       error={null}
+      onOpenSettings={options.onOpenSettings}
       loading={false}
       onRefresh={jest.fn()}
       onRespond={onRespond}
@@ -80,19 +81,27 @@ function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options
 }
 
 describe("ApprovalsScreen policy-aware approval UI", () => {
-  it("shows an encrypted-request prompt until the local E2EE key is configured", () => {
+  it("requires decrypting encrypted requests before responding", () => {
     const key = generateApprovalEncryptionKey();
+    const onRespond = jest.fn();
+    const onOpenSettings = jest.fn();
     renderApproval(approval({
       title: "Encrypted approval request",
       body: "Open Agent Tick to decrypt this request.",
       encryptedPayload: createEncryptedApprovalPayload({ title: "Restart prod?", body: "Sensitive incident details", command: "kubectl rollout restart deploy/api" }, key),
-    }));
+    }), onRespond, { onOpenSettings });
 
     expect(screen.getByText("Encrypted approval request")).toBeTruthy();
     expect(screen.getByText("Encrypted request. Add your E2EE key in Settings to decrypt.")).toBeTruthy();
     expect(screen.queryByText("Restart prod?")).toBeNull();
     expect(screen.queryByText("Sensitive incident details")).toBeNull();
     expect(screen.queryByText("kubectl rollout restart deploy/api")).toBeNull();
+    expect(screen.getByText("Decrypt this request before approving or rejecting it.")).toBeTruthy();
+    expect(screen.queryByText("Approve")).toBeNull();
+    expect(screen.queryByText("Deny")).toBeNull();
+    fireEvent.press(screen.getByText("Add E2EE Key in Settings"));
+    expect(onOpenSettings).toHaveBeenCalled();
+    expect(onRespond).not.toHaveBeenCalled();
   });
 
   it("decrypts encrypted request contents locally when the E2EE key is configured", () => {
