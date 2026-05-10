@@ -45,6 +45,7 @@ export function createProgram(): Command {
     .requiredOption('--title <title>', 'approval title')
     .option('--body <body>', 'approval body')
     .option('--command <command>', 'command or action to approve')
+    .option('--choice <choice>', 'custom response choice, repeatable: id=Label or id:kind=Label', collectOption, [])
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
     .action(async (options: RequestOptions) => {
@@ -215,6 +216,7 @@ function escapeHTML(value: string): string {
 }
 
 async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
+  const choices = parseChoices(options.choice);
   const created = await client.createApprovalRequest({
     requester: {
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
@@ -222,7 +224,8 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
     },
     title: options.title,
     ...(options.body ? { body: options.body } : {}),
-    ...(options.command ? { command: options.command } : {})
+    ...(options.command ? { command: options.command } : {}),
+    ...(choices.length ? { choices } : {})
   });
   const request = created.request;
 
@@ -251,7 +254,33 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
 function exitCodeForRequest(request: ApprovalRequest): number {
   if (request.status === 'pending') return 0;
   if (request.status !== 'responded') return 1;
-  return request.response?.choiceId === 'approve' ? 0 : 1;
+  const choiceId = request.response?.choiceId;
+  const choice = request.choices.find((candidate) => candidate.id === choiceId);
+  if (choice) return choice.kind === 'reject' ? 1 : 0;
+  return choiceId === 'approve' ? 0 : 1;
+}
+
+function collectOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+export function parseChoices(values: string[] | undefined): Array<{ id: string; label: string; kind: string }> {
+  return (values ?? []).map((value) => {
+    const separator = value.indexOf('=');
+    if (separator <= 0) throw new Error(`invalid choice: ${value}. Use id=Label or id:kind=Label.`);
+    const idAndKind = value.slice(0, separator).trim();
+    const label = value.slice(separator + 1).trim();
+    if (!label) throw new Error(`invalid choice: ${value}. Choice label cannot be empty.`);
+    const kindSeparator = idAndKind.indexOf(':');
+    const id = (kindSeparator === -1 ? idAndKind : idAndKind.slice(0, kindSeparator)).trim();
+    const kind = (kindSeparator === -1 ? inferredChoiceKind(id) : idAndKind.slice(kindSeparator + 1).trim()) || 'approve';
+    if (!id) throw new Error(`invalid choice: ${value}. Choice id cannot be empty.`);
+    return { id, label, kind };
+  });
+}
+
+function inferredChoiceKind(id: string): string {
+  return ['reject', 'deny', 'denied', 'no'].includes(id.toLowerCase()) ? 'reject' : 'approve';
 }
 
 function runCommand(commandParts: string[]): Promise<number> {
@@ -295,6 +324,7 @@ interface RequestOptions extends ClientOptions {
   title: string;
   body?: string;
   command?: string;
+  choice?: string[];
   timeout?: string;
   json?: boolean;
 }

@@ -69,7 +69,18 @@ agent-tick request \
   --command "deploy production"
 ```
 
-Treat denial as a hard stop unless the user gives a new instruction.
+For real multiple-choice questions, repeat `--choice`. Use `id=Label` or `id:kind=Label`; `kind` is usually `approve` or `reject` and controls the CLI exit code. If `kind` is omitted, it defaults to `approve` except deny-style ids such as `deny`, `reject`, and `no`, which default to `reject`.
+
+```sh
+agent-tick request \
+  --title "Which rollout should I use?" \
+  --body "Choose the deployment strategy." \
+  --choice canary="Canary rollout" \
+  --choice blue_green="Blue/green rollout" \
+  --choice cancel:reject="Do not deploy"
+```
+
+Treat denial or any selected `reject` choice as a hard stop unless the user gives a new instruction.
 
 ## JSON Output
 
@@ -82,7 +93,7 @@ agent-tick request \
   --body "Deploy commit abc123 to production."
 ```
 
-The current CLI does not support JSON stdin adapter, MCP, constrained steering, context-file, project-routing, requester override, or metadata flags. Do not use undocumented commands or flags.
+The current CLI does not support JSON stdin adapter, MCP, constrained steering, context-file, project-routing, requester override, metadata flags, or freeform text replies. Do not use undocumented commands or flags.
 
 ## Timeouts
 

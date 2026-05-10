@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { buildCliSetupURL, parseDurationMs } from '../src/index.js';
+import { buildCliSetupURL, parseChoices, parseDurationMs } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -61,5 +61,23 @@ describe('parseDurationMs', () => {
     expect(parseDurationMs('3m')).toBe(180000);
     expect(parseDurationMs('1h')).toBe(3600000);
     expect(parseDurationMs('0')).toBe(0);
+  });
+});
+
+describe('parseChoices', () => {
+  it('parses repeated custom choices', () => {
+    expect(parseChoices(['red=Red option', 'green:reject=Green option'])).toEqual([
+      { id: 'red', label: 'Red option', kind: 'approve' },
+      { id: 'green', label: 'Green option', kind: 'reject' }
+    ]);
+  });
+
+  it('infers reject kind for deny-style ids', () => {
+    expect(parseChoices(['deny=No thanks'])).toEqual([{ id: 'deny', label: 'No thanks', kind: 'reject' }]);
+  });
+
+  it('rejects malformed choices', () => {
+    expect(() => parseChoices(['missing-label='])).toThrow(/label cannot be empty/);
+    expect(() => parseChoices(['missing-separator'])).toThrow(/invalid choice/);
   });
 });

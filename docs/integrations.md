@@ -70,6 +70,17 @@ agent-tick request \
   --timeout 30m
 ```
 
+For multiple-choice questions, repeat `--choice` with `id=Label` or `id:kind=Label`. The mobile app and dashboard show each choice; the selected id is returned as the response `choiceId`. `kind` is usually `approve` or `reject` and controls the CLI exit code.
+
+```sh
+agent-tick request \
+  --title "Which rollout should I use?" \
+  --body "Choose the deployment strategy." \
+  --choice canary="Canary rollout" \
+  --choice blue_green="Blue/green rollout" \
+  --choice cancel:reject="Do not deploy"
+```
+
 Use `agent-tick guard` to run a command only after approval:
 
 ```sh
