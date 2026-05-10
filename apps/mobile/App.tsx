@@ -11,7 +11,6 @@ import {
   Alert,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -204,7 +203,6 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       const savedSession = (await tokenCache?.getToken(agentTickMobileSessionJwtKey)) || null;
       if (cancelled || !savedSession) return;
       setMobileSessionToken(savedSession);
-      console.info("[AgentTickMobile] Restored Agent Tick mobile session");
     };
     void restoreMobileSession();
     return () => {
@@ -248,10 +246,9 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       if (cancelled) return;
       await tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token);
       setMobileSessionToken(session.token);
-      console.info("[AgentTickMobile] Created Agent Tick mobile session");
     };
-    void createAgentTickSession().catch((err) => {
-      console.info("[AgentTickMobile] Agent Tick mobile session exchange failed", { message: err instanceof Error ? err.message : String(err) });
+    void createAgentTickSession().catch(() => {
+      setClerkLoginToken(null);
     });
     return () => {
       cancelled = true;
@@ -288,13 +285,13 @@ function ClerkBoundApp(props: AgentTickAppProps) {
 
 function LoadingScreen() {
   return (
-    <SafeAreaView style={styles.shell}>
+    <View style={styles.shell}>
       <StatusBar style="dark" />
       <View style={styles.emptyState}>
         <ActivityIndicator />
         <Text style={styles.subtitle}>Loading Agent Tick…</Text>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -344,7 +341,7 @@ function CloudFirstOnboardingScreen({
   };
 
   return (
-    <SafeAreaView style={styles.shell}>
+    <View style={styles.shell}>
       <StatusBar style="dark" />
       <View style={styles.hostedOnboarding}>
         <Text style={styles.brand}>Agent Tick</Text>
@@ -373,7 +370,7 @@ function CloudFirstOnboardingScreen({
           </Pressable>
         </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1185,7 +1182,7 @@ function AgentTickApp({
   };
 
   return (
-    <SafeAreaView style={styles.shell}>
+    <View style={styles.shell}>
       <StatusBar style="dark" />
       <View style={styles.header}>
         <View>
@@ -1297,7 +1294,7 @@ function AgentTickApp({
           setSelectedID={setSelectedID}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

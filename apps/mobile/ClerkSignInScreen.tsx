@@ -1,10 +1,10 @@
 import { AuthView } from "@clerk/expo/native";
 import { StatusBar } from "expo-status-bar";
-import { SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
   return (
-    <SafeAreaView style={styles.shell}>
+    <View style={styles.shell}>
       <StatusBar style="dark" />
       <View style={styles.nativeHeader}>
         <Text style={styles.title}>Sign in to Agent Tick</Text>
@@ -13,7 +13,7 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
       <View style={styles.nativeAuthFrame}>
         <AuthView mode="signInOrUp" isDismissable={false} />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
