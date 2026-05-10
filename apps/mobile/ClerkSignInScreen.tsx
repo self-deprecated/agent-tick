@@ -266,13 +266,21 @@ type OAuthSessionInput = {
 
 async function startOAuthSession({ strategy, redirectUrl, signIn, signUp }: OAuthSessionInput): Promise<SSOFlowResult> {
   if (!signIn || !signUp) throw new Error("Clerk is still loading");
-  const signInResult = await signIn.create({ strategy, redirectUrl });
+  console.info("[AgentTickMobile] Creating Clerk OAuth sign-in", { strategy, redirectUrl });
+  const signInResult = await withTimeout(
+    signIn.create({ strategy, redirectUrl }),
+    15000,
+    "Timed out while creating Clerk OAuth sign-in",
+  );
+  console.info("[AgentTickMobile] Clerk OAuth sign-in created", summarizeSignInCreateResult(signInResult, signIn));
   const verification = (signInResult as { firstFactorVerification?: { externalVerificationRedirectURL?: URL | string } }).firstFactorVerification
     ?? (signIn as { firstFactorVerification?: { externalVerificationRedirectURL?: URL | string } }).firstFactorVerification;
   const externalVerificationRedirectURL = verification?.externalVerificationRedirectURL;
   if (!externalVerificationRedirectURL) throw new Error("Missing external verification redirect URL for SSO flow");
 
+  console.info("[AgentTickMobile] Opening Clerk OAuth browser", { externalVerificationRedirectURL: externalVerificationRedirectURL.toString(), redirectUrl });
   const authSessionResult = await WebBrowser.openAuthSessionAsync(externalVerificationRedirectURL.toString(), redirectUrl);
+  console.info("[AgentTickMobile] Clerk OAuth browser returned", { type: authSessionResult.type });
   if (authSessionResult.type !== "success" || !authSessionResult.url) return { createdSessionId: null, authSessionResult, signIn, signUp };
 
   const params = new URL(authSessionResult.url).searchParams;
@@ -289,6 +297,37 @@ async function startOAuthSession({ strategy, redirectUrl, signIn, signUp }: OAut
     authSessionResult,
     signIn,
     signUp,
+  };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeout));
+}
+
+function summarizeSignInCreateResult(signInResult: unknown, signIn: ClerkSignInResource): Record<string, unknown> {
+  const result = signInResult as {
+    status?: string;
+    createdSessionId?: string | null;
+    firstFactorVerification?: { status?: string; externalVerificationRedirectURL?: URL | string | null };
+  };
+  const signInState = signIn as {
+    status?: string;
+    createdSessionId?: string | null;
+    firstFactorVerification?: { status?: string; externalVerificationRedirectURL?: URL | string | null };
+  };
+  return {
+    resultStatus: result.status ?? null,
+    signInStatus: signInState.status ?? null,
+    resultCreatedSessionId: Boolean(result.createdSessionId),
+    signInCreatedSessionId: Boolean(signInState.createdSessionId),
+    resultFirstFactorStatus: result.firstFactorVerification?.status ?? null,
+    signInFirstFactorStatus: signInState.firstFactorVerification?.status ?? null,
+    hasResultExternalVerificationRedirectURL: Boolean(result.firstFactorVerification?.externalVerificationRedirectURL),
+    hasSignInExternalVerificationRedirectURL: Boolean(signInState.firstFactorVerification?.externalVerificationRedirectURL),
   };
 }
 
