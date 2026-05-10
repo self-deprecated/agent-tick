@@ -36,11 +36,6 @@ export function ClerkSignInScreen({ serverURL, onServerSelected }: ClerkSignInSc
       <View style={styles.nativeHeader}>
         <Text style={styles.title}>Sign in to Agent Tick</Text>
         <Text style={styles.subtitle}>{serverURL}</Text>
-      </View>
-      <View style={styles.nativeAuthFrame}>
-        <AuthView mode="signInOrUp" isDismissable={false} />
-      </View>
-      <View style={styles.serverSwitchPanel}>
         {selfHostedOpen ? (
           <View style={styles.selfHostedForm}>
             <Text style={styles.bodyText}>Self-hosting Agent Tick?</Text>
@@ -73,6 +68,9 @@ export function ClerkSignInScreen({ serverURL, onServerSelected }: ClerkSignInSc
           </Pressable>
         )}
       </View>
+      <View style={styles.nativeAuthFrame}>
+        <AuthView mode="signInOrUp" isDismissable={false} />
+      </View>
     </View>
   );
 }
@@ -82,10 +80,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#f6f0e5",
     flex: 1,
     paddingTop: Constants.statusBarHeight,
-    position: "relative",
   },
   nativeHeader: {
-    gap: 8,
+    gap: 10,
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 12,
@@ -93,19 +90,6 @@ const styles = StyleSheet.create({
   nativeAuthFrame: {
     flex: 1,
     overflow: "hidden",
-    paddingBottom: 88,
-  },
-  serverSwitchPanel: {
-    backgroundColor: "#f6f0e5",
-    borderTopColor: "#ded6c6",
-    borderTopWidth: 1,
-    bottom: 0,
-    elevation: 8,
-    left: 0,
-    padding: 16,
-    position: "absolute",
-    right: 0,
-    zIndex: 10,
   },
   selfHostedForm: {
     gap: 10,
@@ -183,8 +167,10 @@ const styles = StyleSheet.create({
   },
   linkButton: {
     alignItems: "center",
-    minHeight: 44,
+    alignSelf: "center",
+    minHeight: 40,
     justifyContent: "center",
+    paddingHorizontal: 12,
   },
   linkButtonText: {
     color: "#202124",
