@@ -96,13 +96,18 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
     setSsoSubmitting(strategy);
     try {
       const redirectUrl = makeSsoRedirectUrl();
+      console.info("[AgentTickMobile] Starting Clerk SSO", { strategy, redirectUrl });
       const result = await startSSOFlow({ strategy, redirectUrl });
-      if (result.createdSessionId && result.setActive) {
-        await result.setActive({ session: result.createdSessionId });
+      console.info("[AgentTickMobile] Clerk SSO result", summarizeSsoResult(result));
+      const createdSessionId = result.createdSessionId ?? sessionIdFromAuthSessionResult(result.authSessionResult);
+      if (createdSessionId && result.setActive) {
+        await result.setActive({ session: createdSessionId });
+        console.info("[AgentTickMobile] Clerk SSO session activated");
         return;
       }
       setError(ssoResultMessage(result, redirectUrl));
     } catch (err) {
+      console.info("[AgentTickMobile] Clerk SSO error", clerkAuthErrorDetails(err));
       setError(clerkAuthErrorMessage(err, "Could not continue with the selected sign-in provider"));
     } finally {
       void WebBrowser.dismissBrowser();
@@ -243,10 +248,57 @@ function nextClerkStepMessage(flow: "sign-in" | "sign-up", status: string | null
   return `Additional ${flow} step required: ${status ?? "unknown"}`;
 }
 
-function ssoResultMessage(
-  result: Awaited<ReturnType<ReturnType<typeof useSSO>["startSSOFlow"]>>,
-  redirectUrl: string,
-): string {
+type SSOFlowResult = Awaited<ReturnType<ReturnType<typeof useSSO>["startSSOFlow"]>>;
+
+function sessionIdFromAuthSessionResult(authSessionResult: SSOFlowResult["authSessionResult"]): string | null {
+  if (authSessionResult?.type !== "success" || !authSessionResult.url) return null;
+  try {
+    return new URL(authSessionResult.url).searchParams.get("created_session_id");
+  } catch {
+    return null;
+  }
+}
+
+function summarizeSsoResult(result: SSOFlowResult): Record<string, unknown> {
+  const callbackUrl = result.authSessionResult?.type === "success" ? result.authSessionResult.url : null;
+  let callbackParamKeys: string[] = [];
+  let callbackHasCreatedSessionId = false;
+  let callbackHasRotatingTokenNonce = false;
+  if (callbackUrl) {
+    try {
+      const params = new URL(callbackUrl).searchParams;
+      callbackParamKeys = Array.from(params.keys());
+      callbackHasCreatedSessionId = params.has("created_session_id");
+      callbackHasRotatingTokenNonce = params.has("rotating_token_nonce");
+    } catch {
+      callbackParamKeys = ["unparseable callback URL"];
+    }
+  }
+  return {
+    authSessionType: result.authSessionResult?.type ?? null,
+    callbackParamKeys,
+    callbackHasCreatedSessionId,
+    callbackHasRotatingTokenNonce,
+    createdSessionId: Boolean(result.createdSessionId),
+    signInStatus: result.signIn?.status ?? null,
+    signUpStatus: result.signUp?.status ?? null,
+    signInCreatedSessionId: Boolean(result.signIn?.createdSessionId),
+    signUpCreatedSessionId: Boolean(result.signUp?.createdSessionId),
+    firstFactorStatus: result.signIn?.firstFactorVerification?.status ?? null,
+  };
+}
+
+function clerkAuthErrorDetails(err: unknown): Record<string, unknown> {
+  const clerkErrors = (err as { errors?: Array<{ code?: string; longMessage?: string; message?: string }> } | null)?.errors;
+  return {
+    message: err instanceof Error ? err.message : String(err),
+    clerkErrors: Array.isArray(clerkErrors)
+      ? clerkErrors.map((error) => ({ code: error.code, message: error.longMessage ?? error.message }))
+      : null,
+  };
+}
+
+function ssoResultMessage(result: SSOFlowResult, redirectUrl: string): string {
   const resultType = result.authSessionResult?.type;
   if (resultType === "cancel" || resultType === "dismiss") return "Provider sign-in was canceled.";
   if (resultType === "locked") return "Another sign-in window is already open.";
