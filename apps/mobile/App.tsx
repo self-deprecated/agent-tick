@@ -418,6 +418,7 @@ function AgentTickApp({
   const [token, setToken] = useState("");
   const [deviceID, setDeviceID] = useState("");
   const [e2eeKey, setE2eeKey] = useState("");
+  const [e2eeFocusToken, setE2eeFocusToken] = useState(0);
   const [pairingCode, setPairingCode] = useState("");
   const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
   const [selectedOrganizationID, setSelectedOrganizationID] = useState("");
@@ -1471,6 +1472,7 @@ function AgentTickApp({
           availability={availability}
           connectionStatus={connectionStatus}
           error={error}
+          e2eeFocusToken={e2eeFocusToken}
           e2eeKey={e2eeKey}
           loading={loading}
           notificationStatus={notificationStatus}
@@ -1526,7 +1528,10 @@ function AgentTickApp({
         <ApprovalsScreen
           error={error}
           loading={loading}
-          onOpenSettings={() => setScreen("settings")}
+          onOpenSettings={() => {
+            setE2eeFocusToken((value) => value + 1);
+            setScreen("settings");
+          }}
           onRefresh={() => void load({ visible: true })}
           onRespond={(request, choice) => void respond(request, choice)}
           onSubmitQuestionnaire={(request) => void submitQuestionnaire(request)}

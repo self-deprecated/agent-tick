@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SavedMobileAccount } from "./mobileAuth";
 import {
   ActivityIndicator,
@@ -48,6 +48,7 @@ export function SettingsScreen({
   availability,
   authProvider,
   connectionStatus,
+  e2eeFocusToken = 0,
   e2eeKey = "",
   error,
   loading,
@@ -84,6 +85,7 @@ export function SettingsScreen({
   availability?: AvailabilityState;
   authProvider?: string;
   connectionStatus: ConnectionStatus;
+  e2eeFocusToken?: number;
   e2eeKey?: string;
   error: string | null;
   loading: boolean;
@@ -118,6 +120,16 @@ export function SettingsScreen({
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [diagnosticsRevealed, setDiagnosticsRevealed] = useState(diagnosticsEnabled);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const e2eeSectionY = useRef(0);
+
+  useEffect(() => {
+    if (!e2eeFocusToken) return;
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(e2eeSectionY.current - 12, 0), animated: true });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [e2eeFocusToken]);
   const isClerkMode = authProvider === "clerk";
   const isPaired = isClerkMode || !!deviceID;
   const shouldRemindNotifications = isPaired && (notificationStatus === "denied" || notificationStatus === "undetermined");
@@ -191,6 +203,7 @@ export function SettingsScreen({
   if (isPaired) {
     return (
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.settingsContent}
         style={styles.settingsPane}
       >
@@ -300,7 +313,12 @@ export function SettingsScreen({
             ))}
           </View>
         </View>
-        <View style={styles.settingsSection}>
+        <View
+          onLayout={(event) => {
+            e2eeSectionY.current = event.nativeEvent.layout.y;
+          }}
+          style={[styles.settingsSection, e2eeFocusToken ? styles.focusedSettingsSection : null]}
+        >
           <Text style={styles.sectionHeading}>End-to-end encryption</Text>
           <Text style={styles.pairingHint}>Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally.</Text>
           <TextInput
@@ -434,6 +452,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
     padding: 14,
+  },
+  focusedSettingsSection: {
+    borderColor: "#1f6f5b",
+    borderWidth: 2,
   },
   sectionHeading: {
     color: "#202124",
