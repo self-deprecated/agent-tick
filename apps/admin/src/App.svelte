@@ -29,6 +29,7 @@
 	import { inviteTokenFromLocation } from './inviteRouting';
 	import { inviteAcceptedMessage } from './inviteStatus';
 	import { shouldContinueInviteAcceptance } from './inviteFlow';
+	import { clerkRedirectTarget, hasClerkRedirectCallback } from './clerkRedirect';
 
 	const adminTokenStorageKey = 'agent_tick_admin_token';
 	const organizationStorageKey = 'agent_tick_organization_id';
@@ -223,6 +224,15 @@
 		const { Clerk } = await import('@clerk/clerk-js');
 		const nextClerk = new Clerk(nextConfig.clerkPublishableKey);
 		await nextClerk.load();
+		if (hasClerkRedirectCallback(window.location.href)) {
+			const redirectTarget = clerkRedirectTarget(window.location.href);
+			await nextClerk.handleRedirectCallback({
+				signInFallbackRedirectUrl: redirectTarget,
+				signUpFallbackRedirectUrl: redirectTarget,
+				signInForceRedirectUrl: redirectTarget,
+				signUpForceRedirectUrl: redirectTarget
+			});
+		}
 		clerk = nextClerk;
 		clerkSignedIn = nextClerk.isSignedIn;
 		nextClerk.addListener(() => {
@@ -268,10 +278,13 @@
 
 	async function signInWithClerk(): Promise<void> {
 		if (!clerk) return;
+		const redirectTarget = clerkRedirectTarget(window.location.href);
 		await clerk.redirectToSignIn({
-			redirectUrl: window.location.href,
-			signInFallbackRedirectUrl: window.location.href,
-			signUpFallbackRedirectUrl: window.location.href
+			redirectUrl: redirectTarget,
+			signInFallbackRedirectUrl: redirectTarget,
+			signUpFallbackRedirectUrl: redirectTarget,
+			signInForceRedirectUrl: redirectTarget,
+			signUpForceRedirectUrl: redirectTarget
 		});
 	}
 
