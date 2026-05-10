@@ -105,7 +105,7 @@ More details are in [DEVELOPMENT.md](./DEVELOPMENT.md).
 - [SELFHOSTING.md](./SELFHOSTING.md) — run your own Agent Tick server
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — local development workflow
 - [docs/integrations.md](./docs/integrations.md) — current CLI and integration examples
-- [docs/competitor-analysis.md](./docs/competitor-analysis.md) — market scan of human-approval competitors and setup ideas
+- [docs/competitor-analysis.md](./docs/competitor-analysis.md) / [HTML review site](./docs/competitor-analysis.html) — market scan of human-approval competitors and setup ideas
 - [docs/clerk-auth-migration.md](./docs/clerk-auth-migration.md) — Clerk auth design notes
 - [docs/typescript-first-rewrite-plan.md](./docs/typescript-first-rewrite-plan.md) — architecture migration plan and current implementation status
 
