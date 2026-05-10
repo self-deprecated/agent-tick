@@ -58,7 +58,7 @@ node packages/cli/dist/index.js request \
   --title "Which rollout?" \
   --choice canary="Canary" \
   --choice blue_green="Blue/green" \
-  --choice cancel:reject="Cancel"
+  --choice cancel:deny="Cancel"
 ```
 
 Run a command only after approval:

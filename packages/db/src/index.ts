@@ -1916,7 +1916,7 @@ function mapApprovalVoteRow(row: ApprovalVoteRow): ApprovalVoteRecord {
 function defaultChoices(): Choice[] {
   return [
     { id: 'approve', label: 'Approve', kind: 'approve' },
-    { id: 'reject', label: 'Reject', kind: 'reject' }
+    { id: 'reject', label: 'Reject', kind: 'deny' }
   ];
 }
 

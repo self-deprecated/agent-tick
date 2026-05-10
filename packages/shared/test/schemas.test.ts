@@ -54,6 +54,30 @@ describe('shared schemas', () => {
     ).toThrow();
   });
 
+  it('requires custom approval choices to include a deny kind', () => {
+    expect(() =>
+      CreateApprovalRequestSchema.parse({
+        requester: { name: 'agent' },
+        title: 'Which rollout?',
+        choices: [{ id: 'canary', label: 'Canary' }]
+      })
+    ).toThrow(/deny/);
+
+    expect(
+      CreateApprovalRequestSchema.parse({
+        requester: { name: 'agent' },
+        title: 'Which rollout?',
+        choices: [
+          { id: 'canary', label: 'Canary' },
+          { id: 'cancel', label: 'Cancel', kind: 'deny' }
+        ]
+      }).choices
+    ).toEqual([
+      { id: 'canary', label: 'Canary', kind: 'approve' },
+      { id: 'cancel', label: 'Cancel', kind: 'deny' }
+    ]);
+  });
+
   it('validates device push-token aliases', () => {
     expect(UpdateDevicePushTokenSchema.parse({ token: 'ExponentPushToken[1]' })).toEqual({ token: 'ExponentPushToken[1]' });
     expect(() => UpdateDevicePushTokenSchema.parse({})).toThrow();

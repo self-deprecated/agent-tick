@@ -27,7 +27,7 @@ Current CLI commands:
 agent-tick setup --login
 agent-tick setup --server https://agenttick.sh --token agent_... # manual/CI setup
 agent-tick request --title "Deploy production?" --body "Deploy commit abc123" --command "deploy production"
-agent-tick request --title "Which rollout?" --choice canary="Canary" --choice cancel:reject="Cancel"
+agent-tick request --title "Which rollout?" --choice canary="Canary" --choice cancel:deny="Cancel"
 agent-tick guard --title "Run migration?" -- ./migrate.sh
 agent-tick abandon req_...
 ```

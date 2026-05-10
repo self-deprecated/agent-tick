@@ -424,6 +424,9 @@ export const CreateApprovalRequestSchema = z.object({
   expiresAt: z.string().optional(),
   risk: z.string().optional(),
   metadata: z.record(z.string(), z.string()).optional()
+}).refine((value) => !value.choices?.length || value.choices.some((choice) => choice.kind === 'deny'), {
+  path: ['choices'],
+  message: 'custom approval choices must include at least one choice with kind "deny"'
 });
 export type CreateApprovalRequest = z.input<typeof CreateApprovalRequestSchema>;
 

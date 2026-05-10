@@ -69,7 +69,7 @@ agent-tick request \
   --command "deploy production"
 ```
 
-For real multiple-choice questions, repeat `--choice`. Use `id=Label` or `id:kind=Label`; `kind` is usually `approve` or `reject` and controls the CLI exit code. If `kind` is omitted, it defaults to `approve` except deny-style ids such as `deny`, `reject`, and `no`, which default to `reject`.
+For real multiple-choice questions, repeat `--choice`. Use `id=Label` or `id:kind=Label`; custom choices must include at least one `kind` of `deny`. The mobile app highlights deny choices in red, and selecting one makes the CLI exit non-zero. If `kind` is omitted, it defaults to `approve` except deny-style ids such as `cancel`, `deny`, `reject`, and `no`, which default to `deny`.
 
 ```sh
 agent-tick request \
@@ -77,10 +77,10 @@ agent-tick request \
   --body "Choose the deployment strategy." \
   --choice canary="Canary rollout" \
   --choice blue_green="Blue/green rollout" \
-  --choice cancel:reject="Do not deploy"
+  --choice cancel:deny="Do not deploy"
 ```
 
-Treat denial or any selected `reject` choice as a hard stop unless the user gives a new instruction.
+Treat denial or any selected `deny` choice as a hard stop unless the user gives a new instruction.
 
 ## JSON Output
 
