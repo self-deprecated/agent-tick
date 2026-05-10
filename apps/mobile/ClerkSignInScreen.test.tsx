@@ -33,13 +33,23 @@ describe("ClerkSignInScreen", () => {
     jest.restoreAllMocks();
   });
 
-  it("defaults to the hosted Clerk sign-in and shows a self-hosted switch", () => {
+  it("shows a landing page before the hosted Clerk sign-in", () => {
     render(<ClerkSignInScreen serverURL="https://agenttick.sh" />);
 
-    expect(screen.getByText("Sign in to Agent Tick")).toBeTruthy();
+    expect(screen.getByText("Agent Tick")).toBeTruthy();
     expect(screen.getByText("https://agenttick.sh")).toBeTruthy();
-    expect(screen.getByText("Native Clerk AuthView signInOrUp false")).toBeTruthy();
+    expect(screen.getByText("Sign in to Agent Tick Cloud")).toBeTruthy();
     expect(screen.getByText("Use a self-hosted server instead")).toBeTruthy();
+    expect(screen.queryByText("Native Clerk AuthView signInOrUp false")).toBeNull();
+  });
+
+  it("opens the hosted Clerk sign-in after tapping the cloud sign-in button", () => {
+    render(<ClerkSignInScreen serverURL="https://agenttick.sh" />);
+
+    fireEvent.press(screen.getByText("Sign in to Agent Tick Cloud"));
+
+    expect(screen.getByText("Sign in to Agent Tick")).toBeTruthy();
+    expect(screen.getByText("Native Clerk AuthView signInOrUp false")).toBeTruthy();
   });
 
   it("reports a self-hosted server to the app shell", async () => {

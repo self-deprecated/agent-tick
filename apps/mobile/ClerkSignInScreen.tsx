@@ -13,6 +13,7 @@ type ClerkSignInScreenProps = {
 export function ClerkSignInScreen({ serverURL, onServerSelected }: ClerkSignInScreenProps) {
   const [customServerURL, setCustomServerURL] = useState("");
   const [selfHostedOpen, setSelfHostedOpen] = useState(false);
+  const [showAuthView, setShowAuthView] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,12 +31,35 @@ export function ClerkSignInScreen({ serverURL, onServerSelected }: ClerkSignInSc
     }
   };
 
+  if (showAuthView) {
+    return (
+      <View style={styles.shell}>
+        <StatusBar style="dark" />
+        <View style={styles.nativeHeader}>
+          <Text style={styles.title}>Sign in to Agent Tick</Text>
+          <Text style={styles.subtitle}>{serverURL}</Text>
+        </View>
+        <View style={styles.nativeAuthFrame}>
+          <AuthView mode="signInOrUp" isDismissable={false} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.shell}>
       <StatusBar style="dark" />
-      <View style={styles.nativeHeader}>
-        <Text style={styles.title}>Sign in to Agent Tick</Text>
-        <Text style={styles.subtitle}>{serverURL}</Text>
+      <View style={styles.landingContent}>
+        <View style={styles.hero}>
+          <Text style={styles.title}>Agent Tick</Text>
+          <Text style={styles.subtitle}>{serverURL}</Text>
+          <Text style={styles.bodyText}>Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server.</Text>
+        </View>
+        <Pressable onPress={() => setShowAuthView(true)} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>Sign in to Agent Tick Cloud</Text>
+        </Pressable>
+      </View>
+      <View style={styles.selfHostedPanel}>
         {selfHostedOpen ? (
           <View style={styles.selfHostedForm}>
             <Text style={styles.bodyText}>Self-hosting Agent Tick?</Text>
@@ -53,7 +77,7 @@ export function ClerkSignInScreen({ serverURL, onServerSelected }: ClerkSignInSc
             </View>
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
             <View style={styles.buttonRow}>
-              <Pressable disabled={submitting} onPress={() => void useSelfHostedServer()} style={styles.primaryButton}>
+              <Pressable disabled={submitting} onPress={() => void useSelfHostedServer()} style={styles.primaryButtonCompact}>
                 <Text style={styles.primaryButtonText}>{submitting ? "Checking…" : "Continue"}</Text>
               </Pressable>
               <Pressable disabled={submitting} onPress={() => setSelfHostedOpen(false)} style={styles.secondaryButton}>
@@ -68,9 +92,6 @@ export function ClerkSignInScreen({ serverURL, onServerSelected }: ClerkSignInSc
           </Pressable>
         )}
       </View>
-      <View style={styles.nativeAuthFrame}>
-        <AuthView mode="signInOrUp" isDismissable={false} />
-      </View>
     </View>
   );
 }
@@ -82,7 +103,7 @@ const styles = StyleSheet.create({
     paddingTop: Constants.statusBarHeight,
   },
   nativeHeader: {
-    gap: 10,
+    gap: 8,
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 12,
@@ -90,6 +111,20 @@ const styles = StyleSheet.create({
   nativeAuthFrame: {
     flex: 1,
     overflow: "hidden",
+  },
+  landingContent: {
+    flex: 1,
+    gap: 28,
+    justifyContent: "center",
+    padding: 24,
+  },
+  hero: {
+    gap: 10,
+  },
+  selfHostedPanel: {
+    borderTopColor: "#ded6c6",
+    borderTopWidth: 1,
+    padding: 20,
   },
   selfHostedForm: {
     gap: 10,
@@ -115,7 +150,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#202124",
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "900",
     textAlign: "center",
   },
@@ -127,9 +162,8 @@ const styles = StyleSheet.create({
   },
   bodyText: {
     color: "#202124",
-    fontSize: 15,
-    fontWeight: "800",
-    lineHeight: 21,
+    fontSize: 16,
+    lineHeight: 23,
     textAlign: "center",
   },
   buttonRow: {
@@ -140,6 +174,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#202124",
     borderRadius: 8,
+    minHeight: 52,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  primaryButtonCompact: {
+    alignItems: "center",
+    backgroundColor: "#202124",
+    borderRadius: 8,
     flex: 1,
     minHeight: 48,
     justifyContent: "center",
@@ -147,7 +189,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: "#ffffff",
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "900",
   },
   secondaryButton: {
@@ -167,10 +209,8 @@ const styles = StyleSheet.create({
   },
   linkButton: {
     alignItems: "center",
-    alignSelf: "center",
-    minHeight: 40,
+    minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: 12,
   },
   linkButtonText: {
     color: "#202124",
