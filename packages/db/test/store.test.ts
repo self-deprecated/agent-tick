@@ -179,6 +179,24 @@ describe('AgentTickStore', () => {
     expect(store.respondToApprovalRequestForOrganization(approval.id, created.organizationId, { choiceId: 'approve' }, 'usr_default')).toMatchObject({ status: 'responded' });
   });
 
+  it('rejects encrypted approval responses unless the client confirms decryption', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const approval = store.createApprovalRequest(
+      {
+        requester: { name: 'agent' },
+        title: 'Encrypted approval request',
+        encryptedPayload: { version: 1, algorithm: 'test', nonce: 'nonce', ciphertext: 'ciphertext' }
+      },
+      '2026-05-08T00:00:00.000Z'
+    );
+
+    expect(() => store!.respondToApprovalRequest(approval.id, { choiceId: 'approve' }, 'usr_default', '2026-05-08T00:01:00.000Z')).toThrow(/decrypted before responding/i);
+    expect(store.respondToApprovalRequest(approval.id, { choiceId: 'approve', encryptedPayloadAcknowledged: true }, 'usr_default', '2026-05-08T00:02:00.000Z')).toMatchObject({ status: 'responded' });
+  });
+
   it('stores encrypted approval payloads without exposing plaintext in audit payloads', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

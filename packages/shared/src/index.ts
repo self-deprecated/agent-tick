@@ -557,7 +557,8 @@ export type CreateApprovalResponse = z.infer<typeof CreateApprovalResponseSchema
 export const RespondApprovalRequestSchema = z.object({
   choiceId: z.string().optional(),
   message: z.string().optional(),
-  answers: z.record(z.string(), z.array(z.string())).optional()
+  answers: z.record(z.string(), z.array(z.string())).optional(),
+  encryptedPayloadAcknowledged: z.boolean().optional()
 }).refine((value) => Boolean(value.choiceId || value.message || value.answers), {
   message: 'response must include a choiceId, message, or answers'
 });

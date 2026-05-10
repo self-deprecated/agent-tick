@@ -957,7 +957,7 @@ function AgentTickApp({
 
   const submitResponse = async (
     request: ApprovalRequest,
-    payload: { choiceId?: string; message?: string; answers?: Record<string, string[]> },
+    payload: { choiceId?: string; message?: string; answers?: Record<string, string[]>; encryptedPayloadAcknowledged?: boolean },
   ) => {
     interruptRealtime();
     try {
@@ -981,10 +981,10 @@ function AgentTickApp({
   };
 
   const respond = async (request: ApprovalRequest, choice: Choice) =>
-    submitResponse(request, { choiceId: choice.id, message: reply });
+    submitResponse(request, { choiceId: choice.id, message: reply, ...(request.encryptedPayload ? { encryptedPayloadAcknowledged: true } : {}) });
 
   const submitQuestionnaire = async (request: ApprovalRequest) =>
-    submitResponse(request, { answers: questionnaireAnswers });
+    submitResponse(request, { answers: questionnaireAnswers, ...(request.encryptedPayload ? { encryptedPayloadAcknowledged: true } : {}) });
 
   const respondByID = useCallback(
     async (requestID: string, choiceID: string) => {

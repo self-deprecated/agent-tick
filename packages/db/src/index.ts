@@ -1414,6 +1414,9 @@ export class AgentTickStore {
     if (parsed.choiceId && !current.choices.some((choice) => choice.id === parsed.choiceId)) {
       throw httpError(400, 'bad_request', `unknown choiceId: ${parsed.choiceId}`);
     }
+    if (row.encrypted_payload_json && parsed.encryptedPayloadAcknowledged !== true) {
+      throw httpError(400, 'bad_request', 'Encrypted approval requests must be decrypted before responding');
+    }
     const policy = this.approvalPolicyForRow(row);
     this.assertApprovalResponderEligible(row, responderUserId, policy);
     if (policy && policy.required_approvals > 1 && parsed.choiceId) {

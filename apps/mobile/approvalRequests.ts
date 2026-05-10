@@ -28,6 +28,7 @@ export type ApprovalResponse = {
   choiceId?: string;
   message?: string;
   answers?: Record<string, string[]>;
+  encryptedPayloadAcknowledged?: boolean;
 };
 
 export type ApprovalVoteRecord = {
