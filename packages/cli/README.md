@@ -2,39 +2,22 @@
 
 Command-line approval gate for Agent Tick.
 
-## Install
+## Quickstart
+
+Run the hosted-product installer:
+
+```sh
+npx @self-deprecated/agent-tick install
+```
+
+Or install globally first:
 
 ```sh
 npm install -g @self-deprecated/agent-tick
+agent-tick install
 ```
 
-Or run without a global install:
-
-```sh
-npx @self-deprecated/agent-tick --help
-```
-
-## Set up
-
-Hosted product:
-
-```sh
-agent-tick setup --login --server https://agenttick.sh
-```
-
-Self-hosted server:
-
-```sh
-agent-tick setup --login --server https://tick.example.com
-```
-
-For CI or single-mode self-hosting, create an agent token in the dashboard and save it manually:
-
-```sh
-agent-tick setup --server https://tick.example.com --token agent_...
-```
-
-Do not put tokens in logs or committed files.
+The installer opens <https://agenttick.sh>, saves a local Agent Tick token, and offers to install approval instructions for supported local coding agents.
 
 ## Use
 
@@ -53,10 +36,12 @@ Run a command only after approval:
 agent-tick guard --title "Run migration?" -- ./migrate.sh
 ```
 
-Cancel a pending request:
+Manual setup for CI or self-hosted servers:
 
 ```sh
-agent-tick abandon req_...
+agent-tick setup --server https://tick.example.com --token agent_...
 ```
+
+Do not put tokens in logs or committed files.
 
 More documentation: <https://github.com/self-deprecated/agent-tick#readme>

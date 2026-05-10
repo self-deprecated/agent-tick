@@ -1,10 +1,13 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { realpathSync } from 'node:fs';
+import fs from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import os from 'node:os';
+import path from 'node:path';
 import process from 'node:process';
+import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { AgentTickClient, type ApprovalRequest } from '@agent-tick/sdk';
@@ -37,6 +40,19 @@ export function createProgram(): Command {
       if (!options.token) throw new Error('setup requires --token, or use --login to sign in with your browser');
       const path = await saveClientConfig({ server: options.server, token: options.token });
       process.stdout.write(`saved Agent Tick config to ${path}\n`);
+    });
+
+  program
+    .command('install')
+    .description('Interactive hosted-service setup for local AI coding agents')
+    .option('--server <url>', 'Agent Tick server URL', 'https://agenttick.sh')
+    .option('--target <target>', 'agent to configure, repeatable: claude, codex, gemini, pi, cursor, opencode, agents-md', collectOption, [])
+    .option('--all', 'configure every supported target without prompting')
+    .option('--yes', 'accept defaults and do not prompt')
+    .option('--no-login', 'skip browser sign-in and only write agent instructions')
+    .option('--dry-run', 'print planned changes without writing files')
+    .action(async (options: InstallOptions) => {
+      await runInstall(options);
     });
 
   program
@@ -213,6 +229,171 @@ function defaultAgentName(): string {
   return `Agent on ${os.hostname() || 'local machine'}`;
 }
 
+const installTargets = ['claude', 'codex', 'gemini', 'pi', 'cursor', 'opencode', 'agents-md'] as const;
+type InstallTarget = typeof installTargets[number];
+
+const targetLabels: Record<InstallTarget, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex CLI',
+  gemini: 'Gemini CLI',
+  pi: 'Pi',
+  cursor: 'Cursor',
+  opencode: 'OpenCode',
+  'agents-md': 'local AGENTS.md'
+};
+
+async function runInstall(options: InstallOptions): Promise<void> {
+  const server = normalizeURL(options.server ?? 'https://agenttick.sh');
+  process.stdout.write('Agent Tick installer\n');
+  process.stdout.write(`Hosted server: ${server}\n\n`);
+
+  if (options.login !== false) {
+    process.stdout.write('Step 1/2: connect this machine to Agent Tick.\n');
+    const result = await setupWithBrowser({ server, login: true, name: defaultAgentName() });
+    process.stdout.write(`saved Agent Tick config to ${result.path}\n\n`);
+  } else {
+    process.stdout.write('Step 1/2: skipped browser sign-in because --no-login was provided.\n\n');
+  }
+
+  const selected = await selectInstallTargets(options);
+  if (!selected.length) {
+    process.stdout.write('No agent integrations selected. You can re-run `agent-tick install` later.\n');
+    return;
+  }
+
+  process.stdout.write('Step 2/2: install approval instructions for your agents.\n');
+  const plans = dedupePlansByPath(selected.map((target) => installPlanForTarget(target)));
+  for (const plan of plans) {
+    if (options.dryRun) {
+      process.stdout.write(`[dry-run] would update ${plan.path}\n`);
+      continue;
+    }
+    await appendInstallBlock(plan.path, plan.content);
+    process.stdout.write(`updated ${plan.path}\n`);
+  }
+
+  process.stdout.write('\nDone. Try this in any configured agent:\n');
+  process.stdout.write('  Before risky commands, ask Agent Tick approval with `agent-tick guard -- <command>`.\n');
+  process.stdout.write('  For decisions, use `agent-tick request --title "..." --body "..."`.\n');
+}
+
+async function selectInstallTargets(options: InstallOptions): Promise<InstallTarget[]> {
+  const explicit = uniqueInstallTargets(options.target ?? []);
+  if (options.all) return [...installTargets];
+  if (explicit.length) return explicit;
+  if (options.yes) return defaultDetectedTargets();
+
+  const detected = defaultDetectedTargets();
+  process.stdout.write('Detected/default agent targets:\n');
+  detected.forEach((target, index) => process.stdout.write(`  ${index + 1}. ${targetLabels[target]}\n`));
+  process.stdout.write('  all. Every supported target\n');
+  process.stdout.write('  none. Skip agent instruction install\n');
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question(`Install for [${detected.join(', ')}]? `)).trim().toLowerCase();
+    if (!answer) return detected;
+    if (answer === 'none' || answer === 'n' || answer === 'no') return [];
+    if (answer === 'all' || answer === 'a') return [...installTargets];
+    return uniqueInstallTargets(answer.split(/[\s,]+/).filter(Boolean));
+  } finally {
+    rl.close();
+  }
+}
+
+function uniqueInstallTargets(values: string[]): InstallTarget[] {
+  const selected: InstallTarget[] = [];
+  for (const value of values) {
+    const target = value.trim().toLowerCase();
+    if (!installTargets.includes(target as InstallTarget)) {
+      throw new Error(`unknown install target: ${value}. Expected one of: ${installTargets.join(', ')}`);
+    }
+    if (!selected.includes(target as InstallTarget)) selected.push(target as InstallTarget);
+  }
+  return selected;
+}
+
+function defaultDetectedTargets(): InstallTarget[] {
+  const detected: InstallTarget[] = [];
+  for (const target of installTargets) {
+    if (target === 'agents-md' || commandExists(targetCommand(target))) detected.push(target);
+  }
+  return detected.length ? detected : ['agents-md'];
+}
+
+function targetCommand(target: InstallTarget): string {
+  return target === 'claude' ? 'claude' : target === 'codex' ? 'codex' : target === 'gemini' ? 'gemini' : target === 'pi' ? 'pi' : target === 'cursor' ? 'cursor' : target === 'opencode' ? 'opencode' : '';
+}
+
+function commandExists(command: string): boolean {
+  if (!command) return false;
+  const checker = process.platform === 'win32' ? 'where' : 'sh';
+  const args = process.platform === 'win32' ? [command] : ['-c', `command -v ${shellQuote(command)} >/dev/null 2>&1`];
+  return spawnSync(checker, args, { stdio: 'ignore' }).status === 0;
+}
+
+function dedupePlansByPath(plans: Array<{ path: string; content: string }>): Array<{ path: string; content: string }> {
+  const seen = new Set<string>();
+  return plans.filter((plan) => {
+    if (seen.has(plan.path)) return false;
+    seen.add(plan.path);
+    return true;
+  });
+}
+
+function installPlanForTarget(target: InstallTarget): { path: string; content: string } {
+  const home = os.homedir();
+  const cwd = process.cwd();
+  const file = target === 'claude'
+    ? path.join(home, '.claude', 'CLAUDE.md')
+    : target === 'codex'
+      ? path.join(home, '.codex', 'AGENTS.md')
+      : target === 'gemini'
+        ? path.join(home, '.gemini', 'GEMINI.md')
+        : target === 'pi'
+          ? path.join(home, '.pi', 'agent', 'skills', 'agent-tick', 'SKILL.md')
+          : target === 'cursor'
+            ? path.join(cwd, '.cursor', 'rules', 'agent-tick.mdc')
+            : target === 'opencode'
+              ? path.join(cwd, 'AGENTS.md')
+              : path.join(cwd, 'AGENTS.md');
+  return { path: file, content: agentInstructionBlock(target) };
+}
+
+export function agentInstructionBlock(target: string = 'agent'): string {
+  const title = target === 'pi' ? '---\nname: agent-tick\ndescription: Use Agent Tick before risky commands or sensitive actions.\n---\n\n# Agent Tick approval gate' : '# Agent Tick approval gate';
+  return `${title}\n\nThis machine is connected to Agent Tick. Before running risky, destructive, expensive, production, data-accessing, or dependency-installing actions, request human approval.\n\nUse command approval when possible:\n\n\`\`\`sh\nagent-tick guard -- <command and args>\n\`\`\`\n\nFor decisions that are not a single command, ask for approval:\n\n\`\`\`sh\nagent-tick request --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in approval titles or bodies.\n`;
+}
+
+async function appendInstallBlock(filePath: string, block: string): Promise<void> {
+  const markerStart = '<!-- agent-tick:start -->';
+  const markerEnd = '<!-- agent-tick:end -->';
+  const wrapped = `${markerStart}\n${block.trim()}\n${markerEnd}\n`;
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  let existing = '';
+  try {
+    existing = await fs.readFile(filePath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const pattern = new RegExp(`${escapeRegExp(markerStart)}[\\s\\S]*?${escapeRegExp(markerEnd)}\\n?`);
+  const next = pattern.test(existing) ? existing.replace(pattern, wrapped) : `${existing}${existing && !existing.endsWith('\n') ? '\n' : ''}\n${wrapped}`;
+  await fs.writeFile(filePath, next, 'utf8');
+}
+
+function normalizeURL(value: string): string {
+  const url = new URL(value);
+  return url.toString().replace(/\/$/, '');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 function escapeHTML(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
@@ -324,6 +505,13 @@ interface SetupOptions extends ClientOptions {
   server: string;
   login?: boolean;
   name?: string;
+}
+
+interface InstallOptions extends SetupOptions {
+  target?: string[];
+  all?: boolean;
+  yes?: boolean;
+  dryRun?: boolean;
 }
 
 interface RequestOptions extends ClientOptions {

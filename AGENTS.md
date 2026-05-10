@@ -55,6 +55,7 @@ docker build -f apps/server/Dockerfile -t agent-tick:dev .
 
 Current implemented CLI commands only:
 
+- `agent-tick install`
 - `agent-tick setup`
 - `agent-tick request`
 - `agent-tick abandon`
@@ -64,7 +65,7 @@ The CLI package is prepared for public npm publishing as `@self-deprecated/agent
 
 ```sh
 corepack pnpm --filter @self-deprecated/agent-tick build
-corepack pnpm --filter @self-deprecated/agent-tick exec agent-tick setup --server http://localhost:8787 --token agent_...
+node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
 ```
 
 Do not document or call missing commands such as `agent-tick mcp`, `agent-tick adapter`, or `agent-tick steer` as current functionality.

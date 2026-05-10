@@ -91,16 +91,14 @@ AGENT_TICK_CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----..."
 
 Start it with Docker Compose. The dashboard fetches `/v1/auth/config`, loads Clerk with the publishable key, and sends Clerk session tokens to the API. The server maps Clerk `(issuer, subject)` to local `usr_...` IDs and requires a verified primary email.
 
-After the server is running, set up an agent host with browser sign-in:
+After the server is running, set up an agent host with the installer:
 
 ```sh
 npm install -g @self-deprecated/agent-tick
-agent-tick setup --login --server https://tick.example.com
+agent-tick install --server https://tick.example.com
 ```
 
-The CLI opens the dashboard, waits while you sign in with Clerk, and saves the returned Agent Tick `agent_...` token after you click **Authorize CLI setup**. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick setup --server https://tick.example.com --token agent_...` instead.
-
-Then install/sign in to the Agent Tick mobile app with the same Clerk account so approvals can reach your phone.
+The CLI opens the dashboard, waits while you sign in with Clerk, saves the returned Agent Tick `agent_...` token, and offers to install local coding-agent approval instructions. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick setup --server https://tick.example.com --token agent_...` instead.
 
 ## Local image build
 

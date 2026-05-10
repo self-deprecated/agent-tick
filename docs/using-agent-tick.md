@@ -1,62 +1,101 @@
 # Using Agent Tick
 
-Agent Tick can be used as a managed product or as a self-hosted service.
+Agent Tick's default path is the hosted product at <https://agenttick.sh>. Self-hosting is available for teams that need it, but it is documented separately in [SELFHOSTING.md](../SELFHOSTING.md).
 
-- Managed product website: <https://agenttick.sh>
-- Self-hosting guide: [SELFHOSTING.md](../SELFHOSTING.md)
+## Hosted product quickstart
 
-## Managed product flow
-
-Use the managed product when you do not want to operate the server, database, dashboard, or mobile push infrastructure yourself.
-
-1. Install the CLI on macOS, Linux, or Windows:
-
-   ```sh
-   npm install -g @self-deprecated/agent-tick
-   ```
-
-   You can also run one-off commands with `npx @self-deprecated/agent-tick ...`.
-2. Go to <https://agenttick.sh> and sign in.
-3. Run the CLI browser setup command on the machine or agent host that needs approvals:
-
-   ```sh
-   agent-tick setup --login --server https://agenttick.sh
-   ```
-
-   The CLI starts a localhost callback, opens the dashboard in your browser, and waits. After you sign in and click **Authorize CLI setup**, the dashboard creates an Agent Tick `agent_...` token and posts it back to the CLI. The token is saved in `~/.config/agent-tick/config.json` by default.
-4. Install/open the Agent Tick mobile app from your workspace's TestFlight link and sign in with the same account. Mobile is the primary approval surface.
-5. Wrap sensitive actions with `agent-tick request` or `agent-tick guard`.
-6. Review requests in the mobile app or, secondarily, the dashboard.
-
-Current CLI commands:
+Run the installer on the machine where your AI coding agents run:
 
 ```sh
-agent-tick setup --login
-agent-tick setup --server https://agenttick.sh --token agent_... # manual/CI setup
-agent-tick request --title "Deploy production?" --body "Deploy commit abc123" --command "deploy production"
-agent-tick request --title "Which rollout?" --choice canary="Canary" --choice cancel:deny="Cancel"
+npx @self-deprecated/agent-tick install
+```
+
+The installer:
+
+1. Opens <https://agenttick.sh> in your browser.
+2. Lets you sign in and authorize CLI setup.
+3. Saves an Agent Tick `agent_...` token in `~/.config/agent-tick/config.json`.
+4. Offers to install approval instructions for local agents: Claude Code, Codex CLI, Gemini CLI, Pi, Cursor, OpenCode, or a local `AGENTS.md` file.
+
+Global install alternative:
+
+```sh
+npm install -g @self-deprecated/agent-tick
+agent-tick install
+```
+
+## Ask for approval
+
+Create an approval request and wait for a response:
+
+```sh
+agent-tick request \
+  --title "Deploy production?" \
+  --body "Deploy commit abc123" \
+  --command "deploy production"
+```
+
+Run a command only after approval:
+
+```sh
 agent-tick guard --title "Run migration?" -- ./migrate.sh
+```
+
+Ask a multiple-choice question:
+
+```sh
+agent-tick request \
+  --title "Which rollout?" \
+  --choice canary="Canary" \
+  --choice blue_green="Blue/green" \
+  --choice cancel:deny="Cancel"
+```
+
+Cancel a pending request:
+
+```sh
 agent-tick abandon req_...
 ```
 
-For local repository development without a global npm install, run `node scripts/bootstrap.mjs`, then use `corepack pnpm --filter @self-deprecated/agent-tick exec agent-tick ...`.
+Review requests in the Agent Tick web dashboard. Public onboarding should not depend on private mobile beta access.
 
-## Mobile app access
+## Installer options
 
-Mobile approvals are the intended day-to-day review surface. During the current iOS beta, ask your workspace owner for the Agent Tick TestFlight invite link, install the app, and sign in with the same account you used for the dashboard. After sign-in, keep notifications enabled so approval requests arrive as push notifications. The web dashboard remains available as a backup approval surface.
+```sh
+agent-tick install --target claude --target codex
+agent-tick install --all
+agent-tick install --dry-run
+agent-tick install --server https://tick.example.com
+agent-tick install --no-login --target agents-md
+```
 
-For self-hosted servers, enter your server URL in the mobile app if prompted. Use the same public URL you configured as `AGENT_TICK_PUBLIC_URL`.
+Supported install targets:
+
+- `claude` — user-level Claude Code instructions
+- `codex` — user-level Codex instructions
+- `gemini` — user-level Gemini CLI instructions
+- `pi` — user-level Pi skill
+- `cursor` — project Cursor rule
+- `opencode` — project `AGENTS.md` instructions
+- `agents-md` — project `AGENTS.md` instructions
+
+## Manual setup
+
+If browser login is not possible, create an agent token in the dashboard and configure the CLI manually:
+
+```sh
+agent-tick setup --server https://agenttick.sh --token agent_...
+```
+
+For CI, pass `AGENT_TICK_SERVER` and `AGENT_TICK_TOKEN` as secrets instead of committing tokens.
 
 ## Self-hosted flow
 
-Use self-hosting when you want Agent Tick on your own infrastructure.
+Use self-hosting when you want Agent Tick on your own infrastructure. The short version is:
 
-1. Choose `single` mode for a local/single-admin deployment or `clerk` mode for multi-user human sign-in.
+1. Deploy the server with Docker Compose or the NixOS module.
 2. Set `AGENT_TICK_PUBLIC_URL` to your deployment URL.
-3. Start the Docker Compose stack.
-4. Install the CLI with `npm install -g @self-deprecated/agent-tick`.
-5. In Clerk mode, run `agent-tick setup --login --server <your-url>` and authorize setup in the browser. In single mode or CI, create an agent token in the dashboard and run `agent-tick setup --server <your-url> --token agent_...`.
-6. Sign in to mobile for approvals, then configure agents or CI jobs to use `agent-tick request` or `agent-tick guard`.
+3. Run `agent-tick install --server <your-url>` for Clerk-backed deployments, or `agent-tick setup --server <your-url> --token agent_...` for single-mode/manual token setup.
 
 See [SELFHOSTING.md](../SELFHOSTING.md) for environment variables, Docker commands, backup notes, and security guidance.
 
@@ -78,13 +117,13 @@ Clerk is only the human identity provider.
 
 Implemented today:
 
+- `agent-tick install`
 - `agent-tick setup`
 - `agent-tick request`
 - `agent-tick guard`
 - `agent-tick abandon`
 - dashboard approvals
-- mobile approvals and push registration
-- GitHub Actions composite action that expects `agent-tick` on `PATH`
+- GitHub Actions composite action
 - optional outbound approval notification webhook
 
 Not currently implemented:

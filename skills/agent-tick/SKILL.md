@@ -1,6 +1,6 @@
 ---
 name: agent-tick
-description: Request out-of-band human approval through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, or when the user explicitly asks to gate work through Agent Tick. This skill covers the current TypeScript CLI commands: `agent-tick setup`, `agent-tick request`, `agent-tick abandon`, and `agent-tick guard`.
+description: Request out-of-band human approval through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, or when the user explicitly asks to gate work through Agent Tick. This skill covers the current TypeScript CLI commands: `agent-tick install`, `agent-tick setup`, `agent-tick request`, `agent-tick abandon`, and `agent-tick guard`.
 ---
 
 # Agent Tick
@@ -17,7 +17,13 @@ command -v agent-tick
 
 If it is missing, tell the user to install or build the `agent-tick` CLI for this project and stop. Do not bypass approval just because the CLI is unavailable.
 
-For an interactive machine in hosted/Clerk mode, prefer browser setup:
+For an interactive machine in hosted/Clerk mode, prefer the installer when setting up a new machine or coding agent:
+
+```sh
+agent-tick install
+```
+
+For setup only, without installing agent instructions, use browser setup:
 
 ```sh
 agent-tick setup --login --server https://agenttick.sh

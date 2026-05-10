@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { buildCliSetupURL, parseChoices, parseDurationMs } from '../src/index.js';
+import { agentInstructionBlock, buildCliSetupURL, parseChoices, parseDurationMs } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -51,6 +51,15 @@ describe('browser setup', () => {
     expect(url.searchParams.get('cli_callback')).toBe('http://127.0.0.1:1234/agent-tick/setup/callback');
     expect(url.searchParams.get('cli_state')).toBe('state_123');
     expect(url.searchParams.get('cli_name')).toBe('Claude Code');
+  });
+});
+
+describe('install instructions', () => {
+  it('documents guard and request commands', () => {
+    const block = agentInstructionBlock('claude');
+    expect(block).toContain('agent-tick guard -- <command and args>');
+    expect(block).toContain('agent-tick request --title');
+    expect(block).toContain('Do not include secrets');
   });
 });
 

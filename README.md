@@ -1,140 +1,95 @@
 # Agent Tick
 
-Agent Tick is a human approval gate for AI agents. An agent asks before doing something sensitive, a person approves or rejects it in the dashboard or mobile app, and the agent continues only after approval.
+Agent Tick is a human approval gate for AI agents. Your agent asks before doing something sensitive, a human approves or rejects it in Agent Tick, and the agent continues only after approval.
 
 Website: <https://agenttick.sh>
 
-## Choose your path
+## Start here
 
-### Use the hosted product
+Most users should use the hosted service at <https://agenttick.sh>.
 
-Go to <https://agenttick.sh> when you want Agent Tick operated for you.
-
-Hosted-product flow:
-
-1. Install the CLI on macOS, Linux, or Windows:
-
-   ```sh
-   npm install -g @self-deprecated/agent-tick
-   ```
-
-2. Sign in at <https://agenttick.sh>.
-3. Run `agent-tick setup --login --server https://agenttick.sh`; the CLI opens a browser tab, asks you to authorize CLI setup, and saves an Agent Tick `agent_...` token locally.
-4. Open the Agent Tick mobile app from the TestFlight link your workspace owner provides, then sign in with the same account.
-5. Add `agent-tick request` or `agent-tick guard` around sensitive actions.
-6. Approve or reject requests from the mobile app, with the web dashboard as a secondary approval surface.
-
-### Self-host Agent Tick
-
-Use Docker Compose when you want to run Agent Tick yourself. See [SELFHOSTING.md](./SELFHOSTING.md) for single-user and Clerk-backed multi-user deployments.
+Run one command on the machine where your coding agents run:
 
 ```sh
-docker compose up --build
+npx @self-deprecated/agent-tick install
 ```
 
-Open <http://localhost:8787>. Install and configure the CLI:
+The installer opens Agent Tick in your browser, connects this machine to your hosted Agent Tick account, and offers to install approval instructions for local AI coding agents such as Claude Code, Codex CLI, Gemini CLI, Pi, Cursor, OpenCode, or a local `AGENTS.md` file.
+
+If you prefer a global install:
 
 ```sh
 npm install -g @self-deprecated/agent-tick
-agent-tick setup --login --server http://localhost:8787
+agent-tick install
 ```
 
-The browser flow creates an Agent Tick agent token after you sign in and click **Authorize CLI setup**. In single-user mode, or for CI, you can still create a token in the dashboard and save it manually:
-
-```sh
-agent-tick setup --server http://localhost:8787 --token agent_...
-```
-
-Send an approval request:
+After setup, agents can request approval with:
 
 ```sh
 agent-tick request \
-  --title "Run command?" \
-  --body "An agent wants to run npm install" \
-  --command "npm install"
+  --title "Deploy production?" \
+  --body "Deploy commit abc123 to production." \
+  --command "deploy production"
 ```
 
-Ask a multiple-choice question by repeating `--choice`:
+Or run a command only after approval:
 
 ```sh
-agent-tick request \
-  --title "Which rollout?" \
-  --choice canary="Canary" \
-  --choice blue_green="Blue/green" \
-  --choice cancel:deny="Cancel"
+agent-tick guard --title "Run migration?" -- ./migrate.sh
 ```
 
-Run a command only after approval:
+Approve or reject requests from the Agent Tick web dashboard. Mobile approval apps are part of the product direction, but public setup should not depend on private beta access.
+
+## What gets installed?
+
+`agent-tick install` does two things:
+
+1. Runs browser-based CLI setup against `https://agenttick.sh` and saves an Agent Tick `agent_...` token locally in `~/.config/agent-tick/config.json`.
+2. Adds a small Agent Tick approval instruction block to the agent targets you choose, so coding agents know to call `agent-tick guard` or `agent-tick request` before risky actions.
+
+Useful installer options:
 
 ```sh
-agent-tick guard \
-  --title "Run migration?" \
-  -- ./migrate.sh
+agent-tick install --target claude --target codex
+agent-tick install --all
+agent-tick install --dry-run
+agent-tick install --server https://tick.example.com
 ```
+
+## Self-hosting
+
+Agent Tick is source-available and self-hostable. That matters for trust, privacy, and teams that need to operate approvals on their own infrastructure.
+
+Self-hosting is not the default onboarding path. If you want it, use [SELFHOSTING.md](./SELFHOSTING.md).
 
 ## What is in this repo
-
-Agent Tick is a fresh TypeScript-first service:
 
 - Fastify API server
 - Svelte dashboard served by the server
 - Expo mobile app
-- `agent-tick` CLI with `setup`, `request`, `abandon`, and `guard`
+- `agent-tick` CLI with `install`, `setup`, `request`, `abandon`, and `guard`
 - SQLite persistence
 - optional Clerk human authentication for multi-user mode
 - local Agent Tick organizations, policies, approvals, audit logs, devices, and agent tokens
 
 Clerk, when enabled, is only the human identity provider. Agent Tick owns authorization and product data.
 
-## Auth modes
-
-### `single`
-
-Default local/self-hosted mode:
-
-- no Clerk account required
-- one local admin/user context
-- optional `AGENT_TICK_ADMIN_TOKEN`
-- agents use Agent Tick `agent_...` tokens
-
-### `clerk`
-
-Multi-user mode:
-
-- Clerk authenticates humans
-- Agent Tick verifies Clerk session tokens
-- Agent Tick still owns orgs, teams, policies, approvals, devices, billing seat limits, audit logs, and agent tokens
-- agents still use Agent Tick `agent_...` tokens
-
 ## Development
 
-One-command local bootstrap after cloning the repo:
-
-```sh
-node scripts/bootstrap.mjs
-```
-
-Development checks:
+Development details are in [DEVELOPMENT.md](./DEVELOPMENT.md). A local contributor can bootstrap the repo with:
 
 ```sh
 corepack pnpm install
-corepack pnpm typecheck
-corepack pnpm test
 corepack pnpm build
-corepack pnpm --filter agent-tick-admin check
 ```
-
-More details are in [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ## Documentation
 
-- [docs/using-agent-tick.md](./docs/using-agent-tick.md) — managed-product vs self-hosted usage flow
+- [docs/using-agent-tick.md](./docs/using-agent-tick.md) — hosted-product usage flow
+- [docs/integrations.md](./docs/integrations.md) — CLI and integration examples
 - [SELFHOSTING.md](./SELFHOSTING.md) — run your own Agent Tick server
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — local development workflow
-- [docs/integrations.md](./docs/integrations.md) — current CLI and integration examples
-- [docs/competitor-analysis.md](./docs/competitor-analysis.md) / [HTML review site](./docs/competitor-analysis.html) — market scan of human-approval competitors and setup ideas
-- [docs/clerk-auth-migration.md](./docs/clerk-auth-migration.md) — Clerk auth design notes
-- [docs/typescript-first-rewrite-plan.md](./docs/typescript-first-rewrite-plan.md) — architecture migration plan and current implementation status
+- [docs/competitor-analysis.md](./docs/competitor-analysis.md) — market scan and setup inspiration
 
 ## License
 

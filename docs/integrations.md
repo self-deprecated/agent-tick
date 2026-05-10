@@ -1,26 +1,25 @@
 # Integrations
 
-Agent Tick currently supports the TypeScript CLI commands `setup`, `request`, `abandon`, and `guard`, plus the admin dashboard and mobile approval flow. This document only describes integrations that work with the current CLI/server surface.
+Agent Tick currently supports the TypeScript CLI commands `install`, `setup`, `request`, `abandon`, and `guard`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
 
 For product-vs-self-hosting setup flows, see [Using Agent Tick](./using-agent-tick.md). The public product site is <https://agenttick.sh>.
 
 ## CLI setup
 
-Install the CLI once on macOS, Linux, or Windows:
+For the hosted product, use the one-command installer:
+
+```sh
+npx @self-deprecated/agent-tick install
+```
+
+The installer opens the dashboard for browser authorization, saves a local Agent Tick `agent_...` token, and offers to write approval instructions for supported local coding agents.
+
+Global install alternative:
 
 ```sh
 npm install -g @self-deprecated/agent-tick
+agent-tick install
 ```
-
-For one-off usage without a global install, use `npx @self-deprecated/agent-tick ...`.
-
-For interactive developer machines in hosted/Clerk mode, use browser setup:
-
-```sh
-agent-tick setup --login --server https://agenttick.sh
-```
-
-The CLI opens a browser tab, the user signs in with Clerk, clicks **Authorize CLI setup**, and the dashboard returns a newly-created Agent Tick `agent_...` token to the CLI over a localhost callback. The CLI saves it to `~/.config/agent-tick/config.json` by default.
 
 For CI, headless hosts, or single-mode self-hosting, create an agent token in the dashboard and save it manually:
 
@@ -28,7 +27,7 @@ For CI, headless hosts, or single-mode self-hosting, create an agent token in th
 agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
-After CLI setup, sign in to the mobile app with the same Clerk account so approval requests can reach the primary mobile approval surface.
+For lower-level browser setup without agent instruction installation, run `agent-tick setup --login --server https://agenttick.sh`.
 
 ## Outbound notification sinks
 

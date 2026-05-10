@@ -146,11 +146,9 @@ Recommended action: periodically inspect image contents and size as new workspac
 
 ### Published install story is inconsistent
 
-Status: addressed by updating README/SELFHOSTING/planning docs to use the workspace-built CLI and avoid implying npm/`npx` availability while the package is private.
+Status: superseded. The CLI package is prepared for public npm distribution as `@self-deprecated/agent-tick`, and public docs now lead with `npx @self-deprecated/agent-tick install` for hosted-product onboarding.
 
-`packages/cli/package.json` is marked `"private": true`.
-
-Recommended action: either prepare/publish the CLI package later or keep docs on workspace/local installation paths.
+Recommended action: publish the package through the npm release workflow and keep public docs focused on hosted setup, with self-hosting in `SELFHOSTING.md`.
 
 ## Lower priority / polish
 
