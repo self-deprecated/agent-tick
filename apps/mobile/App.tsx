@@ -1801,7 +1801,7 @@ export function ApprovalsScreen({
 
   const responsibility = requestResponsibilityLabel(selected);
   const encrypted = isEncryptedApprovalRequest(selected);
-  const decrypted = decryptedApprovalPlaintext(selected, e2eeKey);
+  const decrypted = useMemo(() => decryptedApprovalPlaintext(selected, e2eeKey), [e2eeKey, selected.id, selected.encryptedPayload]);
   const encryptedLocked = encrypted && !decrypted;
   const canRespond = !encryptedLocked && (encrypted ? true : canRespondToRequest(selected));
 

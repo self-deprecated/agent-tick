@@ -477,7 +477,7 @@ function decodeEncryptionKey(key: string): Uint8Array {
       // Fall through to passphrase derivation.
     }
   }
-  return pbkdf2(sha256, new TextEncoder().encode(trimmed), new TextEncoder().encode('agent-tick-e2ee-passphrase-v1'), { c: 100_000, dkLen: 32 });
+  return pbkdf2(sha256, new TextEncoder().encode(trimmed), new TextEncoder().encode('agent-tick-e2ee-passphrase-v1'), { c: 10_000, dkLen: 32 });
 }
 
 function encodeBase64URL(bytes: Uint8Array): string {
