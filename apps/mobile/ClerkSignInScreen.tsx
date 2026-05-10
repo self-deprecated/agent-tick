@@ -97,6 +97,8 @@ export function ClerkSignInScreen({ serverURL }: { serverURL: string }) {
     try {
       const redirectUrl = makeSsoRedirectUrl();
       console.info("[AgentTickMobile] Starting Clerk SSO", { strategy, redirectUrl });
+      await logClerkReachability(serverURL);
+      console.info("[AgentTickMobile] Clerk hook state", summarizeClerkHookState({ signIn, signUp, signInFetchStatus, signUpFetchStatus }));
       const result = await startOAuthSession({ strategy, redirectUrl, signIn, signUp });
       console.info("[AgentTickMobile] Clerk SSO result", summarizeSsoResult(result));
       const createdSessionId = result.createdSessionId ?? sessionIdFromAuthSessionResult(result.authSessionResult);
@@ -297,6 +299,66 @@ async function startOAuthSession({ strategy, redirectUrl, signIn, signUp }: OAut
     authSessionResult,
     signIn,
     signUp,
+  };
+}
+
+async function logClerkReachability(serverURL: string): Promise<void> {
+  try {
+    const authConfigResponse = await withTimeout(
+      fetch(`${serverURL.replace(/\/$/, "")}/v1/auth/config`),
+      5000,
+      "Timed out while checking Agent Tick auth config",
+    );
+    const authConfig = await authConfigResponse.json() as { clerkPublishableKey?: string };
+    const clerkDomain = clerkDomainFromPublishableKey(authConfig.clerkPublishableKey);
+    console.info("[AgentTickMobile] Agent Tick auth config reachable", {
+      status: authConfigResponse.status,
+      hasClerkPublishableKey: Boolean(authConfig.clerkPublishableKey),
+      clerkDomain,
+    });
+    if (!clerkDomain) return;
+    const clerkResponse = await withTimeout(
+      fetch(`https://${clerkDomain}/v1/client`, { method: "GET" }),
+      7000,
+      "Timed out while checking Clerk frontend API",
+    );
+    console.info("[AgentTickMobile] Clerk frontend API reachable", {
+      domain: clerkDomain,
+      status: clerkResponse.status,
+      contentType: clerkResponse.headers.get("content-type"),
+    });
+  } catch (err) {
+    console.info("[AgentTickMobile] Clerk reachability check failed", clerkAuthErrorDetails(err));
+  }
+}
+
+function clerkDomainFromPublishableKey(publishableKey: string | undefined): string | null {
+  if (!publishableKey) return null;
+  try {
+    const encoded = publishableKey.replace(/^pk_(test|live)_/, "");
+    const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    return atob(normalized).replace(/\$$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function summarizeClerkHookState(input: {
+  signIn: ClerkSignInResource | undefined;
+  signUp: ClerkSignUpResource | undefined;
+  signInFetchStatus: string;
+  signUpFetchStatus: string;
+}): Record<string, unknown> {
+  return {
+    hasSignIn: Boolean(input.signIn),
+    hasSignUp: Boolean(input.signUp),
+    signInFetchStatus: input.signInFetchStatus,
+    signUpFetchStatus: input.signUpFetchStatus,
+    signInStatus: input.signIn?.status ?? null,
+    signUpStatus: input.signUp?.status ?? null,
+    signInCreatedSessionId: Boolean(input.signIn?.createdSessionId),
+    signUpCreatedSessionId: Boolean(input.signUp?.createdSessionId),
+    signInFirstFactorStatus: input.signIn?.firstFactorVerification?.status ?? null,
   };
 }
 
