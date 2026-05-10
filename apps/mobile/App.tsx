@@ -205,6 +205,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   const [clerkLoginToken, setClerkLoginToken] = useState<string | null>(null);
   const [mobileSessionToken, setMobileSessionToken] = useState<string | null>(null);
   const [signedOutManually, setSignedOutManually] = useState(false);
+  const [openSignInAfterSignOut, setOpenSignInAfterSignOut] = useState(false);
   const wasNativeSignedIn = useRef(false);
 
   const nativeSignedIn = nativeSession.isSignedIn || nativeAuthEvents.nativeAuthState?.type === "signedIn";
@@ -274,8 +275,9 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     };
   }, [clerkLoginToken, mobileSessionToken, props.initialServerURL, signedOutManually]);
 
-  const handleForgetClerkSession = useCallback(async () => {
+  const handleForgetClerkSession = useCallback(async (options?: { reopenSignIn?: boolean }) => {
     setSignedOutManually(true);
+    setOpenSignInAfterSignOut(Boolean(options?.reopenSignIn));
     setClerkLoginToken(null);
     setMobileSessionToken(null);
     await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
@@ -291,6 +293,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       <ClerkSignInScreen
         serverURL={defaultServer}
         selfHostedInitialURL={selfHostedInitialURL(props.initialServerURL)}
+        initialShowAuthView={openSignInAfterSignOut}
         onServerSelected={props.onRuntimeAuthConfig}
       />
     );
@@ -303,7 +306,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       {...props}
       clerkSignedIn={true}
       clerkTokenProvider={async () => mobileSessionToken}
-      onForgetClerkSession={() => void handleForgetClerkSession()}
+      onForgetClerkSession={(options) => void handleForgetClerkSession(options)}
     />
   );
 }
@@ -411,7 +414,7 @@ function AgentTickApp({
   clerkTokenProvider,
   onRuntimeAuthConfig,
   onForgetClerkSession,
-}: AgentTickAppProps & { onForgetClerkSession?: () => void }) {
+}: AgentTickAppProps & { onForgetClerkSession?: (options?: { reopenSignIn?: boolean }) => void }) {
   const [screen, setScreen] = useState<Screen>("approvals");
   const [serverURL, setServerURL] = useState(initialServerURL ?? defaultServer);
   const [runtimeAuthConfig, setRuntimeAuthConfig] = useState<RuntimeAuthConfig | null>(initialAuthConfig ?? null);
@@ -1290,7 +1293,7 @@ function AgentTickApp({
     }
   }, [currentAuthToken, deviceID, runtimeAuthConfig?.authProvider, serverURL, token]);
 
-  const forgetDevice = useCallback(async () => {
+  const forgetDevice = useCallback(async (options?: { reopenSignIn?: boolean }) => {
     await bestEffortUnregisterDevice();
     await clearStoredSessionForServer();
     setDeviceID("");
@@ -1301,7 +1304,7 @@ function AgentTickApp({
     setRequests([]);
     setHistory([]);
     setConnectionStatus("disconnected");
-    if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.();
+    if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.(options);
   }, [bestEffortUnregisterDevice, clearStoredSessionForServer, onForgetClerkSession, runtimeAuthConfig?.authProvider]);
 
   const useCloudSignIn = useCallback(async () => {
@@ -1480,6 +1483,7 @@ function AgentTickApp({
           onCheck={() => void checkConnection()}
           onDiagnosticsEnabledChange={(enabled) => void toggleDiagnostics(enabled)}
           onForgetDevice={() => void forgetDevice()}
+          onSignInAnotherClerkAccount={() => void forgetDevice({ reopenSignIn: true })}
           onPairDevice={() => void pairDevice()}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}

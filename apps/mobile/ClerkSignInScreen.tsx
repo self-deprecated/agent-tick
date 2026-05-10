@@ -8,13 +8,14 @@ import { fetchRuntimeAuthConfig, normalizeServerURL, type RuntimeAuthConfig } fr
 type ClerkSignInScreenProps = {
   serverURL: string;
   selfHostedInitialURL?: string;
+  initialShowAuthView?: boolean;
   onServerSelected?: (serverURL: string, authConfig: RuntimeAuthConfig | null) => void;
 };
 
-export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", onServerSelected }: ClerkSignInScreenProps) {
+export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", initialShowAuthView = false, onServerSelected }: ClerkSignInScreenProps) {
   const [customServerURL, setCustomServerURL] = useState(selfHostedInitialURL);
   const [selfHostedOpen, setSelfHostedOpen] = useState(false);
-  const [showAuthView, setShowAuthView] = useState(false);
+  const [showAuthView, setShowAuthView] = useState(initialShowAuthView);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

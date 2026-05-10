@@ -52,6 +52,14 @@ describe("ClerkSignInScreen", () => {
     expect(screen.getByText("Native Clerk AuthView signInOrUp false")).toBeTruthy();
   });
 
+  it("can open directly to hosted Clerk sign-in", () => {
+    render(<ClerkSignInScreen serverURL="https://agenttick.sh" initialShowAuthView />);
+
+    expect(screen.getByText("Sign in to Agent Tick")).toBeTruthy();
+    expect(screen.getByText("Native Clerk AuthView signInOrUp false")).toBeTruthy();
+    expect(screen.queryByText("Sign in to Agent Tick Cloud")).toBeNull();
+  });
+
   it("reports a self-hosted server to the app shell", async () => {
     const onServerSelected = jest.fn();
     render(<ClerkSignInScreen serverURL="https://agenttick.sh" onServerSelected={onServerSelected} />);

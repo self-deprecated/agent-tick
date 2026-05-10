@@ -58,6 +58,7 @@ export function SettingsScreen({
   onForgetDevice,
   onPairDevice,
   onDiagnosticsEnabledChange,
+  onSignInAnotherClerkAccount,
   onRegisterPush,
   onRequestNotifications,
   onSavedAccountSelect,
@@ -101,6 +102,7 @@ export function SettingsScreen({
   onSendDiagnosticSnapshot?: () => void;
   onSendTestNotification: () => void;
   onScanPairing: () => void;
+  onSignInAnotherClerkAccount?: () => void;
   onUseCloud?: () => void;
   pairingCode: string;
   pushStatus: PushStatus;
@@ -231,6 +233,11 @@ export function SettingsScreen({
           <Pressable onPress={onCheck} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Check Connection</Text>
           </Pressable>
+          {isClerkMode && onSignInAnotherClerkAccount ? (
+            <Pressable onPress={onSignInAnotherClerkAccount} style={styles.secondaryActionButton}>
+              <Text style={styles.secondaryActionText}>Sign in with another account</Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
             <Text style={styles.secondaryActionText}>{isClerkMode ? "Sign Out" : "Forget Device"}</Text>
           </Pressable>

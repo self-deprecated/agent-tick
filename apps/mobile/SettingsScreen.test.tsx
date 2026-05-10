@@ -181,6 +181,21 @@ describe("SettingsScreen — paired state", () => {
     expect(onSavedAccountSelect).toHaveBeenCalledWith(account);
   });
 
+  it("lets Clerk users sign in with another account", () => {
+    const onSignInAnotherClerkAccount = jest.fn();
+    render(
+      <SettingsScreen
+        {...unpairedProps}
+        authProvider="clerk"
+        onSignInAnotherClerkAccount={onSignInAnotherClerkAccount}
+      />,
+    );
+
+    expect(screen.getByText("Signed in with Clerk")).toBeTruthy();
+    fireEvent.press(screen.getByText("Sign in with another account"));
+    expect(onSignInAnotherClerkAccount).toHaveBeenCalled();
+  });
+
   it("shows Clerk organization choices without device pairing", () => {
     const onSelectOrganization = jest.fn();
     render(
