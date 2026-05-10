@@ -39,8 +39,8 @@ describe("mobile event streams", () => {
     subscription.close();
 
     expect(subscription.supported).toBe(true);
-    expect(client.pollEvents).toHaveBeenCalledWith({ lastEventId: 5, timeoutMs: 25000 });
-    expect(client.pollEvents).toHaveBeenLastCalledWith({ lastEventId: 6, timeoutMs: 25000 });
+    expect(client.pollEvents).toHaveBeenCalledWith(expect.objectContaining({ lastEventId: 5, timeoutMs: 25000, signal: expect.any(AbortSignal) }));
+    expect(client.pollEvents).toHaveBeenLastCalledWith(expect.objectContaining({ lastEventId: 6, timeoutMs: 25000, signal: expect.any(AbortSignal) }));
     expect(auditEvents).toEqual([{ eventId: 6, type: "approval.created", targetId: "req_123", createdAt: "2026-01-01T00:00:00.000Z" }]);
     expect(statuses).toContain("connecting");
     expect(statuses).toContain("open");
@@ -76,7 +76,7 @@ describe("mobile event streams", () => {
     await flushPromises();
 
     expect(client.pollEvents).toHaveBeenCalledTimes(2);
-    expect(client.pollEvents).toHaveBeenLastCalledWith({ lastEventId: 3, timeoutMs: 25000 });
+    expect(client.pollEvents).toHaveBeenLastCalledWith(expect.objectContaining({ lastEventId: 3, timeoutMs: 25000, signal: expect.any(AbortSignal) }));
 
     subscription.close();
   });

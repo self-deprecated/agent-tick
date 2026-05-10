@@ -13,7 +13,7 @@ type SubscribeToMobileEventStreamOptions = {
   onStatusChange?: (status: EventStreamStatus) => void;
 };
 
-type MobileEventStreamSubscription = {
+export type MobileEventStreamSubscription = {
   supported: boolean;
   close: () => void;
 };
@@ -33,7 +33,9 @@ export function subscribeToMobileEventStream({
   let closed = false;
   let lastEventId = normalizeEventId(initialLastEventId) ?? 0;
   let backoffMs = 1000;
+  let hasOpened = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let activePoll: AbortController | null = null;
 
   const clearReconnectTimer = () => {
     if (reconnectTimer) {
@@ -57,16 +59,22 @@ export function subscribeToMobileEventStream({
 
   const poll = async () => {
     if (closed) return;
-    onStatusChange?.("connecting");
+    if (!hasOpened) onStatusChange?.("connecting");
+    const controller = new AbortController();
+    activePoll = controller;
     try {
-      const response = await client.pollEvents({ lastEventId, timeoutMs });
+      const response = await client.pollEvents({ lastEventId, timeoutMs, signal: controller.signal });
       if (closed) return;
+      activePoll = null;
+      hasOpened = true;
       onStatusChange?.("open");
       backoffMs = 1000;
       lastEventId = Math.max(lastEventId, response.nextEventId);
       for (const event of response.events) onAuditEvent(event);
       void poll();
     } catch (error) {
+      activePoll = null;
+      if (closed || controller.signal.aborted) return;
       scheduleReconnect(error instanceof Error ? error : new Error("Failed to poll events"));
     }
   };
@@ -77,6 +85,8 @@ export function subscribeToMobileEventStream({
     supported: true,
     close: () => {
       closed = true;
+      activePoll?.abort();
+      activePoll = null;
       clearReconnectTimer();
       onStatusChange?.("closed");
     },

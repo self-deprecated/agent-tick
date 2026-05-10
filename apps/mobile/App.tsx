@@ -67,7 +67,7 @@ import {
   serverURLStorageKey,
   type RuntimeAuthConfig,
 } from "./mobileAuth";
-import { mobileEventStreamsAvailable, subscribeToMobileEventStream } from "./mobileEvents";
+import { mobileEventStreamsAvailable, subscribeToMobileEventStream, type MobileEventStreamSubscription } from "./mobileEvents";
 import {
   diagnosticEvents,
   diagnosticsEnabled as readDiagnosticsEnabled,
@@ -551,6 +551,13 @@ function AgentTickApp({
   }, []);
 
   const loadRef = useRef<((options?: { visible?: boolean }) => Promise<void>) | null>(null);
+  const realtimeSubscriptionRef = useRef<MobileEventStreamSubscription | null>(null);
+  const [realtimeRestartToken, setRealtimeRestartToken] = useState(0);
+  const interruptRealtime = useCallback(() => {
+    realtimeSubscriptionRef.current?.close();
+    realtimeSubscriptionRef.current = null;
+    setRealtimeRestartToken((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener((notification) => {
@@ -559,11 +566,12 @@ function AgentTickApp({
         seenRequestIDs.current.add(id);
         recordDiagnostic("info", "notifications", "received", { requestId: id });
       }
+      interruptRealtime();
       void loadRef.current?.({ visible: false });
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [interruptRealtime]);
 
   useEffect(() => {
     if (!settingsLoaded) {
@@ -704,10 +712,13 @@ function AgentTickApp({
   useEffect(() => {
     if (!settingsLoaded || !hasRequestAuth) return;
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void load({ visible: false });
+      if (state === "active") {
+        interruptRealtime();
+        void load({ visible: false });
+      }
     });
     return () => subscription.remove();
-  }, [hasRequestAuth, load, settingsLoaded]);
+  }, [hasRequestAuth, interruptRealtime, load, settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded) {
@@ -789,11 +800,14 @@ function AgentTickApp({
       },
     });
 
+    realtimeSubscriptionRef.current = subscription;
+
     return () => {
       clearRefreshTimer();
       subscription.close();
+      if (realtimeSubscriptionRef.current === subscription) realtimeSubscriptionRef.current = null;
     };
-  }, [hasRequestAuth, load, realtimeUnavailable, sdk, settingsLoaded]);
+  }, [hasRequestAuth, load, realtimeRestartToken, realtimeUnavailable, sdk, settingsLoaded]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -853,6 +867,7 @@ function AgentTickApp({
     request: ApprovalRequest,
     payload: { choiceId?: string; message?: string; answers?: Record<string, string[]> },
   ) => {
+    interruptRealtime();
     try {
       const updated = normalizeApproval(await sdk.respondToApproval(request.id, payload));
       applyResponseResult(request.id, updated);
@@ -881,6 +896,7 @@ function AgentTickApp({
 
   const respondByID = useCallback(
     async (requestID: string, choiceID: string) => {
+      interruptRealtime();
       try {
         const updated = normalizeApproval(await sdk.respondToApproval(requestID, { choiceId: choiceID }));
         applyResponseResult(requestID, updated);
@@ -897,7 +913,7 @@ function AgentTickApp({
         setScreen("approvals");
       }
     },
-    [applyResponseResult, load, sdk],
+    [applyResponseResult, interruptRealtime, load, sdk],
   );
 
   useEffect(() => {
@@ -915,6 +931,7 @@ function AgentTickApp({
         setNotificationTargetID(fallback.notificationTargetID);
         setSelectedID(fallback.selectedID);
         setScreen(fallback.screen);
+        interruptRealtime();
         void loadRef.current?.({ visible: false });
       },
     );
@@ -927,15 +944,17 @@ function AgentTickApp({
           setNotificationTargetID(fallback.notificationTargetID);
           setSelectedID(fallback.selectedID);
           setScreen(fallback.screen);
+          interruptRealtime();
           void loadRef.current?.({ visible: false });
         }
       })
       .catch(() => undefined);
 
     return () => subscription.remove();
-  }, [respondByID]);
+  }, [interruptRealtime, respondByID]);
 
   const checkConnection = async () => {
+    interruptRealtime();
     setConnectionStatus("checking");
     await load({ visible: true });
   };

@@ -349,12 +349,12 @@ export class AgentTickClient {
     return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
   }
 
-  pollEvents(options: { lastEventId?: number; timeoutMs?: number } = {}): Promise<EventPollResponse> {
+  pollEvents(options: { lastEventId?: number; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<EventPollResponse> {
     const params = new URLSearchParams();
     if (options.lastEventId !== undefined) params.set('lastEventId', String(Math.max(Math.trunc(options.lastEventId), 0)));
     if (options.timeoutMs !== undefined) params.set('timeoutMs', String(Math.max(Math.trunc(options.timeoutMs), 0)));
     const suffix = params.size ? `?${params.toString()}` : '';
-    return this.#request('GET', `/v1/events/poll${suffix}`, EventPollResponseSchema);
+    return this.#request('GET', `/v1/events/poll${suffix}`, EventPollResponseSchema, options.signal ? { signal: options.signal } : {});
   }
 
   async createEventStreamURL(options: { lastEventId?: number } = {}): Promise<string> {
@@ -402,7 +402,7 @@ export class AgentTickClient {
     return this.#request('POST', `/v1/devices/${encodeURIComponent(id)}/unregister`, DeviceRecordSchema, { body: {} });
   }
 
-  async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown; includeOrganization?: boolean } = {}): Promise<T> {
+  async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown; includeOrganization?: boolean; signal?: AbortSignal } = {}): Promise<T> {
     const headers = new Headers();
     headers.set('Accept', 'application/json');
 
@@ -413,6 +413,7 @@ export class AgentTickClient {
     if (organizationId) headers.set('X-Agent-Tick-Organization-ID', organizationId);
 
     const init: RequestInit = { method, headers };
+    if (options.signal) init.signal = options.signal;
     if (options.body !== undefined) {
       headers.set('Content-Type', 'application/json');
       init.body = JSON.stringify(options.body);
