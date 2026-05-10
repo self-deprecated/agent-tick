@@ -1,4 +1,5 @@
 import { AuthView } from "@clerk/expo/native";
+import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -21,6 +22,7 @@ const styles = StyleSheet.create({
   shell: {
     backgroundColor: "#f6f0e5",
     flex: 1,
+    paddingTop: Constants.statusBarHeight,
   },
   nativeHeader: {
     gap: 8,

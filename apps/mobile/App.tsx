@@ -1856,6 +1856,7 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     backgroundColor: "#f7f2e8",
+    paddingTop: Constants.statusBarHeight,
   },
   emptyState: {
     alignItems: "stretch",
