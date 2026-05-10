@@ -1,4 +1,4 @@
-import { agentTickHostedServerURL, clerkTokenCacheKey, fetchRuntimeAuthConfig, hostedServerURL, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeSavedMobileAccounts, normalizeServerURL, savedMobileAccountID, upsertSavedMobileAccount } from "./mobileAuth";
+import { agentTickHostedServerURL, clerkTokenCacheKey, fetchRuntimeAuthConfig, hostedServerURL, mobileAccountSessionTokenKey, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeSavedMobileAccounts, normalizeServerURL, savedMobileAccountID, upsertSavedMobileAccount } from "./mobileAuth";
 
 describe("mobile auth config", () => {
   it("normalizes server URLs", () => {
@@ -34,14 +34,23 @@ describe("mobile auth config", () => {
     const second = upsertSavedMobileAccount(first, {
       serverURL: "https://agenttick.sh",
       authProvider: "clerk",
+      userID: "usr_1",
+      email: "ada@example.com",
       organizationID: "org_1",
-      label: "Platform",
+      label: "GitHub account",
       updatedAt: "2026-05-10T00:01:00.000Z",
     });
 
     expect(first[0]?.id).toBe(savedMobileAccountID({ serverURL: "https://tick.example.com", authProvider: "local", deviceID: "dev_1" }));
+    expect(second[0]?.id).toBe(savedMobileAccountID({ serverURL: "https://agenttick.sh", authProvider: "clerk", userID: "usr_1" }));
     expect(JSON.stringify(second)).not.toContain("agent_");
-    expect(normalizeSavedMobileAccounts(JSON.parse(JSON.stringify(second))).map((account) => account.label)).toEqual(["Platform", "Example device"]);
+    expect(normalizeSavedMobileAccounts(JSON.parse(JSON.stringify(second))).map((account) => account.label)).toEqual(["GitHub account", "Example device"]);
+  });
+
+  it("namespaces saved Agent Tick account session tokens by account ID", () => {
+    expect(mobileAccountSessionTokenKey("clerk:https://agenttick.sh:usr_1")).toBe(
+      "agent-tick.mobileAccountSession.clerk%3Ahttps%3A%2F%2Fagenttick.sh%3Ausr_1",
+    );
   });
 
   it("namespaces Clerk token cache by server and publishable key", () => {

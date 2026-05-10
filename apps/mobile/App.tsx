@@ -64,6 +64,7 @@ import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
   fetchRuntimeAuthConfig,
   mobileAccountsStorageKey,
+  mobileAccountSessionTokenKey,
   mobileSessionStorageKeyList,
   mobileSessionStorageKeys,
   hostedServerURL,
@@ -118,6 +119,7 @@ type AgentTickAppProps = {
   initialServerURL?: string;
   initialAuthConfig?: RuntimeAuthConfig | null;
   clerkTokenProvider?: ClerkTokenProvider;
+  clerkSessionToken?: string | null;
   clerkSignedIn?: boolean;
   onRuntimeAuthConfig?: (serverURL: string, config: RuntimeAuthConfig | null) => void;
 };
@@ -318,8 +320,20 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     <AgentTickApp
       {...props}
       clerkSignedIn={true}
+      clerkSessionToken={mobileSessionToken}
       clerkTokenProvider={async () => mobileSessionToken}
       onForgetClerkSession={(options) => void handleForgetClerkSession(options)}
+      onSelectSavedClerkAccount={async (account) => {
+        const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
+        if (!savedToken) return false;
+        refreshedMobileSessionFromClerk.current = true;
+        setSignedOutManually(false);
+        setOpenSignInAfterSignOut(false);
+        setClerkLoginToken(null);
+        setMobileSessionToken(savedToken);
+        await tokenCache?.saveToken(agentTickMobileSessionJwtKey, savedToken);
+        return true;
+      }}
     />
   );
 }
@@ -424,10 +438,15 @@ function HostedFirstOnboardingScreen({
 function AgentTickApp({
   initialServerURL,
   initialAuthConfig,
+  clerkSessionToken,
   clerkTokenProvider,
   onRuntimeAuthConfig,
   onForgetClerkSession,
-}: AgentTickAppProps & { onForgetClerkSession?: (options?: { reopenSignIn?: boolean }) => void }) {
+  onSelectSavedClerkAccount,
+}: AgentTickAppProps & {
+  onForgetClerkSession?: (options?: { reopenSignIn?: boolean }) => void;
+  onSelectSavedClerkAccount?: (account: SavedMobileAccount) => Promise<boolean>;
+}) {
   const [screen, setScreen] = useState<Screen>("approvals");
   const [serverURL, setServerURL] = useState(initialServerURL ?? defaultServer);
   const [runtimeAuthConfig, setRuntimeAuthConfig] = useState<RuntimeAuthConfig | null>(initialAuthConfig ?? null);
@@ -701,23 +720,28 @@ function AgentTickApp({
       [scopedKeys.organizationID, selectedOrganizationID],
       [scopedKeys.pushStatus, pushStatus],
     ]);
-    const shouldSaveAccount = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(selectedOrganizationID) : Boolean(token || deviceID);
+    const shouldSaveAccount = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(currentAccountProfile?.userId && clerkSessionToken) : Boolean(token || deviceID);
     if (shouldSaveAccount) {
       setSavedAccounts((current) => {
         const next = upsertSavedMobileAccount(current, {
           serverURL: activeServerURL,
           authProvider: runtimeAuthConfig?.authProvider ?? "local",
+          userID: currentAccountProfile?.userId,
           email: currentAccountProfile?.email,
           signInMethod: currentAccountProfile?.signInMethod,
           organizationID: selectedOrganizationID || undefined,
           deviceID: deviceID || undefined,
           label: runtimeAuthConfig?.authProvider === "clerk" && currentAccountProfile?.signInMethod ? `${currentAccountProfile.signInMethod} account` : "",
         });
+        const savedAccount = next[0];
+        if (savedAccount && runtimeAuthConfig?.authProvider === "clerk" && clerkSessionToken) {
+          void tokenCache?.saveToken(mobileAccountSessionTokenKey(savedAccount.id), clerkSessionToken);
+        }
         void AsyncStorage.setItem(mobileAccountsStorageKey, JSON.stringify(next));
         return next;
       });
     }
-  }, [currentAccountProfile?.email, currentAccountProfile?.signInMethod, deviceID, loadedSessionServerURL, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
+  }, [clerkSessionToken, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.userId, deviceID, loadedSessionServerURL, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -726,11 +750,21 @@ function AgentTickApp({
 
   const switchSavedAccount = useCallback((account: SavedMobileAccount) => {
     interruptRealtime();
-    setServerURL(account.serverURL);
-    setSelectedOrganizationID(account.organizationID ?? "");
-    setLoadedSessionServerURL("");
-    setScreen("approvals");
-  }, [interruptRealtime]);
+    const switchAccount = async () => {
+      if (account.authProvider === "clerk") {
+        const switched = await onSelectSavedClerkAccount?.(account);
+        if (!switched) {
+          setError("Saved account session is no longer available. Add the account again to continue.");
+          return;
+        }
+      }
+      setServerURL(account.serverURL);
+      setSelectedOrganizationID(account.organizationID ?? "");
+      setLoadedSessionServerURL("");
+      setScreen("approvals");
+    };
+    void switchAccount();
+  }, [interruptRealtime, onSelectSavedClerkAccount]);
 
   const refreshOrganizations = useCallback(async () => {
     if (runtimeAuthConfig?.authProvider !== "clerk") {

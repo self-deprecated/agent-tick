@@ -11,6 +11,7 @@ export type SavedMobileAccount = {
   serverURL: string;
   authProvider: MobileAuthProvider | string;
   label: string;
+  userID?: string;
   email?: string;
   signInMethod?: string;
   organizationID?: string;
@@ -60,9 +61,9 @@ export function mobileSessionStorageKeyList(serverURL: string): string[] {
   return [keys.token, keys.deviceID, keys.organizationID, keys.pushStatus];
 }
 
-export function savedMobileAccountID(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { organizationID?: string; deviceID?: string }) {
+export function savedMobileAccountID(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { userID?: string; email?: string; organizationID?: string; deviceID?: string }) {
   const serverURL = normalizeServerURL(input.serverURL);
-  const scope = input.organizationID?.trim() || input.deviceID?.trim() || "default";
+  const scope = input.userID?.trim() || input.email?.trim().toLowerCase() || input.organizationID?.trim() || input.deviceID?.trim() || "default";
   return `${input.authProvider}:${serverURL}:${scope}`;
 }
 
@@ -75,11 +76,12 @@ export function normalizeSavedMobileAccounts(value: unknown): SavedMobileAccount
     const authProvider = typeof account.authProvider === "string" ? account.authProvider : "";
     if (!serverURL || !authProvider) return [];
     const normalized: SavedMobileAccount = {
-      id: typeof account.id === "string" && account.id ? account.id : savedMobileAccountID({ serverURL, authProvider, organizationID: account.organizationID, deviceID: account.deviceID }),
+      id: typeof account.id === "string" && account.id ? account.id : savedMobileAccountID({ serverURL, authProvider, userID: account.userID, email: account.email, organizationID: account.organizationID, deviceID: account.deviceID }),
       serverURL,
       authProvider,
-      label: typeof account.label === "string" && account.label ? account.label : accountLabel({ serverURL, authProvider, organizationID: account.organizationID, deviceID: account.deviceID }),
+      label: typeof account.label === "string" && account.label ? account.label : accountLabel({ serverURL, authProvider, email: account.email, signInMethod: account.signInMethod, organizationID: account.organizationID, deviceID: account.deviceID }),
       updatedAt: typeof account.updatedAt === "string" && account.updatedAt ? account.updatedAt : new Date(0).toISOString(),
+      ...(typeof account.userID === "string" && account.userID ? { userID: account.userID } : {}),
       ...(typeof account.email === "string" && account.email ? { email: account.email } : {}),
       ...(typeof account.signInMethod === "string" && account.signInMethod ? { signInMethod: account.signInMethod } : {}),
       ...(typeof account.organizationID === "string" && account.organizationID ? { organizationID: account.organizationID } : {}),
@@ -103,6 +105,10 @@ export function upsertSavedMobileAccount(accounts: SavedMobileAccount[], input: 
 function accountLabel(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { email?: string; signInMethod?: string; organizationID?: string; deviceID?: string }) {
   if (input.authProvider === "clerk") return input.signInMethod ? `${input.signInMethod} account` : input.email ? "Account" : "agenttick.sh";
   return input.deviceID ? `${normalizeServerURL(input.serverURL)} · ${input.deviceID}` : normalizeServerURL(input.serverURL);
+}
+
+export function mobileAccountSessionTokenKey(accountID: string): string {
+  return `agent-tick.mobileAccountSession.${encodeURIComponent(accountID)}`;
 }
 
 export function clerkTokenCacheKey(serverURL: string, publishableKey: string): string {
