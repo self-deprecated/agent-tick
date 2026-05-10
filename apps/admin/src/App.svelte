@@ -279,7 +279,6 @@
 		await refreshOrganizations();
 		await Promise.all([refreshApprovals(), refreshAgentTokens(), refreshAuditEvents(), refreshBilling(), refreshDevices(), refreshOnboarding(), refreshProjects(), refreshTeams(), refreshPolicies(), refreshInvites(), refreshOrganizationMembers(), refreshMembershipRequests(), refreshMyMembershipRequests()]);
 		void ensureEventStream();
-		void maybeCompleteCliSetup();
 	}
 
 	function stopEventStream(): void {
@@ -920,7 +919,8 @@
 			{:else if cliSetupStatus === 'error'}
 				<p class="error">{cliSetupError}</p>
 			{:else}
-				<p class="subtle">Preparing browser setup for <strong>{cliSetup.name}</strong>…</p>
+				<p class="subtle">Authorize this browser tab to create an agent token for <strong>{cliSetup.name}</strong> and return it to your terminal.</p>
+				<button onclick={() => void maybeCompleteCliSetup()}>Authorize CLI setup</button>
 			{/if}
 		</section>
 	{/if}
