@@ -75,6 +75,7 @@ describe('AgentTickClient', () => {
     await expect(client.sendMobileDiagnostics({
       platform: 'ios',
       connectionStatus: 'connected',
+      currentScreen: 'settings',
       events: [{ level: 'error', area: 'notifications', message: 'native_exception', at: '2026-01-01T00:00:00.000Z' }]
     })).resolves.toEqual({ accepted: 1 });
     expect(seen).toEqual({
@@ -85,6 +86,7 @@ describe('AgentTickClient', () => {
       body: {
         platform: 'ios',
         connectionStatus: 'connected',
+        currentScreen: 'settings',
         events: [{ level: 'error', area: 'notifications', message: 'native_exception', at: '2026-01-01T00:00:00.000Z' }]
       }
     });

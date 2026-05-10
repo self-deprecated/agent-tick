@@ -22,6 +22,7 @@ export async function registerMobileDiagnosticsRoutes(app: FastifyInstance, { co
       connectionStatus: input.connectionStatus,
       pushStatus: input.pushStatus,
       notificationStatus: input.notificationStatus,
+      currentScreen: input.currentScreen,
       lastErrorMessage: input.lastErrorMessage
     };
     const events = input.events.map((event) => ({

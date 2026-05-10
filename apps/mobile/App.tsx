@@ -442,6 +442,7 @@ function AgentTickApp({
   const seenRequestIDs = useRef<Set<string>>(new Set());
   const didPrimeNotifications = useRef(false);
   const pairingInFlight = useRef(false);
+  const previousScreenRef = useRef<Screen>(screen);
 
   const projectGroups = useMemo(() => groupRequestsByProject(requests), [requests]);
   const visibleRequests = useMemo(
@@ -483,6 +484,23 @@ function AgentTickApp({
   useEffect(() => {
     setRealtimeUnavailable(false);
   }, [selectedOrganizationID, serverURL]);
+
+  useEffect(() => {
+    const previousScreen = previousScreenRef.current;
+    if (previousScreen === screen) return;
+    previousScreenRef.current = screen;
+    if (!diagnosticsEnabled) return;
+    recordDiagnostic("info", "navigation", "screen_changed", {
+      from: previousScreen,
+      to: screen,
+      pendingRequestCount: requests.length,
+      hasSelectedRequest: Boolean(selectedID),
+      hasSelectedProject: Boolean(selectedProjectID),
+      hasSelectedOrganization: Boolean(selectedOrganizationID),
+      connectionStatus,
+    });
+    setDiagnosticsEventCount(diagnosticEvents().length);
+  }, [connectionStatus, diagnosticsEnabled, requests.length, screen, selectedID, selectedOrganizationID, selectedProjectID]);
 
   useEffect(() => {
     let cancelled = false;
@@ -768,12 +786,13 @@ function AgentTickApp({
       connectionStatus,
       pushStatus,
       notificationStatus,
+      currentScreen: screen,
       lastErrorMessage: error ?? undefined,
     })).then((accepted) => {
       if (accepted > 0) setDiagnosticsLastSentAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
       setDiagnosticsEventCount(diagnosticEvents().length);
     }).catch(() => undefined);
-  }, [connectionStatus, diagnosticsEnabled, error, hasRequestAuth, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, sdk, serverURL, settingsLoaded]);
+  }, [connectionStatus, diagnosticsEnabled, error, hasRequestAuth, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, screen, sdk, serverURL, settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded || !hasRequestAuth || realtimeUnavailable || !mobileEventStreamsAvailable()) {
@@ -1270,6 +1289,7 @@ function AgentTickApp({
         connectionStatus,
         pushStatus,
         notificationStatus,
+        currentScreen: screen,
         lastErrorMessage: error ?? undefined,
       }));
       setDiagnosticsLastSentAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
@@ -1278,7 +1298,7 @@ function AgentTickApp({
     } catch (err) {
       Alert.alert("Diagnostics failed", err instanceof Error ? err.message : "Could not send diagnostics");
     }
-  }, [connectionStatus, error, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, sdk, serverURL]);
+  }, [connectionStatus, error, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, screen, sdk, serverURL]);
 
   const handlePairingScan = async (result: BarcodeScanningResult) => {
     if (pairingInFlight.current) {
@@ -1489,6 +1509,7 @@ function diagnosticsSnapshot(input: {
   connectionStatus: ConnectionStatus;
   pushStatus: PushStatus;
   notificationStatus: NotificationStatus;
+  currentScreen?: Screen;
   lastErrorMessage?: string;
 }) {
   return {
@@ -1499,6 +1520,7 @@ function diagnosticsSnapshot(input: {
     connectionStatus: input.connectionStatus,
     pushStatus: input.pushStatus,
     notificationStatus: input.notificationStatus,
+    currentScreen: input.currentScreen,
     ...(input.lastErrorMessage ? { lastErrorMessage: input.lastErrorMessage } : {}),
   };
 }

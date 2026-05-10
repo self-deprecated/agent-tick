@@ -21,6 +21,7 @@ export type DiagnosticSnapshot = {
   connectionStatus: ConnectionStatus;
   pushStatus: PushStatus;
   notificationStatus: NotificationStatus;
+  currentScreen?: string;
   lastErrorMessage?: string;
 };
 

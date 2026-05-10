@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiErrorEnvelopeSchema, AuthConfigSchema, BillingStatusSchema, CreateApprovalRequestSchema, InviteEmailDeliverySchema, OrganizationInviteEmailResultSchema, UpdateDevicePushTokenSchema } from '../src/index.js';
+import { ApiErrorEnvelopeSchema, AuthConfigSchema, BillingStatusSchema, CreateApprovalRequestSchema, CreateMobileDiagnosticsSchema, InviteEmailDeliverySchema, OrganizationInviteEmailResultSchema, UpdateDevicePushTokenSchema } from '../src/index.js';
 
 describe('shared schemas', () => {
   it('validates public auth config', () => {
@@ -57,6 +57,16 @@ describe('shared schemas', () => {
   it('validates device push-token aliases', () => {
     expect(UpdateDevicePushTokenSchema.parse({ token: 'ExponentPushToken[1]' })).toEqual({ token: 'ExponentPushToken[1]' });
     expect(() => UpdateDevicePushTokenSchema.parse({})).toThrow();
+  });
+
+  it('validates mobile diagnostics screen context', () => {
+    expect(
+      CreateMobileDiagnosticsSchema.parse({
+        platform: 'ios',
+        currentScreen: 'settings',
+        events: [{ level: 'info', area: 'navigation', message: 'screen_changed', at: '2026-01-01T00:00:00.000Z' }]
+      }).currentScreen
+    ).toBe('settings');
   });
 
   it('validates structured API errors', () => {

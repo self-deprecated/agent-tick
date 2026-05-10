@@ -148,6 +148,7 @@ describe('server skeleton', () => {
       payload: {
         platform: 'ios',
         connectionStatus: 'connected',
+        currentScreen: 'settings',
         events: [{ level: 'error', area: 'notifications', message: 'native_exception', at: '2026-01-01T00:00:00.000Z' }]
       }
     });
@@ -161,7 +162,14 @@ describe('server skeleton', () => {
       headers: { authorization: `Bearer ${token}` }
     });
     expect(listed.statusCode).toBe(200);
-    expect(listed.json()).toEqual([expect.objectContaining({ level: 'error', area: 'notifications', message: 'native_exception' })]);
+    expect(listed.json()).toEqual([
+      expect.objectContaining({
+        level: 'error',
+        area: 'notifications',
+        message: 'native_exception',
+        metadata: expect.objectContaining({ currentScreen: 'settings' })
+      })
+    ]);
   });
 
   it('rejects invalid and tampered Agent Tick mobile sessions', async () => {

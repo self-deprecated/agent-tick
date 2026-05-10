@@ -77,6 +77,7 @@ export const CreateMobileDiagnosticsSchema = z.object({
   connectionStatus: z.string().max(40).optional(),
   pushStatus: z.string().max(40).optional(),
   notificationStatus: z.string().max(40).optional(),
+  currentScreen: z.string().max(40).optional(),
   lastErrorMessage: z.string().max(500).optional(),
   events: z.array(MobileDiagnosticEventSchema).max(100).default([])
 });
