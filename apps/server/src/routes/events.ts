@@ -1,17 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import type { AgentTickStore, AuditEventRecord } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
-import { requirePrivilegedHuman } from '../auth/context.js';
+import { requireHuman, requirePrivilegedHuman } from '../auth/context.js';
+import type { OrganizationEventBus } from '../services/eventBus.js';
 
 export interface EventRoutesOptions {
   config: ServerConfig;
   store: AgentTickStore;
+  eventBus: OrganizationEventBus;
 }
 
 const eventPollMs = 1000;
 const eventHeartbeatMs = 15000;
 
-export async function registerEventRoutes(app: FastifyInstance, { config, store }: EventRoutesOptions): Promise<void> {
+export async function registerEventRoutes(app: FastifyInstance, { config, store, eventBus }: EventRoutesOptions): Promise<void> {
   app.post('/v1/events/ticket', async (request) => {
     const auth = await requirePrivilegedHuman(request, config, store);
     return store.createEventTicket({
@@ -20,6 +22,37 @@ export async function registerEventRoutes(app: FastifyInstance, { config, store 
       ...(auth.userId ? { userId: auth.userId } : {}),
       ...(auth.agentId ? { agentId: auth.agentId } : {})
     });
+  });
+
+  app.get('/v1/events/poll', async (request, reply) => {
+    const auth = await requireHuman(request, config, store);
+    const timeoutMs = timeoutMsFromQuery(request.query);
+    let lastEventId = lastEventIdFromRequest(request.query, undefined) ?? latestAuditEventId(store, auth.organizationId);
+    const eventStore = store as AgentTickStore & {
+      listAuditEventsAfter(organizationId: string, afterEventId?: number, limit?: number): AuditEventRecord[];
+    };
+    const toResponse = (events: AuditEventRecord[]) => {
+      const nextEventId = events.at(-1)?.eventId ?? lastEventId;
+      return {
+        events: events.map((event) => ({
+          eventId: event.eventId,
+          type: event.eventType,
+          targetId: event.targetId,
+          createdAt: event.createdAt
+        })),
+        nextEventId
+      };
+    };
+
+    const initialEvents = eventStore.listAuditEventsAfter(auth.organizationId, lastEventId, 50);
+    if (initialEvents.length > 0) return toResponse(initialEvents);
+
+    const abortController = new AbortController();
+    request.raw.once('close', () => abortController.abort());
+    await eventBus.waitForOrganizationEvent(auth.organizationId, timeoutMs, abortController.signal);
+    if (abortController.signal.aborted) return toResponse([]);
+    const events = eventStore.listAuditEventsAfter(auth.organizationId, lastEventId, 50);
+    return toResponse(events);
   });
 
   app.get('/v1/events', async (request, reply) => {
@@ -87,6 +120,14 @@ function lastEventIdFromRequest(query: unknown, lastEventIdHeader: string | stri
   const queryValue = (query as { lastEventId?: unknown }).lastEventId;
   const headerValue = Array.isArray(lastEventIdHeader) ? lastEventIdHeader[0] : lastEventIdHeader;
   return parseEventId(queryValue ?? headerValue);
+}
+
+function timeoutMsFromQuery(query: unknown): number {
+  const value = (query as { timeoutMs?: unknown }).timeoutMs;
+  if (typeof value !== 'string' && typeof value !== 'number') return 25_000;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 25_000;
+  return Math.min(Math.max(Math.trunc(parsed), 5_000), 30_000);
 }
 
 function parseEventId(value: unknown): number | null {

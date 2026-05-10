@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Platform,
   Pressable,
   ScrollView,
@@ -421,6 +422,7 @@ function AgentTickApp({
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
   const [diagnosticsEventCount, setDiagnosticsEventCount] = useState(0);
   const [diagnosticsLastSentAt, setDiagnosticsLastSentAt] = useState("");
+  const [realtimeUnavailable, setRealtimeUnavailable] = useState(false);
   const [availability, setAvailability] = useState<AvailabilityState>("available");
   const [error, setError] = useState<string | null>(null);
   const [scannerLocked, setScannerLocked] = useState(false);
@@ -465,6 +467,10 @@ function AgentTickApp({
     [currentAuthToken, selectedOrganizationID, serverURL],
   );
   const hasRequestAuth = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(selectedOrganizationID) : Boolean(token);
+
+  useEffect(() => {
+    setRealtimeUnavailable(false);
+  }, [selectedOrganizationID, serverURL]);
 
   useEffect(() => {
     let cancelled = false;
@@ -544,12 +550,16 @@ function AgentTickApp({
     ]).catch(() => undefined);
   }, []);
 
+  const loadRef = useRef<((options?: { visible?: boolean }) => Promise<void>) | null>(null);
+
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener((notification) => {
       const id = notificationRequestID(notification.request.content.data);
       if (id) {
         seenRequestIDs.current.add(id);
+        recordDiagnostic("info", "notifications", "received", { requestId: id });
       }
+      void loadRef.current?.({ visible: false });
     });
 
     return () => subscription.remove();
@@ -688,18 +698,30 @@ function AgentTickApp({
   }, [notificationTargetID, pushStatus, runtimeAuthConfig?.authProvider, sdk, selectedOrganizationID, selectedProjectID]);
 
   useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+
+  useEffect(() => {
+    if (!settingsLoaded || !hasRequestAuth) return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void load({ visible: false });
+    });
+    return () => subscription.remove();
+  }, [hasRequestAuth, load, settingsLoaded]);
+
+  useEffect(() => {
     if (!settingsLoaded) {
       return;
     }
 
     void load({ visible: false });
-    if (hasRequestAuth && mobileEventStreamsAvailable()) {
+    if (hasRequestAuth && mobileEventStreamsAvailable() && !realtimeUnavailable) {
       return;
     }
 
-    const timer = setInterval(() => void load({ visible: false }), 5000);
+    const timer = setInterval(() => void load({ visible: false }), hasRequestAuth ? 15_000 : 5_000);
     return () => clearInterval(timer);
-  }, [hasRequestAuth, load, settingsLoaded]);
+  }, [hasRequestAuth, load, realtimeUnavailable, settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded || !hasRequestAuth) {
@@ -731,7 +753,7 @@ function AgentTickApp({
   }, [connectionStatus, diagnosticsEnabled, error, hasRequestAuth, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, sdk, serverURL, settingsLoaded]);
 
   useEffect(() => {
-    if (!settingsLoaded || !hasRequestAuth || !mobileEventStreamsAvailable()) {
+    if (!settingsLoaded || !hasRequestAuth || realtimeUnavailable || !mobileEventStreamsAvailable()) {
       return;
     }
 
@@ -757,14 +779,21 @@ function AgentTickApp({
         if (status === "open") setConnectionStatus("connected");
         if (status === "connecting" || status === "reconnecting") setConnectionStatus("checking");
       },
-      onError: () => setConnectionStatus("disconnected"),
+      onError: (eventError) => {
+        setConnectionStatus("disconnected");
+        if (apiStatus(eventError) === 404) {
+          setRealtimeUnavailable(true);
+          recordDiagnostic("warn", "realtime", "long_poll_unavailable", { status: 404 });
+          setDiagnosticsEventCount(diagnosticEvents().length);
+        }
+      },
     });
 
     return () => {
       clearRefreshTimer();
       subscription.close();
     };
-  }, [hasRequestAuth, load, sdk, settingsLoaded]);
+  }, [hasRequestAuth, load, realtimeUnavailable, sdk, settingsLoaded]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -886,6 +915,7 @@ function AgentTickApp({
         setNotificationTargetID(fallback.notificationTargetID);
         setSelectedID(fallback.selectedID);
         setScreen(fallback.screen);
+        void loadRef.current?.({ visible: false });
       },
     );
 
@@ -897,6 +927,7 @@ function AgentTickApp({
           setNotificationTargetID(fallback.notificationTargetID);
           setSelectedID(fallback.selectedID);
           setScreen(fallback.screen);
+          void loadRef.current?.({ visible: false });
         }
       })
       .catch(() => undefined);

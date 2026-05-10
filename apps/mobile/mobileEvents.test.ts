@@ -1,133 +1,83 @@
-import type { EventSourceConstructor } from "@agent-tick/sdk";
 import { mobileEventStreamsAvailable, subscribeToMobileEventStream } from "./mobileEvents";
-
-class FakeEventSource {
-  static instances: FakeEventSource[] = [];
-
-  readonly listeners = new Map<string, Array<(event: Event) => void>>();
-  closed = false;
-
-  constructor(readonly url: string | URL) {
-    FakeEventSource.instances.push(this);
-  }
-
-  addEventListener(event: string, handler: (event: Event) => void) {
-    const handlers = this.listeners.get(event) ?? [];
-    handlers.push(handler);
-    this.listeners.set(event, handlers);
-  }
-
-  removeEventListener(event: string, handler: (event: Event) => void) {
-    const handlers = this.listeners.get(event) ?? [];
-    this.listeners.set(event, handlers.filter((candidate) => candidate !== handler));
-  }
-
-  close() {
-    this.closed = true;
-  }
-
-  emit(event: string, payload?: unknown, lastEventId = "") {
-    const message = {
-      data: payload === undefined ? undefined : JSON.stringify(payload),
-      lastEventId,
-    } as MessageEvent;
-    for (const handler of this.listeners.get(event) ?? []) {
-      handler(message);
-    }
-  }
-}
-
-const FakeEventSourceCtor = FakeEventSource as unknown as EventSourceConstructor;
 
 const flushPromises = () => Promise.resolve();
 
 describe("mobile event streams", () => {
-  beforeEach(() => {
-    FakeEventSource.instances = [];
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
-  it("reports unsupported runtimes without opening a ticketed stream", () => {
-    const statuses: string[] = [];
-    const client = { openEventStream: jest.fn() };
-
-    const subscription = subscribeToMobileEventStream({
-      client,
-      EventSource: null,
-      onAuditEvent: jest.fn(),
-      onStatusChange: (status) => statuses.push(status),
-    });
-
-    expect(subscription.supported).toBe(false);
-    expect(statuses).toEqual(["unsupported"]);
-    expect(client.openEventStream).not.toHaveBeenCalled();
+  it("uses long polling in React Native runtimes", () => {
+    expect(mobileEventStreamsAvailable()).toBe(true);
   });
 
-  it("opens ticketed event streams and refreshes on audit events", async () => {
+  it("polls for events and emits audit hints", async () => {
     const auditEvents: unknown[] = [];
     const statuses: string[] = [];
+    let secondPollStarted = false;
+    const pendingPoll = new Promise<{ events: []; nextEventId: number }>(() => undefined);
     const client = {
-      openEventStream: jest.fn(async () => new FakeEventSource("https://tick.example.com/v1/events?ticket=evt_123") as unknown as EventSource),
+      pollEvents: jest.fn(async () => {
+        if (client.pollEvents.mock.calls.length === 1) {
+          return { events: [{ eventId: 6, type: "approval.created", targetId: "req_123", createdAt: "2026-01-01T00:00:00.000Z" }], nextEventId: 6 };
+        }
+        secondPollStarted = true;
+        return pendingPoll;
+      }),
     };
 
     const subscription = subscribeToMobileEventStream({
       client,
-      EventSource: FakeEventSourceCtor,
+      initialLastEventId: 5,
+      timeoutMs: 25000,
       onAuditEvent: (event) => auditEvents.push(event),
       onStatusChange: (status) => statuses.push(status),
     });
 
     await flushPromises();
-    expect(subscription.supported).toBe(true);
-    expect(client.openEventStream).toHaveBeenCalledWith({ EventSource: FakeEventSourceCtor });
-
-    const source = FakeEventSource.instances[0]!;
-    source.emit("ready", { organizationId: "org_123", lastEventId: 5 });
-    source.emit("audit", { eventId: 6, action: "approval.created" }, "6");
-
-    expect(auditEvents).toEqual([{ eventId: 6, action: "approval.created" }]);
-    expect(statuses).toEqual(["connecting", "open"]);
-
+    await flushPromises();
     subscription.close();
-    expect(source.closed).toBe(true);
+
+    expect(subscription.supported).toBe(true);
+    expect(client.pollEvents).toHaveBeenCalledWith({ lastEventId: 5, timeoutMs: 25000 });
+    expect(client.pollEvents).toHaveBeenLastCalledWith({ lastEventId: 6, timeoutMs: 25000 });
+    expect(auditEvents).toEqual([{ eventId: 6, type: "approval.created", targetId: "req_123", createdAt: "2026-01-01T00:00:00.000Z" }]);
+    expect(statuses).toContain("connecting");
+    expect(statuses).toContain("open");
+    expect(secondPollStarted).toBe(true);
   });
 
-  it("reconnects with a fresh ticket and the last seen event id", async () => {
+  it("backs off and reconnects after polling errors", async () => {
     jest.useFakeTimers();
     const statuses: string[] = [];
+    const errors: Error[] = [];
+    const pendingPoll = new Promise<{ events: []; nextEventId: number }>(() => undefined);
     const client = {
-      openEventStream: jest.fn(async () => new FakeEventSource("https://tick.example.com/v1/events?ticket=evt_123") as unknown as EventSource),
+      pollEvents: jest
+        .fn()
+        .mockRejectedValueOnce(new Error("network"))
+        .mockImplementation(() => pendingPoll),
     };
 
     const subscription = subscribeToMobileEventStream({
       client,
-      EventSource: FakeEventSourceCtor,
       initialLastEventId: 3,
-      reconnectDelayMs: 100,
+      timeoutMs: 25000,
       onAuditEvent: jest.fn(),
+      onError: (error) => errors.push(error),
       onStatusChange: (status) => statuses.push(status),
     });
 
     await flushPromises();
-    const firstSource = FakeEventSource.instances[0]!;
-    firstSource.emit("ready", { organizationId: "org_123", lastEventId: 10 });
-    firstSource.emit("error");
+    expect(statuses).toContain("reconnecting");
+    expect(errors[0]?.message).toBe("network");
 
-    expect(firstSource.closed).toBe(true);
-    expect(client.openEventStream).toHaveBeenCalledWith({ lastEventId: 3, EventSource: FakeEventSourceCtor });
-
-    jest.advanceTimersByTime(100);
+    jest.advanceTimersByTime(2000);
     await flushPromises();
 
-    expect(client.openEventStream).toHaveBeenCalledTimes(2);
-    expect(client.openEventStream).toHaveBeenLastCalledWith({ lastEventId: 10, EventSource: FakeEventSourceCtor });
-    expect(statuses).toContain("reconnecting");
+    expect(client.pollEvents).toHaveBeenCalledTimes(2);
+    expect(client.pollEvents).toHaveBeenLastCalledWith({ lastEventId: 3, timeoutMs: 25000 });
 
     subscription.close();
-    jest.useRealTimers();
-  });
-
-  it("feature-detects EventSource support", () => {
-    expect(mobileEventStreamsAvailable(FakeEventSourceCtor)).toBe(true);
-    expect(mobileEventStreamsAvailable(null)).toBe(false);
   });
 });

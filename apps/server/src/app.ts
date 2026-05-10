@@ -23,6 +23,7 @@ import { registerProjectRoutes } from './routes/projects.js';
 import { registerTeamRoutes } from './routes/teams.js';
 import { registerTestSupportRoutes } from './routes/testSupport.js';
 import { createInviteEmailSender, type InviteEmailSender } from './services/inviteEmail.js';
+import { createOrganizationEventBus, publishAuditWrites } from './services/eventBus.js';
 import { createApprovalNotifier, type ApprovalNotifier } from './services/notifications.js';
 
 export interface BuildAppOptions {
@@ -49,6 +50,9 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
       }
     });
   });
+  const eventBus = createOrganizationEventBus();
+  publishAuditWrites(store, eventBus);
+
   registerRateLimitHook(app, config);
   await registerTestSupportRoutes(app, { config, store });
 
@@ -78,7 +82,7 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
   await registerTeamRoutes(app, { config, store });
   await registerPolicyRoutes(app, { config, store });
   await registerAuditRoutes(app, { config, store });
-  await registerEventRoutes(app, { config, store });
+  await registerEventRoutes(app, { config, store, eventBus });
 
   const adminIndexPath = await registerStaticAdmin(app, config.adminDistDir);
   setFallbackNotFoundHandler(app, adminIndexPath);
@@ -160,6 +164,7 @@ function rateLimitRule(method: string, routePath: string, config: ServerConfig):
   if (method === 'POST' && routePath === '/v1/mobile-diagnostics') return rule(120);
   if (method === 'POST' && routePath === '/v1/pairing-tokens') return rule(60);
   if (method === 'POST' && routePath === '/v1/events/ticket') return rule(60);
+  if (method === 'GET' && routePath === '/v1/events/poll') return rule(240);
   return null;
 }
 

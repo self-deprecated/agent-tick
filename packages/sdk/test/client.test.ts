@@ -153,6 +153,34 @@ describe('AgentTickClient', () => {
     expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/billing', organizationId: 'org_123' });
   });
 
+  it('polls events with auth and organization context', async () => {
+    const seen: { url?: string; method?: string; authorization?: string | null; organizationId?: string | null } = {};
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      tokenProvider: () => 'mobile-session',
+      organizationIdProvider: () => 'org_123',
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        seen.url = String(input);
+        seen.method = init?.method;
+        seen.authorization = headers.get('Authorization');
+        seen.organizationId = headers.get('X-Agent-Tick-Organization-ID');
+        return jsonResponse({ events: [{ eventId: 43, type: 'approval.created', targetId: 'req_123', createdAt: '2026-01-01T00:00:00.000Z' }], nextEventId: 43 });
+      }
+    });
+
+    await expect(client.pollEvents({ lastEventId: 42, timeoutMs: 25000 })).resolves.toEqual({
+      events: [{ eventId: 43, type: 'approval.created', targetId: 'req_123', createdAt: '2026-01-01T00:00:00.000Z' }],
+      nextEventId: 43
+    });
+    expect(seen).toEqual({
+      method: 'GET',
+      url: 'https://tick.example.com/v1/events/poll?lastEventId=42&timeoutMs=25000',
+      authorization: 'Bearer mobile-session',
+      organizationId: 'org_123'
+    });
+  });
+
   it('builds event stream URLs from short-lived tickets', async () => {
     const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
     const client = new AgentTickClient({

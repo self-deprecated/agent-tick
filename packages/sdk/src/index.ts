@@ -19,6 +19,7 @@ import {
   CreateTeamSchema,
   DeviceCredentialSchema,
   DeviceRecordSchema,
+  EventPollResponseSchema,
   EventTicketResponseSchema,
   HealthResponseSchema,
   HeartbeatRequestSchema,
@@ -70,6 +71,8 @@ import {
   type CreateTeam,
   type DeviceCredential,
   type DeviceRecord,
+  type EventPollEvent,
+  type EventPollResponse,
   type EventTicketResponse,
   type HealthResponse,
   type HeartbeatRequest,
@@ -346,6 +349,14 @@ export class AgentTickClient {
     return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} });
   }
 
+  pollEvents(options: { lastEventId?: number; timeoutMs?: number } = {}): Promise<EventPollResponse> {
+    const params = new URLSearchParams();
+    if (options.lastEventId !== undefined) params.set('lastEventId', String(Math.max(Math.trunc(options.lastEventId), 0)));
+    if (options.timeoutMs !== undefined) params.set('timeoutMs', String(Math.max(Math.trunc(options.timeoutMs), 0)));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return this.#request('GET', `/v1/events/poll${suffix}`, EventPollResponseSchema);
+  }
+
   async createEventStreamURL(options: { lastEventId?: number } = {}): Promise<string> {
     const ticket = await this.createEventTicket();
     const url = new URL('/v1/events', this.#baseUrl);
@@ -465,6 +476,8 @@ export type {
   CreateTeam,
   DeviceCredential,
   DeviceRecord,
+  EventPollEvent,
+  EventPollResponse,
   EventTicketResponse,
   HealthResponse,
   HeartbeatRequest,

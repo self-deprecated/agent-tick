@@ -543,6 +543,20 @@ export const EventTicketResponseSchema = z.object({
 });
 export type EventTicketResponse = z.infer<typeof EventTicketResponseSchema>;
 
+export const EventPollEventSchema = z.object({
+  eventId: z.number().int().min(0),
+  type: z.string().min(1),
+  targetId: z.string().min(1),
+  createdAt: z.string()
+});
+export type EventPollEvent = z.infer<typeof EventPollEventSchema>;
+
+export const EventPollResponseSchema = z.object({
+  events: z.array(EventPollEventSchema),
+  nextEventId: z.number().int().min(0)
+});
+export type EventPollResponse = z.infer<typeof EventPollResponseSchema>;
+
 export const HeartbeatRequestSchema = z.record(z.string(), z.unknown()).default({});
 export type HeartbeatRequest = z.input<typeof HeartbeatRequestSchema>;
 

@@ -698,6 +698,33 @@ describe('server skeleton', () => {
     expect(invalid.statusCode).toBe(401);
   });
 
+  it('long-polls audit event hints with normal auth headers', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+    const tokenResponse = await app.inject({ method: 'POST', url: '/v1/agent-tokens', payload: { name: 'agent' } });
+    const token = tokenResponse.json().token as string;
+
+    const poll = await app.inject({ method: 'GET', url: '/v1/events/poll?lastEventId=0&timeoutMs=5000' });
+    expect(poll.statusCode).toBe(200);
+    expect(poll.json()).toMatchObject({ nextEventId: expect.any(Number) });
+    expect(poll.json().events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'agent_token.created', targetId: expect.any(String) })
+    ]));
+
+    const latest = poll.json().nextEventId as number;
+    const waiting = app.inject({ method: 'GET', url: `/v1/events/poll?lastEventId=${latest}&timeoutMs=5000` });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/approval-requests',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { requester: { name: 'agent' }, title: 'Deploy?' }
+    });
+    const changed = await waiting;
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json().events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'approval.created', targetId: expect.any(String) })
+    ]));
+  });
+
   it('pairs single-mode devices and accepts device tokens for mobile requests', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
 

@@ -420,6 +420,7 @@ export class AgentTickStore {
     ensureColumn(this.db, 'organization_invites', 'email_last_error', 'ALTER TABLE organization_invites ADD COLUMN email_last_error TEXT');
     ensureColumn(this.db, 'organization_invite_acceptances', 'requested_team_ids_json', "ALTER TABLE organization_invite_acceptances ADD COLUMN requested_team_ids_json TEXT NOT NULL DEFAULT '[]'");
     this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
+    this.db.exec('CREATE INDEX IF NOT EXISTS audit_events_org_event_idx ON audit_events(organization_id, event_id)');
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
   }

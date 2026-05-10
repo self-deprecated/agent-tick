@@ -1,15 +1,14 @@
-import type { AgentTickClient, AuditEventRecord, EventSourceConstructor } from "@agent-tick/sdk";
+import type { AgentTickClient, EventPollEvent } from "@agent-tick/sdk";
 
-type EventStreamClient = Pick<AgentTickClient, "openEventStream">;
+type EventPollClient = Pick<AgentTickClient, "pollEvents">;
 
 type EventStreamStatus = "unsupported" | "connecting" | "open" | "reconnecting" | "closed";
 
 type SubscribeToMobileEventStreamOptions = {
-  client: EventStreamClient;
-  EventSource?: EventSourceConstructor | null;
+  client: EventPollClient;
   initialLastEventId?: number;
-  reconnectDelayMs?: number;
-  onAuditEvent: (event: AuditEventRecord) => void;
+  timeoutMs?: number;
+  onAuditEvent: (event: EventPollEvent) => void;
   onError?: (error: Error) => void;
   onStatusChange?: (status: EventStreamStatus) => void;
 };
@@ -19,29 +18,22 @@ type MobileEventStreamSubscription = {
   close: () => void;
 };
 
-export function mobileEventStreamsAvailable(EventSourceCtor: EventSourceConstructor | null | undefined = globalThis.EventSource): boolean {
-  return typeof EventSourceCtor === "function";
+export function mobileEventStreamsAvailable(): boolean {
+  return true;
 }
 
 export function subscribeToMobileEventStream({
   client,
-  EventSource: EventSourceCtor = globalThis.EventSource,
   initialLastEventId,
-  reconnectDelayMs = 5000,
+  timeoutMs = 25_000,
   onAuditEvent,
   onError,
   onStatusChange,
 }: SubscribeToMobileEventStreamOptions): MobileEventStreamSubscription {
-  if (!mobileEventStreamsAvailable(EventSourceCtor)) {
-    onStatusChange?.("unsupported");
-    return { supported: false, close: () => undefined };
-  }
-
   let closed = false;
-  let stream: EventSource | null = null;
+  let lastEventId = normalizeEventId(initialLastEventId) ?? 0;
+  let backoffMs = 1000;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastEventId = normalizeEventId(initialLastEventId);
-  const sourceCtor = EventSourceCtor!;
 
   const clearReconnectTimer = () => {
     if (reconnectTimer) {
@@ -50,85 +42,45 @@ export function subscribeToMobileEventStream({
     }
   };
 
-  const closeStream = () => {
-    if (stream) {
-      stream.close();
-      stream = null;
-    }
-  };
-
-  const scheduleReconnect = (error?: Error) => {
+  const scheduleReconnect = (error: Error) => {
     if (closed) return;
     onStatusChange?.("reconnecting");
-    if (error) onError?.(error);
-    closeStream();
+    onError?.(error);
+    const delay = jitter(backoffMs);
+    backoffMs = Math.min(backoffMs * 2, 30_000);
     clearReconnectTimer();
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      void connect();
-    }, reconnectDelayMs);
+      void poll();
+    }, delay);
   };
 
-  const connect = async () => {
+  const poll = async () => {
     if (closed) return;
     onStatusChange?.("connecting");
     try {
-      const nextStream = await client.openEventStream({
-        ...(lastEventId === undefined ? {} : { lastEventId }),
-        EventSource: sourceCtor,
-      });
-      if (closed) {
-        nextStream.close();
-        return;
-      }
-      stream = nextStream;
-      addEventListener(nextStream, "open", () => onStatusChange?.("open"));
-      addEventListener(nextStream, "ready", (event) => {
-        const data = parseEventData<{ lastEventId?: unknown }>(event);
-        const readyEventId = normalizeEventId(data?.lastEventId);
-        if (readyEventId !== undefined) lastEventId = readyEventId;
-        onStatusChange?.("open");
-      });
-      addEventListener(nextStream, "audit", (event) => {
-        const auditEventId = normalizeEventId((event as MessageEvent).lastEventId);
-        const data = parseEventData<AuditEventRecord>(event);
-        if (!data) return;
-        lastEventId = auditEventId ?? normalizeEventId(data.eventId) ?? lastEventId;
-        onAuditEvent(data);
-      });
-      addEventListener(nextStream, "error", () => {
-        scheduleReconnect(new Error("Event stream disconnected"));
-      });
+      const response = await client.pollEvents({ lastEventId, timeoutMs });
+      if (closed) return;
+      onStatusChange?.("open");
+      backoffMs = 1000;
+      lastEventId = Math.max(lastEventId, response.nextEventId);
+      for (const event of response.events) onAuditEvent(event);
+      void poll();
     } catch (error) {
-      scheduleReconnect(error instanceof Error ? error : new Error("Failed to open event stream"));
+      scheduleReconnect(error instanceof Error ? error : new Error("Failed to poll events"));
     }
   };
 
-  void connect();
+  void poll();
 
   return {
     supported: true,
     close: () => {
       closed = true;
       clearReconnectTimer();
-      closeStream();
       onStatusChange?.("closed");
     },
   };
-}
-
-function addEventListener(source: EventSource, event: string, handler: (event: Event) => void): void {
-  source.addEventListener(event, handler as EventListener);
-}
-
-function parseEventData<T>(event: Event): T | null {
-  const data = (event as MessageEvent).data;
-  if (typeof data !== "string" || !data) return null;
-  try {
-    return JSON.parse(data) as T;
-  } catch {
-    return null;
-  }
 }
 
 function normalizeEventId(value: unknown): number | undefined {
@@ -136,4 +88,8 @@ function normalizeEventId(value: unknown): number | undefined {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return undefined;
   return Math.trunc(parsed);
+}
+
+function jitter(delayMs: number): number {
+  return Math.round(delayMs * (0.75 + Math.random() * 0.5));
 }
