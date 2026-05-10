@@ -11,6 +11,8 @@ export type SavedMobileAccount = {
   serverURL: string;
   authProvider: MobileAuthProvider | string;
   label: string;
+  email?: string;
+  signInMethod?: string;
   organizationID?: string;
   deviceID?: string;
   updatedAt: string;
@@ -78,6 +80,8 @@ export function normalizeSavedMobileAccounts(value: unknown): SavedMobileAccount
       authProvider,
       label: typeof account.label === "string" && account.label ? account.label : accountLabel({ serverURL, authProvider, organizationID: account.organizationID, deviceID: account.deviceID }),
       updatedAt: typeof account.updatedAt === "string" && account.updatedAt ? account.updatedAt : new Date(0).toISOString(),
+      ...(typeof account.email === "string" && account.email ? { email: account.email } : {}),
+      ...(typeof account.signInMethod === "string" && account.signInMethod ? { signInMethod: account.signInMethod } : {}),
       ...(typeof account.organizationID === "string" && account.organizationID ? { organizationID: account.organizationID } : {}),
       ...(typeof account.deviceID === "string" && account.deviceID ? { deviceID: account.deviceID } : {}),
     };
@@ -96,8 +100,8 @@ export function upsertSavedMobileAccount(accounts: SavedMobileAccount[], input: 
   return [account, ...accounts.filter((candidate) => candidate.id !== account.id)].slice(0, 12);
 }
 
-function accountLabel(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { organizationID?: string; deviceID?: string }) {
-  if (input.authProvider === "clerk") return input.organizationID ? `Cloud · ${input.organizationID}` : "Agent Tick Cloud";
+function accountLabel(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { email?: string; signInMethod?: string; organizationID?: string; deviceID?: string }) {
+  if (input.authProvider === "clerk") return input.signInMethod ? `${input.signInMethod} account` : input.email ? "Cloud account" : "Agent Tick Cloud";
   return input.deviceID ? `${normalizeServerURL(input.serverURL)} · ${input.deviceID}` : normalizeServerURL(input.serverURL);
 }
 

@@ -88,7 +88,7 @@ export function SettingsScreen({
   availability?: AvailabilityState;
   authProvider?: string;
   connectionStatus: ConnectionStatus;
-  currentAccountProfile?: Pick<MeResponse, "email" | "name" | "source" | "authProvider"> | null;
+  currentAccountProfile?: Pick<MeResponse, "email" | "name" | "signInMethod" | "source" | "authProvider"> | null;
   e2eeFocusToken?: number;
   e2eeKey?: string;
   error: string | null;
@@ -255,7 +255,7 @@ export function SettingsScreen({
                     style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
                   >
                     <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{account.label}</Text>
-                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{account.authProvider} · {account.serverURL}</Text>
+                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{savedAccountDetails(account)}</Text>
                   </Pressable>
                 );
               })}
@@ -480,30 +480,45 @@ function currentAccountLabel({
   serverURL,
 }: {
   authProvider?: string;
-  currentAccountProfile?: Pick<MeResponse, "email" | "name"> | null;
+  currentAccountProfile?: Pick<MeResponse, "email" | "name" | "signInMethod"> | null;
   deviceID: string;
   serverURL: string;
 }) {
-  if (authProvider === "clerk") return currentAccountProfile?.name || currentAccountProfile?.email || "Clerk account";
+  if (authProvider === "clerk") return currentAccountProfile?.signInMethod ? `${currentAccountProfile.signInMethod} account` : currentAccountProfile?.email ? "Cloud account" : "Account";
   return deviceID ? `Device ${deviceID}` : serverURL;
 }
 
 function currentAccountDetails({
   authProvider,
   currentAccountProfile,
-  selectedOrganizationID,
   serverURL,
 }: {
   authProvider?: string;
-  currentAccountProfile?: Pick<MeResponse, "email" | "source"> | null;
+  currentAccountProfile?: Pick<MeResponse, "email" | "signInMethod"> | null;
   selectedOrganizationID?: string;
   serverURL: string;
 }) {
-  const emailDomain = currentAccountProfile?.email?.split("@")[1];
+  const serverHost = hostLabel(serverURL);
   const parts = authProvider === "clerk"
-    ? [currentAccountProfile?.email, "SSO: Clerk", emailDomain ? `Domain: ${emailDomain}` : undefined, selectedOrganizationID ? `Org ${selectedOrganizationID}` : undefined]
-    : ["Self-hosted", serverURL];
-  return parts.filter(Boolean).join(" · ") || serverURL;
+    ? [currentAccountProfile?.email, currentAccountProfile?.signInMethod ? `Sign-in method: ${currentAccountProfile.signInMethod}` : undefined, `Server: ${serverHost}`]
+    : ["Self-hosted", serverHost];
+  return parts.filter(Boolean).join(" · ") || serverHost;
+}
+
+function savedAccountDetails(account: SavedMobileAccount) {
+  const serverHost = hostLabel(account.serverURL);
+  if (account.authProvider === "clerk") {
+    return [account.email, account.signInMethod, serverHost].filter(Boolean).join(" · ");
+  }
+  return [`local device`, serverHost].filter(Boolean).join(" · ");
+}
+
+function hostLabel(serverURL: string) {
+  try {
+    return new URL(serverURL).host;
+  } catch {
+    return serverURL;
+  }
 }
 
 function availabilityLabel(state: AvailabilityState) {

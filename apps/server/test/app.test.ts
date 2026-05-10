@@ -130,7 +130,8 @@ describe('server skeleton', () => {
       organizationId: exchange.json().organizationId,
       role: 'owner',
       email: 'mobile_user@example.test',
-      name: 'mobile_user'
+      name: 'mobile_user',
+      signInMethod: 'Test'
     });
   });
 

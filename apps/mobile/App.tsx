@@ -691,19 +691,20 @@ function AgentTickApp({
     const shouldSaveAccount = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(selectedOrganizationID) : Boolean(token || deviceID);
     if (shouldSaveAccount) {
       setSavedAccounts((current) => {
-        const organization = organizations.find((entry) => entry.organizationId === selectedOrganizationID);
         const next = upsertSavedMobileAccount(current, {
           serverURL: activeServerURL,
           authProvider: runtimeAuthConfig?.authProvider ?? "local",
+          email: currentAccountProfile?.email,
+          signInMethod: currentAccountProfile?.signInMethod,
           organizationID: selectedOrganizationID || undefined,
           deviceID: deviceID || undefined,
-          label: organization?.name ?? "",
+          label: runtimeAuthConfig?.authProvider === "clerk" && currentAccountProfile?.signInMethod ? `${currentAccountProfile.signInMethod} account` : "",
         });
         void AsyncStorage.setItem(mobileAccountsStorageKey, JSON.stringify(next));
         return next;
       });
     }
-  }, [deviceID, loadedSessionServerURL, organizations, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
+  }, [currentAccountProfile?.email, currentAccountProfile?.signInMethod, deviceID, loadedSessionServerURL, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
 
   useEffect(() => {
     if (!settingsLoaded) return;

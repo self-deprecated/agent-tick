@@ -191,13 +191,15 @@ describe("SettingsScreen — paired state", () => {
       <SettingsScreen
         {...unpairedProps}
         authProvider="clerk"
-        currentAccountProfile={{ name: "Ada Lovelace", email: "ada@example.com", authProvider: "clerk", source: "human" }}
+        currentAccountProfile={{ name: "Ada Lovelace", email: "ada@example.com", signInMethod: "GitHub", authProvider: "clerk", source: "human" }}
         onSignInAnotherClerkAccount={onSignInAnotherClerkAccount}
       />,
     );
 
-    expect(screen.getByText("Ada Lovelace")).toBeTruthy();
+    expect(screen.getByText("GitHub account")).toBeTruthy();
     expect(screen.getByText(/ada@example.com/)).toBeTruthy();
+    expect(screen.getByText(/Sign-in method: GitHub/)).toBeTruthy();
+    expect(screen.queryByText(/org_/)).toBeNull();
     fireEvent.press(screen.getByText("Switch accounts ›"));
     fireEvent.press(screen.getByText("Add another account"));
     expect(onSignInAnotherClerkAccount).toHaveBeenCalled();
@@ -214,7 +216,8 @@ describe("SettingsScreen — paired state", () => {
         setSelectedOrganizationID={onSelectOrganization}
       />,
     );
-    expect(screen.getByText("Clerk account")).toBeTruthy();
+    expect(screen.getByText("Account")).toBeTruthy();
+    expect(screen.queryByText(/org_1/)).toBeNull();
     expect(screen.getByText("Platform")).toBeTruthy();
     fireEvent.press(screen.getByText("Platform"));
     expect(onSelectOrganization).toHaveBeenCalledWith("org_1");

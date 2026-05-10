@@ -6,7 +6,7 @@ import type { AuthContext } from './context.js';
 const CLERK_PROFILE_CACHE_TTL_MS = 60_000;
 const clerkProfileCache = new Map<string, { expiresAt: number; profile: ClerkProfile }>();
 
-type ClerkProfile = { email: string; emailVerified: boolean; name: string };
+type ClerkProfile = { email: string; emailVerified: boolean; name: string; authMethod?: string };
 
 export function clearClerkProfileCacheForTests(): void {
   clerkProfileCache.clear();
@@ -26,7 +26,8 @@ export async function verifyClerkLoginToken(token: string, config: ServerConfig,
       subject,
       email: `${subject}@example.test`,
       emailVerified: true,
-      name: subject
+      name: subject,
+      authMethod: 'Test'
     });
     return {
       source: 'clerk',
@@ -103,7 +104,8 @@ async function authContextForClerkUser({
     subject,
     email: profile.email,
     emailVerified: profile.emailVerified,
-    name: profile.name
+    name: profile.name,
+    ...(profile.authMethod ? { authMethod: profile.authMethod } : {})
   });
 
   return {
@@ -131,9 +133,39 @@ async function fetchClerkProfile(userId: string, config: ServerConfig): Promise<
   const email = primaryEmail?.emailAddress ?? '';
   const emailVerified = primaryEmail?.verification?.status === 'verified';
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || email || user.id;
-  const profile = { email, emailVerified, name };
+  const authMethod = clerkSignInMethod(user);
+  const profile = { email, emailVerified, name, ...(authMethod ? { authMethod } : {}) };
   clerkProfileCache.set(cacheKey, { expiresAt: Date.now() + CLERK_PROFILE_CACHE_TTL_MS, profile });
   return profile;
+}
+
+function clerkSignInMethod(user: unknown): string | undefined {
+  const record = user as Record<string, unknown>;
+  const externalAccounts = Array.isArray(record.externalAccounts) ? record.externalAccounts : [];
+  const external = externalAccounts.find((entry) => providerName((entry as Record<string, unknown>).provider));
+  const provider = external ? providerName((external as Record<string, unknown>).provider) : undefined;
+  if (provider) return provider;
+  if (Array.isArray(record.phoneNumbers) && record.phoneNumbers.length > 0) return 'Phone';
+  if (Array.isArray(record.emailAddresses) && record.emailAddresses.length > 0) return 'Email';
+  return undefined;
+}
+
+function providerName(provider: unknown): string | undefined {
+  if (typeof provider !== 'string' || !provider.trim()) return undefined;
+  const normalized = provider.replace(/^oauth_/, '').replace(/^saml_/, '');
+  const known: Record<string, string> = {
+    apple: 'Apple',
+    discord: 'Discord',
+    facebook: 'Facebook',
+    github: 'GitHub',
+    gitlab: 'GitLab',
+    google: 'Google',
+    linkedin: 'LinkedIn',
+    microsoft: 'Microsoft',
+    slack: 'Slack',
+    twitter: 'X'
+  };
+  return known[normalized] ?? normalized.split(/[_-]/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
 
 function stringClaim(payload: unknown, claim: string): string | null {

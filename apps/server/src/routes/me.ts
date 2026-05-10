@@ -17,6 +17,7 @@ export async function registerMeRoutes(app: FastifyInstance, { config, store }: 
       userId,
       ...(profile?.email ? { email: profile.email } : {}),
       ...(profile?.name ? { name: profile.name } : {}),
+      ...(profile?.signInMethod ? { signInMethod: profile.signInMethod } : {}),
       authProvider: config.authProvider,
       source: auth.source,
       organizationId: auth.organizationId,

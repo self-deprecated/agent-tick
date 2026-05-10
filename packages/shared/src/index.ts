@@ -313,6 +313,7 @@ export const MeResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email().optional(),
   name: z.string().optional(),
+  signInMethod: z.string().optional(),
   authProvider: AuthProviderSchema,
   source: z.string(),
   organizationId: z.string().optional(),

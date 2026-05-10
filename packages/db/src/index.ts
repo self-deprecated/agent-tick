@@ -82,6 +82,7 @@ export interface ClerkIdentityProfile {
   email: string;
   emailVerified: boolean;
   name: string;
+  authMethod?: string;
 }
 
 export interface HumanIdentityResult {
@@ -94,6 +95,7 @@ export interface UserProfileRecord {
   userId: string;
   email: string | undefined;
   name: string | undefined;
+  signInMethod: string | undefined;
 }
 
 export interface OrganizationRecord {
@@ -430,6 +432,7 @@ export class AgentTickStore {
     ensureColumn(this.db, 'organization_memberships', 'rejected_by_user_id', 'ALTER TABLE organization_memberships ADD COLUMN rejected_by_user_id TEXT');
     ensureColumn(this.db, 'organization_memberships', 'rejected_at', 'ALTER TABLE organization_memberships ADD COLUMN rejected_at TEXT');
     ensureColumn(this.db, 'organization_memberships', 'invite_id', 'ALTER TABLE organization_memberships ADD COLUMN invite_id TEXT');
+    ensureColumn(this.db, 'auth_identities', 'auth_method', 'ALTER TABLE auth_identities ADD COLUMN auth_method TEXT');
     ensureColumn(this.db, 'organization_invites', 'approval_required', 'ALTER TABLE organization_invites ADD COLUMN approval_required INTEGER NOT NULL DEFAULT 1');
     ensureColumn(this.db, 'organization_invites', 'domain', 'ALTER TABLE organization_invites ADD COLUMN domain TEXT');
     ensureColumn(this.db, 'organization_invites', 'email_last_status', 'ALTER TABLE organization_invites ADD COLUMN email_last_status TEXT');
@@ -528,8 +531,8 @@ export class AgentTickStore {
 
     if (existing) {
       this.db
-        .prepare('UPDATE auth_identities SET email = ?, email_verified = ?, name = ?, last_seen_at = ?, updated_at = ? WHERE provider = ? AND issuer = ? AND subject = ?')
-        .run(email, profile.emailVerified ? 1 : 0, profile.name, now, now, 'clerk', profile.issuer, profile.subject);
+        .prepare('UPDATE auth_identities SET email = ?, email_verified = ?, name = ?, auth_method = ?, last_seen_at = ?, updated_at = ? WHERE provider = ? AND issuer = ? AND subject = ?')
+        .run(email, profile.emailVerified ? 1 : 0, profile.name, profile.authMethod ?? null, now, now, 'clerk', profile.issuer, profile.subject);
       this.db.prepare('UPDATE users SET email = ?, email_verified = ?, name = ?, updated_at = ? WHERE id = ?')
         .run(email, profile.emailVerified ? 1 : 0, profile.name, now, existing.user_id);
       const membership = this.defaultMembershipForUser(existing.user_id);
@@ -546,8 +549,8 @@ export class AgentTickStore {
     const tx = this.db.transaction(() => {
       this.db.prepare('INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(userId, email, profile.emailVerified ? 1 : 0, profile.name, now, now);
-      this.db.prepare('INSERT INTO auth_identities(provider, issuer, subject, user_id, email, email_verified, name, first_seen_at, last_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run('clerk', profile.issuer, profile.subject, userId, email, profile.emailVerified ? 1 : 0, profile.name, now, now, now);
+      this.db.prepare('INSERT INTO auth_identities(provider, issuer, subject, user_id, email, email_verified, name, auth_method, first_seen_at, last_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run('clerk', profile.issuer, profile.subject, userId, email, profile.emailVerified ? 1 : 0, profile.name, profile.authMethod ?? null, now, now, now);
       this.db.prepare('INSERT INTO organizations(id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
         .run(organizationId, `${profile.name || email}'s Organization`, now, now);
       this.db.prepare('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
@@ -567,10 +570,17 @@ export class AgentTickStore {
 
   userProfile(userId: string): UserProfileRecord | null {
     const row = this.db
-      .prepare('SELECT id, email, name FROM users WHERE id = ?')
-      .get(userId) as { id: string; email: string | null; name: string | null } | undefined;
+      .prepare(`
+        SELECT u.id, u.email, u.name, i.auth_method
+        FROM users u
+        LEFT JOIN auth_identities i ON i.user_id = u.id
+        WHERE u.id = ?
+        ORDER BY i.last_seen_at DESC
+        LIMIT 1
+      `)
+      .get(userId) as { id: string; email: string | null; name: string | null; auth_method: string | null } | undefined;
     if (!row) return null;
-    return { userId: row.id, email: row.email ?? undefined, name: row.name ?? undefined };
+    return { userId: row.id, email: row.email ?? undefined, name: row.name ?? undefined, signInMethod: row.auth_method ?? undefined };
   }
 
   listOrganizationsForUser(userId: string): OrganizationMembershipRecord[] {
@@ -2452,6 +2462,7 @@ CREATE TABLE IF NOT EXISTS auth_identities (
   email TEXT NOT NULL DEFAULT '',
   email_verified INTEGER NOT NULL DEFAULT 0,
   name TEXT NOT NULL DEFAULT '',
+  auth_method TEXT,
   first_seen_at TEXT NOT NULL,
   last_seen_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
