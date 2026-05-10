@@ -137,6 +137,34 @@ describe('AgentTickClient', () => {
     expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/audit-events?limit=10' });
   });
 
+  it('creates and lists agent status updates', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const status = {
+      statusId: 'stat_123',
+      organizationId: 'org_123',
+      agentId: 'agt_123',
+      agentName: 'Pi',
+      threadId: 'host:/repo',
+      message: 'Running tests',
+      state: 'working',
+      createdAt: '2026-01-01T00:00:00.000Z'
+    };
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        return jsonResponse(init?.method === 'POST' ? status : [status]);
+      }
+    });
+
+    await expect(client.createStatusUpdate({ threadId: 'host:/repo', message: 'Running tests' })).resolves.toMatchObject({ statusId: 'stat_123' });
+    await expect(client.listStatusUpdates({ limit: 5 })).resolves.toEqual([expect.objectContaining({ message: 'Running tests' })]);
+    expect(requests).toEqual([
+      { method: 'POST', url: 'https://tick.example.com/v1/status-updates', body: { threadId: 'host:/repo', message: 'Running tests', state: 'working' } },
+      { method: 'GET', url: 'https://tick.example.com/v1/status-updates?limit=5', body: undefined }
+    ]);
+  });
+
   it('calls billing endpoint with organization selection', async () => {
     const seen: { url?: string; method?: string; organizationId?: string | null } = {};
     const client = new AgentTickClient({

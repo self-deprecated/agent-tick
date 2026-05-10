@@ -38,6 +38,12 @@ Or run a command only after approval:
 agent-tick guard --title "Run migration?" -- ./migrate.sh
 ```
 
+Agents can also send lightweight progress updates that appear in the mobile approval app:
+
+```sh
+agent-tick status --state working --next "Run the build" "Tests are passing; checking packaging next"
+```
+
 Approve or reject requests from the Agent Tick web dashboard. Mobile approval apps are part of the product direction, but public setup should not depend on private beta access.
 
 ## What gets installed?
@@ -70,7 +76,7 @@ Self-hosting is not the default onboarding path. If you want it, use [SELFHOSTIN
 - Fastify API server
 - Svelte dashboard served by the server
 - Expo mobile app
-- `agent-tick` CLI with `install`, `setup`, `request`, `abandon`, and `guard`
+- `agent-tick` CLI with `install`, `setup`, `request`, `abandon`, `guard`, and `status`
 - SQLite persistence
 - optional Clerk human authentication for multi-user mode
 - local Agent Tick organizations, policies, approvals, audit logs, devices, and agent tokens

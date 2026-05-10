@@ -329,6 +329,38 @@ export const AuditEventRecordSchema = z.object({
 });
 export type AuditEventRecord = z.infer<typeof AuditEventRecordSchema>;
 
+export const AgentStatusStateSchema = z.enum(['working', 'blocked', 'done']).or(z.string().min(1).max(40));
+export type AgentStatusState = z.infer<typeof AgentStatusStateSchema>;
+
+export const AgentStatusUpdateSchema = z.object({
+  statusId: z.string(),
+  organizationId: z.string(),
+  agentId: z.string(),
+  agentName: z.string(),
+  threadId: z.string(),
+  message: z.string(),
+  state: AgentStatusStateSchema,
+  nextStep: z.string().optional(),
+  host: z.string().optional(),
+  workingDirectory: z.string().optional(),
+  projectName: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+  createdAt: z.string()
+});
+export type AgentStatusUpdate = z.infer<typeof AgentStatusUpdateSchema>;
+
+export const CreateAgentStatusUpdateSchema = z.object({
+  threadId: z.string().min(1).max(200),
+  message: z.string().min(1).max(500),
+  state: AgentStatusStateSchema.default('working'),
+  nextStep: z.string().max(500).optional(),
+  host: z.string().max(200).optional(),
+  workingDirectory: z.string().max(500).optional(),
+  projectName: z.string().max(200).optional(),
+  metadata: z.record(z.string(), z.string()).optional()
+});
+export type CreateAgentStatusUpdate = z.input<typeof CreateAgentStatusUpdateSchema>;
+
 export const RequesterSchema = z.object({
   name: z.string().min(1),
   agentId: z.string().min(1),

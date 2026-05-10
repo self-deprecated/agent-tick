@@ -67,6 +67,7 @@ function renderApproval(request: ApprovalRequest, onRespond = jest.fn()) {
       selected={request}
       selectedID={request.id}
       selectedProjectID={null}
+      statusUpdates={[]}
       setProjectID={jest.fn()}
       setQuestionnaireAnswer={jest.fn()}
       setReply={jest.fn()}

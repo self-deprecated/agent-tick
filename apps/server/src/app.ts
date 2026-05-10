@@ -20,6 +20,7 @@ import { registerPairingRoutes } from './routes/pairing.js';
 import { registerPolicyRoutes } from './routes/policies.js';
 import { registerPresenceRoutes } from './routes/presence.js';
 import { registerProjectRoutes } from './routes/projects.js';
+import { registerStatusRoutes } from './routes/status.js';
 import { registerTeamRoutes } from './routes/teams.js';
 import { registerTestSupportRoutes } from './routes/testSupport.js';
 import { createInviteEmailSender, type InviteEmailSender } from './services/inviteEmail.js';
@@ -78,6 +79,7 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
   await registerDeviceRoutes(app, { config, store });
   await registerPairingRoutes(app, { config, store });
   await registerPresenceRoutes(app, { config, store });
+  await registerStatusRoutes(app, { config, store });
   await registerProjectRoutes(app, { config, store });
   await registerTeamRoutes(app, { config, store });
   await registerPolicyRoutes(app, { config, store });

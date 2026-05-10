@@ -36,6 +36,12 @@ Run a command only after approval:
 agent-tick guard --title "Run migration?" -- ./migrate.sh
 ```
 
+Send a progress update without requesting approval:
+
+```sh
+agent-tick status --state working "Checking test failures"
+```
+
 Manual setup for CI or self-hosted servers:
 
 ```sh

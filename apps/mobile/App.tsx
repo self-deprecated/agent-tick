@@ -56,7 +56,7 @@ import {
 } from "./approvalRequests";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
-import { AgentTickClient, type OrganizationMembership } from "@agent-tick/sdk";
+import { AgentTickClient, type AgentStatusUpdate, type OrganizationMembership } from "@agent-tick/sdk";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
   fetchRuntimeAuthConfig,
@@ -412,6 +412,7 @@ function AgentTickApp({
   const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
   const [selectedOrganizationID, setSelectedOrganizationID] = useState("");
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
+  const [statusUpdates, setStatusUpdates] = useState<AgentStatusUpdate[]>([]);
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [selectedProjectID, setSelectedProjectID] = useState<string | null>(null);
@@ -694,8 +695,12 @@ function AgentTickApp({
     }
     setError(null);
     try {
-      const pending = await sdk.listApprovalRequests();
+      const [pending, latestStatuses] = await Promise.all([
+        sdk.listApprovalRequests(),
+        sdk.listStatusUpdates({ limit: 5 }).catch(() => [] as AgentStatusUpdate[]),
+      ]);
       const pendingRequests = normalizeApprovals(pending).filter((request) => request.status === "pending");
+      setStatusUpdates(latestStatuses);
       await notifyForNewRequests(
         pendingRequests,
         seenRequestIDs,
@@ -1442,6 +1447,7 @@ function AgentTickApp({
           reply={reply}
           requests={visibleRequests}
           selectedProjectID={selectedProjectID}
+          statusUpdates={statusUpdates}
           setProjectID={(projectID) => {
             setSelectedProjectID(projectID);
             setSelectedID(filterRequestsByProject(requests, projectID)[0]?.id ?? null);
@@ -1618,6 +1624,25 @@ function formatRequestTime(value?: string) {
   });
 }
 
+function LatestStatusCard({ statusUpdates, compact = false }: { statusUpdates: AgentStatusUpdate[]; compact?: boolean }) {
+  const latest = statusUpdates[0];
+  if (!latest) return null;
+  const project = latest.projectName || latest.workingDirectory || latest.threadId;
+  return (
+    <View style={[styles.statusCard, compact ? styles.statusCardCompact : null]}>
+      <View style={styles.statusCardHeader}>
+        <Text style={styles.statusLabel}>Latest agent status</Text>
+        <Text style={styles.statusState}>{latest.state}</Text>
+      </View>
+      <Text style={styles.statusMessage}>{latest.message}</Text>
+      {latest.nextStep ? <Text style={styles.statusNext}>Next: {latest.nextStep}</Text> : null}
+      <Text numberOfLines={1} style={styles.statusMeta}>
+        {latest.agentName} · {project} · {formatRequestTime(latest.createdAt)}
+      </Text>
+    </View>
+  );
+}
+
 export function ApprovalsScreen({
   error,
   loading,
@@ -1629,6 +1654,7 @@ export function ApprovalsScreen({
   reply,
   requests,
   selectedProjectID,
+  statusUpdates,
   setProjectID,
   setQuestionnaireAnswer,
   selected,
@@ -1646,6 +1672,7 @@ export function ApprovalsScreen({
   reply: string;
   requests: ApprovalRequest[];
   selectedProjectID: string | null;
+  statusUpdates: AgentStatusUpdate[];
   setProjectID: (projectID: string | null) => void;
   setQuestionnaireAnswer: (
     question: string,
@@ -1663,6 +1690,7 @@ export function ApprovalsScreen({
         {loading ? <ActivityIndicator color="#202124" /> : null}
         <Text style={styles.waitingTitle}>Waiting</Text>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        <LatestStatusCard statusUpdates={statusUpdates} compact />
         <Pressable onPress={onRefresh} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonText}>Refresh</Text>
         </Pressable>
@@ -1728,6 +1756,7 @@ export function ApprovalsScreen({
         contentContainerStyle={styles.approvalContent}
         style={styles.approvalScroll}
       >
+        <LatestStatusCard statusUpdates={statusUpdates} />
         <Text style={styles.detailTitle}>{selected.title}</Text>
         <Text style={styles.detailMeta}>Requested by {requestRequesterLabel(selected)}</Text>
         <Text style={styles.detailMeta}>Project: {requestProjectLabel(selected)}</Text>
@@ -2280,6 +2309,53 @@ const styles = StyleSheet.create({
   approvalContent: {
     paddingHorizontal: 20,
     paddingBottom: 22,
+  },
+  statusCard: {
+    backgroundColor: "#edf7f3",
+    borderColor: "#b8dacd",
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 6,
+    marginBottom: 16,
+    padding: 12,
+  },
+  statusCardCompact: {
+    marginTop: 18,
+    maxWidth: 360,
+    width: "100%",
+  },
+  statusCardHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  statusLabel: {
+    color: "#184f42",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  statusState: {
+    color: "#1f6f5b",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  statusMessage: {
+    color: "#202124",
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 22,
+  },
+  statusNext: {
+    color: "#375f52",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  statusMeta: {
+    color: "#5f5a4f",
+    fontSize: 12,
+    fontWeight: "700",
   },
   detailTitle: {
     color: "#202124",

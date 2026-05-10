@@ -221,6 +221,25 @@ describe('server skeleton', () => {
     expect(response.json()).toMatchObject({ error: { code: 'not_authenticated' } });
   });
 
+  it('accepts agent status updates and exposes latest statuses to humans', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ name: 'Pi AFK' });
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: localStore });
+
+    const posted = await app.inject({
+      method: 'POST',
+      url: '/v1/status-updates',
+      headers: { authorization: `Bearer ${credential.token}` },
+      payload: { threadId: 'host:/repo#chat', message: 'Running tests', state: 'working', nextStep: 'Fix failures' }
+    });
+    expect(posted.statusCode).toBe(200);
+    expect(posted.json()).toMatchObject({ agentId: credential.agentId, agentName: 'Pi AFK', message: 'Running tests' });
+
+    const listed = await app.inject({ method: 'GET', url: '/v1/status-updates?limit=5' });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual([expect.objectContaining({ statusId: posted.json().statusId, threadId: 'host:/repo#chat' })]);
+  });
+
   it('returns structured 404 errors for API misses', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
     const response = await app.inject({ method: 'GET', url: '/v1/missing' });

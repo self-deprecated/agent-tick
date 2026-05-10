@@ -87,6 +87,36 @@ export function createProgram(): Command {
     });
 
   program
+    .command('status')
+    .description('Send a small progress update to Agent Tick')
+    .argument('[message...]', 'status message')
+    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
+    .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
+    .option('--thread <id>', 'thread/chat identifier [env: AGENT_TICK_THREAD_ID]')
+    .option('--state <state>', 'status state: working, blocked, done', 'working')
+    .option('--next <text>', 'what the agent expects to do next')
+    .option('--project <name>', 'project/repository display name')
+    .option('--metadata <key=value>', 'metadata key/value, repeatable', collectOption, [])
+    .option('--json', 'print machine-readable JSON')
+    .action(async (messageParts: string[], options: StatusOptions) => {
+      const { client } = await clientFromOptions(options);
+      const message = messageParts.join(' ').trim();
+      if (!message) throw new Error('status requires a message');
+      const update = await client.createStatusUpdate({
+        threadId: options.thread ?? process.env.AGENT_TICK_THREAD_ID ?? defaultThreadId(),
+        message,
+        state: options.state ?? 'working',
+        nextStep: options.next,
+        host: os.hostname() || undefined,
+        workingDirectory: process.cwd(),
+        projectName: options.project ?? path.basename(process.cwd()),
+        metadata: parseMetadata(options.metadata)
+      });
+      if (options.json) process.stdout.write(`${JSON.stringify({ event: 'status', status: update })}\n`);
+      else process.stdout.write(`sent status update for ${update.threadId}: ${update.message}\n`);
+    });
+
+  program
     .command('abandon')
     .description('Abandon a pending approval request')
     .argument('<request-id>', 'approval request ID')
@@ -680,6 +710,23 @@ function collectOption(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
+function defaultThreadId(): string {
+  return `${os.hostname() || 'local'}:${process.cwd()}`;
+}
+
+function parseMetadata(values: string[] | undefined): Record<string, string> | undefined {
+  const metadata: Record<string, string> = {};
+  for (const value of values ?? []) {
+    const separator = value.indexOf('=');
+    if (separator <= 0) throw new Error(`invalid metadata: ${value}. Use key=value.`);
+    const key = value.slice(0, separator).trim();
+    const entry = value.slice(separator + 1).trim();
+    if (!key) throw new Error(`invalid metadata: ${value}. Metadata key cannot be empty.`);
+    metadata[key] = entry;
+  }
+  return Object.keys(metadata).length ? metadata : undefined;
+}
+
 export function parseChoices(values: string[] | undefined): Array<{ id: string; label: string; kind: string }> {
   const choices = (values ?? []).map((value) => {
     const separator = value.indexOf('=');
@@ -745,6 +792,15 @@ interface InstallOptions extends SetupOptions {
   all?: boolean;
   yes?: boolean;
   dryRun?: boolean;
+}
+
+interface StatusOptions extends ClientOptions {
+  thread?: string;
+  state?: string;
+  next?: string;
+  project?: string;
+  metadata?: string[];
+  json?: boolean;
 }
 
 interface RequestOptions extends ClientOptions {

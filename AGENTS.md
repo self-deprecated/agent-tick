@@ -60,6 +60,7 @@ Current implemented CLI commands only:
 - `agent-tick request`
 - `agent-tick abandon`
 - `agent-tick guard`
+- `agent-tick status`
 
 The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. For local repo development without a global install, use the workspace package name:
 

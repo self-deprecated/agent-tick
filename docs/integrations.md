@@ -88,6 +88,12 @@ agent-tick request \
   --choice cancel:deny="Do not deploy"
 ```
 
+Use `agent-tick status` to publish AFK progress updates without blocking for approval. Set `AGENT_TICK_THREAD_ID` from an agent integration when a chat/thread id is available; otherwise the CLI scopes updates to the current host and working directory.
+
+```sh
+agent-tick status --state working --next "Run tests" "Finished edits; validating now"
+```
+
 Use `agent-tick guard` to run a command only after approval:
 
 ```sh

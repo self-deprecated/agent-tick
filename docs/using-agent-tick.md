@@ -57,6 +57,14 @@ Cancel a pending request:
 agent-tick abandon req_...
 ```
 
+Send a lightweight progress update without asking for approval:
+
+```sh
+agent-tick status --state working --next "Run typecheck" "Finished edits; validating now"
+```
+
+Use `--thread` or `AGENT_TICK_THREAD_ID` when an integration can provide a chat/thread id. Otherwise the CLI defaults to the current machine and working directory so the mobile app can show the latest update for that local repo context.
+
 Review requests in the Agent Tick web dashboard. Public onboarding should not depend on private mobile beta access.
 
 ## Installer options
@@ -122,6 +130,7 @@ Implemented today:
 - `agent-tick request`
 - `agent-tick guard`
 - `agent-tick abandon`
+- `agent-tick status`
 - dashboard approvals
 - GitHub Actions composite action
 - optional outbound approval notification webhook

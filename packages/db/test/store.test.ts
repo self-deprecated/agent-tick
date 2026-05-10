@@ -199,6 +199,43 @@ describe('AgentTickStore', () => {
     expect(store.listAuditEvents(DEFAULT_ORGANIZATION_ID).map((event) => event.eventType)).toContain('approval.expired');
   });
 
+  it('records latest agent status updates per thread', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+    const credential = store.createAgentToken({ name: 'Pi AFK' }, '2026-05-08T00:00:00.000Z');
+
+    store.createAgentStatusUpdate(
+      {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        agentId: credential.agentId,
+        agentName: credential.name,
+        threadId: 'laptop:/work/repo#chat',
+        message: 'Running tests',
+        state: 'working',
+        nextStep: 'Fix failures',
+        host: 'laptop',
+        workingDirectory: '/work/repo',
+        projectName: 'repo'
+      },
+      '2026-05-08T00:01:00.000Z'
+    );
+    const latest = store.createAgentStatusUpdate(
+      {
+        organizationId: DEFAULT_ORGANIZATION_ID,
+        agentId: credential.agentId,
+        agentName: credential.name,
+        threadId: 'laptop:/work/repo#chat',
+        message: 'Done',
+        state: 'done'
+      },
+      '2026-05-08T00:02:00.000Z'
+    );
+
+    expect(store.listLatestAgentStatusUpdates(DEFAULT_ORGANIZATION_ID)).toEqual([latest]);
+    expect(store.listAuditEvents(DEFAULT_ORGANIZATION_ID).map((event) => event.eventType)).toContain('agent_status.updated');
+  });
+
   it('creates and verifies agent tokens by hash', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();

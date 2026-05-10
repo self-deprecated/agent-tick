@@ -1,13 +1,17 @@
 import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
 import {
+  AgentStatusUpdateSchema,
   ApprovalRequestSchema,
+  CreateAgentStatusUpdateSchema,
   CreateApprovalRequestSchema,
   RespondApprovalRequestSchema,
+  type AgentStatusUpdate,
   type ApprovalPolicyProgress,
   type ApprovalRequest,
   type ApprovalVoteRecord,
   type Choice,
+  type CreateAgentStatusUpdate,
   type CreateApprovalRequest,
   type RespondApprovalRequest
 } from '@agent-tick/shared';
@@ -62,6 +66,13 @@ export interface CreateAgentTokenInput {
 export interface CreateApprovalInput extends CreateApprovalRequest {
   organizationId?: string;
   agentId?: string;
+  userId?: string;
+}
+
+export interface CreateAgentStatusInput extends CreateAgentStatusUpdate {
+  organizationId: string;
+  agentId: string;
+  agentName: string;
   userId?: string;
 }
 
@@ -420,6 +431,7 @@ export class AgentTickStore {
     ensureColumn(this.db, 'organization_invites', 'email_last_error', 'ALTER TABLE organization_invites ADD COLUMN email_last_error TEXT');
     ensureColumn(this.db, 'organization_invite_acceptances', 'requested_team_ids_json', "ALTER TABLE organization_invite_acceptances ADD COLUMN requested_team_ids_json TEXT NOT NULL DEFAULT '[]'");
     this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
+    this.db.exec(MIGRATION_0003_AGENT_STATUS_UPDATES);
     this.db.exec('CREATE INDEX IF NOT EXISTS audit_events_org_event_idx ON audit_events(organization_id, event_id)');
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
@@ -1667,6 +1679,62 @@ export class AgentTickStore {
     return row ? mapAvailabilityRow(row) : null;
   }
 
+  createAgentStatusUpdate(input: CreateAgentStatusInput, now = new Date().toISOString()): AgentStatusUpdate {
+    const parsed = CreateAgentStatusUpdateSchema.parse(input);
+    const statusId = newID('stat');
+    this.db
+      .prepare(`
+        INSERT INTO agent_status_updates(
+          status_id, organization_id, agent_id, agent_name, thread_id, message, state,
+          next_step, host, working_directory, project_name, metadata_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        statusId,
+        input.organizationId,
+        input.agentId,
+        input.agentName,
+        parsed.threadId,
+        parsed.message,
+        parsed.state,
+        parsed.nextStep ?? null,
+        parsed.host ?? null,
+        parsed.workingDirectory ?? null,
+        parsed.projectName ?? null,
+        JSON.stringify(parsed.metadata ?? {}),
+        now
+      );
+    this.writeAuditEvent(input.organizationId, input.userId ?? input.agentId, 'agent_status.updated', statusId, { threadId: parsed.threadId, state: parsed.state }, now);
+    return this.getAgentStatusUpdate(statusId, input.organizationId) ?? missingAgentStatus(statusId);
+  }
+
+  getAgentStatusUpdate(statusId: string, organizationId: string): AgentStatusUpdate | null {
+    const row = this.db
+      .prepare('SELECT * FROM agent_status_updates WHERE status_id = ? AND organization_id = ?')
+      .get(statusId, organizationId) as AgentStatusRow | undefined;
+    return row ? mapAgentStatusRow(row) : null;
+  }
+
+  listLatestAgentStatusUpdates(organizationId: string, limit = 20): AgentStatusUpdate[] {
+    const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+    const rows = this.db
+      .prepare(`
+        SELECT s.*
+        FROM agent_status_updates s
+        JOIN (
+          SELECT thread_id, MAX(created_at || status_id) AS latest_key
+          FROM agent_status_updates
+          WHERE organization_id = ?
+          GROUP BY thread_id
+        ) latest ON latest.thread_id = s.thread_id AND latest.latest_key = s.created_at || s.status_id
+        WHERE s.organization_id = ?
+        ORDER BY s.created_at DESC, s.status_id DESC
+        LIMIT ?
+      `)
+      .all(organizationId, organizationId, safeLimit) as AgentStatusRow[];
+    return rows.map(mapAgentStatusRow);
+  }
+
   listAuditEvents(organizationId: string, limit = 100): AuditEventRecord[] {
     const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
     const rows = this.db
@@ -1836,6 +1904,24 @@ function mapAuditEventRow(row: AuditEventRow): AuditEventRecord {
     payload: parseJSON<unknown>(row.payload_json, {}),
     createdAt: row.created_at
   };
+}
+
+function mapAgentStatusRow(row: AgentStatusRow): AgentStatusUpdate {
+  return AgentStatusUpdateSchema.parse({
+    statusId: row.status_id,
+    organizationId: row.organization_id,
+    agentId: row.agent_id,
+    agentName: row.agent_name,
+    threadId: row.thread_id,
+    message: row.message,
+    state: row.state,
+    nextStep: row.next_step ?? undefined,
+    host: row.host ?? undefined,
+    workingDirectory: row.working_directory ?? undefined,
+    projectName: row.project_name ?? undefined,
+    metadata: parseJSON<Record<string, string>>(row.metadata_json, {}),
+    createdAt: row.created_at
+  });
 }
 
 function mapMobileDiagnosticRow(row: MobileDiagnosticRow): MobileDiagnosticRecord {
@@ -2057,6 +2143,10 @@ function missingInvite(id: string): never {
   throw new Error(`invite ${id} was not created`);
 }
 
+function missingAgentStatus(id: string): never {
+  throw new Error(`agent status update ${id} was not created`);
+}
+
 function missingAvailability(userId: string): never {
   throw new Error(`availability for ${userId} was not saved`);
 }
@@ -2076,6 +2166,22 @@ interface AuditEventRow {
   event_type: string;
   target_id: string;
   payload_json: string;
+  created_at: string;
+}
+
+interface AgentStatusRow {
+  status_id: string;
+  organization_id: string;
+  agent_id: string;
+  agent_name: string;
+  thread_id: string;
+  message: string;
+  state: string;
+  next_step: string | null;
+  host: string | null;
+  working_directory: string | null;
+  project_name: string | null;
+  metadata_json: string;
   created_at: string;
 }
 
@@ -2595,4 +2701,25 @@ CREATE TABLE IF NOT EXISTS mobile_diagnostics (
 );
 
 CREATE INDEX IF NOT EXISTS mobile_diagnostics_org_created_idx ON mobile_diagnostics(organization_id, created_at DESC);
+`;
+
+const MIGRATION_0003_AGENT_STATUS_UPDATES = `
+CREATE TABLE IF NOT EXISTS agent_status_updates (
+  status_id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  agent_id TEXT NOT NULL,
+  agent_name TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  message TEXT NOT NULL,
+  state TEXT NOT NULL,
+  next_step TEXT,
+  host TEXT,
+  working_directory TEXT,
+  project_name TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS agent_status_updates_org_thread_created_idx ON agent_status_updates(organization_id, thread_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS agent_status_updates_org_created_idx ON agent_status_updates(organization_id, created_at DESC);
 `;

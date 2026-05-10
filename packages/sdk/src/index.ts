@@ -2,6 +2,7 @@ import type { ZodType } from 'zod';
 import {
   AgentCredentialSchema,
   AcceptInviteResponseSchema,
+  AgentStatusUpdateSchema,
   AgentTokenRecordSchema,
   ApiErrorEnvelopeSchema,
   ApprovalRequestSchema,
@@ -10,6 +11,7 @@ import {
   AvailabilityRecordSchema,
   BillingStatusSchema,
   CreateAgentTokenSchema,
+  CreateAgentStatusUpdateSchema,
   CreateApprovalRequestSchema,
   CreateMobileDiagnosticsSchema,
   CreateMobileSessionSchema,
@@ -52,6 +54,7 @@ import {
   type AcceptInviteResponse,
   type AgentCredential,
   type AgentTokenRecord,
+  type AgentStatusUpdate,
   type ApiErrorEnvelope,
   type ApprovalRequest,
   type ApprovalWaiterCredential,
@@ -60,6 +63,7 @@ import {
   type AvailabilityRecord,
   type BillingStatus,
   type CreateAgentToken,
+  type CreateAgentStatusUpdate,
   type CreateApprovalRequest,
   type CreateApprovalResponse,
   type CreateMobileDiagnostics,
@@ -190,6 +194,19 @@ export class AgentTickClient {
     return this.#request('POST', '/v1/heartbeat', HeartbeatResponseSchema, {
       body: HeartbeatRequestSchema.parse(input)
     });
+  }
+
+  createStatusUpdate(input: CreateAgentStatusUpdate): Promise<AgentStatusUpdate> {
+    return this.#request('POST', '/v1/status-updates', AgentStatusUpdateSchema, {
+      body: CreateAgentStatusUpdateSchema.parse(input)
+    });
+  }
+
+  listStatusUpdates(options: { limit?: number } = {}): Promise<AgentStatusUpdate[]> {
+    const params = new URLSearchParams();
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return this.#request('GET', `/v1/status-updates${suffix}`, AgentStatusUpdateSchema.array());
   }
 
   setAvailability(input: SetAvailability): Promise<AvailabilityRecord> {
@@ -458,6 +475,7 @@ export type {
   AcceptInviteResponse,
   AgentCredential,
   AgentTokenRecord,
+  AgentStatusUpdate,
   ApiErrorEnvelope,
   ApprovalRequest,
   ApprovalWaiterCredential,
@@ -466,6 +484,7 @@ export type {
   AvailabilityRecord,
   BillingStatus,
   CreateAgentToken,
+  CreateAgentStatusUpdate,
   CreateApprovalRequest,
   CreateApprovalResponse,
   CreateMobileDiagnostics,
