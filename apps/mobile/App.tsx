@@ -385,6 +385,12 @@ function ClerkBoundApp(props: AgentTickAppProps) {
           recordDiagnostic("warn", "auth", "saved_account_token_missing", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
           return "missing";
         }
+        const tokenMatchesAccount = await savedSessionMatchesAccount(account, savedToken).catch(() => false);
+        if (!tokenMatchesAccount) {
+          await tokenCache?.saveToken(mobileAccountSessionTokenKey(account.id), "");
+          recordDiagnostic("warn", "auth", "saved_account_token_mismatch", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
+          return "missing";
+        }
         refreshedMobileSessionFromClerk.current = true;
         setUsingSavedMobileAccount(true);
         setSignedOutManually(false);
@@ -422,6 +428,16 @@ async function hasSavedLocalSession(serverURL: string) {
   const keys = mobileSessionStorageKeys(serverURL);
   const entries = await AsyncStorage.multiGet([keys.token, keys.deviceID]);
   return entries.some(([, value]) => Boolean(value));
+}
+
+async function savedSessionMatchesAccount(account: SavedMobileAccount, token: string) {
+  if (!account.userID) return true;
+  const client = new AgentTickClient({
+    baseUrl: account.serverURL,
+    tokenProvider: async () => token,
+  });
+  const profile = await client.getMe();
+  return profile.userId === account.userID;
 }
 
 function selfHostedInitialURL(serverURL?: string) {
@@ -799,7 +815,7 @@ function AgentTickApp({
           label: runtimeAuthConfig?.authProvider === "clerk" && currentAccountProfile?.signInMethod ? `${currentAccountProfile.signInMethod} account` : "",
         });
         const savedAccount = next[0];
-        if (savedAccount && runtimeAuthConfig?.authProvider === "clerk" && clerkSessionToken) {
+        if (savedAccount && runtimeAuthConfig?.authProvider === "clerk" && clerkSessionToken && currentAccountProfile?.source !== "mobile-saved-account") {
           void tokenCache?.saveToken(mobileAccountSessionTokenKey(savedAccount.id), clerkSessionToken);
         }
         void AsyncStorage.setItem(mobileAccountsStorageKey, JSON.stringify(next));
