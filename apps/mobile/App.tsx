@@ -252,7 +252,9 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }, [clerkLoginToken, isLoaded, isSignedIn, mobileSessionToken, nativeSession, nativeSignedIn, signedOutManually]);
 
   useEffect(() => {
-    if (addingClerkAccount && !isSignedIn && !nativeSignedIn) setAddAccountSawSignedOut(true);
+    if (!addingClerkAccount || isSignedIn || nativeSignedIn) return;
+    setAddAccountSawSignedOut(true);
+    setSignOutInProgress(false);
   }, [addingClerkAccount, isSignedIn, nativeSignedIn]);
 
   useEffect(() => {
@@ -316,7 +318,6 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       await signOut();
     } finally {
       setSignedOutManually(false);
-      setSignOutInProgress(false);
     }
   }, [signOut]);
 
@@ -342,6 +343,9 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }, [signOut]);
 
   if (!isLoaded || signOutInProgress) {
+    return <LoadingScreen />;
+  }
+  if (addingClerkAccount && !addAccountSawSignedOut) {
     return <LoadingScreen />;
   }
   if (addingClerkAccount) {
