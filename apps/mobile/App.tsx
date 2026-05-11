@@ -337,8 +337,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
         if (!savedToken) {
           recordDiagnostic("warn", "auth", "saved_account_token_missing", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
-          void handleForgetClerkSession({ reopenSignIn: true });
-          return "reauth_started";
+          return "missing";
         }
         refreshedMobileSessionFromClerk.current = true;
         setUsingSavedMobileAccount(true);
@@ -789,6 +788,16 @@ function AgentTickApp({
     void AsyncStorage.setItem(dismissedAgentStatusStorageKey(serverURL, selectedOrganizationID), statusID);
   }, [dismissedStatusScopeKey, selectedOrganizationID, serverURL]);
 
+  const removeSavedAccount = useCallback((account: SavedMobileAccount) => {
+    setSavedAccounts((current) => {
+      const next = current.filter((candidate) => candidate.id !== account.id);
+      void AsyncStorage.setItem(mobileAccountsStorageKey, JSON.stringify(next));
+      return next;
+    });
+    void tokenCache?.saveToken(mobileAccountSessionTokenKey(account.id), "");
+    recordDiagnostic("info", "auth", "saved_account_removed", { authProvider: account.authProvider, signInMethod: account.signInMethod, hasEmail: Boolean(account.email) });
+  }, []);
+
   const switchSavedAccount = useCallback((account: SavedMobileAccount) => {
     interruptRealtime();
     const switchAccount = async () => {
@@ -800,12 +809,8 @@ function AgentTickApp({
           hasTargetUser: Boolean(account.userID),
         });
         const switchResult = await onSelectSavedClerkAccount?.(account);
-        if (switchResult === "reauth_started") {
-          recordDiagnostic("warn", "auth", "saved_account_reauth_started", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
-          return;
-        }
         if (switchResult !== "selected") {
-          const message = "Saved account session is no longer available. Sign in again to continue.";
+          const message = "That saved account does not have an active session on this device anymore. Remove it, or use Add another account to sign in again.";
           recordDiagnostic("warn", "auth", "saved_account_switch_missing_session", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
           setError(message);
           Alert.alert("Account switch failed", message);
@@ -1611,6 +1616,7 @@ function AgentTickApp({
           onPairDevice={() => void pairDevice()}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
+          onSavedAccountRemove={removeSavedAccount}
           onSavedAccountSelect={switchSavedAccount}
           onSendDiagnosticSnapshot={() => void sendDiagnostics()}
           onSendTestNotification={() => void sendTestNotification()}

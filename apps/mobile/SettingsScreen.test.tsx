@@ -186,6 +186,33 @@ describe("SettingsScreen — paired state", () => {
     expect(onSavedAccountSelect).toHaveBeenCalledWith(account);
   });
 
+  it("removes saved accounts without selecting them", () => {
+    const onSavedAccountRemove = jest.fn();
+    const account = {
+      id: "clerk:https://agenttick.sh:usr_2",
+      serverURL: "https://agenttick.sh",
+      authProvider: "clerk",
+      label: "Apple account",
+      userID: "usr_2",
+      email: "ada@icloud.com",
+      signInMethod: "Apple",
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    };
+    render(
+      <SettingsScreen
+        {...unpairedProps}
+        accounts={[account]}
+        authProvider="clerk"
+        currentAccountProfile={{ userId: "usr_1", email: "ada@example.com", signInMethod: "GitHub", authProvider: "clerk", source: "human" }}
+        onSavedAccountRemove={onSavedAccountRemove}
+      />,
+    );
+
+    fireEvent.press(screen.getByText("Switch accounts ›"));
+    fireEvent.press(screen.getByText("Remove"));
+    expect(onSavedAccountRemove).toHaveBeenCalledWith(account);
+  });
+
   it("shows the Clerk account summary and lets users add another account from the switcher", () => {
     const onSignInAnotherClerkAccount = jest.fn();
     render(

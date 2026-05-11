@@ -63,6 +63,7 @@ export function SettingsScreen({
   onSignInAnotherClerkAccount,
   onRegisterPush,
   onRequestNotifications,
+  onSavedAccountRemove,
   onSavedAccountSelect,
   onSendDiagnosticSnapshot,
   onSendTestNotification,
@@ -101,6 +102,7 @@ export function SettingsScreen({
   onDiagnosticsEnabledChange?: (enabled: boolean) => void;
   onRegisterPush: () => void;
   onRequestNotifications: () => void;
+  onSavedAccountRemove?: (account: SavedMobileAccount) => void;
   onSavedAccountSelect?: (account: SavedMobileAccount) => void;
   onSendDiagnosticSnapshot?: () => void;
   onSendTestNotification: () => void;
@@ -231,17 +233,23 @@ export function SettingsScreen({
               <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
             </Pressable>
             {accounts.filter((account) => !isCurrentSavedAccount(account, { authProvider, currentAccountProfile, deviceID, selectedOrganizationID, serverURL })).map((account) => (
-              <Pressable
-                key={account.id}
-                onPress={() => {
-                  setAccountsOpen(false);
-                  onSavedAccountSelect?.(account);
-                }}
-                style={styles.organizationButton}
-              >
-                <Text style={styles.organizationName}>{account.label}</Text>
-                <Text style={styles.organizationMeta}>{savedAccountDetails(account)}</Text>
-              </Pressable>
+              <View key={account.id} style={styles.organizationButton}>
+                <Pressable
+                  onPress={() => {
+                    setAccountsOpen(false);
+                    onSavedAccountSelect?.(account);
+                  }}
+                  style={styles.accountSelectArea}
+                >
+                  <Text style={styles.organizationName}>{account.label}</Text>
+                  <Text style={styles.organizationMeta}>{savedAccountDetails(account)}</Text>
+                </Pressable>
+                {onSavedAccountRemove ? (
+                  <Pressable onPress={() => onSavedAccountRemove(account)} style={styles.removeAccountButton}>
+                    <Text style={styles.removeAccountText}>Remove</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             ))}
           </View>
           {isClerkMode && onSignInAnotherClerkAccount ? (
@@ -715,8 +723,24 @@ const styles = StyleSheet.create({
     borderColor: "#ded6c6",
     borderRadius: 8,
     borderWidth: 1,
-    gap: 3,
+    gap: 8,
     padding: 12,
+  },
+  accountSelectArea: {
+    gap: 3,
+  },
+  removeAccountButton: {
+    alignSelf: "flex-start",
+    borderColor: "#9b1c1c",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  removeAccountText: {
+    color: "#9b1c1c",
+    fontSize: 13,
+    fontWeight: "900",
   },
   organizationButtonActive: {
     backgroundColor: "#202124",
