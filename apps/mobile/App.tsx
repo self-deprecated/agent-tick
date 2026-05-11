@@ -213,6 +213,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   const [mobileSessionToken, setMobileSessionToken] = useState<string | null>(null);
   const [signedOutManually, setSignedOutManually] = useState(false);
   const [signOutInProgress, setSignOutInProgress] = useState(false);
+  const [addingClerkAccount, setAddingClerkAccount] = useState(false);
   const [openSignInAfterSignOut, setOpenSignInAfterSignOut] = useState(false);
   const [usingSavedMobileAccount, setUsingSavedMobileAccount] = useState(false);
   const refreshedMobileSessionFromClerk = useRef(false);
@@ -279,8 +280,12 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       if (cancelled) return;
       refreshedMobileSessionFromClerk.current = true;
       setUsingSavedMobileAccount(false);
+      setAddingClerkAccount(false);
+      setClerkLoginToken(null);
       await tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token);
       setMobileSessionToken(session.token);
+      await getNativeClerkModule()?.signOut?.().catch(() => undefined);
+      await signOut().catch(() => undefined);
     };
     void createAgentTickSession().catch(() => {
       refreshedMobileSessionFromClerk.current = true;
@@ -289,11 +294,28 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoginToken, mobileSessionToken, props.initialServerURL, signedOutManually, usingSavedMobileAccount]);
+  }, [clerkLoginToken, mobileSessionToken, props.initialServerURL, signOut, signedOutManually, usingSavedMobileAccount]);
+
+  const handleAddClerkAccount = useCallback(async () => {
+    setSignOutInProgress(true);
+    setAddingClerkAccount(true);
+    setOpenSignInAfterSignOut(true);
+    refreshedMobileSessionFromClerk.current = false;
+    setUsingSavedMobileAccount(false);
+    setClerkLoginToken(null);
+    try {
+      await getNativeClerkModule()?.signOut?.();
+      await signOut();
+    } finally {
+      setSignedOutManually(false);
+      setSignOutInProgress(false);
+    }
+  }, [signOut]);
 
   const handleForgetClerkSession = useCallback(async (options?: { reopenSignIn?: boolean }) => {
     const reopenSignIn = Boolean(options?.reopenSignIn);
     setSignOutInProgress(true);
+    setAddingClerkAccount(false);
     setOpenSignInAfterSignOut(false);
     refreshedMobileSessionFromClerk.current = false;
     setUsingSavedMobileAccount(false);
@@ -312,6 +334,16 @@ function ClerkBoundApp(props: AgentTickAppProps) {
 
   if (!isLoaded || signOutInProgress) {
     return <LoadingScreen />;
+  }
+  if (addingClerkAccount) {
+    return (
+      <ClerkSignInScreen
+        serverURL={defaultServer}
+        selfHostedInitialURL={selfHostedInitialURL(props.initialServerURL)}
+        initialShowAuthView={openSignInAfterSignOut}
+        onServerSelected={props.onRuntimeAuthConfig}
+      />
+    );
   }
   if (!hasClerkLogin) {
     return (
@@ -332,6 +364,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       clerkSignedIn={true}
       clerkSessionToken={mobileSessionToken}
       clerkTokenProvider={async () => mobileSessionToken}
+      onAddClerkAccount={() => void handleAddClerkAccount()}
       onForgetClerkSession={(options) => void handleForgetClerkSession(options)}
       onSelectSavedClerkAccount={async (account) => {
         const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
@@ -455,9 +488,11 @@ function AgentTickApp({
   clerkSessionToken,
   clerkTokenProvider,
   onRuntimeAuthConfig,
+  onAddClerkAccount,
   onForgetClerkSession,
   onSelectSavedClerkAccount,
 }: AgentTickAppProps & {
+  onAddClerkAccount?: () => void;
   onForgetClerkSession?: (options?: { reopenSignIn?: boolean }) => void;
   onSelectSavedClerkAccount?: (account: SavedMobileAccount) => Promise<"selected" | "reauth_started" | "missing">;
 }) {
@@ -1612,7 +1647,7 @@ function AgentTickApp({
           onCheck={() => void checkConnection()}
           onDiagnosticsEnabledChange={(enabled) => void toggleDiagnostics(enabled)}
           onForgetDevice={() => void forgetDevice()}
-          onSignInAnotherClerkAccount={() => void forgetDevice({ reopenSignIn: true })}
+          onSignInAnotherClerkAccount={onAddClerkAccount}
           onPairDevice={() => void pairDevice()}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
