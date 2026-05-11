@@ -88,7 +88,7 @@ export function SettingsScreen({
   availability?: AvailabilityState;
   authProvider?: string;
   connectionStatus: ConnectionStatus;
-  currentAccountProfile?: Pick<MeResponse, "email" | "name" | "signInMethod" | "source" | "authProvider"> | null;
+  currentAccountProfile?: Pick<MeResponse, "userId" | "email" | "name" | "signInMethod" | "source" | "authProvider"> | null;
   e2eeFocusToken?: number;
   e2eeKey?: string;
   error: string | null;
@@ -224,10 +224,25 @@ export function SettingsScreen({
           <Text style={styles.pairingHint}>Choose a saved account or add another Agent Tick account on this device.</Text>
         </View>
         <View style={styles.settingsSection}>
-          <Text style={styles.label}>Current account</Text>
-          <View style={[styles.organizationButton, styles.organizationButtonActive]}>
-            <Text style={[styles.organizationName, styles.organizationNameActive]}>{currentAccountTitle}</Text>
-            <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
+          <View style={styles.organizationList}>
+            <Pressable onPress={() => setAccountsOpen(false)} style={[styles.organizationButton, styles.organizationButtonActive]}>
+              <Text style={[styles.label, styles.organizationNameActive]}>Current</Text>
+              <Text style={[styles.organizationName, styles.organizationNameActive]}>{currentAccountTitle}</Text>
+              <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
+            </Pressable>
+            {accounts.filter((account) => !isCurrentSavedAccount(account, { authProvider, currentAccountProfile, deviceID, selectedOrganizationID, serverURL })).map((account) => (
+              <Pressable
+                key={account.id}
+                onPress={() => {
+                  setAccountsOpen(false);
+                  onSavedAccountSelect?.(account);
+                }}
+                style={styles.organizationButton}
+              >
+                <Text style={styles.organizationName}>{account.label}</Text>
+                <Text style={styles.organizationMeta}>{savedAccountDetails(account)}</Text>
+              </Pressable>
+            ))}
           </View>
           {isClerkMode && onSignInAnotherClerkAccount ? (
             <Pressable onPress={onSignInAnotherClerkAccount} style={styles.primaryButton}>
@@ -239,29 +254,6 @@ export function SettingsScreen({
             </Pressable>
           ) : null}
         </View>
-        {accounts.length > 0 ? (
-          <View style={styles.settingsSection}>
-            <Text style={styles.sectionHeading}>Saved accounts</Text>
-            <View style={styles.organizationList}>
-              {accounts.map((account) => {
-                const active = account.serverURL === serverURL && (!account.organizationID || account.organizationID === selectedOrganizationID);
-                return (
-                  <Pressable
-                    key={account.id}
-                    onPress={() => {
-                      setAccountsOpen(false);
-                      onSavedAccountSelect?.(account);
-                    }}
-                    style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
-                  >
-                    <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{account.label}</Text>
-                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{savedAccountDetails(account)}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
       </ScrollView>
     );
   }
@@ -285,18 +277,6 @@ export function SettingsScreen({
             <Text style={styles.accountSummaryMeta}>{currentAccountMeta}</Text>
             <Text style={styles.accountSummaryAction}>Switch accounts ›</Text>
           </Pressable>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Server URL</Text>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              inputMode="url"
-              onChangeText={setServerURL}
-              placeholder="https://tick.example.com"
-              style={styles.input}
-              value={serverURL}
-            />
-          </View>
           <Pressable onPress={onCheck} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Check Connection</Text>
           </Pressable>
@@ -508,9 +488,33 @@ function currentAccountDetails({
 function savedAccountDetails(account: SavedMobileAccount) {
   const serverHost = hostLabel(account.serverURL);
   if (account.authProvider === "clerk") {
-    return [account.email, account.signInMethod, serverHost].filter(Boolean).join(" · ");
+    return [account.email, account.signInMethod ? `Sign-in method: ${account.signInMethod}` : undefined, serverHost].filter(Boolean).join(" · ");
   }
   return [`local device`, serverHost].filter(Boolean).join(" · ");
+}
+
+function isCurrentSavedAccount(
+  account: SavedMobileAccount,
+  current: {
+    authProvider?: string;
+    currentAccountProfile?: Pick<MeResponse, "userId" | "email"> | null;
+    deviceID: string;
+    selectedOrganizationID?: string;
+    serverURL: string;
+  },
+) {
+  if (account.authProvider !== current.authProvider || normalizeServerURL(account.serverURL) !== normalizeServerURL(current.serverURL)) return false;
+  if (account.authProvider === "clerk") {
+    if (account.userID && current.currentAccountProfile?.userId) return account.userID === current.currentAccountProfile.userId;
+    if (account.email && current.currentAccountProfile?.email) return account.email.trim().toLowerCase() === current.currentAccountProfile.email.trim().toLowerCase();
+    return false;
+  }
+  if (account.deviceID && current.deviceID) return account.deviceID === current.deviceID;
+  return Boolean(account.organizationID && account.organizationID === current.selectedOrganizationID);
+}
+
+function normalizeServerURL(serverURL: string) {
+  return serverURL.trim().replace(/\/+$/, "");
 }
 
 function hostLabel(serverURL: string) {

@@ -94,9 +94,9 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText("Forget Device")).toBeTruthy();
   });
 
-  it("keeps server URL input available for server switching", () => {
+  it("hides the server URL input after pairing", () => {
     render(<SettingsScreen {...pairedProps} />);
-    expect(screen.getByPlaceholderText("https://tick.example.com")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("https://tick.example.com")).toBeNull();
   });
 
   it("hides manual pairing code input", () => {
@@ -168,18 +168,19 @@ describe("SettingsScreen — paired state", () => {
   it("opens the account switcher and switches saved accounts", () => {
     const onSavedAccountSelect = jest.fn();
     const account = {
-      id: "local:https://tick.example.com:dev_1",
+      id: "local:https://tick.example.com:dev_2",
       serverURL: "https://tick.example.com",
       authProvider: "local",
       label: "Example device",
-      deviceID: "dev_1",
+      deviceID: "dev_2",
       updatedAt: "2026-05-10T00:00:00.000Z",
     };
     render(<SettingsScreen {...pairedProps} accounts={[account]} serverURL="https://tick.example.com" onSavedAccountSelect={onSavedAccountSelect} />);
     expect(screen.getByText("Current account")).toBeTruthy();
-    expect(screen.queryByText("Saved accounts")).toBeNull();
+    expect(screen.queryByText("Accounts")).toBeNull();
     fireEvent.press(screen.getByText("Switch accounts ›"));
-    expect(screen.getByText("Saved accounts")).toBeTruthy();
+    expect(screen.getByText("Accounts")).toBeTruthy();
+    expect(screen.queryByText("Saved accounts")).toBeNull();
     expect(screen.getByText("Example device")).toBeTruthy();
     fireEvent.press(screen.getByText("Example device"));
     expect(onSavedAccountSelect).toHaveBeenCalledWith(account);
@@ -191,7 +192,7 @@ describe("SettingsScreen — paired state", () => {
       <SettingsScreen
         {...unpairedProps}
         authProvider="clerk"
-        currentAccountProfile={{ name: "Ada Lovelace", email: "ada@example.com", signInMethod: "GitHub", authProvider: "clerk", source: "human" }}
+        currentAccountProfile={{ userId: "usr_1", name: "Ada Lovelace", email: "ada@example.com", signInMethod: "GitHub", authProvider: "clerk", source: "human" }}
         onSignInAnotherClerkAccount={onSignInAnotherClerkAccount}
       />,
     );
