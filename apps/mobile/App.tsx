@@ -209,6 +209,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   const [signedOutManually, setSignedOutManually] = useState(false);
   const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [openSignInAfterSignOut, setOpenSignInAfterSignOut] = useState(false);
+  const [usingSavedMobileAccount, setUsingSavedMobileAccount] = useState(false);
   const refreshedMobileSessionFromClerk = useRef(false);
   const wasNativeSignedIn = useRef(false);
 
@@ -226,6 +227,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     const restoreMobileSession = async () => {
       const savedSession = (await tokenCache?.getToken(agentTickMobileSessionJwtKey)) || null;
       if (cancelled || !savedSession) return;
+      setUsingSavedMobileAccount(false);
       setMobileSessionToken(savedSession);
     };
     void restoreMobileSession();
@@ -243,7 +245,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }, [clerkLoginToken, isLoaded, isSignedIn, mobileSessionToken, nativeSession, nativeSignedIn, signedOutManually]);
 
   useEffect(() => {
-    if (!isLoaded || signedOutManually || clerkLoginToken) return;
+    if (!isLoaded || signedOutManually || clerkLoginToken || (usingSavedMobileAccount && mobileSessionToken)) return;
     let cancelled = false;
     const resolveClerkLoginToken = async () => {
       const sessionToken = await getToken();
@@ -259,10 +261,11 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoginToken, getToken, isLoaded, nativeSignedIn, signedOutManually]);
+  }, [clerkLoginToken, getToken, isLoaded, mobileSessionToken, nativeSignedIn, signedOutManually, usingSavedMobileAccount]);
 
   useEffect(() => {
     if (signedOutManually || !clerkLoginToken) return;
+    if (usingSavedMobileAccount && mobileSessionToken) return;
     if (mobileSessionToken && refreshedMobileSessionFromClerk.current) return;
     let cancelled = false;
     const createAgentTickSession = async () => {
@@ -270,6 +273,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       const session = await client.createMobileSession({ clerkToken: clerkLoginToken });
       if (cancelled) return;
       refreshedMobileSessionFromClerk.current = true;
+      setUsingSavedMobileAccount(false);
       await tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token);
       setMobileSessionToken(session.token);
     };
@@ -280,13 +284,14 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoginToken, mobileSessionToken, props.initialServerURL, signedOutManually]);
+  }, [clerkLoginToken, mobileSessionToken, props.initialServerURL, signedOutManually, usingSavedMobileAccount]);
 
   const handleForgetClerkSession = useCallback(async (options?: { reopenSignIn?: boolean }) => {
     const reopenSignIn = Boolean(options?.reopenSignIn);
     setSignOutInProgress(true);
     setOpenSignInAfterSignOut(false);
     refreshedMobileSessionFromClerk.current = false;
+    setUsingSavedMobileAccount(false);
     setClerkLoginToken(null);
     setMobileSessionToken(null);
     await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
@@ -327,6 +332,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
         if (!savedToken) return false;
         refreshedMobileSessionFromClerk.current = true;
+        setUsingSavedMobileAccount(true);
         setSignedOutManually(false);
         setOpenSignInAfterSignOut(false);
         setClerkLoginToken(null);
