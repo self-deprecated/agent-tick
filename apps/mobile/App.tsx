@@ -70,6 +70,7 @@ import {
   hostedServerURL,
   normalizeSavedMobileAccounts,
   normalizeServerURL,
+  savedMobileAccountID,
   selfHostedServerURLPreset,
   serverURLStorageKey,
   upsertSavedMobileAccount,
@@ -291,6 +292,12 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       setAddingClerkAccount(false);
       setAddAccountSawSignedOut(false);
       setClerkLoginToken(null);
+      const accountTokenKey = mobileAccountSessionTokenKey(savedMobileAccountID({
+        serverURL: props.initialServerURL ?? defaultServer,
+        authProvider: "clerk",
+        userID: session.userId,
+      }));
+      await tokenCache?.saveToken(accountTokenKey, session.token);
       await tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token);
       setMobileSessionToken(session.token);
       await getNativeClerkModule()?.signOut?.().catch(() => undefined);
@@ -864,13 +871,6 @@ function AgentTickApp({
 
   const switchSavedAccount = useCallback((account: SavedMobileAccount) => {
     interruptRealtime();
-    setConnectionStatus("checking");
-    if (account.authProvider === "clerk") {
-      setSelectedOrganizationID("");
-      setRequests([]);
-      setHistory([]);
-      setSelectedID(null);
-    }
     const switchAccount = async () => {
       if (account.authProvider === "clerk") {
         recordDiagnostic("info", "auth", "saved_account_switch_attempt", {
@@ -888,6 +888,11 @@ function AgentTickApp({
           return;
         }
         recordDiagnostic("info", "auth", "saved_account_switch_selected", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
+        setConnectionStatus("checking");
+        setSelectedOrganizationID("");
+        setRequests([]);
+        setHistory([]);
+        setSelectedID(null);
         setCurrentAccountProfile(account.userID ? {
           userId: account.userID,
           ...(account.email ? { email: account.email } : {}),
@@ -896,6 +901,7 @@ function AgentTickApp({
           source: "mobile-saved-account",
         } : null);
       } else {
+        setConnectionStatus("checking");
         setCurrentAccountProfile(null);
       }
       setServerURL(account.serverURL);
