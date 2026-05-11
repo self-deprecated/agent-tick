@@ -729,7 +729,7 @@ function AgentTickApp({
           userID: currentAccountProfile?.userId,
           email: currentAccountProfile?.email,
           signInMethod: currentAccountProfile?.signInMethod,
-          organizationID: selectedOrganizationID || undefined,
+          organizationID: runtimeAuthConfig?.authProvider === "clerk" ? undefined : selectedOrganizationID || undefined,
           deviceID: deviceID || undefined,
           label: runtimeAuthConfig?.authProvider === "clerk" && currentAccountProfile?.signInMethod ? `${currentAccountProfile.signInMethod} account` : "",
         });
@@ -759,7 +759,8 @@ function AgentTickApp({
         }
       }
       setServerURL(account.serverURL);
-      setSelectedOrganizationID(account.organizationID ?? "");
+      setSelectedOrganizationID(account.authProvider === "clerk" ? "" : account.organizationID ?? "");
+      setCurrentAccountProfile(null);
       setLoadedSessionServerURL("");
       setScreen("approvals");
     };
@@ -793,14 +794,14 @@ function AgentTickApp({
       setCurrentAccountProfile(null);
       setOrganizations([]);
     }
-  }, [currentAuthToken, runtimeAuthConfig?.authProvider, serverURL]);
+  }, [clerkSessionToken, currentAuthToken, runtimeAuthConfig?.authProvider, serverURL]);
 
   useEffect(() => {
     if (!settingsLoaded || runtimeAuthConfig?.authProvider !== "clerk") {
       return;
     }
     void refreshOrganizations();
-  }, [refreshOrganizations, runtimeAuthConfig?.authProvider, settingsLoaded]);
+  }, [clerkSessionToken, refreshOrganizations, runtimeAuthConfig?.authProvider, settingsLoaded]);
 
   const load = useCallback(async (options?: { visible?: boolean }) => {
     if (runtimeAuthConfig?.authProvider === "clerk" && !selectedOrganizationID) {

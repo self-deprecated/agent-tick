@@ -47,6 +47,32 @@ describe("mobile auth config", () => {
     expect(normalizeSavedMobileAccounts(JSON.parse(JSON.stringify(second))).map((account) => account.label)).toEqual(["GitHub account", "Example device"]);
   });
 
+  it("deduplicates legacy organization-scoped hosted accounts by user", () => {
+    const legacy = normalizeSavedMobileAccounts([
+      {
+        id: savedMobileAccountID({ serverURL: "https://agenttick.sh", authProvider: "clerk", organizationID: "org_1" }),
+        serverURL: "https://agenttick.sh",
+        authProvider: "clerk",
+        organizationID: "org_1",
+        label: "Platform",
+        updatedAt: "2026-05-10T00:00:00.000Z",
+      },
+    ]);
+
+    const next = upsertSavedMobileAccount(legacy, {
+      serverURL: "https://agenttick.sh",
+      authProvider: "clerk",
+      userID: "usr_1",
+      email: "ada@example.com",
+      signInMethod: "GitHub",
+      label: "GitHub account",
+    });
+
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({ userID: "usr_1", email: "ada@example.com", signInMethod: "GitHub" });
+    expect(next[0]?.organizationID).toBeUndefined();
+  });
+
   it("namespaces saved Agent Tick account session tokens by account ID", () => {
     expect(mobileAccountSessionTokenKey("clerk:https://agenttick.sh:usr_1")).toBe(
       "agent-tick.mobileAccountSession.clerk%3Ahttps%3A%2F%2Fagenttick.sh%3Ausr_1",

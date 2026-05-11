@@ -63,7 +63,9 @@ export function mobileSessionStorageKeyList(serverURL: string): string[] {
 
 export function savedMobileAccountID(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { userID?: string; email?: string; organizationID?: string; deviceID?: string }) {
   const serverURL = normalizeServerURL(input.serverURL);
-  const scope = input.userID?.trim() || input.email?.trim().toLowerCase() || input.organizationID?.trim() || input.deviceID?.trim() || "default";
+  const scope = input.authProvider === "clerk"
+    ? input.userID?.trim() || input.email?.trim().toLowerCase() || "default"
+    : input.userID?.trim() || input.email?.trim().toLowerCase() || input.organizationID?.trim() || input.deviceID?.trim() || "default";
   return `${input.authProvider}:${serverURL}:${scope}`;
 }
 
@@ -99,7 +101,26 @@ export function upsertSavedMobileAccount(accounts: SavedMobileAccount[], input: 
     label: input.label || accountLabel(input),
     updatedAt: input.updatedAt ?? new Date().toISOString(),
   };
-  return [account, ...accounts.filter((candidate) => candidate.id !== account.id)].slice(0, 12);
+  return [account, ...accounts.filter((candidate) => !sameSavedAccount(candidate, account))].slice(0, 12);
+}
+
+function sameSavedAccount(candidate: SavedMobileAccount, account: SavedMobileAccount) {
+  if (candidate.id === account.id) return true;
+  if (candidate.authProvider !== account.authProvider || normalizeServerURL(candidate.serverURL) !== normalizeServerURL(account.serverURL)) return false;
+  if (account.authProvider !== "clerk") return false;
+
+  const candidateUser = candidate.userID?.trim();
+  const accountUser = account.userID?.trim();
+  if (candidateUser && accountUser) return candidateUser === accountUser;
+
+  const candidateEmail = candidate.email?.trim().toLowerCase();
+  const accountEmail = account.email?.trim().toLowerCase();
+  if (candidateEmail && accountEmail) return candidateEmail === accountEmail;
+
+  // Older mobile builds used organization-scoped Clerk saved accounts. Treat those
+  // as duplicates once we have a real user-scoped account so organizations do not
+  // appear as separate accounts in the switcher.
+  return Boolean((accountUser || accountEmail) && candidate.organizationID && !candidateUser && !candidateEmail);
 }
 
 function accountLabel(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { email?: string; signInMethod?: string; organizationID?: string; deviceID?: string }) {
