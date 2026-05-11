@@ -848,6 +848,13 @@ function AgentTickApp({
 
   const switchSavedAccount = useCallback((account: SavedMobileAccount) => {
     interruptRealtime();
+    setConnectionStatus("checking");
+    if (account.authProvider === "clerk") {
+      setSelectedOrganizationID("");
+      setRequests([]);
+      setHistory([]);
+      setSelectedID(null);
+    }
     const switchAccount = async () => {
       if (account.authProvider === "clerk") {
         recordDiagnostic("info", "auth", "saved_account_switch_attempt", {
@@ -875,9 +882,8 @@ function AgentTickApp({
       } else {
         setCurrentAccountProfile(null);
       }
-      setConnectionStatus("checking");
       setServerURL(account.serverURL);
-      setSelectedOrganizationID(account.authProvider === "clerk" ? "" : account.organizationID ?? "");
+      if (account.authProvider !== "clerk") setSelectedOrganizationID(account.organizationID ?? "");
       setLoadedSessionServerURL("");
       setScreen("approvals");
     };
