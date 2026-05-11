@@ -129,6 +129,24 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
     expect(onDismissStatus).toHaveBeenCalledWith("stat_1");
   });
 
+  it("hides a dismissed latest agent status card", () => {
+    renderApproval(approval(), jest.fn(), {
+      statusUpdates: [{
+        statusId: "stat_1",
+        organizationId: "org_1",
+        agentId: "agt_1",
+        agentName: "Agent",
+        threadId: "thread",
+        message: "Working",
+        state: "working",
+        createdAt: "2026-04-19T12:01:00Z",
+      }],
+      dismissedStatusID: "stat_1",
+    });
+
+    expect(screen.queryByText("Latest agent status")).toBeNull();
+  });
+
   it("decrypts encrypted request contents locally when the E2EE key is configured", () => {
     const key = generateApprovalEncryptionKey();
     renderApproval(approval({

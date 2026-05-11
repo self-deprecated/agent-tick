@@ -95,6 +95,11 @@ const approvalChannelID = "approval-requests";
 const agentTickMobileSessionJwtKey = "__agent_tick_mobile_session_jwt";
 const mobileInstallationIDStorageKey = "agent-tick.mobileInstallationID";
 
+function dismissedAgentStatusStorageKey(serverURL: string, organizationID: string): string {
+  const orgScope = organizationID.trim() || "default";
+  return `agent-tick.dismissedStatusID.${encodeURIComponent(normalizeServerURL(serverURL))}.${encodeURIComponent(orgScope)}`;
+}
+
 type NativeClerkModule = TurboModule & {
   getClientToken?: () => Promise<string | null>;
   getSession?: () => Promise<unknown>;
@@ -330,7 +335,11 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       onForgetClerkSession={(options) => void handleForgetClerkSession(options)}
       onSelectSavedClerkAccount={async (account) => {
         const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
-        if (!savedToken) return false;
+        if (!savedToken) {
+          recordDiagnostic("warn", "auth", "saved_account_token_missing", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
+          void handleForgetClerkSession({ reopenSignIn: true });
+          return "reauth_started";
+        }
         refreshedMobileSessionFromClerk.current = true;
         setUsingSavedMobileAccount(true);
         setSignedOutManually(false);
@@ -338,7 +347,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         setClerkLoginToken(null);
         setMobileSessionToken(savedToken);
         await tokenCache?.saveToken(agentTickMobileSessionJwtKey, savedToken);
-        return true;
+        return "selected";
       }}
     />
   );
@@ -451,7 +460,7 @@ function AgentTickApp({
   onSelectSavedClerkAccount,
 }: AgentTickAppProps & {
   onForgetClerkSession?: (options?: { reopenSignIn?: boolean }) => void;
-  onSelectSavedClerkAccount?: (account: SavedMobileAccount) => Promise<boolean>;
+  onSelectSavedClerkAccount?: (account: SavedMobileAccount) => Promise<"selected" | "reauth_started" | "missing">;
 }) {
   const [screen, setScreen] = useState<Screen>("approvals");
   const [serverURL, setServerURL] = useState(initialServerURL ?? defaultServer);
@@ -468,6 +477,7 @@ function AgentTickApp({
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [statusUpdates, setStatusUpdates] = useState<AgentStatusUpdate[]>([]);
   const [dismissedStatusID, setDismissedStatusID] = useState<string | null>(null);
+  const [dismissedStatusScope, setDismissedStatusScope] = useState("");
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [selectedProjectID, setSelectedProjectID] = useState<string | null>(null);
@@ -500,6 +510,8 @@ function AgentTickApp({
   const pairingInFlight = useRef(false);
   const previousScreenRef = useRef<Screen>(screen);
 
+  const dismissedStatusScopeKey = `${normalizeServerURL(serverURL)}:${selectedOrganizationID || "default"}`;
+  const visibleDismissedStatusID = dismissedStatusScope === dismissedStatusScopeKey ? dismissedStatusID : statusUpdates[0]?.statusId ?? null;
   const projectGroups = useMemo(() => groupRequestsByProject(requests), [requests]);
   const visibleRequests = useMemo(
     () => filterRequestsByProject(requests, selectedProjectID),
@@ -754,17 +766,52 @@ function AgentTickApp({
     void AsyncStorage.setItem("agent-tick.e2eeKey", e2eeKey);
   }, [e2eeKey, settingsLoaded]);
 
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    let cancelled = false;
+    const scope = dismissedStatusScopeKey;
+    const restoreDismissedStatus = async () => {
+      const stored = await AsyncStorage.getItem(dismissedAgentStatusStorageKey(serverURL, selectedOrganizationID));
+      if (cancelled || dismissedStatusScopeKey !== scope) return;
+      setDismissedStatusID(stored || null);
+      setDismissedStatusScope(scope);
+    };
+    void restoreDismissedStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [dismissedStatusScopeKey, selectedOrganizationID, serverURL, settingsLoaded]);
+
+  const dismissStatusUpdate = useCallback((statusID: string) => {
+    const scope = dismissedStatusScopeKey;
+    setDismissedStatusID(statusID);
+    setDismissedStatusScope(scope);
+    void AsyncStorage.setItem(dismissedAgentStatusStorageKey(serverURL, selectedOrganizationID), statusID);
+  }, [dismissedStatusScopeKey, selectedOrganizationID, serverURL]);
+
   const switchSavedAccount = useCallback((account: SavedMobileAccount) => {
     interruptRealtime();
     const switchAccount = async () => {
       if (account.authProvider === "clerk") {
-        const switched = await onSelectSavedClerkAccount?.(account);
-        if (!switched) {
-          const message = "Saved account session is no longer available. Add the account again to continue.";
+        recordDiagnostic("info", "auth", "saved_account_switch_attempt", {
+          targetAuthProvider: account.authProvider,
+          targetSignInMethod: account.signInMethod,
+          hasTargetEmail: Boolean(account.email),
+          hasTargetUser: Boolean(account.userID),
+        });
+        const switchResult = await onSelectSavedClerkAccount?.(account);
+        if (switchResult === "reauth_started") {
+          recordDiagnostic("warn", "auth", "saved_account_reauth_started", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
+          return;
+        }
+        if (switchResult !== "selected") {
+          const message = "Saved account session is no longer available. Sign in again to continue.";
+          recordDiagnostic("warn", "auth", "saved_account_switch_missing_session", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
           setError(message);
           Alert.alert("Account switch failed", message);
           return;
         }
+        recordDiagnostic("info", "auth", "saved_account_switch_selected", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
         setCurrentAccountProfile(account.userID ? {
           userId: account.userID,
           ...(account.email ? { email: account.email } : {}),
@@ -1624,8 +1671,8 @@ function AgentTickApp({
           requests={visibleRequests}
           selectedProjectID={selectedProjectID}
           statusUpdates={statusUpdates}
-          dismissedStatusID={dismissedStatusID}
-          onDismissStatus={setDismissedStatusID}
+          dismissedStatusID={visibleDismissedStatusID}
+          onDismissStatus={dismissStatusUpdate}
           setProjectID={(projectID) => {
             setSelectedProjectID(projectID);
             setSelectedID(filterRequestsByProject(requests, projectID)[0]?.id ?? null);
