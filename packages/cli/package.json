@@ -1,10 +1,10 @@
 {
   "name": "@self-deprecated/agent-tick",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Human-in-the-loop approval CLI for Agent Tick.",
   "private": false,
   "type": "module",
-  "license": "SEE LICENSE IN ../../LICENSE",
+  "license": "BUSL-1.1",
   "homepage": "https://agenttick.sh",
   "repository": {
     "type": "git",
