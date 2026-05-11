@@ -754,13 +754,24 @@ function AgentTickApp({
       if (account.authProvider === "clerk") {
         const switched = await onSelectSavedClerkAccount?.(account);
         if (!switched) {
-          setError("Saved account session is no longer available. Add the account again to continue.");
+          const message = "Saved account session is no longer available. Add the account again to continue.";
+          setError(message);
+          Alert.alert("Account switch failed", message);
           return;
         }
+        setCurrentAccountProfile(account.userID ? {
+          userId: account.userID,
+          ...(account.email ? { email: account.email } : {}),
+          ...(account.signInMethod ? { signInMethod: account.signInMethod } : {}),
+          authProvider: "clerk",
+          source: "mobile-saved-account",
+        } : null);
+      } else {
+        setCurrentAccountProfile(null);
       }
+      setConnectionStatus("checking");
       setServerURL(account.serverURL);
       setSelectedOrganizationID(account.authProvider === "clerk" ? "" : account.organizationID ?? "");
-      setCurrentAccountProfile(null);
       setLoadedSessionServerURL("");
       setScreen("approvals");
     };
