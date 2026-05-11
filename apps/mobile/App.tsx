@@ -292,16 +292,16 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       setAddingClerkAccount(false);
       setAddAccountSawSignedOut(false);
       setClerkLoginToken(null);
+      setMobileSessionToken(session.token);
       const accountTokenKey = mobileAccountSessionTokenKey(savedMobileAccountID({
         serverURL: props.initialServerURL ?? defaultServer,
         authProvider: "clerk",
         userID: session.userId,
       }));
-      await tokenCache?.saveToken(accountTokenKey, session.token);
-      await tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token);
-      setMobileSessionToken(session.token);
-      await getNativeClerkModule()?.signOut?.().catch(() => undefined);
-      await signOut().catch(() => undefined);
+      void tokenCache?.saveToken(accountTokenKey, session.token).catch(() => undefined);
+      void tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token).catch(() => undefined);
+      void getNativeClerkModule()?.signOut?.().catch(() => undefined);
+      void signOut().catch(() => undefined);
     };
     void createAgentTickSession().catch(() => {
       refreshedMobileSessionFromClerk.current = true;
