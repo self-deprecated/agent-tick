@@ -3,7 +3,8 @@
   "packages": [
     "nodejs_24@latest",
     "python313@latest",
-    "python313Packages.pyyaml@latest"
+    "python313Packages.pyyaml@latest",
+    "jdk17_headless@latest"
   ],
   "shell": {
     "scripts": {
@@ -66,6 +67,9 @@
       ],
       "mobile:dev-build:android": [
         "cd apps/mobile && corepack pnpm dlx eas-cli build --profile development --platform android"
+      ],
+      "mobile:build:android:local": [
+        "bash scripts/mobile-build-android-local.sh"
       ],
       "mobile:update:development": [
         "cd apps/mobile && corepack pnpm dlx eas-cli update --channel development"
