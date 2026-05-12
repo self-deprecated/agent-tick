@@ -62,7 +62,7 @@ agent-tick install --target claude \
   --claude-initial-mode afk
 ```
 
-Available Claude routing policies are `off`, `afk`, and `always`. Restart Claude Code after installing or changing hook configuration.
+Available Claude routing policies are `off`, `afk`, and `always`. If you run the installer interactively without `--yes`, it asks for the Claude profile and steering/sanction policies. Restart Claude Code after installing or changing hook configuration.
 
 Agent Tick does not maintain Claude Code command-risk policy yet. Users should manage Claude Code permissions normally; Agent Tick only handles the permission prompts Claude Code was already going to show.
 

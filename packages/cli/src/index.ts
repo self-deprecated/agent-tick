@@ -518,10 +518,16 @@ function fileExistsSync(filePath: string): boolean {
 async function resolveClaudeInstallConfig(options: InstallOptions): Promise<ClaudeInstallConfig> {
   const profile = options.claudeProfile ? normalizeClaudeProfile(options.claudeProfile) : options.yes ? 'interactive' : await promptClaudeProfile();
   const defaults = defaultClaudeInstallConfig(profile);
+  const steering = options.claudeSteering
+    ? normalizeClaudeRoutingPolicy(options.claudeSteering)
+    : options.yes ? defaults.steering : await promptClaudeRoutingPolicy('steering / AskUserQuestion', defaults.steering);
+  const sanctions = options.claudeSanctions
+    ? normalizeClaudeRoutingPolicy(options.claudeSanctions)
+    : options.yes ? defaults.sanctions : await promptClaudeRoutingPolicy('sanctions / Claude permission prompts', defaults.sanctions);
   return {
     profile,
-    steering: options.claudeSteering ? normalizeClaudeRoutingPolicy(options.claudeSteering) : defaults.steering,
-    sanctions: options.claudeSanctions ? normalizeClaudeRoutingPolicy(options.claudeSanctions) : defaults.sanctions,
+    steering,
+    sanctions,
     initialMode: options.claudeInitialMode ? normalizeAgentTickMode(options.claudeInitialMode) : defaults.initialMode
   };
 }
@@ -542,6 +548,17 @@ async function promptClaudeProfile(): Promise<ClaudeProfile> {
     if (!answer || answer === '1' || answer === 'interactive') return 'interactive';
     if (answer === '2' || answer === 'headless') return 'headless';
     return normalizeClaudeProfile(answer);
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptClaudeRoutingPolicy(label: string, defaultPolicy: ClaudeRoutingPolicy): Promise<ClaudeRoutingPolicy> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return defaultPolicy;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question(`Claude Code ${label} policy: off, afk, always [${defaultPolicy}]? `)).trim().toLowerCase();
+    return answer ? normalizeClaudeRoutingPolicy(answer) : defaultPolicy;
   } finally {
     rl.close();
   }
