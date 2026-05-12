@@ -8,6 +8,8 @@ test-results/
 playwright-report/
 package-lock.json
 devbox.lock
+apps/mobile/build-*.apk
+apps/mobile/build-*.aab
 apps/server/public/admin/*
 !apps/server/public/admin/.gitkeep
 agent-tick.json

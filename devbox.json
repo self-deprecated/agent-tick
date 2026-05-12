@@ -4,7 +4,9 @@
     "nodejs_24@latest",
     "python313@latest",
     "python313Packages.pyyaml@latest",
-    "jdk17_headless@latest"
+    "jdk17_headless@latest",
+    "android-studio-tools@latest",
+    "pnpm@10.23.0"
   ],
   "shell": {
     "scripts": {
