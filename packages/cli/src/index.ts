@@ -412,7 +412,9 @@ async function runInstall(options: InstallOptions): Promise<void> {
   process.stdout.write(`Hosted server: ${server}\n\n`);
 
   if (options.dryRun) {
-    process.stdout.write('Step 1/2: [dry-run] would connect this machine to Agent Tick unless --no-login is used.\n\n');
+    process.stdout.write(options.login === false
+      ? 'Step 1/2: [dry-run] would skip browser sign-in because --no-login was provided.\n\n'
+      : 'Step 1/2: [dry-run] would connect this machine to Agent Tick.\n\n');
   } else if (options.login !== false) {
     process.stdout.write('Step 1/2: connect this machine to Agent Tick.\n');
     const result = await setupWithBrowser({ server, login: true, name: defaultAgentName() });
@@ -445,7 +447,7 @@ async function runInstall(options: InstallOptions): Promise<void> {
     process.stdout.write(`${plan.description}\n`);
   }
 
-  process.stdout.write('\nDone. Agent Tick integrations are installed in pass-through mode by default.\n');
+  process.stdout.write(options.dryRun ? '\nDry run complete. No files were changed.\n' : '\nDone. Agent Tick integrations are installed.\n');
   process.stdout.write('Use `agent-tick mode afk` to route configured Claude Code prompts through Agent Tick, and `agent-tick mode pass-through` to restore Claude Code prompts.\n');
   if (selected.includes('claude')) process.stdout.write('Restart Claude Code before relying on newly-installed hooks.\n');
 }
