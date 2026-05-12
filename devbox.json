@@ -73,6 +73,9 @@
       "mobile:build:android:local": [
         "bash scripts/mobile-build-android-local.sh"
       ],
+      "mobile:build:android:apk": [
+        "EAS_BUILD_PROFILE=preview bash scripts/mobile-build-android-local.sh"
+      ],
       "mobile:update:development": [
         "cd apps/mobile && corepack pnpm dlx eas-cli update --channel development"
       ]
