@@ -1,6 +1,6 @@
 # Integrations
 
-Agent Tick currently supports the TypeScript CLI commands `install`, `setup`, `request`, `abandon`, and `guard`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
+Agent Tick currently supports the TypeScript CLI commands `install`, `setup`, `mode`, `request`, `abandon`, `guard`, and `status`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
 
 For product-vs-self-hosting setup flows, see [Using Agent Tick](./using-agent-tick.md). The public product site is <https://agenttick.sh>.
 
@@ -28,6 +28,33 @@ agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
 For lower-level browser setup without agent instruction installation, run `agent-tick setup --login --server https://agenttick.sh`.
+
+## Claude Code AFK/pass-through mode
+
+`agent-tick install --target claude` installs Claude Code hooks that are inactive by default:
+
+```sh
+agent-tick install --target claude --dry-run
+agent-tick install --target claude
+```
+
+The Claude Code integration adds:
+
+- a `PreToolUse` hook for `AskUserQuestion` steering
+- a `PermissionRequest` hook for Claude Code's own permission prompts, used as Agent Tick sanctions
+- a `Bash(agent-tick:*)` allow rule so the Agent Tick CLI itself does not trigger recursive permission prompts
+
+The initial Agent Tick mode is **pass-through**. In pass-through mode, hooks exit without decisions and Claude Code behaves normally. Switch to **AFK** mode when you want Claude Code questions and permission prompts routed through Agent Tick:
+
+```sh
+agent-tick mode
+agent-tick mode afk
+agent-tick mode pass-through
+```
+
+Restart Claude Code after installing or changing hook configuration.
+
+Agent Tick does not maintain Claude Code command-risk policy yet. Users should manage Claude Code permissions normally; Agent Tick only handles the permission prompts Claude Code was already going to show.
 
 ## Outbound notification sinks
 

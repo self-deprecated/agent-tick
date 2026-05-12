@@ -34,21 +34,23 @@ The installer must also make Agent Tick commands always safe to run from the age
 
 ### Claude Code — enabled
 
-Verified source: Claude Code hook docs. Claude Code supports hooks in `~/.claude/settings.json`, `.claude/settings.json`, and `.claude/settings.local.json`. `PreToolUse` can allow/deny/ask/defer by returning `hookSpecificOutput.permissionDecision`. `AskUserQuestion` also arrives through `PreToolUse` and can be answered with `updatedInput.answers`.
+Verified source: Claude Code hook docs. Claude Code supports hooks in `~/.claude/settings.json`, `.claude/settings.json`, and `.claude/settings.local.json`. `PreToolUse` can allow/deny/ask/defer by returning `hookSpecificOutput.permissionDecision`. `AskUserQuestion` can be answered with `updatedInput.answers`. `PermissionRequest` can handle Claude Code permission prompts.
 
 Installed by Agent Tick:
 
-- Adds `PreToolUse` hook for `Bash`:
-  - command: `agent-tick hook claude-pre-tool-use`
-  - risky bash commands are routed to Agent Tick approval
-  - `agent-tick`, `npx @self-deprecated/agent-tick`, and `npm install -g @self-deprecated/agent-tick` are auto-allowed
 - Adds `PreToolUse` hook for `AskUserQuestion`:
-  - single-question multiple-choice prompts are routed to Agent Tick
-  - selected answer is returned to Claude through `updatedInput.answers`
-- Adds permission allow rules:
+  - command: `agent-tick hook claude-pre-tool-use`
+  - in pass-through mode, exits without a decision so Claude Code behaves normally
+  - in AFK mode, routes steering choices to Agent Tick and returns answers through `updatedInput.answers`
+- Adds `PermissionRequest` hook with matcher `*`:
+  - command: `agent-tick hook claude-permission-request`
+  - in pass-through mode, exits without a decision so Claude Code shows its native permission prompt
+  - in AFK mode, routes Claude Code's own permission prompt through Agent Tick as a sanction
+- Adds permission allow rule:
   - `Bash(agent-tick:*)`
-  - `Bash(npx @self-deprecated/agent-tick:*)`
-  - `Bash(npm install -g @self-deprecated/agent-tick)`
+- Initializes Agent Tick local mode to `pass-through`
+
+Agent Tick does not install a Claude Code risky-command policy in this version. Users continue to manage Claude Code permissions themselves; Agent Tick only handles permission prompts Claude Code was already going to show.
 
 ### Pi — enabled
 

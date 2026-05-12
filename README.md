@@ -52,7 +52,7 @@ Approve or reject requests from the Agent Tick web dashboard. Mobile approval ap
 
 1. Runs browser-based CLI setup against `https://agenttick.sh` and saves an Agent Tick `agent_...` token locally in `~/.config/agent-tick/config.json`.
 2. Detects local agent configs and installs verified hook integrations:
-   - Claude Code: adds `PreToolUse` hooks in `~/.claude/settings.json` for risky `Bash` calls and `AskUserQuestion`; adds allow rules for Agent Tick CLI commands so the approval command itself is never permission-gated.
+   - Claude Code: adds mode-aware hooks in `~/.claude/settings.json` for `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions; starts in pass-through mode and adds `Bash(agent-tick:*)` so the Agent Tick CLI itself is never permission-gated.
    - Pi: installs the repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`; it gates risky bash commands through Agent Tick and always allows Agent Tick commands.
    - Codex, Gemini, Cursor, OpenCode, generic `AGENTS.md`: detected and shown as disabled scaffolds until their hook/config behavior is verified.
 
@@ -76,7 +76,7 @@ Self-hosting is not the default onboarding path. If you want it, use [SELFHOSTIN
 - Fastify API server
 - Svelte dashboard served by the server
 - Expo mobile app
-- `agent-tick` CLI with `install`, `setup`, `request`, `abandon`, `guard`, and `status`
+- `agent-tick` CLI with `install`, `setup`, `mode`, `request`, `abandon`, `guard`, and `status`
 - SQLite persistence
 - optional Clerk human authentication for multi-user mode
 - local Agent Tick organizations, policies, approvals, audit logs, devices, and agent tokens

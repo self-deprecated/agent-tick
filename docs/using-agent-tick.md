@@ -79,7 +79,7 @@ agent-tick install --no-login --target agents-md
 
 Supported install targets:
 
-- `claude` — enabled. Adds `PreToolUse` hooks in `~/.claude/settings.json` for risky `Bash` commands and `AskUserQuestion`, plus allow rules for Agent Tick CLI commands.
+- `claude` — enabled. Adds mode-aware hooks in `~/.claude/settings.json` for `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions, plus `Bash(agent-tick:*)` so Agent Tick can run without recursive permission prompts. Hooks start in pass-through mode; use `agent-tick mode afk` to route prompts through Agent Tick and `agent-tick mode pass-through` to restore Claude Code's native prompts.
 - `pi` — enabled. Installs the repo-maintained `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`, a Pi `tool_call` extension for risky bash commands.
 - `codex` — scaffold only until its hook/config path is verified.
 - `gemini` — scaffold only until its hook/config path is verified.
@@ -127,6 +127,7 @@ Implemented today:
 
 - `agent-tick install`
 - `agent-tick setup`
+- `agent-tick mode`
 - `agent-tick request`
 - `agent-tick guard`
 - `agent-tick abandon`

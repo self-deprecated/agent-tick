@@ -507,6 +507,7 @@ function installPlanForTarget(target: InstallTarget): InstallPlan {
 
 function claudeInstallDryRunSummary(): string {
   return [
+    '  - remove legacy Agent Tick PreToolUse Bash hook if present',
     '  - add PreToolUse AskUserQuestion hook: agent-tick hook claude-pre-tool-use',
     '  - add PermissionRequest * hook: agent-tick hook claude-permission-request',
     '  - add permission allow rule: Bash(agent-tick:*)',
@@ -520,7 +521,7 @@ async function installClaudeHooks(settingsPath: string): Promise<void> {
   const settings = await readJSONFile(settingsPath);
   const root = isPlainObject(settings) ? settings : {};
   const hooks = isPlainObject(root.hooks) ? root.hooks : {};
-  hooks.PreToolUse = mergeClaudeHookGroups(hooks.PreToolUse, [
+  hooks.PreToolUse = mergeClaudeHookGroups(removeLegacyClaudeBashHookGroups(hooks.PreToolUse), [
     {
       matcher: 'AskUserQuestion',
       hooks: [{ type: 'command', command: 'agent-tick hook claude-pre-tool-use', timeout: 1800, statusMessage: 'Agent Tick steering check' }]
@@ -547,6 +548,14 @@ function mergeClaudeHookGroups(existing: unknown, additions: Array<Record<string
     if (!groups.some((group) => JSON.stringify(group) === key)) groups.push(addition);
   }
   return groups;
+}
+
+function removeLegacyClaudeBashHookGroups(existing: unknown): unknown {
+  if (!Array.isArray(existing)) return existing;
+  return existing.filter((group) => {
+    if (!isPlainObject(group) || group.matcher !== 'Bash' || !Array.isArray(group.hooks)) return true;
+    return !group.hooks.some((hook) => isPlainObject(hook) && hook.command === 'agent-tick hook claude-pre-tool-use');
+  });
 }
 
 function mergeStringArray(existing: unknown, additions: string[]): string[] {
