@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { agentInstructionBlock, buildCliSetupURL, isRiskyCommand, parseChoices, parseDurationMs } from '../src/index.js';
+import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, loadAgentTickMode, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -60,6 +60,25 @@ describe('install instructions', () => {
     expect(block).toContain('agent-tick guard -- <command and args>');
     expect(block).toContain('agent-tick request --title');
     expect(block).toContain('Do not include secrets');
+  });
+});
+
+describe('Agent Tick mode state', () => {
+  it('defaults to pass-through and saves AFK mode', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-mode-'));
+    tmpRoots.push(root);
+    const env = { AGENT_TICK_STATE: path.join(root, 'state.json') };
+
+    expect(agentTickStatePath(env)).toBe(env.AGENT_TICK_STATE);
+    await expect(loadAgentTickMode(env)).resolves.toBe('pass-through');
+    await expect(saveAgentTickMode('afk', env)).resolves.toBe('afk');
+    await expect(loadAgentTickMode(env)).resolves.toBe('afk');
+  });
+
+  it('normalizes pass-through aliases and rejects unknown modes', () => {
+    expect(normalizeAgentTickMode('passthrough')).toBe('pass-through');
+    expect(normalizeAgentTickMode('pass-through')).toBe('pass-through');
+    expect(() => normalizeAgentTickMode('normal')).toThrow(/unknown Agent Tick mode/);
   });
 });
 

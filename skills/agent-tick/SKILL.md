@@ -1,6 +1,6 @@
 ---
 name: agent-tick
-description: Request out-of-band human approval or send AFK progress updates through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, provide mobile-visible status while working away from the user, or when the user explicitly asks to gate work or send updates through Agent Tick. This skill covers the current TypeScript CLI commands: `agent-tick install`, `agent-tick setup`, `agent-tick request`, `agent-tick abandon`, `agent-tick guard`, and `agent-tick status`.
+description: Request out-of-band human approval, configure Claude Code AFK/pass-through routing, or send AFK progress updates through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, provide mobile-visible status while working away from the user, or when the user explicitly asks to gate work or send updates through Agent Tick. This skill covers the current TypeScript CLI commands: `agent-tick install`, `agent-tick setup`, `agent-tick mode`, `agent-tick request`, `agent-tick abandon`, `agent-tick guard`, and `agent-tick status`.
 ---
 
 # Agent Tick
@@ -21,6 +21,34 @@ For an interactive machine in hosted/Clerk mode, prefer the installer when setti
 
 ```sh
 agent-tick install
+```
+
+For Claude Code setup, guide the user interactively before installing:
+
+1. Ask whether they run mostly interactive local sessions, headless loops, or mixed usage.
+2. Ask which independent capabilities they want: status updates, steering (`AskUserQuestion`), sanctions (Claude Code `PermissionRequest`), or any combination.
+3. For interactive sessions, recommend installing hooks in **pass-through mode** and toggling **AFK mode** only when away.
+4. For headless loops, recommend AFK behavior for the enabled capabilities.
+5. Explain that sanctions route Claude Code's own permission prompts only; Agent Tick does not manage risky-command patterns for Claude Code setup yet.
+6. Inspect existing Claude settings before changing them: `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` if present. Look for existing hooks and permission rules that might conflict with `Bash(agent-tick:*)`.
+7. Run a dry run first and summarize exactly what will change:
+
+```sh
+agent-tick install --target claude --dry-run
+```
+
+8. After user confirmation, run the install and verify the settings:
+
+```sh
+agent-tick install --target claude
+agent-tick mode
+```
+
+Tell the user to restart Claude Code after hook changes. The mode commands are:
+
+```sh
+agent-tick mode afk
+agent-tick mode pass-through
 ```
 
 For setup only, without installing agent instructions, use browser setup:
@@ -128,7 +156,7 @@ agent-tick request \
   --body "Deploy commit abc123 to production."
 ```
 
-The current CLI does not support JSON stdin adapter, MCP, constrained steering, context-file, project-routing, requester override, or freeform text replies. Do not use undocumented commands or flags.
+The current CLI does not support JSON stdin adapter, MCP, constrained steering, context-file, project-routing, requester override, freeform text replies, or custom Claude Code command-risk policies. Do not use undocumented commands or flags.
 
 ## Timeouts
 
