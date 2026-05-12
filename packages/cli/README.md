@@ -42,11 +42,17 @@ Send a progress update without requesting approval:
 agent-tick status --state working "Checking test failures"
 ```
 
-For Claude Code, installed hooks start in pass-through mode. Route Claude Code steering and permission prompts through Agent Tick when away from the terminal:
+For Claude Code, the default interactive profile starts hooks in pass-through mode. Route Claude Code steering and permission prompts through Agent Tick when away from the terminal:
 
 ```sh
 agent-tick mode afk
 agent-tick mode pass-through
+```
+
+For unattended Claude Code runs, install with the headless profile:
+
+```sh
+agent-tick install --target claude --claude-profile headless --claude-steering always --claude-sanctions always
 ```
 
 Manual setup for CI or self-hosted servers:

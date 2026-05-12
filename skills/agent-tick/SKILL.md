@@ -31,16 +31,26 @@ For Claude Code setup, guide the user interactively before installing:
 4. For headless loops, recommend AFK behavior for the enabled capabilities.
 5. Explain that sanctions route Claude Code's own permission prompts only; Agent Tick does not manage risky-command patterns for Claude Code setup yet.
 6. Inspect existing Claude settings before changing them: `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` if present. Look for existing hooks and permission rules that might conflict with `Bash(agent-tick:*)`.
-7. Run a dry run first and summarize exactly what will change:
+7. Run a dry run first and summarize exactly what will change. For interactive local sessions, use defaults:
 
 ```sh
 agent-tick install --target claude --dry-run
 ```
 
-8. After user confirmation, run the install and verify the settings:
+For headless loops, prefer explicit routing flags:
 
 ```sh
-agent-tick install --target claude
+agent-tick install --target claude \
+  --claude-profile headless \
+  --claude-steering always \
+  --claude-sanctions always \
+  --claude-initial-mode afk \
+  --dry-run
+```
+
+8. After user confirmation, run the install with the same options minus `--dry-run`, then verify the settings:
+
+```sh
 agent-tick mode
 ```
 

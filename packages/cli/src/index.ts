@@ -52,6 +52,10 @@ export function createProgram(): Command {
     .option('--yes', 'accept defaults and do not prompt')
     .option('--no-login', 'skip browser sign-in and only install agent hooks')
     .option('--dry-run', 'print planned changes without writing files')
+    .option('--claude-profile <profile>', 'Claude Code setup profile: interactive or headless')
+    .option('--claude-steering <policy>', 'Claude Code steering policy: off, afk, or always')
+    .option('--claude-sanctions <policy>', 'Claude Code sanction policy: off, afk, or always')
+    .option('--claude-initial-mode <mode>', 'initial Agent Tick mode for Claude Code: afk or pass-through')
     .action(async (options: InstallOptions) => {
       await runInstall(options);
     });
@@ -324,6 +328,22 @@ const targetLabels: Record<InstallTarget, string> = {
 
 const agentTickModes = ['afk', 'pass-through'] as const;
 export type AgentTickMode = typeof agentTickModes[number];
+const claudeRoutingPolicies = ['off', 'afk', 'always'] as const;
+type ClaudeRoutingPolicy = typeof claudeRoutingPolicies[number];
+type ClaudeProfile = 'interactive' | 'headless';
+interface ClaudeInstallConfig {
+  profile: ClaudeProfile;
+  steering: ClaudeRoutingPolicy;
+  sanctions: ClaudeRoutingPolicy;
+  initialMode: AgentTickMode;
+}
+interface AgentTickState {
+  mode: AgentTickMode;
+  claude?: {
+    steering?: ClaudeRoutingPolicy;
+    sanctions?: ClaudeRoutingPolicy;
+  };
+}
 
 export function agentTickStatePath(env: NodeJS.ProcessEnv = process.env): string {
   if (env.AGENT_TICK_STATE) return env.AGENT_TICK_STATE;
@@ -340,21 +360,50 @@ export function normalizeAgentTickMode(value: string): AgentTickMode {
 export async function loadAgentTickMode(env: NodeJS.ProcessEnv = process.env): Promise<AgentTickMode> {
   const envMode = env.AGENT_TICK_MODE;
   if (envMode) return normalizeAgentTickMode(envMode);
-  try {
-    const parsed = JSON.parse(await fs.readFile(agentTickStatePath(env), 'utf8')) as { mode?: unknown };
-    return typeof parsed.mode === 'string' ? normalizeAgentTickMode(parsed.mode) : 'pass-through';
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'pass-through';
-    throw error;
-  }
+  return (await loadAgentTickState(env)).mode;
 }
 
 export async function saveAgentTickMode(value: string, env: NodeJS.ProcessEnv = process.env): Promise<AgentTickMode> {
   const mode = normalizeAgentTickMode(value);
+  await saveAgentTickState({ ...(await loadAgentTickState(env)), mode }, env);
+  return mode;
+}
+
+async function loadAgentTickState(env: NodeJS.ProcessEnv = process.env): Promise<AgentTickState> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(agentTickStatePath(env), 'utf8')) as { mode?: unknown; claude?: unknown };
+    const mode = typeof parsed.mode === 'string' ? normalizeAgentTickMode(parsed.mode) : 'pass-through';
+    const claude = isPlainObject(parsed.claude) ? parseClaudeRoutingState(parsed.claude) : undefined;
+    return { mode, ...(claude && Object.keys(claude).length ? { claude } : {}) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { mode: 'pass-through' };
+    throw error;
+  }
+}
+
+async function saveAgentTickState(state: AgentTickState, env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const statePath = agentTickStatePath(env);
   await fs.mkdir(path.dirname(statePath), { recursive: true, mode: 0o700 });
-  await fs.writeFile(statePath, `${JSON.stringify({ mode }, null, 2)}\n`, { mode: 0o600 });
-  return mode;
+  await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+}
+
+function parseClaudeRoutingState(value: Record<string, unknown>): NonNullable<AgentTickState['claude']> {
+  const claude: NonNullable<AgentTickState['claude']> = {};
+  if (typeof value.steering === 'string') claude.steering = normalizeClaudeRoutingPolicy(value.steering);
+  if (typeof value.sanctions === 'string') claude.sanctions = normalizeClaudeRoutingPolicy(value.sanctions);
+  return claude;
+}
+
+function normalizeClaudeRoutingPolicy(value: string): ClaudeRoutingPolicy {
+  const policy = value.trim().toLowerCase();
+  if (claudeRoutingPolicies.includes(policy as ClaudeRoutingPolicy)) return policy as ClaudeRoutingPolicy;
+  throw new Error(`unknown Claude Code routing policy: ${value}. Expected off, afk, or always.`);
+}
+
+function normalizeClaudeProfile(value: string): ClaudeProfile {
+  const profile = value.trim().toLowerCase();
+  if (profile === 'interactive' || profile === 'headless') return profile;
+  throw new Error(`unknown Claude Code profile: ${value}. Expected interactive or headless.`);
 }
 
 async function runInstall(options: InstallOptions): Promise<void> {
@@ -378,8 +427,10 @@ async function runInstall(options: InstallOptions): Promise<void> {
     return;
   }
 
+  const claudeConfig = selected.includes('claude') ? await resolveClaudeInstallConfig(options) : undefined;
+
   process.stdout.write('Step 2/2: install agent hooks.\n');
-  const plans = selected.map((target) => installPlanForTarget(target));
+  const plans = selected.map((target) => installPlanForTarget(target, claudeConfig));
   for (const plan of plans) {
     if (plan.status === 'disabled') {
       process.stdout.write(`skipped ${targetLabels[plan.target]}: ${plan.reason}\n`);
@@ -387,7 +438,7 @@ async function runInstall(options: InstallOptions): Promise<void> {
     }
     if (options.dryRun) {
       process.stdout.write(`[dry-run] would ${plan.description}\n`);
-      if (plan.target === 'claude') process.stdout.write(claudeInstallDryRunSummary());
+      if (plan.target === 'claude' && claudeConfig) process.stdout.write(claudeInstallDryRunSummary(claudeConfig));
       continue;
     }
     await plan.apply();
@@ -462,6 +513,38 @@ function fileExistsSync(filePath: string): boolean {
   return spawnSync(process.platform === 'win32' ? 'cmd' : 'test', process.platform === 'win32' ? ['/c', 'if', 'exist', filePath, 'exit', '0'] : ['-e', filePath], { stdio: 'ignore' }).status === 0;
 }
 
+async function resolveClaudeInstallConfig(options: InstallOptions): Promise<ClaudeInstallConfig> {
+  const profile = options.claudeProfile ? normalizeClaudeProfile(options.claudeProfile) : options.yes ? 'interactive' : await promptClaudeProfile();
+  const defaults = defaultClaudeInstallConfig(profile);
+  return {
+    profile,
+    steering: options.claudeSteering ? normalizeClaudeRoutingPolicy(options.claudeSteering) : defaults.steering,
+    sanctions: options.claudeSanctions ? normalizeClaudeRoutingPolicy(options.claudeSanctions) : defaults.sanctions,
+    initialMode: options.claudeInitialMode ? normalizeAgentTickMode(options.claudeInitialMode) : defaults.initialMode
+  };
+}
+
+function defaultClaudeInstallConfig(profile: ClaudeProfile): ClaudeInstallConfig {
+  if (profile === 'headless') return { profile, steering: 'always', sanctions: 'always', initialMode: 'afk' };
+  return { profile, steering: 'afk', sanctions: 'afk', initialMode: 'pass-through' };
+}
+
+async function promptClaudeProfile(): Promise<ClaudeProfile> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return 'interactive';
+  process.stdout.write('\nClaude Code setup profiles:\n');
+  process.stdout.write('  1. interactive — sometimes at the terminal, sometimes away; start in pass-through mode\n');
+  process.stdout.write('  2. headless — no terminal human available; route enabled prompts through Agent Tick always\n');
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question('Claude Code profile [interactive]? ')).trim().toLowerCase();
+    if (!answer || answer === '1' || answer === 'interactive') return 'interactive';
+    if (answer === '2' || answer === 'headless') return 'headless';
+    return normalizeClaudeProfile(answer);
+  } finally {
+    rl.close();
+  }
+}
+
 function targetCommand(target: InstallTarget): string {
   return target === 'claude' ? 'claude' : target === 'codex' ? 'codex' : target === 'gemini' ? 'gemini' : target === 'pi' ? 'pi' : target === 'cursor' ? 'cursor' : target === 'opencode' ? 'opencode' : '';
 }
@@ -477,14 +560,14 @@ type InstallPlan =
   | { target: InstallTarget; status: 'enabled'; description: string; apply: () => Promise<void> }
   | { target: InstallTarget; status: 'disabled'; reason: string; description: string; apply: () => Promise<void> };
 
-function installPlanForTarget(target: InstallTarget): InstallPlan {
+function installPlanForTarget(target: InstallTarget, claudeConfig?: ClaudeInstallConfig): InstallPlan {
   if (target === 'claude') {
     const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
     return {
       target,
       status: 'enabled',
       description: `install Claude Code AFK/pass-through hooks in ${settingsPath}`,
-      apply: () => installClaudeHooks(settingsPath)
+      apply: () => installClaudeHooks(settingsPath, claudeConfig ?? defaultClaudeInstallConfig('interactive'))
     };
   }
   if (target === 'pi') {
@@ -505,19 +588,22 @@ function installPlanForTarget(target: InstallTarget): InstallPlan {
   };
 }
 
-function claudeInstallDryRunSummary(): string {
+function claudeInstallDryRunSummary(config: ClaudeInstallConfig): string {
   return [
+    `  - profile: ${config.profile}`,
+    `  - steering policy: ${config.steering}`,
+    `  - sanction policy: ${config.sanctions}`,
     '  - remove legacy Agent Tick PreToolUse Bash hook if present',
     '  - add PreToolUse AskUserQuestion hook: agent-tick hook claude-pre-tool-use',
     '  - add PermissionRequest * hook: agent-tick hook claude-permission-request',
     '  - add permission allow rule: Bash(agent-tick:*)',
-    '  - initialize Agent Tick mode state to pass-through',
+    `  - initialize Agent Tick mode state to ${config.initialMode}`,
     '  - Claude Code will need a restart before new hooks are active',
     ''
   ].join('\n');
 }
 
-async function installClaudeHooks(settingsPath: string): Promise<void> {
+async function installClaudeHooks(settingsPath: string, config: ClaudeInstallConfig): Promise<void> {
   const settings = await readJSONFile(settingsPath);
   const root = isPlainObject(settings) ? settings : {};
   const hooks = isPlainObject(root.hooks) ? root.hooks : {};
@@ -538,7 +624,11 @@ async function installClaudeHooks(settingsPath: string): Promise<void> {
   permissions.allow = mergeStringArray(permissions.allow, ['Bash(agent-tick:*)']);
   root.permissions = permissions;
   await writeJSONFile(settingsPath, root);
-  await saveAgentTickMode('pass-through');
+  await saveAgentTickState({
+    ...(await loadAgentTickState()),
+    mode: config.initialMode,
+    claude: { steering: config.steering, sanctions: config.sanctions }
+  });
 }
 
 function mergeClaudeHookGroups(existing: unknown, additions: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
@@ -638,14 +728,13 @@ function escapeHTML(value: string): string {
 
 async function runClaudePreToolUseHook(options: { timeout?: string }): Promise<void> {
   const input = JSON.parse(await readStdin());
-  if (await loadAgentTickMode() !== 'afk') return;
   const toolName = typeof input.tool_name === 'string' ? input.tool_name : '';
-  if (toolName === 'AskUserQuestion') await handleClaudeAskUserQuestionHook(input, options);
+  if (toolName === 'AskUserQuestion' && await shouldRouteClaudeCapability('steering')) await handleClaudeAskUserQuestionHook(input, options);
 }
 
 async function runClaudePermissionRequestHook(options: { timeout?: string }): Promise<void> {
   const input = JSON.parse(await readStdin());
-  if (await loadAgentTickMode() !== 'afk') return;
+  if (!await shouldRouteClaudeCapability('sanctions')) return;
   const toolName = typeof input.tool_name === 'string' ? input.tool_name : 'Claude Code tool';
   if (toolName === 'Bash') {
     const toolInput = isPlainObject(input.tool_input) ? input.tool_input : {};
@@ -725,6 +814,14 @@ function multiSelectChoices(optionsList: Array<Record<string, unknown>>): { choi
   }
   choices.push({ id: 'cancel', label: 'Cancel / do not answer', kind: 'deny' });
   return { choices, answers };
+}
+
+async function shouldRouteClaudeCapability(capability: 'steering' | 'sanctions'): Promise<boolean> {
+  const state = await loadAgentTickState();
+  const policy = state.claude?.[capability] ?? 'afk';
+  if (policy === 'off') return false;
+  if (policy === 'always') return true;
+  return state.mode === 'afk';
 }
 
 async function createHookApproval(options: { title: string; body?: string; command?: string; timeout?: string; choices?: Array<{ id: string; label: string; kind: string }> }): Promise<ApprovalRequest> {
@@ -1000,6 +1097,10 @@ interface InstallOptions extends SetupOptions {
   all?: boolean;
   yes?: boolean;
   dryRun?: boolean;
+  claudeProfile?: string;
+  claudeSteering?: string;
+  claudeSanctions?: string;
+  claudeInitialMode?: string;
 }
 
 interface StatusOptions extends ClientOptions {

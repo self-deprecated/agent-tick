@@ -44,7 +44,7 @@ The Claude Code integration adds:
 - a `PermissionRequest` hook for Claude Code's own permission prompts, used as Agent Tick sanctions
 - a `Bash(agent-tick:*)` allow rule so the Agent Tick CLI itself does not trigger recursive permission prompts
 
-The initial Agent Tick mode is **pass-through**. In pass-through mode, hooks exit without decisions and Claude Code behaves normally. Switch to **AFK** mode when you want Claude Code questions and permission prompts routed through Agent Tick:
+The default interactive profile starts in **pass-through** mode. In pass-through mode, hooks exit without decisions and Claude Code behaves normally. Switch to **AFK** mode when you want Claude Code questions and permission prompts routed through Agent Tick:
 
 ```sh
 agent-tick mode
@@ -52,7 +52,17 @@ agent-tick mode afk
 agent-tick mode pass-through
 ```
 
-Restart Claude Code after installing or changing hook configuration.
+For unattended agents, use the headless profile to route enabled Claude Code steering and sanctions through Agent Tick without relying on the mode toggle:
+
+```sh
+agent-tick install --target claude \
+  --claude-profile headless \
+  --claude-steering always \
+  --claude-sanctions always \
+  --claude-initial-mode afk
+```
+
+Available Claude routing policies are `off`, `afk`, and `always`. Restart Claude Code after installing or changing hook configuration.
 
 Agent Tick does not maintain Claude Code command-risk policy yet. Users should manage Claude Code permissions normally; Agent Tick only handles the permission prompts Claude Code was already going to show.
 

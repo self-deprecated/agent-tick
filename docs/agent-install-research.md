@@ -48,7 +48,9 @@ Installed by Agent Tick:
   - in AFK mode, routes Claude Code's own permission prompt through Agent Tick as a sanction
 - Adds permission allow rule:
   - `Bash(agent-tick:*)`
-- Initializes Agent Tick local mode to `pass-through`
+- Initializes Agent Tick local mode and Claude routing policy:
+  - interactive profile default: mode `pass-through`, steering `afk`, sanctions `afk`
+  - headless profile default: mode `afk`, steering `always`, sanctions `always`
 
 Agent Tick does not install a Claude Code risky-command policy in this version. Users continue to manage Claude Code permissions themselves; Agent Tick only handles permission prompts Claude Code was already going to show.
 
