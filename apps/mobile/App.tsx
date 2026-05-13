@@ -253,6 +253,45 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }, [isSignedIn, nativeSignedIn, signedOutManually]);
 
   useEffect(() => {
+    if (mobileSessionToken || !readDiagnosticsEnabled()) return;
+    let cancelled = false;
+    const flushWithSavedAccount = async () => {
+      if (diagnosticEvents().length === 0) return;
+      const savedAccountJSON = await AsyncStorage.getItem(mobileAccountsStorageKey);
+      let parsedAccounts: unknown = [];
+      try {
+        parsedAccounts = savedAccountJSON ? JSON.parse(savedAccountJSON) : [];
+      } catch {
+        parsedAccounts = [];
+      }
+      const accounts = normalizeSavedMobileAccounts(parsedAccounts);
+      for (const account of accounts) {
+        if (account.authProvider !== "clerk") continue;
+        const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
+        if (!savedToken || cancelled) continue;
+        const client = new AgentTickClient({ baseUrl: props.initialServerURL ?? defaultServer, tokenProvider: () => savedToken });
+        try {
+          await flushDiagnostics(client, diagnosticsSnapshot({
+            serverURL: props.initialServerURL ?? defaultServer,
+            authMode: "clerk",
+            connectionStatus: "checking",
+            pushStatus: "idle",
+            notificationStatus: "checking",
+            currentScreen: "settings",
+          }));
+          return;
+        } catch {
+          // Try the next saved account token.
+        }
+      }
+    };
+    void flushWithSavedAccount();
+    return () => {
+      cancelled = true;
+    };
+  }, [addAccountSawSignedOut, addingClerkAccount, isLoaded, isSignedIn, mobileSessionToken, nativeSignedIn, props.initialServerURL, signOutInProgress]);
+
+  useEffect(() => {
     if (!isLoaded || addingClerkAccount || isSignedIn || mobileSessionToken || signedOutManually) return;
     let cancelled = false;
     const restoreMobileSession = async () => {
