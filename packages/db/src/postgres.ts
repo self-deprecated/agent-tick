@@ -16,7 +16,7 @@ export interface PostgresStoreOptions {
  * wiring again.
  */
 export class PostgresStoreConnection {
-  readonly pool: Pool;
+  protected readonly pool: Pool;
 
   constructor(options: PostgresStoreOptions) {
     this.pool = options.pool ?? new Pool({ connectionString: options.databaseURL, ...(options.poolConfig ?? {}) });

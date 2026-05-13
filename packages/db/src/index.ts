@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
 import { isPostgresDatabaseURL, PostgresStoreConnection } from './postgres.js';
+import { PostgresAgentTickStore } from './postgresStore.js';
 export { isPostgresDatabaseURL, PostgresStoreConnection } from './postgres.js';
+export { PostgresAgentTickStore } from './postgresStore.js';
 import {
   AgentStatusUpdateSchema,
   ApprovalRequestSchema,
@@ -494,8 +496,9 @@ export interface AsyncAgentTickStore {
 }
 
 export function openAgentTickStore(options: OpenStoreOptions = {}): AsyncAgentTickStore {
-  if (isPostgresDatabaseURL(options.databaseURL)) {
-    throw new Error('PostgreSQL database URLs are recognized but the durable Postgres store implementation is not complete yet');
+  const databaseURL = options.databaseURL;
+  if (isPostgresDatabaseURL(databaseURL)) {
+    return PostgresAgentTickStore.open({ databaseURL: databaseURL! }) as unknown as AsyncAgentTickStore;
   }
   return AgentTickStore.open(options);
 }
