@@ -56,6 +56,33 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.listAuditEventsAfter(created.organizationId, event!.eventId - 1)).toEqual([event]);
   });
 
+  it('records availability, agent status updates, and mobile diagnostics', async () => {
+    await store!.migrate('2026-05-08T00:00:00.000Z');
+    await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const available = await store!.recordHeartbeat('usr_default', DEFAULT_ORGANIZATION_ID, '2026-05-08T03:00:00.000Z');
+    expect(available).toMatchObject({ userId: 'usr_default', organizationId: DEFAULT_ORGANIZATION_ID, state: 'available', lastSeenAt: '2026-05-08T03:00:00.000Z' });
+    expect(await store!.setAvailability('usr_default', DEFAULT_ORGANIZATION_ID, 'busy', '2026-05-08T03:01:00.000Z')).toMatchObject({ state: 'busy' });
+
+    const first = await store!.createAgentStatusUpdate(
+      { organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_test', agentName: 'Test Agent', threadId: 'thread_1', message: 'Working', state: 'running', metadata: { task: 'deploy' } },
+      '2026-05-08T03:02:00.000Z'
+    );
+    await store!.createAgentStatusUpdate(
+      { organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_test', agentName: 'Test Agent', threadId: 'thread_1', message: 'Done', state: 'complete' },
+      '2026-05-08T03:03:00.000Z'
+    );
+    expect(await store!.getAgentStatusUpdate(first.statusId, DEFAULT_ORGANIZATION_ID)).toMatchObject({ statusId: first.statusId, metadata: { task: 'deploy' } });
+    expect(await store!.listLatestAgentStatusUpdates(DEFAULT_ORGANIZATION_ID)).toEqual([expect.objectContaining({ threadId: 'thread_1', state: 'complete' })]);
+
+    expect(
+      await store!.recordMobileDiagnostics([
+        { organizationId: DEFAULT_ORGANIZATION_ID, userId: 'usr_default', level: 'info', area: 'push', message: 'Registered', metadata: { platform: 'ios' }, createdAt: '2026-05-08T03:04:00.000Z' }
+      ])
+    ).toBe(1);
+    expect(await store!.listMobileDiagnostics(DEFAULT_ORGANIZATION_ID)).toEqual([expect.objectContaining({ level: 'info', area: 'push', metadata: { platform: 'ios' } })]);
+  });
+
   it('manages projects, teams, team members, policies, and agent tokens', async () => {
     await store!.migrate('2026-05-08T00:00:00.000Z');
     await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');

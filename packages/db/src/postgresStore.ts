@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { type QueryResultRow } from 'pg';
+import { AgentStatusUpdateSchema, CreateAgentStatusUpdateSchema, type AgentStatusUpdate } from '@agent-tick/shared';
 import { PostgresStoreConnection, type PostgresStoreOptions } from './postgres.js';
 import type {
   AgentCredential,
@@ -8,12 +9,15 @@ import type {
   AuditEventRecord,
   CleanupExpiredSecretsResult,
   CleanupRetentionResult,
+  CreateAgentStatusInput,
   CreateAgentTokenInput,
   HumanIdentityResult,
   CreatePolicyInput,
   CreateProjectInput,
   CreateTeamInput,
   OrganizationMembershipRecord,
+  MobileDiagnosticInput,
+  MobileDiagnosticRecord,
   OrganizationSeatUsage,
   PolicyRecord,
   ProjectRecord,
@@ -23,7 +27,8 @@ import type {
   TeamRecord,
   UpdatePolicyInput,
   UpsertTeamMemberInput,
-  UserProfileRecord
+  UserProfileRecord,
+  AvailabilityRecord
 } from './index.js';
 
 const DEFAULT_USER_ID = 'usr_default';
@@ -92,6 +97,42 @@ interface AgentTokenRow {
   last_request_at: string | null;
   created_at: string;
   revoked_at: string | null;
+}
+
+interface AvailabilityRow {
+  user_id: string;
+  organization_id: string;
+  state: string;
+  last_seen_at: string | null;
+  updated_at: string;
+}
+
+interface AgentStatusRow {
+  status_id: string;
+  organization_id: string;
+  agent_id: string;
+  agent_name: string;
+  thread_id: string;
+  message: string;
+  state: string;
+  next_step: string | null;
+  host: string | null;
+  working_directory: string | null;
+  project_name: string | null;
+  metadata_json: string;
+  created_at: string;
+}
+
+interface MobileDiagnosticRow {
+  diagnostic_id: string;
+  organization_id: string;
+  user_id: string;
+  device_id: string | null;
+  level: string;
+  area: string;
+  message: string;
+  metadata_json: string | null;
+  created_at: string;
 }
 
 interface AuditEventRow {
@@ -528,6 +569,115 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     };
   }
 
+  async recordHeartbeat(userId: string, organizationId: string, now = new Date().toISOString()): Promise<AvailabilityRecord> {
+    await this.pool.query(
+      `
+        INSERT INTO user_availability(user_id, organization_id, state, last_seen_at, updated_at)
+        VALUES ($1, $2, COALESCE((SELECT state FROM user_availability WHERE user_id = $3 AND organization_id = $4), 'available'), $5, $6)
+        ON CONFLICT(user_id, organization_id) DO UPDATE SET last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at
+      `,
+      [userId, organizationId, userId, organizationId, now, now]
+    );
+    return (await this.getAvailability(userId, organizationId)) ?? missingAvailability(userId);
+  }
+
+  async setAvailability(userId: string, organizationId: string, state: string, now = new Date().toISOString()): Promise<AvailabilityRecord> {
+    await this.pool.query(
+      `
+        INSERT INTO user_availability(user_id, organization_id, state, last_seen_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT(user_id, organization_id) DO UPDATE SET state = excluded.state, last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at
+      `,
+      [userId, organizationId, state, now, now]
+    );
+    return (await this.getAvailability(userId, organizationId)) ?? missingAvailability(userId);
+  }
+
+  async getAvailability(userId: string, organizationId: string): Promise<AvailabilityRecord | null> {
+    const row = await this.one<AvailabilityRow>('SELECT * FROM user_availability WHERE user_id = $1 AND organization_id = $2', [userId, organizationId]);
+    return row ? mapAvailabilityRow(row) : null;
+  }
+
+  async createAgentStatusUpdate(input: CreateAgentStatusInput, now = new Date().toISOString()): Promise<AgentStatusUpdate> {
+    const parsed = CreateAgentStatusUpdateSchema.parse(input);
+    const statusId = newID('stat');
+    await this.pool.query(
+      `
+        INSERT INTO agent_status_updates(
+          status_id, organization_id, agent_id, agent_name, thread_id, message, state,
+          next_step, host, working_directory, project_name, metadata_json, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `,
+      [
+        statusId,
+        input.organizationId,
+        input.agentId,
+        input.agentName,
+        parsed.threadId,
+        parsed.message,
+        parsed.state,
+        parsed.nextStep ?? null,
+        parsed.host ?? null,
+        parsed.workingDirectory ?? null,
+        parsed.projectName ?? null,
+        JSON.stringify(parsed.metadata ?? {}),
+        now
+      ]
+    );
+    await this.writeAuditEvent(input.organizationId, input.userId ?? input.agentId, 'agent_status.updated', statusId, { threadId: parsed.threadId, state: parsed.state }, now);
+    return (await this.getAgentStatusUpdate(statusId, input.organizationId)) ?? missingAgentStatus(statusId);
+  }
+
+  async getAgentStatusUpdate(statusId: string, organizationId: string): Promise<AgentStatusUpdate | null> {
+    const row = await this.one<AgentStatusRow>('SELECT * FROM agent_status_updates WHERE status_id = $1 AND organization_id = $2', [statusId, organizationId]);
+    return row ? mapAgentStatusRow(row) : null;
+  }
+
+  async listLatestAgentStatusUpdates(organizationId: string, limit = 20): Promise<AgentStatusUpdate[]> {
+    const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+    const rows = await this.many<AgentStatusRow>(
+      `
+        SELECT s.*
+        FROM agent_status_updates s
+        JOIN (
+          SELECT thread_id, MAX(created_at || status_id) AS latest_key
+          FROM agent_status_updates
+          WHERE organization_id = $1
+          GROUP BY thread_id
+        ) latest ON latest.thread_id = s.thread_id AND latest.latest_key = s.created_at || s.status_id
+        WHERE s.organization_id = $2
+        ORDER BY s.created_at DESC, s.status_id DESC
+        LIMIT $3
+      `,
+      [organizationId, organizationId, safeLimit]
+    );
+    return rows.map(mapAgentStatusRow);
+  }
+
+  async recordMobileDiagnostics(events: MobileDiagnosticInput[]): Promise<number> {
+    if (events.length === 0) return 0;
+    return this.transaction(async (query) => {
+      for (const event of events) {
+        await query(
+          `
+            INSERT INTO mobile_diagnostics(diagnostic_id, organization_id, user_id, device_id, level, area, message, metadata_json, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `,
+          [newID('diag'), event.organizationId, event.userId, event.deviceId ?? null, event.level, event.area, event.message, event.metadata === undefined ? null : JSON.stringify(event.metadata), event.createdAt]
+        );
+      }
+      return events.length;
+    });
+  }
+
+  async listMobileDiagnostics(organizationId: string, limit = 100): Promise<MobileDiagnosticRecord[]> {
+    const rows = await this.many<MobileDiagnosticRow>(
+      'SELECT * FROM mobile_diagnostics WHERE organization_id = $1 ORDER BY created_at DESC LIMIT $2',
+      [organizationId, Math.min(Math.max(Math.trunc(limit), 1), 500)]
+    );
+    return rows.map(mapMobileDiagnosticRow);
+  }
+
   async listAuditEvents(organizationId: string, limit = 100): Promise<AuditEventRecord[]> {
     const rows = await this.many<AuditEventRow>(
       'SELECT * FROM audit_events WHERE organization_id = $1 ORDER BY event_id DESC LIMIT $2',
@@ -659,6 +809,48 @@ function mapPolicyRow(row: PolicyRow): PolicyRecord {
   };
 }
 
+function mapAvailabilityRow(row: AvailabilityRow): AvailabilityRecord {
+  return {
+    userId: row.user_id,
+    organizationId: row.organization_id,
+    state: row.state,
+    lastSeenAt: row.last_seen_at ?? undefined,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapAgentStatusRow(row: AgentStatusRow): AgentStatusUpdate {
+  return AgentStatusUpdateSchema.parse({
+    statusId: row.status_id,
+    organizationId: row.organization_id,
+    agentId: row.agent_id,
+    agentName: row.agent_name,
+    threadId: row.thread_id,
+    message: row.message,
+    state: row.state,
+    nextStep: row.next_step ?? undefined,
+    host: row.host ?? undefined,
+    workingDirectory: row.working_directory ?? undefined,
+    projectName: row.project_name ?? undefined,
+    metadata: parseJSON<Record<string, string>>(row.metadata_json, {}),
+    createdAt: row.created_at
+  });
+}
+
+function mapMobileDiagnosticRow(row: MobileDiagnosticRow): MobileDiagnosticRecord {
+  return {
+    diagnosticId: row.diagnostic_id,
+    organizationId: row.organization_id,
+    userId: row.user_id,
+    ...(row.device_id ? { deviceId: row.device_id } : {}),
+    level: row.level,
+    area: row.area,
+    message: row.message,
+    ...(row.metadata_json ? { metadata: parseJSON<unknown>(row.metadata_json, undefined) } : {}),
+    createdAt: row.created_at
+  };
+}
+
 function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
   return {
     agentId: row.agent_id,
@@ -712,6 +904,14 @@ function missingTeam(teamId: string): never {
 
 function missingPolicy(policyId: string): never {
   throw new Error(`policy ${policyId} was not created`);
+}
+
+function missingAvailability(userId: string): never {
+  throw new Error(`availability for ${userId} was not recorded`);
+}
+
+function missingAgentStatus(statusId: string): never {
+  throw new Error(`agent status ${statusId} was not created`);
 }
 
 function retentionCutoff(now: string, days: number): string {
