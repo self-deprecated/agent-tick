@@ -168,15 +168,7 @@ describe('server skeleton', () => {
       url: '/v1/mobile-diagnostics',
       headers: { authorization: `Bearer ${token}` }
     });
-    expect(listed.statusCode).toBe(200);
-    expect(listed.json()).toEqual([
-      expect.objectContaining({
-        level: 'error',
-        area: 'notifications',
-        message: 'native_exception',
-        metadata: expect.objectContaining({ currentScreen: 'settings' })
-      })
-    ]);
+    expect(listed.statusCode).toBe(404);
   });
 
   it('rejects invalid and tampered Agent Tick mobile sessions', async () => {

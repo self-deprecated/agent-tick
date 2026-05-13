@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { CreateMobileDiagnosticsSchema } from '@agent-tick/shared';
 import type { AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
-import { requireHuman, requireOrganizationAdmin } from '../auth/context.js';
+import { requireHuman } from '../auth/context.js';
 
 export interface MobileDiagnosticsRoutesOptions {
   config: ServerConfig;
@@ -38,11 +38,6 @@ export async function registerMobileDiagnosticsRoutes(app: FastifyInstance, { co
     return { accepted: store.recordMobileDiagnostics(events) };
   });
 
-  app.get('/v1/mobile-diagnostics', async (request) => {
-    const auth = await requireOrganizationAdmin(request, config, store);
-    const query = request.query as { limit?: string };
-    return store.listMobileDiagnostics(auth.organizationId, Number(query.limit ?? 100));
-  });
 }
 
 function pruneUndefined(value: Record<string, unknown>): Record<string, unknown> {

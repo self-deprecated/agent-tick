@@ -88,6 +88,70 @@
             };
           });
 
+          agent-tick-diagnostics-mcp = pkgs.stdenv.mkDerivation (finalAttrs: {
+            pname = "agent-tick-diagnostics-mcp";
+            version = "0.1.0";
+            inherit src;
+
+            pnpmDeps = pkgs.fetchPnpmDeps {
+              inherit (finalAttrs) pname version src;
+              fetcherVersion = 2;
+              hash = "sha256-+y+K5ws7cYJEV2ZWRmFCdu76Nj7VMalRZBEInl2XUv0=";
+            };
+
+            nativeBuildInputs = [
+              nodejs
+              pnpm
+              pkgs.pnpmConfigHook
+              pkgs.python3
+              pkgs.pkg-config
+              pkgs.node-gyp
+              pkgs.makeWrapper
+            ];
+
+            buildInputs = [ pkgs.sqlite ];
+
+            dontCheckForBrokenSymlinks = true;
+
+            buildPhase = ''
+              runHook preBuild
+
+              export npm_config_build_from_source=true
+              export npm_config_nodedir=${nodejs}
+              (cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3 && npm run build-release)
+
+              pnpm --filter @agent-tick/shared build
+              pnpm --filter @agent-tick/db build
+              pnpm --filter @agent-tick/diagnostics-mcp build
+
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+
+              mkdir -p "$out/lib/agent-tick" "$out/bin"
+              cp -R package.json pnpm-workspace.yaml node_modules apps packages "$out/lib/agent-tick/"
+              rm -rf \
+                "$out/lib/agent-tick/apps"/*/src \
+                "$out/lib/agent-tick/apps"/*/test \
+                "$out/lib/agent-tick/packages"/*/src \
+                "$out/lib/agent-tick/packages"/*/test
+
+              makeWrapper ${nodejs}/bin/node "$out/bin/agent-tick-diagnostics-mcp" \
+                --add-flags "$out/lib/agent-tick/apps/diagnostics-mcp/dist/index.js"
+
+              runHook postInstall
+            '';
+
+            meta = {
+              description = "Local MCP server for Agent Tick diagnostics";
+              homepage = "https://agenttick.sh";
+              mainProgram = "agent-tick-diagnostics-mcp";
+              platforms = lib.platforms.linux;
+            };
+          });
+
           agent-tick-server = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-server";
             version = "0.1.0";
@@ -156,7 +220,7 @@
           });
         in {
           packages = {
-            inherit agent-tick-cli agent-tick-server;
+            inherit agent-tick-cli agent-tick-server agent-tick-diagnostics-mcp;
             agent-tick = agent-tick-cli;
             default = agent-tick-server;
           };

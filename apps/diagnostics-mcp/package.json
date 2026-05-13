@@ -1,0 +1,23 @@
+{
+  "name": "@agent-tick/diagnostics-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agent-tick-diagnostics-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@agent-tick/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "6.0.3",
+    "vitest": "^4.0.14"
+  }
+}
