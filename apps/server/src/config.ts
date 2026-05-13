@@ -25,6 +25,9 @@ const ConfigSchema = z.object({
   retentionCleanupIntervalMinutes: z.coerce.number().int().positive().default(60),
   rateLimitWindowMs: z.coerce.number().int().positive().default(60_000),
   rateLimitMaxRequests: z.coerce.number().int().positive().optional(),
+  redisURL: z.string().url().optional(),
+  eventBusBackend: z.enum(['memory', 'redis']).default('memory'),
+  rateLimitBackend: z.enum(['memory', 'redis']).default('memory'),
   testAuth: z.boolean().default(false)
 });
 
@@ -57,6 +60,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     retentionCleanupIntervalMinutes: optionalEnv(env.AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES),
     rateLimitWindowMs: optionalEnv(env.AGENT_TICK_RATE_LIMIT_WINDOW_MS),
     rateLimitMaxRequests: optionalEnv(env.AGENT_TICK_RATE_LIMIT_MAX_REQUESTS),
+    redisURL: optionalEnv(env.AGENT_TICK_REDIS_URL),
+    eventBusBackend: env.AGENT_TICK_EVENT_BUS_BACKEND ?? (env.AGENT_TICK_REDIS_URL ? 'redis' : 'memory'),
+    rateLimitBackend: env.AGENT_TICK_RATE_LIMIT_BACKEND ?? (env.AGENT_TICK_REDIS_URL ? 'redis' : 'memory'),
     testAuth: env.AGENT_TICK_TEST_AUTH === '1' || env.AGENT_TICK_TEST_AUTH === 'true'
   });
 

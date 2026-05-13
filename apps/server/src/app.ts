@@ -24,9 +24,9 @@ import { registerStatusRoutes } from './routes/status.js';
 import { registerTeamRoutes } from './routes/teams.js';
 import { registerTestSupportRoutes } from './routes/testSupport.js';
 import { createInviteEmailSender, type InviteEmailSender } from './services/inviteEmail.js';
-import { createOrganizationEventBus, publishAuditWrites } from './services/eventBus.js';
+import { createConfiguredOrganizationEventBus, publishAuditWrites } from './services/eventBus.js';
 import { createApprovalNotifier, type ApprovalNotifier } from './services/notifications.js';
-import { registerRateLimitHook } from './services/rateLimit.js';
+import { createConfiguredRateLimiter, registerRateLimitHook } from './services/rateLimit.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -52,10 +52,14 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
       }
     });
   });
-  const eventBus = createOrganizationEventBus();
+  const eventBus = await createConfiguredOrganizationEventBus({ backend: config.eventBusBackend, redisURL: config.redisURL });
+  const rateLimiter = await createConfiguredRateLimiter({ backend: config.rateLimitBackend, redisURL: config.redisURL });
   publishAuditWrites(store, eventBus);
+  app.addHook('onClose', async () => {
+    await Promise.allSettled([eventBus.close?.(), rateLimiter.close?.()]);
+  });
 
-  registerRateLimitHook(app, config);
+  registerRateLimitHook(app, config, rateLimiter);
   await registerTestSupportRoutes(app, { config, store });
 
   app.get('/healthz', async () => ({ status: 'ok' as const, time: new Date().toISOString() }));

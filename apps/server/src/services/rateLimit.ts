@@ -1,3 +1,4 @@
+import { createClient, type RedisClientType } from 'redis';
 import type { FastifyInstance } from 'fastify';
 import type { ServerConfig } from '../config.js';
 
@@ -7,14 +8,15 @@ export interface RateLimitRule {
 }
 
 export interface RateLimiter {
-  check(key: string, rule: RateLimitRule, now?: number): { allowed: true } | { allowed: false; retryAfterSeconds: number };
+  check(key: string, rule: RateLimitRule, now?: number): Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
+  close?(): void | Promise<void>;
 }
 
 export function createMemoryRateLimiter(): RateLimiter {
   const buckets = new Map<string, { windowStart: number; count: number }>();
 
   return {
-    check(key, rule, now = Date.now()) {
+    async check(key, rule, now = Date.now()) {
       const existing = buckets.get(key);
       const bucket = existing && now - existing.windowStart < rule.windowMs ? existing : { windowStart: now, count: 0 };
       bucket.count += 1;
@@ -29,6 +31,35 @@ export function createMemoryRateLimiter(): RateLimiter {
   };
 }
 
+export async function createRedisRateLimiter(redisURL: string): Promise<RateLimiter> {
+  const client = createClient({ url: redisURL }) as RedisClientType;
+  await client.connect();
+
+  return {
+    async check(key, rule) {
+      const redisKey = `agent-tick:rate-limit:${key}`;
+      const count = await client.incr(redisKey);
+      if (count === 1) await client.pExpire(redisKey, rule.windowMs);
+      if (count <= rule.max) return { allowed: true };
+
+      const ttl = await client.pTTL(redisKey);
+      const retryAfterSeconds = Math.max(1, Math.ceil(Math.max(ttl, 0) / 1000));
+      return { allowed: false, retryAfterSeconds };
+    },
+    close: async () => {
+      await client.quit();
+    }
+  };
+}
+
+export async function createConfiguredRateLimiter(options: { backend: 'memory' | 'redis'; redisURL?: string | undefined }): Promise<RateLimiter> {
+  if (options.backend === 'redis') {
+    if (!options.redisURL) throw new Error('AGENT_TICK_RATE_LIMIT_BACKEND=redis requires AGENT_TICK_REDIS_URL');
+    return createRedisRateLimiter(options.redisURL);
+  }
+  return createMemoryRateLimiter();
+}
+
 export function registerRateLimitHook(app: FastifyInstance, config: ServerConfig, rateLimiter: RateLimiter = createMemoryRateLimiter()): void {
   app.addHook('preHandler', async (request, reply) => {
     const routePath = request.routeOptions.url ?? request.url.split('?', 1)[0] ?? request.url;
@@ -36,7 +67,7 @@ export function registerRateLimitHook(app: FastifyInstance, config: ServerConfig
     if (!rule) return;
 
     const key = `${request.ip}:${request.method}:${routePath}`;
-    const result = rateLimiter.check(key, rule);
+    const result = await rateLimiter.check(key, rule);
     if (result.allowed) return;
 
     return reply
