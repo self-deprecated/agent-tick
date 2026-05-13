@@ -131,6 +131,7 @@ in {
       auditDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       unregisteredDeviceDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       expiredInviteDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
+      cleanupEnabled = lib.mkOption { type = lib.types.bool; default = true; };
       cleanupIntervalMinutes = lib.mkOption { type = lib.types.ints.positive; default = 60; };
     };
 
@@ -179,6 +180,7 @@ in {
       // optionalEnv "AGENT_TICK_AUDIT_RETENTION_DAYS" cfg.retention.auditDays
       // optionalEnv "AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS" cfg.retention.unregisteredDeviceDays
       // optionalEnv "AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS" cfg.retention.expiredInviteDays
+      // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_ENABLED" cfg.retention.cleanupEnabled
       // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES" cfg.retention.cleanupIntervalMinutes
       // optionalEnv "AGENT_TICK_RATE_LIMIT_WINDOW_MS" cfg.rateLimit.windowMs
       // optionalEnv "AGENT_TICK_RATE_LIMIT_MAX_REQUESTS" cfg.rateLimit.maxRequests

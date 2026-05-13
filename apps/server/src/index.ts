@@ -9,12 +9,12 @@ await store.migrate();
 await store.ensureSingleTenantDefaults();
 
 const app = await buildApp({ config, store });
-const startupCleanup = await runRetentionCleanup(store, config);
-if (hasRetentionCleanupChanges(startupCleanup)) app.log.info({ result: startupCleanup }, 'cleaned retained data at startup');
-const retentionCleanup = startRetentionCleanupTimer({ store, config, logger: app.log });
+const startupCleanup = config.retentionCleanupEnabled ? await runRetentionCleanup(store, config) : null;
+if (startupCleanup && hasRetentionCleanupChanges(startupCleanup)) app.log.info({ result: startupCleanup }, 'cleaned retained data at startup');
+const retentionCleanup = config.retentionCleanupEnabled ? startRetentionCleanupTimer({ store, config, logger: app.log }) : null;
 
 const shutdown = async (): Promise<void> => {
-  retentionCleanup.stop();
+  retentionCleanup?.stop();
   await app.close();
   await store.close();
 };
