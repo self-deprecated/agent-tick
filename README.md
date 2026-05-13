@@ -8,13 +8,16 @@ Website: <https://agenttick.sh>
 
 Most users should use the hosted service at <https://agenttick.sh>.
 
-For the smoothest Claude Code setup, paste this prompt into your coding agent chat:
+For the smoothest Claude Code setup, paste this prompt into your coding agent chat on the machine you want to configure:
 
 ```text
-Use the Agent Tick skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, help me choose status, steering, and sanctions, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result.
+Fetch and follow the Agent Tick setup skill from:
+https://raw.githubusercontent.com/self-deprecated/agent-tick/main/skills/agent-tick/SKILL.md
+
+Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, help me choose status, steering, and sanctions, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result. If Agent Tick is not installed yet, use the skill's first-time setup instructions.
 ```
 
-The skill-led flow guides you through interactive vs headless usage, AFK vs pass-through routing, status policy, steering, sanctions, permissions, dry-run, install, verification, and restart instructions.
+The linked skill-led flow works even when the target machine does not have this repo cloned. It guides you through interactive vs headless usage, AFK vs pass-through routing, status policy, steering, sanctions, permissions, dry-run, install, verification, and restart instructions.
 
 If you prefer direct CLI setup, run one command on the machine where your coding agents run:
 
