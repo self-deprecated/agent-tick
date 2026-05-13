@@ -17,6 +17,7 @@ import { PostgresStoreConnection, type PostgresStoreOptions } from './postgres.j
 import type {
   AgentCredential,
   AgentTokenAuth,
+  AcceptInviteResult,
   AgentTokenRecord,
   ApprovalWaiterAuth,
   ApprovalWaiterTokenRecord,
@@ -42,8 +43,10 @@ import type {
   OrganizationMembershipRecord,
   MobileDiagnosticInput,
   InvitePreviewRecord,
+  MembershipActivationLimits,
   MobileDiagnosticRecord,
   OrganizationInviteRecord,
+  OrganizationMembershipRequestRecord,
   OrganizationSeatUsage,
   PairingTokenRecord,
   PolicyRecord,
@@ -91,6 +94,24 @@ interface OrganizationInviteRow {
 
 interface OrganizationInviteLookupRow extends OrganizationInviteRow {
   organization_name: string;
+}
+
+interface OrganizationMembershipRequestRow {
+  request_id: string;
+  invite_id: string;
+  organization_id: string;
+  organization_name: string | null;
+  user_id: string;
+  user_email: string | null;
+  user_name: string | null;
+  invite_label: string | null;
+  invite_revoked_at: string | null;
+  requested_role: string;
+  requested_team_ids_json: string;
+  status: string;
+  accepted_at: string;
+  decided_by_user_id: string | null;
+  decided_at: string | null;
 }
 
 interface ProjectRow {
@@ -486,6 +507,118 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     const membership = await this.organizationMembershipForUser(userId, organizationId);
     if (!membership) throw new Error(`organization ${organizationId} was not created`);
     return { organizationId, name: cleanName, userId, role: membership.role, status: 'active', createdAt: now, updatedAt: now };
+  }
+
+  async acceptInvite(token: string, userId: string, now = new Date().toISOString(), limits: MembershipActivationLimits = {}): Promise<AcceptInviteResult | null> {
+    const invite = await this.findUsableInvite(token, now);
+    if (!invite) return null;
+    const user = await this.one<{ email: string }>('SELECT email FROM users WHERE id = $1', [userId]);
+    const userEmail = user?.email?.trim().toLowerCase();
+    const inviteEmail = invite.email?.trim().toLowerCase();
+    if (inviteEmail && userEmail !== inviteEmail) throw httpError(403, 'forbidden', 'This invite is restricted to a different email address');
+    const inviteDomain = invite.domain?.trim().toLowerCase();
+    if (inviteDomain && domainFromEmail(userEmail) !== inviteDomain) throw httpError(403, 'forbidden', 'This invite is restricted to a different email domain');
+
+    const existing = await this.organizationMembershipForUserAnyStatus(userId, invite.organization_id);
+    if (existing?.status === 'active') return { status: 'already_member', membership: existing };
+    if (existing?.status === 'pending_approval') return { status: 'pending_approval', membership: existing };
+
+    const previousAcceptance = await this.one<{ status: string }>('SELECT status FROM organization_invite_acceptances WHERE invite_id = $1 AND user_id = $2', [invite.invite_id, userId]);
+    if (previousAcceptance?.status === 'rejected') throw httpError(409, 'conflict', 'This invite request was rejected');
+
+    const approvalRequired = Boolean(invite.approval_required);
+    const teamIds = await this.listInviteTeamIds(invite.invite_id);
+    const requestId = newID('mreq');
+    const accepted = await this.transaction(async (query) => {
+      const consumed = await query(
+        `
+          UPDATE organization_invites
+          SET used_count = used_count + 1
+          WHERE invite_id = $1
+            AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > $2)
+            AND (max_uses IS NULL OR used_count < max_uses)
+        `,
+        [invite.invite_id, now]
+      );
+      if (consumed.rowCount !== 1) return false;
+      if (!approvalRequired) await this.assertSeatAvailableForActivation(invite.organization_id, limits.maxActiveMembers);
+      await query(
+        'INSERT INTO organization_invite_acceptances(request_id, invite_id, organization_id, user_id, requested_role, requested_team_ids_json, status, accepted_at, decided_by_user_id, decided_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+        [requestId, invite.invite_id, invite.organization_id, userId, invite.role, JSON.stringify(teamIds), approvalRequired ? 'pending_approval' : 'approved', now, approvalRequired ? null : userId, approvalRequired ? null : now]
+      );
+      if (existing) {
+        await query("UPDATE organization_memberships SET role = $1, status = $2, updated_at = $3, approved_by_user_id = $4, approved_at = $5, rejected_by_user_id = NULL, rejected_at = NULL, invite_id = $6 WHERE organization_id = $7 AND user_id = $8", [invite.role, approvalRequired ? 'pending_approval' : 'active', now, approvalRequired ? null : userId, approvalRequired ? null : now, invite.invite_id, invite.organization_id, userId]);
+      } else {
+        await query('INSERT INTO organization_memberships(organization_id, user_id, role, status, created_at, updated_at, approved_by_user_id, approved_at, invite_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [invite.organization_id, userId, invite.role, approvalRequired ? 'pending_approval' : 'active', now, now, approvalRequired ? null : userId, approvalRequired ? null : now, invite.invite_id]);
+      }
+      if (!approvalRequired) {
+        for (const teamId of teamIds) {
+          if (await this.teamBelongsToOrganization(teamId, invite.organization_id)) {
+            await query('INSERT INTO team_memberships(team_id, organization_id, user_id, role, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at', [teamId, invite.organization_id, userId, 'member', now, now]);
+            await query('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [invite.organization_id, userId, 'team_member.upserted', teamId, JSON.stringify({ userId, role: 'member', source: 'organization_invite', inviteId: invite.invite_id }), now]);
+          }
+        }
+      }
+      return true;
+    });
+    if (!accepted) return null;
+    await this.writeAuditEvent(invite.organization_id, userId, 'organization_invite.accepted', invite.invite_id, { role: invite.role, approvalRequired, teamIds }, now);
+    await this.writeAuditEvent(invite.organization_id, userId, approvalRequired ? 'organization_membership.pending' : 'organization_membership.approved', requestId, approvalRequired ? { inviteId: invite.invite_id, role: invite.role, teamIds } : { inviteId: invite.invite_id, role: invite.role, teamIds, autoApproved: true }, now);
+    const membership = (await this.organizationMembershipForUserAnyStatus(userId, invite.organization_id)) ?? missingOrganization(invite.organization_id);
+    return { status: approvalRequired ? 'pending_approval' : 'joined', membership };
+  }
+
+  async listOrganizationMembershipRequests(organizationId: string, status = 'pending_approval'): Promise<OrganizationMembershipRequestRecord[]> {
+    const rows = await this.membershipRequestRows('a.organization_id = $1 AND a.status = $2', [organizationId, status], 'a.accepted_at ASC');
+    return rows.map(mapOrganizationMembershipRequestRow);
+  }
+
+  async listOrganizationMembershipRequestsForUser(userId: string): Promise<OrganizationMembershipRequestRecord[]> {
+    const rows = await this.membershipRequestRows("a.user_id = $1 AND a.status IN ('pending_approval', 'rejected')", [userId], 'a.accepted_at DESC');
+    return rows.map(mapOrganizationMembershipRequestRow);
+  }
+
+  async getOrganizationMembershipRequest(requestId: string, organizationId: string): Promise<OrganizationMembershipRequestRecord | null> {
+    const rows = await this.membershipRequestRows('a.request_id = $1 AND a.organization_id = $2', [requestId, organizationId], 'a.accepted_at ASC');
+    return rows[0] ? mapOrganizationMembershipRequestRow(rows[0]) : null;
+  }
+
+  async approveOrganizationMembershipRequest(requestId: string, organizationId: string, actorUserId: string, now = new Date().toISOString(), limits: MembershipActivationLimits = {}): Promise<OrganizationMembershipRequestRecord | null> {
+    const existing = await this.getOrganizationMembershipRequest(requestId, organizationId);
+    if (!existing || existing.status !== 'pending_approval') return null;
+    const changed = await this.transaction(async (query) => {
+      await this.assertSeatAvailableForActivation(organizationId, limits.maxActiveMembers);
+      const acceptance = await query("UPDATE organization_invite_acceptances SET status = 'approved', decided_by_user_id = $1, decided_at = $2 WHERE request_id = $3 AND organization_id = $4 AND status = 'pending_approval'", [actorUserId, now, requestId, organizationId]);
+      if (acceptance.rowCount !== 1) return false;
+      const membership = await query("UPDATE organization_memberships SET role = $1, status = 'active', updated_at = $2, approved_by_user_id = $3, approved_at = $4, rejected_by_user_id = NULL, rejected_at = NULL WHERE organization_id = $5 AND user_id = $6 AND status = 'pending_approval'", [existing.requestedRole, now, actorUserId, now, organizationId, existing.userId]);
+      if (membership.rowCount !== 1) throw new Error('pending membership was not updated');
+      for (const teamId of existing.requestedTeamIds) {
+        if (await this.teamBelongsToOrganization(teamId, organizationId)) {
+          await query('INSERT INTO team_memberships(team_id, organization_id, user_id, role, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at', [teamId, organizationId, existing.userId, 'member', now, now]);
+          await query('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [organizationId, actorUserId, 'team_member.upserted', teamId, JSON.stringify({ userId: existing.userId, role: 'member', source: 'organization_invite', inviteId: existing.inviteId }), now]);
+        }
+      }
+      return true;
+    });
+    if (!changed) return null;
+    await this.writeAuditEvent(organizationId, actorUserId, 'organization_membership.approved', requestId, { inviteId: existing.inviteId, userId: existing.userId, role: existing.requestedRole, teamIds: existing.requestedTeamIds }, now);
+    return this.getOrganizationMembershipRequest(requestId, organizationId);
+  }
+
+  async rejectOrganizationMembershipRequest(requestId: string, organizationId: string, actorUserId: string, now = new Date().toISOString()): Promise<OrganizationMembershipRequestRecord | null> {
+    const existing = await this.getOrganizationMembershipRequest(requestId, organizationId);
+    if (!existing || existing.status !== 'pending_approval') return null;
+    const changed = await this.transaction(async (query) => {
+      const acceptance = await query("UPDATE organization_invite_acceptances SET status = 'rejected', decided_by_user_id = $1, decided_at = $2 WHERE request_id = $3 AND organization_id = $4 AND status = 'pending_approval'", [actorUserId, now, requestId, organizationId]);
+      if (acceptance.rowCount !== 1) return false;
+      const membership = await query("UPDATE organization_memberships SET status = 'rejected', updated_at = $1, rejected_by_user_id = $2, rejected_at = $3 WHERE organization_id = $4 AND user_id = $5 AND status = 'pending_approval'", [now, actorUserId, now, organizationId, existing.userId]);
+      if (membership.rowCount !== 1) throw new Error('pending membership was not updated');
+      return true;
+    });
+    if (!changed) return null;
+    await this.writeAuditEvent(organizationId, actorUserId, 'organization_membership.rejected', requestId, { inviteId: existing.inviteId, userId: existing.userId, role: existing.requestedRole, teamIds: existing.requestedTeamIds }, now);
+    return this.getOrganizationMembershipRequest(requestId, organizationId);
   }
 
   async listProjects(organizationId = DEFAULT_ORGANIZATION_ID): Promise<ProjectRecord[]> {
@@ -1269,6 +1402,30 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     );
   }
 
+  private async assertSeatAvailableForActivation(organizationId: string, maxActiveMembers: number | undefined): Promise<void> {
+    if (maxActiveMembers === undefined) return;
+    const limit = Math.trunc(maxActiveMembers);
+    if (limit < 1) return;
+    const activeMembers = (await this.organizationSeatUsage(organizationId)).activeMembers;
+    if (activeMembers >= limit) throw httpError(409, 'conflict', 'Organization active member seat limit reached');
+  }
+
+  private async membershipRequestRows(where: string, params: unknown[], orderBy: string): Promise<OrganizationMembershipRequestRow[]> {
+    return this.many<OrganizationMembershipRequestRow>(
+      `
+        SELECT a.request_id, a.invite_id, a.organization_id, o.name AS organization_name, a.user_id, u.email AS user_email, u.name AS user_name,
+               i.label AS invite_label, i.revoked_at AS invite_revoked_at, a.requested_role, a.requested_team_ids_json, a.status, a.accepted_at, a.decided_by_user_id, a.decided_at
+        FROM organization_invite_acceptances a
+        JOIN organizations o ON o.id = a.organization_id
+        JOIN users u ON u.id = a.user_id
+        JOIN organization_invites i ON i.invite_id = a.invite_id
+        WHERE ${where}
+        ORDER BY ${orderBy}
+      `,
+      params
+    );
+  }
+
   private async expirePendingApprovals(organizationId: string, now: string): Promise<void> {
     const rows = await this.many<{ id: string; organization_id: string }>(
       'SELECT id, organization_id FROM approval_requests WHERE organization_id = $1 AND status = $2 AND expires_at IS NOT NULL AND expires_at <= $3',
@@ -1501,6 +1658,26 @@ function mapOrganizationMembershipRow(row: OrganizationMembershipRow): Organizat
   };
 }
 
+function mapOrganizationMembershipRequestRow(row: OrganizationMembershipRequestRow): OrganizationMembershipRequestRecord {
+  return {
+    requestId: row.request_id,
+    inviteId: row.invite_id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name ?? undefined,
+    userId: row.user_id,
+    userEmail: row.user_email?.trim() || undefined,
+    userName: row.user_name?.trim() || undefined,
+    inviteLabel: row.invite_label ?? undefined,
+    inviteRevokedAt: row.invite_revoked_at ?? undefined,
+    requestedRole: row.requested_role,
+    requestedTeamIds: parseJSON<string[]>(row.requested_team_ids_json, []),
+    status: row.status,
+    acceptedAt: row.accepted_at,
+    decidedByUserId: row.decided_by_user_id ?? undefined,
+    decidedAt: row.decided_at ?? undefined
+  };
+}
+
 function mapOrganizationInviteRow(row: OrganizationInviteRow, teamIds: string[] = []): OrganizationInviteRecord {
   return {
     inviteId: row.invite_id,
@@ -1714,6 +1891,11 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+function domainFromEmail(email: string | undefined): string | undefined {
+  const at = email?.lastIndexOf('@') ?? -1;
+  return at > 0 ? email?.slice(at + 1).toLowerCase() : undefined;
+}
+
 function normalizeInviteDomain(value: string | undefined): string | undefined {
   const candidate = value?.trim().toLowerCase().replace(/^@+/, '');
   if (!candidate) return undefined;
@@ -1736,6 +1918,10 @@ function httpError(statusCode: number, code: string, message: string): Error & {
   error.statusCode = statusCode;
   error.code = code;
   return error;
+}
+
+function missingOrganization(organizationId: string): never {
+  throw new Error(`organization ${organizationId} was not created`);
 }
 
 function missingInvite(inviteId: string): never {

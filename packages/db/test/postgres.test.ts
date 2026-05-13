@@ -78,6 +78,31 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.listAuditEventsAfter(created.organizationId, event!.eventId - 1)).toEqual([event]);
   });
 
+  it('accepts organization invites and approves membership requests', async () => {
+    await store!.migrate('2026-05-08T00:00:00.000Z');
+
+    const owner = await store!.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'owner_invites', email: 'owner@example.com', emailVerified: true, name: 'Owner' });
+    const org = await store!.createOrganizationForUser(owner.userId, 'Approval Org', '2026-05-08T00:40:00.000Z');
+    const team = await store!.createTeam({ organizationId: org.organizationId, userId: owner.userId, name: 'Approvers' });
+    const invite = await store!.createOrganizationInvite({ organizationId: org.organizationId, userId: owner.userId, role: 'admin', teamIds: [team.teamId], email: 'bob@example.com' });
+    const bob = await store!.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'bob_invites', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
+
+    const accepted = await store!.acceptInvite(invite.token!, bob.userId, '2026-05-08T00:41:00.000Z');
+    expect(accepted).toMatchObject({ status: 'pending_approval', membership: { organizationId: org.organizationId, userId: bob.userId, role: 'admin', status: 'pending_approval' } });
+    expect(await store!.organizationMembershipForUser(bob.userId, org.organizationId)).toBeNull();
+    const [request] = await store!.listOrganizationMembershipRequests(org.organizationId);
+    expect(request).toMatchObject({ inviteId: invite.inviteId, userId: bob.userId, requestedTeamIds: [team.teamId], status: 'pending_approval' });
+    expect(await store!.listOrganizationMembershipRequestsForUser(bob.userId)).toEqual([expect.objectContaining({ requestId: request!.requestId })]);
+
+    expect(await store!.approveOrganizationMembershipRequest(request!.requestId, org.organizationId, owner.userId, '2026-05-08T00:42:00.000Z')).toMatchObject({ status: 'approved', decidedByUserId: owner.userId });
+    expect(await store!.organizationMembershipForUser(bob.userId, org.organizationId)).toMatchObject({ role: 'admin' });
+    expect((await store!.listTeamMembers(team.teamId)).map((member) => member.userId)).toContain(bob.userId);
+
+    const autoInvite = await store!.createOrganizationInvite({ organizationId: org.organizationId, userId: owner.userId, role: 'member', approvalRequired: false, domain: 'example.org' });
+    const alice = await store!.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'alice_invites', email: 'alice@example.org', emailVerified: true, name: 'Alice' });
+    expect(await store!.acceptInvite(autoInvite.token!, alice.userId, '2026-05-08T00:43:00.000Z')).toMatchObject({ status: 'joined', membership: { status: 'active' } });
+  });
+
   it('creates, lists, previews, rotates, updates, and revokes organization invites', async () => {
     await store!.migrate('2026-05-08T00:00:00.000Z');
     await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
