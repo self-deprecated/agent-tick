@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agent-tick-diagnostics": {
+      "command": "sshgate",
+      "args": [
+        "run",
+        "agent-tick-diagnostics-mcp",
+        "--database",
+        "/var/lib/agent-tick/agent-tick.db"
+      ]
+    }
+  }
+}
