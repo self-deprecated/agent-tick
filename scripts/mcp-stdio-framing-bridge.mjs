@@ -1,8 +1,18 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 
-const child = spawn('nix', ['shell', 'nixpkgs#mcp-proxy', '-c', 'mcp-proxy', 'http://clippy:8788/sse'], {
-  stdio: ['pipe', 'pipe', 'inherit']
+const proxyUrl = process.env.MCP_PROXY_URL || process.argv[2];
+if (!proxyUrl) {
+  console.error('MCP_PROXY_URL or first argument is required');
+  process.exit(2);
+}
+
+const proxyCommand = process.env.MCP_PROXY_COMMAND || 'nix';
+const proxyArgs = process.env.MCP_PROXY_COMMAND
+  ? [proxyUrl]
+  : ['shell', 'nixpkgs#mcp-proxy', '-c', 'mcp-proxy', proxyUrl];
+const child = spawn(proxyCommand, proxyArgs, {
+  stdio: ['pipe', 'pipe', 'ignore']
 });
 
 let input = Buffer.alloc(0);
