@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { CreatePolicySchema, UpdatePolicySchema } from '@agent-tick/shared';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireOrganizationAdmin } from '../auth/context.js';
 
@@ -12,13 +12,13 @@ export interface PolicyRoutesOptions {
 export async function registerPolicyRoutes(app: FastifyInstance, { config, store }: PolicyRoutesOptions): Promise<void> {
   app.get('/v1/policies', async (request) => {
     const auth = await requireOrganizationAdmin(request, config, store);
-    return store.listPolicies(auth.organizationId);
+    return await store.listPolicies(auth.organizationId);
   });
 
   app.post('/v1/policies', async (request) => {
     const auth = await requireOrganizationAdmin(request, config, store);
     const input = CreatePolicySchema.parse(request.body);
-    return store.createPolicy({
+    return await store.createPolicy({
       organizationId: auth.organizationId,
       userId: auth.userId ?? 'usr_default',
       name: input.name,
@@ -33,7 +33,7 @@ export async function registerPolicyRoutes(app: FastifyInstance, { config, store
     const auth = await requireOrganizationAdmin(request, config, store);
     const { id } = request.params as { id: string };
     const input = UpdatePolicySchema.parse(request.body);
-    const policy = store.updatePolicy({
+    const policy = await store.updatePolicy({
       organizationId: auth.organizationId,
       userId: auth.userId ?? 'usr_default',
       policyId: id,

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { AgentTickStore, AuditEventRecord } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore, AuditEventRecord } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman } from '../auth/context.js';
 import type { OrganizationEventBus } from '../services/eventBus.js';
@@ -16,7 +16,7 @@ const eventHeartbeatMs = 15000;
 export async function registerEventRoutes(app: FastifyInstance, { config, store, eventBus }: EventRoutesOptions): Promise<void> {
   app.post('/v1/events/ticket', async (request) => {
     const auth = await requirePrivilegedHuman(request, config, store);
-    return store.createEventTicket({
+    return await store.createEventTicket({
       source: auth.source,
       organizationId: auth.organizationId,
       ...(auth.userId ? { userId: auth.userId } : {}),
@@ -27,10 +27,7 @@ export async function registerEventRoutes(app: FastifyInstance, { config, store,
   app.get('/v1/events/poll', async (request, reply) => {
     const auth = await requireHuman(request, config, store);
     const timeoutMs = timeoutMsFromQuery(request.query);
-    let lastEventId = lastEventIdFromRequest(request.query, undefined) ?? latestAuditEventId(store, auth.organizationId);
-    const eventStore = store as AgentTickStore & {
-      listAuditEventsAfter(organizationId: string, afterEventId?: number, limit?: number): AuditEventRecord[];
-    };
+    let lastEventId = lastEventIdFromRequest(request.query, undefined) ?? await latestAuditEventId(store, auth.organizationId);
     const toResponse = (events: AuditEventRecord[]) => {
       const nextEventId = events.at(-1)?.eventId ?? lastEventId;
       return {
@@ -44,26 +41,26 @@ export async function registerEventRoutes(app: FastifyInstance, { config, store,
       };
     };
 
-    const initialEvents = eventStore.listAuditEventsAfter(auth.organizationId, lastEventId, 50);
+    const initialEvents = await store.listAuditEventsAfter(auth.organizationId, lastEventId, 50);
     if (initialEvents.length > 0) return toResponse(initialEvents);
 
     const abortController = new AbortController();
     request.raw.once('close', () => abortController.abort());
     await eventBus.waitForOrganizationEvent(auth.organizationId, timeoutMs, abortController.signal);
     if (abortController.signal.aborted) return toResponse([]);
-    const events = eventStore.listAuditEventsAfter(auth.organizationId, lastEventId, 50);
+    const events = await store.listAuditEventsAfter(auth.organizationId, lastEventId, 50);
     return toResponse(events);
   });
 
   app.get('/v1/events', async (request, reply) => {
     const ticket = eventTicketFromQuery(request.query);
-    const eventAuth = ticket ? store.verifyEventTicket(ticket) : null;
+    const eventAuth = ticket ? await store.verifyEventTicket(ticket) : null;
     if (!eventAuth) {
       return reply.status(401).send({ error: { code: 'not_authenticated', message: 'Invalid or expired event ticket', requestId: request.id } });
     }
 
     const once = booleanQueryFlag(request.query, 'once');
-    let lastEventId = lastEventIdFromRequest(request.query, request.headers['last-event-id']) ?? latestAuditEventId(store, eventAuth.organizationId);
+    let lastEventId = lastEventIdFromRequest(request.query, request.headers['last-event-id']) ?? await latestAuditEventId(store, eventAuth.organizationId);
 
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -72,17 +69,14 @@ export async function registerEventRoutes(app: FastifyInstance, { config, store,
     });
     writeSSE(reply.raw, 'ready', { organizationId: eventAuth.organizationId, lastEventId });
 
-    const eventStore = store as AgentTickStore & {
-      listAuditEventsAfter(organizationId: string, afterEventId?: number, limit?: number): AuditEventRecord[];
-    };
-    const sendAuditEvents = () => {
-      const events = eventStore.listAuditEventsAfter(eventAuth.organizationId, lastEventId, 100);
+    const sendAuditEvents = async () => {
+      const events = await store.listAuditEventsAfter(eventAuth.organizationId, lastEventId, 100);
       for (const event of events) {
         lastEventId = event.eventId;
         writeSSE(reply.raw, 'audit', event, String(event.eventId));
       }
     };
-    sendAuditEvents();
+    await sendAuditEvents();
 
     if (once) {
       reply.raw.end();
@@ -90,7 +84,9 @@ export async function registerEventRoutes(app: FastifyInstance, { config, store,
     }
 
     await new Promise<void>((resolve) => {
-      const auditTimer = setInterval(sendAuditEvents, eventPollMs);
+      const auditTimer = setInterval(() => {
+        void sendAuditEvents();
+      }, eventPollMs);
       const heartbeatTimer = setInterval(() => {
         reply.raw.write(': keep-alive\n\n');
       }, eventHeartbeatMs);
@@ -137,8 +133,8 @@ function parseEventId(value: unknown): number | null {
   return Math.trunc(parsed);
 }
 
-function latestAuditEventId(store: AgentTickStore, organizationId: string): number {
-  return store.listAuditEvents(organizationId, 1)[0]?.eventId ?? 0;
+async function latestAuditEventId(store: AgentTickStore, organizationId: string): Promise<number> {
+  return (await store.listAuditEvents(organizationId, 1))[0]?.eventId ?? 0;
 }
 
 function writeSSE(raw: { write: (chunk: string) => unknown }, event: string, data: unknown, id?: string): void {

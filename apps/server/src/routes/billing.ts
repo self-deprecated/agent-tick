@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requirePrivilegedHuman, type AuthContext } from '../auth/context.js';
 
@@ -18,7 +18,7 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
       limits: {
         ...(config.maxActiveMembers ? { seats: config.maxActiveMembers } : {})
       },
-      usage: store.organizationSeatUsage(auth.organizationId)
+      usage: await store.organizationSeatUsage(auth.organizationId)
     };
   });
 }

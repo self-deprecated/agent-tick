@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { CreateMobileDiagnosticsSchema } from '@agent-tick/shared';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman } from '../auth/context.js';
 
@@ -35,7 +35,7 @@ export async function registerMobileDiagnosticsRoutes(app: FastifyInstance, { co
       createdAt: event.at,
       metadata: pruneUndefined({ ...contextMetadata, ...(event.metadata ?? {}) })
     }));
-    return { accepted: store.recordMobileDiagnostics(events) };
+    return { accepted: await store.recordMobileDiagnostics(events) };
   });
 
 }

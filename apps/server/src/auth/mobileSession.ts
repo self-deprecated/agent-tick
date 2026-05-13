@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import type { AuthContext } from './context.js';
 
@@ -34,11 +34,11 @@ export function mintMobileSession(auth: AuthContext, config: ServerConfig, now =
   return signJWT({ ...claims }, sessionSecret(config));
 }
 
-export function verifyMobileSession(token: string, config: ServerConfig, store: AgentTickStore, now = Math.floor(Date.now() / 1000)): AuthContext | null {
+export async function verifyMobileSession(token: string, config: ServerConfig, store: AgentTickStore, now = Math.floor(Date.now() / 1000)): Promise<AuthContext | null> {
   const claims = verifyJWT(token, sessionSecret(config));
   if (!claims || claims.typ !== TYPE || claims.iss !== ISSUER || typeof claims.sub !== 'string') return null;
   if (typeof claims.exp !== 'number' || claims.exp <= now) return null;
-  const membership = store.defaultMembershipForUser(claims.sub);
+  const membership = await store.defaultMembershipForUser(claims.sub);
   return {
     source: 'clerk',
     isHuman: true,

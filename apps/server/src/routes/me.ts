@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman } from '../auth/context.js';
 
@@ -12,7 +12,7 @@ export async function registerMeRoutes(app: FastifyInstance, { config, store }: 
   app.get('/v1/me', async (request) => {
     const auth = await requireHuman(request, config, store);
     const userId = auth.userId ?? 'usr_default';
-    const profile = store.userProfile(userId);
+    const profile = await store.userProfile(userId);
     return {
       userId,
       ...(profile?.email ? { email: profile.email } : {}),
@@ -22,7 +22,7 @@ export async function registerMeRoutes(app: FastifyInstance, { config, store }: 
       source: auth.source,
       organizationId: auth.organizationId,
       role: auth.role ?? 'owner',
-      memberships: store.listOrganizationsForUser(userId)
+      memberships: await store.listOrganizationsForUser(userId)
     };
   });
 }

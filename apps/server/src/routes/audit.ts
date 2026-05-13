@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireOrganizationAdmin } from '../auth/context.js';
 
@@ -12,7 +12,7 @@ export async function registerAuditRoutes(app: FastifyInstance, { config, store 
   app.get('/v1/audit-events', async (request) => {
     const auth = await requireOrganizationAdmin(request, config, store);
     const limit = limitFromQuery(request.query);
-    return store.listAuditEvents(auth.organizationId, limit);
+    return await store.listAuditEvents(auth.organizationId, limit);
   });
 }
 

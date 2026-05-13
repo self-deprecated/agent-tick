@@ -405,7 +405,96 @@ export interface CleanupRetentionResult {
   organizationInvites: number;
 }
 
-export class AgentTickStore {
+export type Awaitable<T> = T | Promise<T>;
+
+export interface AsyncAgentTickStore {
+  close(): Awaitable<void>;
+  migrate(): Awaitable<void>;
+  ensureSingleTenantDefaults(now?: string): Awaitable<void>;
+  cleanupExpiredSecrets(now?: string): Awaitable<CleanupExpiredSecretsResult>;
+  cleanupRetention(policy?: RetentionPolicy, now?: string): Awaitable<CleanupRetentionResult>;
+  loginOrCreateClerkIdentity(profile: ClerkIdentityProfile, now?: string): Awaitable<HumanIdentityResult>;
+  defaultMembershipForUser(userId: string): Awaitable<HumanIdentityResult>;
+  userProfile(userId: string): Awaitable<UserProfileRecord | null>;
+  listOrganizationsForUser(userId: string): Awaitable<OrganizationMembershipRecord[]>;
+  listOrganizationMembers(organizationId: string): Awaitable<OrganizationMembershipRecord[]>;
+  organizationSeatUsage(organizationId: string): Awaitable<OrganizationSeatUsage>;
+  organizationMembershipForUser(userId: string, organizationId: string): Awaitable<HumanIdentityResult | null>;
+  organizationMembershipForUserAnyStatus(userId: string, organizationId: string): Awaitable<OrganizationMembershipRecord | null>;
+  createOrganizationForUser(userId: string, name: string, now?: string): Awaitable<OrganizationMembershipRecord>;
+  listOrganizationInvites(organizationId: string): Awaitable<OrganizationInviteRecord[]>;
+  createOrganizationInvite(input: CreateOrganizationInviteInput, now?: string): Awaitable<OrganizationInviteRecord>;
+  getOrganizationInvite(inviteId: string): Awaitable<OrganizationInviteRecord | null>;
+  organizationName(organizationId: string): Awaitable<string | undefined>;
+  rotateOrganizationInviteToken(inviteId: string, organizationId: string, userId: string, now?: string, publicURL?: string): Awaitable<OrganizationInviteRecord | null>;
+  recordOrganizationInviteEmailDelivery(inviteId: string, organizationId: string, userId: string, status: string, errorMessage?: string, now?: string): Awaitable<OrganizationInviteRecord | null>;
+  revokeOrganizationInvite(inviteId: string, organizationId: string, userId: string, now?: string): Awaitable<OrganizationInviteRecord | null>;
+  previewInvite(token: string, now?: string): Awaitable<InvitePreviewRecord | null>;
+  acceptInvite(token: string, userId: string, now?: string, limits?: MembershipActivationLimits): Awaitable<AcceptInviteResult | null>;
+  listOrganizationMembershipRequests(organizationId: string, status?: string): Awaitable<OrganizationMembershipRequestRecord[]>;
+  listOrganizationMembershipRequestsForUser(userId: string): Awaitable<OrganizationMembershipRequestRecord[]>;
+  getOrganizationMembershipRequest(requestId: string, organizationId: string): Awaitable<OrganizationMembershipRequestRecord | null>;
+  approveOrganizationMembershipRequest(requestId: string, organizationId: string, actorUserId: string, now?: string, limits?: MembershipActivationLimits): Awaitable<OrganizationMembershipRequestRecord | null>;
+  rejectOrganizationMembershipRequest(requestId: string, organizationId: string, actorUserId: string, now?: string): Awaitable<OrganizationMembershipRequestRecord | null>;
+  listProjects(organizationId?: string): Awaitable<ProjectRecord[]>;
+  createProject(input: CreateProjectInput, now?: string): Awaitable<ProjectRecord>;
+  getProject(projectId: string): Awaitable<ProjectRecord | null>;
+  listTeams(organizationId?: string): Awaitable<TeamRecord[]>;
+  createTeam(input: CreateTeamInput, now?: string): Awaitable<TeamMembershipRecord>;
+  listTeamMembers(teamId: string): Awaitable<TeamMembershipRecord[]>;
+  upsertTeamMember(input: UpsertTeamMemberInput, now?: string): Awaitable<TeamMembershipRecord>;
+  removeTeamMember(input: RemoveTeamMemberInput, now?: string): Awaitable<TeamMembershipRecord | null>;
+  listPolicies(organizationId?: string): Awaitable<PolicyRecord[]>;
+  createPolicy(input: CreatePolicyInput, now?: string): Awaitable<PolicyRecord>;
+  getPolicy(policyId: string): Awaitable<PolicyRecord | null>;
+  updatePolicy(input: UpdatePolicyInput, now?: string): Awaitable<PolicyRecord | null>;
+  projectBelongsToOrganization(projectId: string, organizationId: string): Awaitable<boolean>;
+  teamBelongsToOrganization(teamId: string, organizationId: string): Awaitable<boolean>;
+  policyBelongsToOrganization(policyId: string, organizationId: string): Awaitable<boolean>;
+  createAgentToken(input: CreateAgentTokenInput, now?: string): Awaitable<AgentCredential>;
+  listAgentTokens(organizationId?: string): Awaitable<AgentTokenRecord[]>;
+  revokeAgentToken(agentId: string, organizationId?: string, now?: string): Awaitable<AgentTokenRecord | null>;
+  verifyAgentToken(token: string, now?: string): Awaitable<AgentTokenAuth | null>;
+  createApprovalRequest(input: CreateApprovalInput, now?: string): Awaitable<ApprovalRequest>;
+  listApprovalRequests(organizationId?: string, currentUserId?: string, now?: string): Awaitable<ApprovalRequest[]>;
+  getApprovalRequest(id: string, currentUserId?: string, now?: string): Awaitable<ApprovalRequest | null>;
+  getApprovalRequestForOrganization(id: string, organizationId: string, currentUserId?: string, now?: string): Awaitable<ApprovalRequest | null>;
+  respondToApprovalRequest(id: string, response: RespondApprovalRequest, responderUserId?: string, now?: string): Awaitable<ApprovalRequest | null>;
+  respondToApprovalRequestForOrganization(id: string, organizationId: string, response: RespondApprovalRequest, responderUserId?: string, now?: string): Awaitable<ApprovalRequest | null>;
+  abandonApprovalRequest(id: string, actorId: string, now?: string): Awaitable<ApprovalRequest | null>;
+  abandonApprovalRequestForOrganization(id: string, organizationId: string, actorId: string, now?: string): Awaitable<ApprovalRequest | null>;
+  registerDevice(input: DeviceRegistrationInput, now?: string): Awaitable<DeviceRecord>;
+  recordMobileDiagnostics(events: MobileDiagnosticInput[]): Awaitable<number>;
+  listMobileDiagnostics(organizationId: string, limit?: number): Awaitable<MobileDiagnosticRecord[]>;
+  createPairingToken(userId: string, organizationId: string, now?: string, ttlSeconds?: number): Awaitable<PairingTokenRecord>;
+  pairDeviceWithCode(pairingCode: string, deviceName: string, platform?: string, now?: string): Awaitable<DeviceCredential | null>;
+  verifyDeviceToken(token: string): Awaitable<DeviceTokenAuth | null>;
+  listDevicesForUser(userId: string): Awaitable<DeviceRecord[]>;
+  listPushDevicesForApprovalRecipients(requestId: string): Awaitable<DeviceRecord[]>;
+  listPushDevicesForUsers(userIds: string[]): Awaitable<DeviceRecord[]>;
+  getDeviceForUser(deviceId: string, userId: string): Awaitable<DeviceRecord | null>;
+  updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now?: string): Awaitable<DeviceRecord | null>;
+  unregisterDevice(deviceId: string, userId: string, now?: string): Awaitable<DeviceRecord | null>;
+  createEventTicket(input: EventTicketInput, now?: string): Awaitable<EventTicketRecord>;
+  verifyEventTicket(ticket: string, now?: string): Awaitable<EventTicketAuth | null>;
+  createApprovalWaiterToken(requestId: string, organizationId: string, agentId: string, requestExpiresAt?: string, now?: string): Awaitable<ApprovalWaiterTokenRecord>;
+  verifyApprovalWaiterToken(token: string, requestId: string, now?: string): Awaitable<ApprovalWaiterAuth | null>;
+  recordHeartbeat(userId: string, organizationId: string, now?: string): Awaitable<AvailabilityRecord>;
+  setAvailability(userId: string, organizationId: string, state: string, now?: string): Awaitable<AvailabilityRecord>;
+  getAvailability(userId: string, organizationId: string): Awaitable<AvailabilityRecord | null>;
+  createAgentStatusUpdate(input: CreateAgentStatusInput, now?: string): Awaitable<AgentStatusUpdate>;
+  getAgentStatusUpdate(statusId: string, organizationId: string): Awaitable<AgentStatusUpdate | null>;
+  listLatestAgentStatusUpdates(organizationId: string, limit?: number): Awaitable<AgentStatusUpdate[]>;
+  listAuditEvents(organizationId: string, limit?: number): Awaitable<AuditEventRecord[]>;
+  listAuditEventsAfter(organizationId: string, afterEventId?: number, limit?: number): Awaitable<AuditEventRecord[]>;
+  writeAuditEvent(organizationId: string, userId: string, eventType: string, targetId: string, payload: unknown, now?: string): Awaitable<void>;
+}
+
+export function openAgentTickStore(options: OpenStoreOptions = {}): AsyncAgentTickStore {
+  return AgentTickStore.open(options);
+}
+
+export class AgentTickStore implements AsyncAgentTickStore {
   readonly db: Database.Database;
 
   constructor(db: Database.Database) {

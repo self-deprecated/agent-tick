@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from './config.js';
 import { registerAgentTokenRoutes } from './routes/agentTokens.js';
 import { registerApprovalRoutes } from './routes/approvals.js';

@@ -1,5 +1,5 @@
 import type { ApprovalRequest } from '@agent-tick/shared';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 
 export interface ApprovalNotifier {
@@ -52,7 +52,7 @@ export function createExpoPushNotifier({ store, fetch: fetchImpl = globalThis.fe
   return {
     async notifyApprovalCreated(request) {
       if (!fetchImpl) return;
-      const devices = store.listPushDevicesForApprovalRecipients(request.id);
+      const devices = await store.listPushDevicesForApprovalRecipients(request.id);
       const targets = devices.map((device) => device.expoPushToken).filter((token): token is string => Boolean(token));
       if (!targets.length) return;
       await fetchImpl(endpoint, {

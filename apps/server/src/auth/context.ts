@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
-import { DEFAULT_ORGANIZATION_ID, DEFAULT_USER_ID, type AgentTickStore } from '@agent-tick/db';
+import { DEFAULT_ORGANIZATION_ID, DEFAULT_USER_ID, type AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { verifyClerkSession } from './clerk.js';
 import { verifyMobileSession } from './mobileSession.js';
@@ -29,7 +29,7 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
   const bearer = bearerToken(request.headers.authorization);
 
   if (config.mode === 'single' && bearer && config.adminToken && timingSafeEqualString(bearer, config.adminToken)) {
-    return applySelectedOrganization(request, store, {
+    return await applySelectedOrganization(request, store, {
       source: 'admin',
       isHuman: true,
       userId: DEFAULT_USER_ID,
@@ -39,7 +39,7 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
   }
 
   if (bearer?.startsWith('agent_')) {
-    const agent = store.verifyAgentToken(bearer);
+    const agent = await store.verifyAgentToken(bearer);
     if (!agent) return null;
     return {
       source: 'agent',
@@ -54,7 +54,7 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
   }
 
   if (config.mode === 'single' && bearer?.startsWith('device_')) {
-    const device = store.verifyDeviceToken(bearer);
+    const device = await store.verifyDeviceToken(bearer);
     if (!device) return null;
     return {
       source: 'device',
@@ -67,7 +67,7 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
   }
 
   if (config.mode === 'single' && !config.adminToken && !bearer && isLoopback(request.ip)) {
-    return applySelectedOrganization(request, store, {
+    return await applySelectedOrganization(request, store, {
       source: 'loopback',
       isHuman: true,
       userId: DEFAULT_USER_ID,
@@ -82,14 +82,14 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
     const nameHeader = request.headers['x-agent-tick-test-name'];
     const email = (Array.isArray(emailHeader) ? emailHeader[0] : emailHeader) || `${subject}@example.test`;
     const name = (Array.isArray(nameHeader) ? nameHeader[0] : nameHeader) || subject;
-    const identity = store.loginOrCreateClerkIdentity({
+    const identity = await store.loginOrCreateClerkIdentity({
       issuer: 'agent-tick-test',
       subject,
       email,
       emailVerified: true,
       name
     });
-    return applySelectedOrganization(request, store, {
+    return await applySelectedOrganization(request, store, {
       source: 'clerk',
       isHuman: true,
       userId: identity.userId,
@@ -102,8 +102,8 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
   }
 
   if (config.mode === 'clerk' && bearer) {
-    const mobileAuth = verifyMobileSession(bearer, config, store);
-    if (mobileAuth) return applySelectedOrganization(request, store, mobileAuth);
+    const mobileAuth = await verifyMobileSession(bearer, config, store);
+    if (mobileAuth) return await applySelectedOrganization(request, store, mobileAuth);
     const clerkAuth = await verifyClerkSession(bearer, config, store);
     return clerkAuth ? applySelectedOrganization(request, store, clerkAuth) : null;
   }
@@ -155,11 +155,11 @@ export async function requireOrganizationAdmin(request: FastifyRequest, config: 
   return auth;
 }
 
-function applySelectedOrganization(request: FastifyRequest, store: AgentTickStore, auth: AuthContext): AuthContext {
+async function applySelectedOrganization(request: FastifyRequest, store: AgentTickStore, auth: AuthContext): Promise<AuthContext> {
   if (!auth.isHuman || !auth.userId) return auth;
   const selected = selectedOrganization(request);
   if (!selected || selected === auth.organizationId) return auth;
-  const membership = store.organizationMembershipForUser(auth.userId, selected);
+  const membership = await store.organizationMembershipForUser(auth.userId, selected);
   if (!membership) {
     const error = new Error('User is not a member of the selected organization') as Error & { statusCode: number; code: string };
     error.statusCode = 403;

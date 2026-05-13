@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { SetAvailabilitySchema } from '@agent-tick/shared';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman } from '../auth/context.js';
 
@@ -12,13 +12,13 @@ export interface PresenceRoutesOptions {
 export async function registerPresenceRoutes(app: FastifyInstance, { config, store }: PresenceRoutesOptions): Promise<void> {
   app.post('/v1/heartbeat', async (request) => {
     const auth = await requireHuman(request, config, store);
-    const record = store.recordHeartbeat(auth.userId ?? 'usr_default', auth.organizationId);
+    const record = await store.recordHeartbeat(auth.userId ?? 'usr_default', auth.organizationId);
     return { status: 'ok', ...record };
   });
 
   app.post('/v1/availability', async (request) => {
     const auth = await requireHuman(request, config, store);
     const input = SetAvailabilitySchema.parse(request.body);
-    return store.setAvailability(auth.userId ?? 'usr_default', auth.organizationId, input.state);
+    return await store.setAvailability(auth.userId ?? 'usr_default', auth.organizationId, input.state);
   });
 }

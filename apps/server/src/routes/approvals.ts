@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { CreateApprovalRequestSchema, RespondApprovalRequestSchema } from '@agent-tick/shared';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import type { ApprovalNotifier } from '../services/notifications.js';
 import { authenticateRequest, requireAuth, requireHuman } from '../auth/context.js';
@@ -15,13 +15,13 @@ export interface ApprovalRoutesOptions {
 export async function registerApprovalRoutes(app: FastifyInstance, { config, store, notifier }: ApprovalRoutesOptions): Promise<void> {
   app.get('/v1/approval-requests', async (request) => {
     const auth = await requireHuman(request, config, store);
-    return store.listApprovalRequests(auth.organizationId, auth.userId);
+    return await store.listApprovalRequests(auth.organizationId, auth.userId);
   });
 
   app.post('/v1/approval-requests', async (request) => {
     const auth = await requireAuth(request, config, store);
     const input = CreateApprovalRequestSchema.parse(request.body);
-    const approval = store.createApprovalRequest({
+    const approval = await store.createApprovalRequest({
       ...input,
       requester: {
         ...input.requester,
@@ -40,14 +40,14 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
     notifier?.notifyApprovalCreated(approval).catch((error) => request.log.error({ err: error, approvalId: approval.id }, 'approval notification failed'));
     return {
       request: approval,
-      ...(auth.agentId ? { waiter: store.createApprovalWaiterToken(approval.id, approval.organizationId ?? auth.organizationId, auth.agentId, approval.expiresAt) } : {})
+      ...(auth.agentId ? { waiter: await store.createApprovalWaiterToken(approval.id, approval.organizationId ?? auth.organizationId, auth.agentId, approval.expiresAt) } : {})
     };
   });
 
   app.get('/v1/approval-requests/:id', async (request, reply) => {
     const auth = await requireHuman(request, config, store);
     const { id } = request.params as { id: string };
-    const approval = store.getApprovalRequestForOrganization(id, auth.organizationId, auth.userId);
+    const approval = await store.getApprovalRequestForOrganization(id, auth.organizationId, auth.userId);
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     return approval;
   });
@@ -56,7 +56,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
     const auth = await requireHuman(request, config, store);
     const { id } = request.params as { id: string };
     const input = RespondApprovalRequestSchema.parse(request.body);
-    const approval = store.respondToApprovalRequestForOrganization(id, auth.organizationId, input, auth.userId ?? 'usr_default');
+    const approval = await store.respondToApprovalRequestForOrganization(id, auth.organizationId, input, auth.userId ?? 'usr_default');
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     return approval;
   });
@@ -64,12 +64,12 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
   app.post('/v1/approval-requests/:id/abandon', async (request, reply) => {
     const auth = await requireAuth(request, config, store);
     const { id } = request.params as { id: string };
-    const existing = store.getApprovalRequestForOrganization(id, auth.organizationId);
+    const existing = await store.getApprovalRequestForOrganization(id, auth.organizationId);
     if (!existing) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     if (auth.agentId && existing.requester.agentId !== auth.agentId) {
       return reply.status(403).send({ error: { code: 'forbidden', message: 'Agent tokens can only abandon requests they created', requestId: request.id } });
     }
-    const approval = store.abandonApprovalRequestForOrganization(id, auth.organizationId, auth.agentId ?? auth.userId ?? 'unknown');
+    const approval = await store.abandonApprovalRequestForOrganization(id, auth.organizationId, auth.agentId ?? auth.userId ?? 'unknown');
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
     return approval;
   });
@@ -78,7 +78,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
     const { id } = request.params as { id: string };
     const waiter = waiterToken(request.headers.authorization);
     if (waiter) {
-      const waiterAuth = store.verifyApprovalWaiterToken(waiter, id);
+      const waiterAuth = await store.verifyApprovalWaiterToken(waiter, id);
       if (!waiterAuth) return reply.status(401).send({ error: { code: 'not_authenticated', message: 'Invalid or expired waiter token', requestId: request.id } });
       return waitForApproval(request, reply, store, id, waiterAuth.organizationId);
     }
@@ -94,12 +94,12 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
 async function waitForApproval(request: FastifyRequest, reply: FastifyReply, store: AgentTickStore, id: string, organizationId: string, userId?: string) {
   const timeoutMs = timeoutFromQuery(request.query);
   const deadline = Date.now() + timeoutMs;
-  let approval = store.getApprovalRequestForOrganization(id, organizationId, userId);
+  let approval = await store.getApprovalRequestForOrganization(id, organizationId, userId);
   if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
 
   while (approval.status === 'pending' && Date.now() < deadline) {
     await sleep(Math.min(250, Math.max(25, deadline - Date.now())));
-    approval = store.getApprovalRequestForOrganization(id, organizationId, userId);
+    approval = await store.getApprovalRequestForOrganization(id, organizationId, userId);
     if (!approval) return reply.status(404).send({ error: { code: 'not_found', message: 'Approval request not found', requestId: request.id } });
   }
 

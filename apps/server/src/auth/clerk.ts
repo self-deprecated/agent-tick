@@ -1,5 +1,5 @@
 import { createClerkClient, verifyToken } from '@clerk/backend';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import type { AuthContext } from './context.js';
 
@@ -21,7 +21,7 @@ export async function verifyClerkLoginToken(token: string, config: ServerConfig,
   if (config.mode !== 'clerk') return null;
   if (config.testAuth && token.startsWith('test_')) {
     const subject = token.slice('test_'.length) || 'user';
-    const identity = store.loginOrCreateClerkIdentity({
+    const identity = await store.loginOrCreateClerkIdentity({
       issuer: 'agent-tick-test',
       subject,
       email: `${subject}@example.test`,
@@ -99,7 +99,7 @@ async function authContextForClerkUser({
   store: AgentTickStore;
 }): Promise<AuthContext | null> {
   const profile = await fetchClerkProfile(subject, config);
-  const identity = store.loginOrCreateClerkIdentity({
+  const identity = await store.loginOrCreateClerkIdentity({
     issuer,
     subject,
     email: profile.email,

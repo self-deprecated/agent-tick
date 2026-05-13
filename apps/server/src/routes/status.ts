@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { CreateAgentStatusUpdateSchema } from '@agent-tick/shared';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireAuth, requireHuman } from '../auth/context.js';
 
@@ -13,13 +13,13 @@ export async function registerStatusRoutes(app: FastifyInstance, { config, store
   app.get('/v1/status-updates', async (request) => {
     const auth = await requireHuman(request, config, store);
     const limit = limitFromQuery(request.query);
-    return store.listLatestAgentStatusUpdates(auth.organizationId, limit);
+    return await store.listLatestAgentStatusUpdates(auth.organizationId, limit);
   });
 
   app.post('/v1/status-updates', async (request) => {
     const auth = await requireAuth(request, config, store);
     const input = CreateAgentStatusUpdateSchema.parse(request.body);
-    return store.createAgentStatusUpdate({
+    return await store.createAgentStatusUpdate({
       ...input,
       organizationId: auth.organizationId,
       agentId: auth.agentId ?? auth.userId ?? 'human',

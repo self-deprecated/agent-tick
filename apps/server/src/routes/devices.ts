@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import type { AgentTickStore } from '@agent-tick/db';
+import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman } from '../auth/context.js';
 
@@ -24,13 +24,13 @@ export interface DeviceRoutesOptions {
 export async function registerDeviceRoutes(app: FastifyInstance, { config, store }: DeviceRoutesOptions): Promise<void> {
   app.get('/v1/devices', async (request) => {
     const auth = await requirePrivilegedHuman(request, config, store);
-    return store.listDevicesForUser(auth.userId ?? 'usr_default');
+    return await store.listDevicesForUser(auth.userId ?? 'usr_default');
   });
 
   app.post('/v1/devices/register', async (request) => {
     const auth = await requireHuman(request, config, store);
     const input = RegisterDeviceSchema.parse(request.body);
-    const device = store.registerDevice({
+    const device = await store.registerDevice({
       userId: auth.userId ?? 'usr_default',
       deviceName: input.deviceName,
       ...(input.platform ? { platform: input.platform } : {}),
@@ -44,7 +44,7 @@ export async function registerDeviceRoutes(app: FastifyInstance, { config, store
     const auth = await requireHuman(request, config, store);
     const { id } = request.params as { id: string };
     const input = PushTokenSchema.parse(request.body);
-    const device = store.updateDevicePushToken(id, auth.userId ?? 'usr_default', input.expoPushToken ?? input.token ?? '');
+    const device = await store.updateDevicePushToken(id, auth.userId ?? 'usr_default', input.expoPushToken ?? input.token ?? '');
     if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
     return device;
   });
@@ -52,7 +52,7 @@ export async function registerDeviceRoutes(app: FastifyInstance, { config, store
   app.post('/v1/devices/:id/unregister', async (request, reply) => {
     const auth = await requireHuman(request, config, store);
     const { id } = request.params as { id: string };
-    const device = store.unregisterDevice(id, auth.userId ?? 'usr_default');
+    const device = await store.unregisterDevice(id, auth.userId ?? 'usr_default');
     if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
     return device;
   });
