@@ -35,12 +35,15 @@ import type {
   EventTicketInput,
   EventTicketRecord,
   HumanIdentityResult,
+  CreateOrganizationInviteInput,
   CreatePolicyInput,
   CreateProjectInput,
   CreateTeamInput,
   OrganizationMembershipRecord,
   MobileDiagnosticInput,
+  InvitePreviewRecord,
   MobileDiagnosticRecord,
+  OrganizationInviteRecord,
   OrganizationSeatUsage,
   PairingTokenRecord,
   PolicyRecord,
@@ -66,6 +69,28 @@ interface OrganizationMembershipRow {
   user_id: string;
   role: string;
   status: string | null;
+}
+
+interface OrganizationInviteRow {
+  invite_id: string;
+  organization_id: string;
+  label: string | null;
+  role: string;
+  approval_required: boolean;
+  email: string | null;
+  domain: string | null;
+  expires_at: string | null;
+  max_uses: number | null;
+  used_count: number;
+  email_last_status: string | null;
+  email_last_sent_at: string | null;
+  email_last_error: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+interface OrganizationInviteLookupRow extends OrganizationInviteRow {
+  organization_name: string;
 }
 
 interface ProjectRow {
@@ -469,6 +494,111 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
       [organizationId]
     );
     return rows.map(mapProjectRow);
+  }
+
+  async listOrganizationInvites(organizationId: string): Promise<OrganizationInviteRecord[]> {
+    const rows = await this.many<OrganizationInviteRow>('SELECT * FROM organization_invites WHERE organization_id = $1 ORDER BY created_at DESC', [organizationId]);
+    return Promise.all(rows.map(async (row) => mapOrganizationInviteRow(row, await this.listInviteTeamIds(row.invite_id))));
+  }
+
+  async createOrganizationInvite(input: CreateOrganizationInviteInput, now = new Date().toISOString()): Promise<OrganizationInviteRecord> {
+    const inviteId = newID('inv');
+    const token = `invite_${randomToken()}`;
+    const role = input.role?.trim() || 'member';
+    const maxUses = Math.min(Math.max(Math.trunc(input.maxUses ?? 1), 1), 100);
+    const approvalRequired = input.approvalRequired ?? true;
+    const email = input.email?.trim().toLowerCase() || undefined;
+    const domain = normalizeInviteDomain(input.domain);
+    if (email && domain) throw httpError(400, 'bad_request', 'Invite can be restricted by either exact email or domain, not both');
+    const teamIds = uniqueStrings(input.teamIds ?? []);
+    for (const teamId of teamIds) {
+      if (!(await this.teamBelongsToOrganization(teamId, input.organizationId))) throw httpError(400, 'bad_request', 'Team is not in the selected organization');
+    }
+    await this.transaction(async (query) => {
+      await query(
+        'INSERT INTO organization_invites(invite_id, organization_id, created_by_user_id, label, role, approval_required, token_hash, email, domain, expires_at, max_uses, used_count, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)',
+        [inviteId, input.organizationId, input.userId, input.label?.trim() || null, role, approvalRequired, hashToken(token), email ?? null, domain ?? null, input.expiresAt ?? null, maxUses, 0, now]
+      );
+      for (const teamId of teamIds) await query('INSERT INTO organization_invite_teams(invite_id, team_id) VALUES ($1, $2)', [inviteId, teamId]);
+      await query('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+        input.organizationId,
+        input.userId,
+        'organization_invite.created',
+        inviteId,
+        JSON.stringify({ role, approvalRequired, teamIds, email, domain }),
+        now
+      ]);
+    });
+    const invite = (await this.getOrganizationInvite(inviteId)) ?? missingInvite(inviteId);
+    return { ...invite, token, ...(input.publicURL ? { url: `${input.publicURL.replace(/\/+$/, '')}/invite/${encodeURIComponent(token)}` } : {}) };
+  }
+
+  async getOrganizationInvite(inviteId: string): Promise<OrganizationInviteRecord | null> {
+    const row = await this.one<OrganizationInviteRow>('SELECT * FROM organization_invites WHERE invite_id = $1', [inviteId]);
+    return row ? mapOrganizationInviteRow(row, await this.listInviteTeamIds(inviteId)) : null;
+  }
+
+  async organizationName(organizationId: string): Promise<string | undefined> {
+    const row = await this.one<{ name: string }>('SELECT name FROM organizations WHERE id = $1', [organizationId]);
+    return row?.name;
+  }
+
+  async rotateOrganizationInviteToken(inviteId: string, organizationId: string, userId: string, now = new Date().toISOString(), publicURL?: string): Promise<OrganizationInviteRecord | null> {
+    const invite = await this.getOrganizationInvite(inviteId);
+    if (!invite || invite.organizationId !== organizationId || invite.revokedAt) return null;
+    if (invite.expiresAt && invite.expiresAt <= now) return null;
+    if (invite.maxUses !== undefined && invite.usedCount >= invite.maxUses) return null;
+    const token = `invite_${randomToken()}`;
+    const changed = await this.pool.query('UPDATE organization_invites SET token_hash = $1 WHERE invite_id = $2 AND organization_id = $3 AND revoked_at IS NULL', [hashToken(token), inviteId, organizationId]);
+    if (changed.rowCount !== 1) return null;
+    await this.writeAuditEvent(organizationId, userId, 'organization_invite.token_rotated', inviteId, {}, now);
+    const rotated = (await this.getOrganizationInvite(inviteId)) ?? missingInvite(inviteId);
+    return { ...rotated, token, ...(publicURL ? { url: `${publicURL.replace(/\/+$/, '')}/invite/${encodeURIComponent(token)}` } : {}) };
+  }
+
+  async recordOrganizationInviteEmailDelivery(inviteId: string, organizationId: string, userId: string, status: string, errorMessage: string | undefined, now = new Date().toISOString()): Promise<OrganizationInviteRecord | null> {
+    const changed = await this.pool.query('UPDATE organization_invites SET email_last_status = $1, email_last_sent_at = $2, email_last_error = $3 WHERE invite_id = $4 AND organization_id = $5', [status, status === 'sent' ? now : null, errorMessage ?? null, inviteId, organizationId]);
+    if (changed.rowCount !== 1) return null;
+    await this.writeAuditEvent(organizationId, userId, 'organization_invite.email_delivery', inviteId, { status, error: errorMessage }, now);
+    return this.getOrganizationInvite(inviteId);
+  }
+
+  async revokeOrganizationInvite(inviteId: string, organizationId: string, userId: string, now = new Date().toISOString()): Promise<OrganizationInviteRecord | null> {
+    const row = await this.one<OrganizationInviteRow>('SELECT * FROM organization_invites WHERE invite_id = $1 AND organization_id = $2', [inviteId, organizationId]);
+    if (!row) return null;
+    if (!row.revoked_at) {
+      await this.pool.query('UPDATE organization_invites SET revoked_at = $1 WHERE invite_id = $2 AND organization_id = $3', [now, inviteId, organizationId]);
+      row.revoked_at = now;
+      await this.writeAuditEvent(organizationId, userId, 'organization_invite.revoked', inviteId, {}, now);
+    }
+    return mapOrganizationInviteRow(row, await this.listInviteTeamIds(inviteId));
+  }
+
+  async previewInvite(token: string, now = new Date().toISOString()): Promise<InvitePreviewRecord | null> {
+    const row = await this.findUsableInvite(token, now);
+    if (!row) return null;
+    return { organizationName: row.organization_name, role: row.role, approvalRequired: Boolean(row.approval_required), expiresAt: row.expires_at ?? undefined };
+  }
+
+  private async listInviteTeamIds(inviteId: string): Promise<string[]> {
+    const rows = await this.many<{ team_id: string }>('SELECT team_id FROM organization_invite_teams WHERE invite_id = $1 ORDER BY team_id ASC', [inviteId]);
+    return rows.map((row) => row.team_id);
+  }
+
+  private async findUsableInvite(token: string, now: string): Promise<OrganizationInviteLookupRow | null> {
+    if (!token.startsWith('invite_')) return null;
+    return this.one<OrganizationInviteLookupRow>(
+      `
+        SELECT i.*, o.name AS organization_name
+        FROM organization_invites i
+        JOIN organizations o ON o.id = i.organization_id
+        WHERE i.token_hash = $1
+          AND i.revoked_at IS NULL
+          AND (i.expires_at IS NULL OR i.expires_at > $2)
+          AND (i.max_uses IS NULL OR i.used_count < i.max_uses)
+      `,
+      [hashToken(token), now]
+    );
   }
 
   async createProject(input: CreateProjectInput, now = new Date().toISOString()): Promise<ProjectRecord> {
@@ -1371,6 +1501,27 @@ function mapOrganizationMembershipRow(row: OrganizationMembershipRow): Organizat
   };
 }
 
+function mapOrganizationInviteRow(row: OrganizationInviteRow, teamIds: string[] = []): OrganizationInviteRecord {
+  return {
+    inviteId: row.invite_id,
+    organizationId: row.organization_id,
+    label: row.label ?? undefined,
+    role: row.role,
+    approvalRequired: Boolean(row.approval_required),
+    teamIds,
+    email: row.email ?? undefined,
+    domain: row.domain ?? undefined,
+    expiresAt: row.expires_at ?? undefined,
+    maxUses: row.max_uses ?? undefined,
+    usedCount: row.used_count,
+    emailLastStatus: row.email_last_status ?? undefined,
+    emailLastSentAt: row.email_last_sent_at ?? undefined,
+    emailLastError: row.email_last_error ?? undefined,
+    revokedAt: row.revoked_at ?? undefined,
+    createdAt: row.created_at
+  };
+}
+
 function mapProjectRow(row: ProjectRow): ProjectRecord {
   return {
     projectId: row.project_id,
@@ -1559,6 +1710,19 @@ function mapAuditEventRow(row: AuditEventRow): AuditEventRecord {
   };
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function normalizeInviteDomain(value: string | undefined): string | undefined {
+  const candidate = value?.trim().toLowerCase().replace(/^@+/, '');
+  if (!candidate) return undefined;
+  const labels = candidate.split('.');
+  const valid = candidate.length <= 253 && labels.length >= 2 && labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
+  if (!valid) throw httpError(400, 'bad_request', 'Invite domain must be a valid email domain');
+  return candidate;
+}
+
 function slugify(input: string): string {
   return input
     .trim()
@@ -1572,6 +1736,10 @@ function httpError(statusCode: number, code: string, message: string): Error & {
   error.statusCode = statusCode;
   error.code = code;
   return error;
+}
+
+function missingInvite(inviteId: string): never {
+  throw new Error(`invite ${inviteId} was not created`);
 }
 
 function missingProject(projectId: string): never {

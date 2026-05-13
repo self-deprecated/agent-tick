@@ -78,6 +78,31 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.listAuditEventsAfter(created.organizationId, event!.eventId - 1)).toEqual([event]);
   });
 
+  it('creates, lists, previews, rotates, updates, and revokes organization invites', async () => {
+    await store!.migrate('2026-05-08T00:00:00.000Z');
+    await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const org = await store!.createOrganizationForUser('usr_default', 'Invite Org', '2026-05-08T01:00:00.000Z');
+    const team = await store!.createTeam({ organizationId: org.organizationId, userId: 'usr_default', name: 'Invite Team' }, '2026-05-08T01:01:00.000Z');
+    const invite = await store!.createOrganizationInvite({ organizationId: org.organizationId, userId: 'usr_default', label: 'Alice', role: 'admin', teamIds: [team.teamId], email: 'Alice@Example.com', publicURL: 'https://tick.example.com' }, '2026-05-08T01:02:00.000Z');
+    expect(invite).toMatchObject({ organizationId: org.organizationId, label: 'Alice', role: 'admin', teamIds: [team.teamId], email: 'alice@example.com' });
+    expect(invite.token).toMatch(/^invite_/);
+    expect(invite.url).toBe(`https://tick.example.com/invite/${invite.token}`);
+    expect(await store!.organizationName(org.organizationId)).toBe('Invite Org');
+    expect(await store!.previewInvite(invite.token!)).toMatchObject({ organizationName: 'Invite Org', role: 'admin', approvalRequired: true });
+    expect((await store!.listOrganizationInvites(org.organizationId)).map((entry) => entry.inviteId)).toContain(invite.inviteId);
+
+    const rotated = await store!.rotateOrganizationInviteToken(invite.inviteId, org.organizationId, 'usr_default', '2026-05-08T01:03:00.000Z', 'https://tick.example.com');
+    expect(rotated?.token).toMatch(/^invite_/);
+    expect(rotated!.token).not.toBe(invite.token);
+    expect(await store!.previewInvite(invite.token!)).toBeNull();
+    expect(await store!.previewInvite(rotated!.token!)).toMatchObject({ organizationName: 'Invite Org' });
+
+    expect(await store!.recordOrganizationInviteEmailDelivery(invite.inviteId, org.organizationId, 'usr_default', 'sent', undefined, '2026-05-08T01:04:00.000Z')).toMatchObject({ emailLastStatus: 'sent', emailLastSentAt: '2026-05-08T01:04:00.000Z' });
+    expect(await store!.revokeOrganizationInvite(invite.inviteId, org.organizationId, 'usr_default', '2026-05-08T01:05:00.000Z')).toMatchObject({ revokedAt: '2026-05-08T01:05:00.000Z' });
+    expect(await store!.previewInvite(rotated!.token!)).toBeNull();
+  });
+
   it('creates, responds to, expires, and abandons approval requests', async () => {
     await store!.migrate('2026-05-08T00:00:00.000Z');
     await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
