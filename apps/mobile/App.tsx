@@ -270,6 +270,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         if (sessionToken) setClerkLoginToken(sessionToken);
         return;
       }
+      if (addingClerkAccount) return;
       if (!nativeSignedIn) return;
       const nativeClientToken = await getNativeClerkClientToken();
       if (!cancelled && nativeClientToken) setClerkLoginToken(nativeClientToken);
