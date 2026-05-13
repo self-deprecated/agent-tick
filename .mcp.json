@@ -1,13 +1,9 @@
 {
   "mcpServers": {
     "agent-tick-diagnostics": {
-      "command": "nix",
+      "command": "node",
       "args": [
-        "shell",
-        "nixpkgs#mcp-proxy",
-        "-c",
-        "mcp-proxy",
-        "http://clippy:8788/sse"
+        "scripts/mcp-stdio-framing-bridge.mjs"
       ]
     }
   }
