@@ -6,11 +6,16 @@ import type {
   AgentCredential,
   AgentTokenAuth,
   AgentTokenRecord,
+  ApprovalWaiterAuth,
+  ApprovalWaiterTokenRecord,
   AuditEventRecord,
   CleanupExpiredSecretsResult,
   CleanupRetentionResult,
   CreateAgentStatusInput,
   CreateAgentTokenInput,
+  EventTicketAuth,
+  EventTicketInput,
+  EventTicketRecord,
   HumanIdentityResult,
   CreatePolicyInput,
   CreateProjectInput,
@@ -97,6 +102,21 @@ interface AgentTokenRow {
   last_request_at: string | null;
   created_at: string;
   revoked_at: string | null;
+}
+
+interface EventTicketRow {
+  source: string;
+  organization_id: string;
+  user_id: string | null;
+  agent_id: string | null;
+  expires_at: string;
+}
+
+interface ApprovalWaiterTokenRow {
+  request_id: string;
+  organization_id: string;
+  agent_id: string;
+  expires_at: string;
 }
 
 interface AvailabilityRow {
@@ -569,6 +589,57 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     };
   }
 
+  async createEventTicket(input: EventTicketInput, now = new Date().toISOString()): Promise<EventTicketRecord> {
+    const ticket = `evt_${randomToken()}`;
+    const ttlSeconds = Math.min(Math.max(input.ttlSeconds ?? 60, 5), 300);
+    const expiresAt = new Date(new Date(now).getTime() + ttlSeconds * 1000).toISOString();
+    await this.pool.query(
+      'INSERT INTO event_tickets(ticket_hash, source, organization_id, user_id, agent_id, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [hashToken(ticket), input.source, input.organizationId, input.userId ?? null, input.agentId ?? null, expiresAt, now]
+    );
+    return { ticket, expiresAt };
+  }
+
+  async verifyEventTicket(ticket: string, now = new Date().toISOString()): Promise<EventTicketAuth | null> {
+    if (!ticket.startsWith('evt_')) return null;
+    const tokenHash = hashToken(ticket);
+    const row = await this.one<EventTicketRow>('SELECT * FROM event_tickets WHERE ticket_hash = $1 AND expires_at > $2', [tokenHash, now]);
+    if (!row) return null;
+    const used = await this.pool.query('UPDATE event_tickets SET last_used_at = $1 WHERE ticket_hash = $2 AND last_used_at IS NULL', [now, tokenHash]);
+    if (used.rowCount === 0) return null;
+    return {
+      source: row.source,
+      organizationId: row.organization_id,
+      userId: row.user_id ?? undefined,
+      agentId: row.agent_id ?? undefined,
+      expiresAt: row.expires_at
+    };
+  }
+
+  async createApprovalWaiterToken(requestId: string, organizationId: string, agentId: string, requestExpiresAt: string | undefined, now = new Date().toISOString()): Promise<ApprovalWaiterTokenRecord> {
+    const token = `wait_${randomToken()}`;
+    const expiresAt = waiterExpiresAt(now, requestExpiresAt);
+    await this.pool.query(
+      'INSERT INTO approval_waiter_tokens(token_hash, request_id, organization_id, agent_id, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [hashToken(token), requestId, organizationId, agentId, expiresAt, now]
+    );
+    return { token, expiresAt };
+  }
+
+  async verifyApprovalWaiterToken(token: string, requestId: string, now = new Date().toISOString()): Promise<ApprovalWaiterAuth | null> {
+    if (!token.startsWith('wait_')) return null;
+    const tokenHash = hashToken(token);
+    const row = await this.one<ApprovalWaiterTokenRow>('SELECT * FROM approval_waiter_tokens WHERE token_hash = $1 AND request_id = $2 AND expires_at > $3', [tokenHash, requestId, now]);
+    if (!row) return null;
+    await this.pool.query('UPDATE approval_waiter_tokens SET last_used_at = $1 WHERE token_hash = $2', [now, tokenHash]);
+    return {
+      requestId: row.request_id,
+      organizationId: row.organization_id,
+      agentId: row.agent_id,
+      expiresAt: row.expires_at
+    };
+  }
+
   async recordHeartbeat(userId: string, organizationId: string, now = new Date().toISOString()): Promise<AvailabilityRecord> {
     await this.pool.query(
       `
@@ -912,6 +983,16 @@ function missingAvailability(userId: string): never {
 
 function missingAgentStatus(statusId: string): never {
   throw new Error(`agent status ${statusId} was not created`);
+}
+
+function waiterExpiresAt(now: string, requestExpiresAt: string | undefined): string {
+  const nowTimestamp = Date.parse(now);
+  if (Number.isNaN(nowTimestamp)) throw new Error('waiter token creation requires a valid ISO timestamp');
+  if (requestExpiresAt) {
+    const requestExpiry = Date.parse(requestExpiresAt);
+    if (!Number.isNaN(requestExpiry)) return new Date(requestExpiry + 60 * 60 * 1000).toISOString();
+  }
+  return new Date(nowTimestamp + 24 * 60 * 60 * 1000).toISOString();
 }
 
 function retentionCutoff(now: string, days: number): string {

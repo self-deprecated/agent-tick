@@ -56,6 +56,22 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.listAuditEventsAfter(created.organizationId, event!.eventId - 1)).toEqual([event]);
   });
 
+  it('creates and verifies short-lived event and waiter tokens', async () => {
+    await store!.migrate('2026-05-08T00:00:00.000Z');
+    await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const eventTicket = await store!.createEventTicket({ source: 'dashboard', organizationId: DEFAULT_ORGANIZATION_ID, userId: 'usr_default', ttlSeconds: 30 }, '2026-05-08T02:10:00.000Z');
+    expect(eventTicket.ticket).toMatch(/^evt_/);
+    expect(JSON.stringify(await store!.listAuditEvents(DEFAULT_ORGANIZATION_ID))).not.toContain(eventTicket.ticket);
+    expect(await store!.verifyEventTicket(eventTicket.ticket, '2026-05-08T02:10:01.000Z')).toMatchObject({ source: 'dashboard', organizationId: DEFAULT_ORGANIZATION_ID, userId: 'usr_default' });
+    expect(await store!.verifyEventTicket(eventTicket.ticket, '2026-05-08T02:10:02.000Z')).toBeNull();
+
+    const waiter = await store!.createApprovalWaiterToken('req_test', DEFAULT_ORGANIZATION_ID, 'agt_test', undefined, '2026-05-08T02:11:00.000Z');
+    expect(waiter.token).toMatch(/^wait_/);
+    expect(await store!.verifyApprovalWaiterToken(waiter.token, 'req_test', '2026-05-08T02:12:00.000Z')).toMatchObject({ requestId: 'req_test', organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_test' });
+    expect(await store!.verifyApprovalWaiterToken(waiter.token, 'req_other', '2026-05-08T02:12:00.000Z')).toBeNull();
+  });
+
   it('records availability, agent status updates, and mobile diagnostics', async () => {
     await store!.migrate('2026-05-08T00:00:00.000Z');
     await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
