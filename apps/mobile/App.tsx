@@ -694,7 +694,7 @@ function AgentTickApp({
       const entryValue = (key: string) => entries.find(([entryKey]) => entryKey === key)?.[1];
       setToken(entryValue(scopedKeys.token) ?? "");
       setDeviceID(entryValue(scopedKeys.deviceID) ?? "");
-      setSelectedOrganizationID(entryValue(scopedKeys.organizationID) ?? "");
+      setSelectedOrganizationID(runtimeAuthConfig?.authProvider === "clerk" ? "" : entryValue(scopedKeys.organizationID) ?? "");
       const savedPushStatus = entryValue(scopedKeys.pushStatus);
       setPushStatus(isPushStatus(savedPushStatus) ? savedPushStatus : "idle");
       setLoadedSessionServerURL(activeServerURL);
@@ -707,7 +707,7 @@ function AgentTickApp({
     return () => {
       cancelled = true;
     };
-  }, [loadedSessionServerURL, serverURL, settingsLoaded]);
+  }, [loadedSessionServerURL, runtimeAuthConfig?.authProvider, serverURL, settingsLoaded]);
 
   useEffect(() => {
     void initializeDiagnostics().then((enabled) => {
@@ -806,7 +806,7 @@ function AgentTickApp({
       [serverURLStorageKey, activeServerURL],
       [scopedKeys.token, token],
       [scopedKeys.deviceID, deviceID],
-      [scopedKeys.organizationID, selectedOrganizationID],
+      [scopedKeys.organizationID, runtimeAuthConfig?.authProvider === "clerk" ? "" : selectedOrganizationID],
       [scopedKeys.pushStatus, pushStatus],
     ]);
     const shouldSaveAccount = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(currentAccountProfile?.userId && clerkSessionToken) : Boolean(token || deviceID);
@@ -831,6 +831,16 @@ function AgentTickApp({
       });
     }
   }, [clerkSessionToken, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.userId, deviceID, loadedSessionServerURL, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
+
+  useEffect(() => {
+    if (runtimeAuthConfig?.authProvider !== "clerk" || !clerkSessionToken) return;
+    setCurrentAccountProfile((current) => (current?.source === "mobile-saved-account" ? current : null));
+    setSelectedOrganizationID("");
+    setRequests([]);
+    setHistory([]);
+    setSelectedID(null);
+    setConnectionStatus("checking");
+  }, [clerkSessionToken, runtimeAuthConfig?.authProvider]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
