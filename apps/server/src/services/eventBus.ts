@@ -3,6 +3,7 @@ import { createClient, type RedisClientType } from 'redis';
 export interface OrganizationEventBus {
   waitForOrganizationEvent(organizationId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
   publishOrganizationEvent(organizationId: string): void | Promise<void>;
+  ping?(): void | Promise<void>;
   close?(): void | Promise<void>;
 }
 
@@ -65,6 +66,7 @@ export function createMemoryOrganizationEventBus(): OrganizationEventBus {
   return {
     waitForOrganizationEvent: (organizationId, timeoutMs, signal) => registry.wait(organizationId, timeoutMs, signal),
     publishOrganizationEvent: (organizationId) => registry.publish(organizationId),
+    ping: () => undefined,
     close: () => registry.clear()
   };
 }
@@ -90,6 +92,10 @@ export async function createRedisOrganizationEventBus(redisURL: string): Promise
       registry.publish(organizationId);
       await publisher.publish(`${channelPrefix}${organizationId}`, 'changed');
     },
+    ping: async () => {
+      await publisher.ping();
+      await subscriber.ping();
+    },
     close: async () => {
       registry.clear();
       await Promise.allSettled([subscriber.quit(), publisher.quit()]);
@@ -107,12 +113,16 @@ export async function createConfiguredOrganizationEventBus(options: { backend: '
 
 export function publishAuditWrites<T extends { writeAuditEvent: (...args: any[]) => unknown }>(store: T, eventBus: OrganizationEventBus): void {
   const marker = '__agentTickEventBusPatched';
-  const patchable = store as T & { [marker]?: true };
+  const publisherMarker = '__agentTickPublishAudit';
+  const patchable = store as T & { [marker]?: true; [publisherMarker]?: (organizationId: string) => void };
+  patchable[publisherMarker] = (organizationId: string) => {
+    void eventBus.publishOrganizationEvent(organizationId);
+  };
   if (patchable[marker]) return;
   const original = store.writeAuditEvent.bind(store);
   store.writeAuditEvent = ((organizationId: string, ...rest: unknown[]) => {
     const result = original(organizationId, ...rest);
-    void eventBus.publishOrganizationEvent(organizationId);
+    patchable[publisherMarker]?.(organizationId);
     return result;
   }) as T['writeAuditEvent'];
   patchable[marker] = true;

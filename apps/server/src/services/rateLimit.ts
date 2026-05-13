@@ -9,6 +9,7 @@ export interface RateLimitRule {
 
 export interface RateLimiter {
   check(key: string, rule: RateLimitRule, now?: number): Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
+  ping?(): void | Promise<void>;
   close?(): void | Promise<void>;
 }
 
@@ -27,7 +28,8 @@ export function createMemoryRateLimiter(): RateLimiter {
       if (bucket.count <= rule.max) return { allowed: true };
       const retryAfterSeconds = Math.max(1, Math.ceil((rule.windowMs - (now - bucket.windowStart)) / 1000));
       return { allowed: false, retryAfterSeconds };
-    }
+    },
+    ping: () => undefined
   };
 }
 
@@ -45,6 +47,9 @@ export async function createRedisRateLimiter(redisURL: string): Promise<RateLimi
       const ttl = await client.pTTL(redisKey);
       const retryAfterSeconds = Math.max(1, Math.ceil(Math.max(ttl, 0) / 1000));
       return { allowed: false, retryAfterSeconds };
+    },
+    ping: async () => {
+      await client.ping();
     },
     close: async () => {
       await client.quit();

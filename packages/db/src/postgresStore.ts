@@ -1632,11 +1632,17 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
 
   private async transaction<T>(fn: (query: <R extends QueryResultRow = QueryResultRow>(sql: string, params?: unknown[]) => Promise<{ rows: R[]; rowCount: number | null }>) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
-    const query = async <R extends QueryResultRow = QueryResultRow>(sql: string, params: unknown[] = []) => client.query<R>(sql, params);
+    const auditOrganizations = new Set<string>();
+    const query = async <R extends QueryResultRow = QueryResultRow>(sql: string, params: unknown[] = []) => {
+      const result = await client.query<R>(sql, params);
+      if (/insert\s+into\s+audit_events/i.test(sql) && typeof params[0] === 'string') auditOrganizations.add(params[0]);
+      return result;
+    };
     try {
       await client.query('BEGIN');
       const result = await fn(query);
       await client.query('COMMIT');
+      for (const organizationId of auditOrganizations) this.publishAuditWrite(organizationId);
       return result;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1644,6 +1650,10 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
     } finally {
       client.release();
     }
+  }
+
+  private publishAuditWrite(organizationId: string): void {
+    (this as unknown as { __agentTickPublishAudit?: (organizationId: string) => void }).__agentTickPublishAudit?.(organizationId);
   }
 }
 

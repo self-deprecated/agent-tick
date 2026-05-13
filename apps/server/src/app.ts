@@ -65,12 +65,20 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
   app.get('/healthz', async () => ({ status: 'ok' as const, time: new Date().toISOString() }));
 
   app.get('/readyz', async (request, reply) => {
+    const dependencies: { database?: 'ok' | 'error'; redis?: 'ok' | 'error' } = {};
     try {
       await store.ping();
-      return { status: 'ready' as const, time: new Date().toISOString(), dependencies: { database: 'ok' as const } };
+      dependencies.database = 'ok';
+      if (config.redisURL) {
+        await Promise.all([eventBus.ping?.(), rateLimiter.ping?.()]);
+        dependencies.redis = 'ok';
+      }
+      return { status: 'ready' as const, time: new Date().toISOString(), dependencies };
     } catch (error) {
       request.log.error({ err: error }, 'readiness check failed');
-      return reply.status(503).send({ status: 'not_ready' as const, time: new Date().toISOString(), dependencies: { database: 'error' as const } });
+      dependencies.database ??= 'error';
+      if (config.redisURL) dependencies.redis ??= 'error';
+      return reply.status(503).send({ status: 'not_ready' as const, time: new Date().toISOString(), dependencies });
     }
   });
 
