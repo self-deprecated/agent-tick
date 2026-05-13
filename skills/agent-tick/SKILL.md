@@ -26,12 +26,13 @@ agent-tick install
 For Claude Code setup, guide the user interactively before installing:
 
 1. Ask whether they run mostly interactive local sessions, headless loops, or mixed usage.
-2. Ask which independent capabilities they want: status updates, steering (`AskUserQuestion`), sanctions (Claude Code `PermissionRequest`), or any combination.
+2. Do **not** ask which capabilities to enable by default. Agent Tick should encourage the full setup: status updates, steering (`AskUserQuestion`), and sanctions (Claude Code `PermissionRequest`) are all enabled unless the user explicitly asks to opt out of one.
 3. For interactive sessions, recommend installing hooks in **pass-through mode** and toggling **AFK mode** only when away.
-4. For headless loops, recommend AFK behavior for the enabled capabilities.
+4. For headless loops, recommend AFK behavior for status, steering, and sanctions.
 5. Explain that sanctions route Claude Code's own permission prompts only; Agent Tick does not manage risky-command patterns for Claude Code setup yet.
-6. Inspect existing Claude settings before changing them: `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` if present. Look for existing hooks and permission rules that might conflict with `Bash(agent-tick:*)`.
-7. Run a dry run first and summarize exactly what will change. For interactive local sessions, use defaults:
+6. Avoid phrasing setup questions around a specific UI surface. Say "through Agent Tick" or "remotely" instead.
+7. Inspect existing Claude settings before changing them: `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` if present. Look for existing hooks and permission rules that might conflict with `Bash(agent-tick:*)`.
+8. Run a dry run first and summarize exactly what will change. For interactive local sessions, use defaults:
 
 ```sh
 agent-tick install --target claude --dry-run
@@ -48,7 +49,7 @@ agent-tick install --target claude \
   --dry-run
 ```
 
-8. After user confirmation, run the install with the same options minus `--dry-run`, then verify the settings:
+9. After user confirmation, run the install with the same options minus `--dry-run`, then verify the settings:
 
 ```sh
 agent-tick mode
@@ -67,9 +68,9 @@ For setup only, without installing agent instructions, use browser setup:
 agent-tick setup --login --server https://agenttick.sh
 ```
 
-The CLI opens the dashboard, the user signs in with Clerk, clicks **Authorize CLI setup**, and the dashboard returns a newly-created Agent Tick `agent_...` token to the CLI over a localhost callback. The CLI saves it to `~/.config/agent-tick/config.json` by default.
+The CLI opens Agent Tick in the browser, the user signs in, authorizes CLI setup, and Agent Tick returns a newly-created `agent_...` token to the CLI over a localhost callback. The CLI saves it to `~/.config/agent-tick/config.json` by default.
 
-If the user gives a setup command from the dashboard, run it exactly once. For CI, headless hosts, single-mode self-hosting, or manual setup, the server may be the hosted product at `https://agenttick.sh` or the user's self-hosted URL:
+If the user gives a setup command from Agent Tick, run it exactly once. For CI, headless hosts, single-mode self-hosting, or manual setup, the server may be the hosted product at `https://agenttick.sh` or the user's self-hosted URL:
 
 ```sh
 agent-tick setup --server https://agenttick.sh --token agent_...

@@ -14,10 +14,10 @@ For the smoothest Claude Code setup, paste this prompt into your coding agent ch
 Fetch and follow the Agent Tick setup skill from:
 https://raw.githubusercontent.com/self-deprecated/agent-tick/main/skills/agent-tick/SKILL.md
 
-Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, help me choose status, steering, and sanctions, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result. If Agent Tick is not installed yet, use the skill's first-time setup instructions.
+Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, enable status, steering, and sanctions by default unless I explicitly opt out, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result. If Agent Tick is not installed yet, use the skill's first-time setup instructions. Do not frame questions around a specific UI surface; say Agent Tick or remote approval instead.
 ```
 
-The linked skill-led flow works even when the target machine does not have this repo cloned. It guides you through interactive vs headless usage, AFK vs pass-through routing, status policy, steering, sanctions, permissions, dry-run, install, verification, and restart instructions.
+The linked skill-led flow works even when the target machine does not have this repo cloned. It guides you through interactive vs headless usage, AFK vs pass-through routing, permissions, dry-run, install, verification, and restart instructions while keeping status, steering, and sanctions enabled by default.
 
 If you prefer direct CLI setup, run one command on the machine where your coding agents run:
 
@@ -64,8 +64,6 @@ Agents can send lightweight status updates that appear in Agent Tick:
 ```sh
 agent-tick status --state working --next "Run the build" "Tests are passing; checking packaging next"
 ```
-
-Approve or reject requests from the Agent Tick web dashboard. Mobile approval apps are part of the product direction, but public setup should not depend on private beta access.
 
 ## What gets installed?
 

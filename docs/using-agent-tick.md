@@ -10,10 +10,10 @@ For the smoothest Claude Code setup, paste this prompt into your coding agent ch
 Fetch and follow the Agent Tick setup skill from:
 https://raw.githubusercontent.com/self-deprecated/agent-tick/main/skills/agent-tick/SKILL.md
 
-Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, help me choose status, steering, and sanctions, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result. If Agent Tick is not installed yet, use the skill's first-time setup instructions.
+Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, enable status, steering, and sanctions by default unless I explicitly opt out, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result. If Agent Tick is not installed yet, use the skill's first-time setup instructions. Do not frame questions around a specific UI surface; say Agent Tick or remote approval instead.
 ```
 
-The linked skill-led flow works even when the target machine does not have this repo cloned. It is recommended because it can inspect your local setup, explain conflicts, and choose the right AFK/pass-through behavior before writing hook settings.
+The linked skill-led flow works even when the target machine does not have this repo cloned. It is recommended because it can inspect your local setup, explain conflicts, and choose the right AFK/pass-through behavior before writing hook settings while keeping status, steering, and sanctions enabled by default.
 
 For direct CLI setup, run the installer on the machine where your AI coding agents run:
 
@@ -75,8 +75,6 @@ agent-tick status --state working --next "Run typecheck" "Finished edits; valida
 ```
 
 Use `--thread` or `AGENT_TICK_THREAD_ID` when an integration can provide a chat/thread id. Otherwise the CLI defaults to the current machine and working directory so the mobile app can show the latest update for that local repo context.
-
-Review requests in the Agent Tick web dashboard. Public onboarding should not depend on private mobile beta access.
 
 ## Installer options
 
