@@ -37,7 +37,7 @@
       line-height: 1.45;
     }
     main {
-      max-width: 1180px;
+      max-width: 1280px;
       margin: 0 auto;
       padding: 32px 20px 56px;
     }
@@ -85,10 +85,25 @@
     .diagram {
       overflow-x: auto;
       padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--card), var(--bg) 25%);
+      margin-top: 10px;
+    }
+    .diagram-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 14px;
+    }
+    .diagram h3 {
+      color: var(--accent);
+      margin-bottom: 4px;
     }
     .mermaid {
-      min-width: 920px;
+      width: 100%;
+      min-width: 0;
       background: transparent;
+      font-size: 0.86rem;
     }
     .legend strong { color: var(--accent); }
     @media print {
@@ -139,84 +154,102 @@
 
     <section>
       <h2>Main flow</h2>
-      <div class="diagram">
-        <pre class="mermaid">
+      <p class="muted">Split into three smaller diagrams so the whole state transition is visible without panning around one huge graph.</p>
+      <div class="diagram-grid">
+        <div class="diagram">
+          <h3>1. Initial login</h3>
+          <pre class="mermaid">
 flowchart TD
   Start([App starts]) --> Config[Fetch /v1/auth/config]
-  Config --> ClerkMode{authProvider = clerk?}
-  ClerkMode -- no --> Local[Use local/single-mode pairing flow]
-  ClerkMode -- yes --> Bound[Render ClerkProvider + ClerkBoundApp]
-
-  Bound --> HasActive{Active Agent Tick<br/>mobile session exists?}
-  HasActive -- no --> SignInA[Show Clerk sign-in]
+  Config --> ClerkMode{Clerk mode?}
+  ClerkMode -- no --> Local[Local / single-mode pairing]
+  ClerkMode -- yes --> SignInA[Show Clerk sign-in]
   SignInA --> ClerkA[User signs into Clerk account A]
-  ClerkA --> LoginA[Obtain Clerk token/client token for A]
+  ClerkA --> LoginA[Get Clerk token/client token]
   LoginA --> MintA[POST /v1/auth/mobile-session]
-  MintA --> JwtA[Receive Agent Tick JWT for user A]
-  JwtA --> StoreA[Save JWT A:<br/>active key + per-account A key]
-  StoreA --> SignOutClerkA[Sign out native Clerk<br/>Clerk is not durable app session]
-  SignOutClerkA --> AppA[AgentTickApp uses JWT A]
-  AppA --> ProfileA[Load /v1/me + /v1/organizations]
-  ProfileA --> SaveA[Upsert account A in saved account list]
-  SaveA --> PushA{Register push while A active?}
-  PushA -- yes --> DeviceA[Server stores device row:<br/>user A + org A + installationId + expoPushToken]
-  PushA -- no --> NoPushA[A may only get local/in-app refreshes]
+  MintA --> JwtA[Agent Tick JWT A]
+  JwtA --> StoreA[Save JWT A:<br/>active key<br/>per-account A key]
+  StoreA --> SignOutA[Sign out native Clerk]
+  SignOutA --> AppA[Use JWT A for API calls]
+  AppA --> ProfileA[Load me, orgs, approvals]
+  ProfileA --> SaveA[Saved accounts = A]
+  SaveA --> PushA{Push registered<br/>while A active?}
+  PushA -- yes --> DeviceA[Device row:<br/>user A + org A + Expo token]
+  PushA -- no --> NoPushA[A may not get remote pushes]
+          </pre>
+        </div>
 
-  AppA --> AddB[User taps Add another account]
-  AddB --> PrepB[Set addingClerkAccount=true;<br/>clear clerkLoginToken;<br/>keep existing mobileSessionToken until replaced]
-  PrepB --> ClerkSignOut[Sign out Clerk/native Clerk]
-  ClerkSignOut --> SignInB[Show Clerk sign-in again]
+        <div class="diagram">
+          <h3>2. Add another account</h3>
+          <pre class="mermaid">
+flowchart TD
+  AppA[Currently active: JWT A] --> AddB[Tap Add another account]
+  AddB --> PrepB[addingClerkAccount=true<br/>clear clerkLoginToken<br/>JWT A remains until replaced]
+  PrepB --> ClerkOut[Sign out Clerk/native Clerk]
+  ClerkOut --> SignInB[Show Clerk sign-in]
   SignInB --> ClerkB[User signs into Clerk account B]
-  ClerkB --> LoginB[Obtain Clerk token/client token for B]
+  ClerkB --> LoginB[Get Clerk token/client token B]
   LoginB --> MintB[POST /v1/auth/mobile-session]
-  MintB --> JwtB[Receive Agent Tick JWT for user B]
-  JwtB --> StoreB[Save JWT B:<br/>active key overwritten + per-account B key]
-  StoreB --> SignOutClerkB[Sign out native Clerk again]
-  SignOutClerkB --> AppB[AgentTickApp uses JWT B]
-  AppB --> ProfileB[Load /v1/me + /v1/organizations]
-  ProfileB --> SaveB[Saved account list becomes B, A]
-  SaveB --> PushB{Register push while B active?}
-  PushB -- yes --> DeviceB[Server stores device row:<br/>user B + org B + installationId + expoPushToken]
-  PushB -- no --> NoPushB[B may not receive remote pushes]
+  MintB --> JwtB[Agent Tick JWT B]
+  JwtB --> StoreB[Active key = JWT B<br/>per-account B key = JWT B<br/>per-account A key still JWT A]
+  StoreB --> SignOutB[Sign out native Clerk again]
+  SignOutB --> AppB[Use JWT B for API calls]
+  AppB --> ProfileB[Load B me, orgs, approvals]
+  ProfileB --> SaveB[Saved accounts = B, A]
+  SaveB --> PushB{Push registered<br/>while B active?}
+  PushB -- yes --> DeviceB[Device row:<br/>user B + org B + Expo token]
+  PushB -- no --> NoPushB[B may not get remote pushes]
+          </pre>
+        </div>
 
-  SaveB --> SwitchA[User selects account A in switcher]
-  SwitchA --> ReadA[Read per-account JWT A]
-  ReadA --> ValidateA[Validate via /v1/me]
-  ValidateA --> ActiveA[Overwrite active key with JWT A]
-  ActiveA --> ClearA[Clear visible requests/history/org selection]
+        <div class="diagram">
+          <h3>3. Switch between saved accounts</h3>
+          <pre class="mermaid">
+flowchart TD
+  SwitchA[Select account A] --> ReadA[Read per-account JWT A]
+  ReadA --> ValidateA[Validate with /v1/me]
+  ValidateA --> ActiveA[Active key = JWT A]
+  ActiveA --> ClearA[Clear visible requests/history/org]
   ClearA --> ReloadA[Reload A profile, orgs, approvals]
 
-  ReloadA --> SwitchB[User selects account B in switcher]
+  ReloadA --> SwitchB[Select account B]
   SwitchB --> ReadB[Read per-account JWT B]
-  ReadB --> ValidateB[Validate via /v1/me]
-  ValidateB --> ActiveB[Overwrite active key with JWT B]
-  ActiveB --> ClearB[Clear visible requests/history/org selection]
+  ReadB --> ValidateB[Validate with /v1/me]
+  ValidateB --> ActiveB[Active key = JWT B]
+  ActiveB --> ClearB[Clear visible requests/history/org]
   ClearB --> ReloadB[Reload B profile, orgs, approvals]
-        </pre>
+          </pre>
+        </div>
       </div>
     </section>
 
     <section>
       <h2>Desired notification model</h2>
-      <div class="diagram">
-        <pre class="mermaid">
-flowchart LR
-  Phone[One physical phone / app install<br/>Same Expo push token] --> AccountA[Saved account A<br/>Per-account JWT A]
-  Phone --> AccountB[Saved account B<br/>Per-account JWT B]
-
-  AccountA --> DeviceA[Server device row A<br/>user A + org A + installationId + expoPushToken]
-  AccountB --> DeviceB[Server device row B<br/>user B + org B + installationId + expoPushToken]
-
-  ApprovalA[Approval created in org A] --> LookupA[Server lists push devices for org A]
+      <div class="diagram-grid">
+        <div class="diagram">
+          <h3>Account A notifications</h3>
+          <pre class="mermaid">
+flowchart TD
+  Phone[One phone / app install<br/>same Expo push token] --> AccountA[Saved account A<br/>JWT A]
+  AccountA --> DeviceA[Server device row A<br/>user A + org A + Expo token]
+  ApprovalA[Approval in org A] --> LookupA[Server lists org A push devices]
   LookupA --> DeviceA
   DeviceA --> PushA[Expo push to phone]
-  PushA --> OpenA[User switches to account A to view/respond]
-
-  ApprovalB[Approval created in org B] --> LookupB[Server lists push devices for org B]
+  PushA --> OpenA[Switch to A to view/respond]
+          </pre>
+        </div>
+        <div class="diagram">
+          <h3>Account B notifications</h3>
+          <pre class="mermaid">
+flowchart TD
+  Phone[One phone / app install<br/>same Expo push token] --> AccountB[Saved account B<br/>JWT B]
+  AccountB --> DeviceB[Server device row B<br/>user B + org B + Expo token]
+  ApprovalB[Approval in org B] --> LookupB[Server lists org B push devices]
   LookupB --> DeviceB
   DeviceB --> PushB[Expo push to phone]
-  PushB --> OpenB[User switches to account B to view/respond]
-        </pre>
+  PushB --> OpenB[Switch to B to view/respond]
+          </pre>
+        </div>
       </div>
       <div class="callout">
         <strong>Important:</strong> receiving notifications for all saved accounts requires each account/org to have its own server-side device row with the Expo push token. The user may still need to switch accounts in the app to see the matching approval list.
