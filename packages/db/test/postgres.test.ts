@@ -41,6 +41,28 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.organizationSeatUsage(DEFAULT_ORGANIZATION_ID)).toEqual({ activeMembers: 1, pendingMembers: 0 });
   });
 
+  it('logs in Clerk identities and updates user profile data', async () => {
+    await store!.migrate('2026-05-08T00:00:00.000Z');
+
+    const identity = await store!.loginOrCreateClerkIdentity(
+      { issuer: 'https://clerk.example', subject: 'user_alice', email: 'Alice@Example.com', emailVerified: true, name: 'Alice', authMethod: 'oauth_google' },
+      '2026-05-08T00:30:00.000Z'
+    );
+    expect(identity).toMatchObject({ userId: expect.stringMatching(/^usr_/), organizationId: expect.stringMatching(/^org_/), role: 'owner' });
+    expect(await store!.userProfile(identity.userId)).toMatchObject({ email: 'alice@example.com', name: 'Alice', signInMethod: 'oauth_google' });
+
+    const again = await store!.loginOrCreateClerkIdentity(
+      { issuer: 'https://clerk.example', subject: 'user_alice', email: 'alice@example.com', emailVerified: true, name: 'Alice Cooper', authMethod: 'password' },
+      '2026-05-08T00:31:00.000Z'
+    );
+    expect(again).toEqual(identity);
+    expect(await store!.userProfile(identity.userId)).toMatchObject({ email: 'alice@example.com', name: 'Alice Cooper', signInMethod: 'password' });
+
+    await expect(
+      store!.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bad', email: 'bad@example.com', emailVerified: false, name: 'Bad' })
+    ).rejects.toThrow(/verified primary email/i);
+  });
+
   it('creates organizations and records audit events', async () => {
     await store!.migrate('2026-05-08T00:00:00.000Z');
     await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');

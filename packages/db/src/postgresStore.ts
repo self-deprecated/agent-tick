@@ -11,6 +11,7 @@ import type {
   AuditEventRecord,
   CleanupExpiredSecretsResult,
   CleanupRetentionResult,
+  ClerkIdentityProfile,
   CreateAgentStatusInput,
   CreateAgentTokenInput,
   DeviceCredential,
@@ -268,6 +269,47 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
 
       return { approvalRequests, auditEvents, devices, organizationInviteTeams, organizationInvites };
     });
+  }
+
+  async loginOrCreateClerkIdentity(profile: ClerkIdentityProfile, now = new Date().toISOString()): Promise<HumanIdentityResult> {
+    if (!profile.emailVerified || !profile.email.trim()) {
+      throw httpError(403, 'forbidden', 'A verified primary email is required');
+    }
+    const email = profile.email.trim().toLowerCase();
+    const existing = await this.one<{ user_id: string }>(
+      'SELECT user_id FROM auth_identities WHERE provider = $1 AND issuer = $2 AND subject = $3',
+      ['clerk', profile.issuer, profile.subject]
+    );
+
+    if (existing) {
+      await this.transaction(async (query) => {
+        await query(
+          'UPDATE auth_identities SET email = $1, email_verified = $2, name = $3, auth_method = $4, last_seen_at = $5, updated_at = $6 WHERE provider = $7 AND issuer = $8 AND subject = $9',
+          [email, profile.emailVerified, profile.name, profile.authMethod ?? null, now, now, 'clerk', profile.issuer, profile.subject]
+        );
+        await query('UPDATE users SET email = $1, email_verified = $2, name = $3, updated_at = $4 WHERE id = $5', [email, profile.emailVerified, profile.name, now, existing.user_id]);
+      });
+      const membership = await this.defaultMembershipForUser(existing.user_id);
+      return { userId: existing.user_id, organizationId: membership.organizationId, role: membership.role };
+    }
+
+    const collision = await this.one<{ id: string }>('SELECT id FROM users WHERE email = $1', [email]);
+    if (collision) {
+      throw httpError(409, 'identity_link_required', 'A local user with this email already exists; explicit identity linking is required');
+    }
+
+    const userId = newID('usr');
+    const organizationId = newID('org');
+    await this.transaction(async (query) => {
+      await query('INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)', [userId, email, profile.emailVerified, profile.name, now, now]);
+      await query(
+        'INSERT INTO auth_identities(provider, issuer, subject, user_id, email, email_verified, name, auth_method, first_seen_at, last_seen_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+        ['clerk', profile.issuer, profile.subject, userId, email, profile.emailVerified, profile.name, profile.authMethod ?? null, now, now, now]
+      );
+      await query('INSERT INTO organizations(id, name, created_at, updated_at) VALUES ($1, $2, $3, $4)', [organizationId, `${profile.name || email}'s Organization`, now, now]);
+      await query('INSERT INTO organization_memberships(organization_id, user_id, role, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)', [organizationId, userId, 'owner', now, now]);
+    });
+    return { userId, organizationId, role: 'owner' };
   }
 
   async defaultMembershipForUser(userId: string): Promise<HumanIdentityResult> {
