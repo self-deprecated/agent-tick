@@ -1,6 +1,6 @@
 {
   "name": "@self-deprecated/agent-tick",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Human-in-the-loop approval CLI for Agent Tick.",
   "private": false,
   "type": "module",

@@ -58,6 +58,7 @@ export function createProgram(): Command {
     .option('--claude-sanctions <policy>', 'Claude Code sanction policy: off, afk, or always')
     .option('--claude-initial-mode <mode>', 'initial Agent Tick mode for Claude Code: afk or pass-through')
     .option('--claude-scope <scope>', 'Claude Code hook install scope: global or local')
+    .option('--claude-sandbox <policy>', 'Claude Code sandbox compatibility: auto, allow, or skip')
     .action(async (options: InstallOptions) => {
       await runInstall(options);
     });
@@ -319,7 +320,7 @@ function defaultAgentName(): string {
   return `Agent on ${os.hostname() || 'local machine'}`;
 }
 
-const CLI_VERSION = '0.1.2';
+const CLI_VERSION = '0.1.3';
 
 const installTargets = ['claude', 'codex', 'gemini', 'pi', 'cursor', 'opencode', 'agents-md'] as const;
 type InstallTarget = typeof installTargets[number];
@@ -340,12 +341,16 @@ const claudeRoutingPolicies = ['off', 'afk', 'always'] as const;
 type ClaudeRoutingPolicy = typeof claudeRoutingPolicies[number];
 type ClaudeProfile = 'interactive' | 'headless';
 type ClaudeInstallScope = 'global' | 'local';
+type ClaudeSandboxPolicy = 'auto' | 'allow' | 'skip';
 interface ClaudeInstallConfig {
   profile: ClaudeProfile;
   steering: ClaudeRoutingPolicy;
   sanctions: ClaudeRoutingPolicy;
   initialMode: AgentTickMode;
   scope: ClaudeInstallScope;
+  sandbox: ClaudeSandboxPolicy;
+  sandboxDetected: boolean;
+  serverDomain?: string;
 }
 interface AgentTickState {
   mode: AgentTickMode;
@@ -423,6 +428,12 @@ function normalizeClaudeInstallScope(value: string): ClaudeInstallScope {
   throw new Error(`unknown Claude Code install scope: ${value}. Expected global or local.`);
 }
 
+function normalizeClaudeSandboxPolicy(value: string): ClaudeSandboxPolicy {
+  const policy = value.trim().toLowerCase();
+  if (policy === 'auto' || policy === 'allow' || policy === 'skip') return policy;
+  throw new Error(`unknown Claude Code sandbox policy: ${value}. Expected auto, allow, or skip.`);
+}
+
 async function runInstall(options: InstallOptions): Promise<void> {
   const server = normalizeURL(options.server ?? 'https://agenttick.sh');
   process.stdout.write('Agent Tick installer\n');
@@ -446,7 +457,7 @@ async function runInstall(options: InstallOptions): Promise<void> {
     return;
   }
 
-  const claudeConfig = selected.includes('claude') ? await resolveClaudeInstallConfig(options) : undefined;
+  const claudeConfig = selected.includes('claude') ? await resolveClaudeInstallConfig(options, server) : undefined;
 
   process.stdout.write('Step 2/2: install agent hooks.\n');
   const plans = selected.map((target) => installPlanForTarget(target, claudeConfig));
@@ -532,9 +543,11 @@ function fileExistsSync(filePath: string): boolean {
   return spawnSync(process.platform === 'win32' ? 'cmd' : 'test', process.platform === 'win32' ? ['/c', 'if', 'exist', filePath, 'exit', '0'] : ['-e', filePath], { stdio: 'ignore' }).status === 0;
 }
 
-async function resolveClaudeInstallConfig(options: InstallOptions): Promise<ClaudeInstallConfig> {
+async function resolveClaudeInstallConfig(options: InstallOptions, server: string): Promise<ClaudeInstallConfig> {
   const profile = options.claudeProfile ? normalizeClaudeProfile(options.claudeProfile) : options.yes ? 'interactive' : await promptClaudeProfile();
   const scope = options.claudeScope ? normalizeClaudeInstallScope(options.claudeScope) : options.yes ? 'global' : await promptClaudeInstallScope();
+  const sandboxDetected = await isClaudeSandboxEnabled();
+  const sandbox = options.claudeSandbox ? normalizeClaudeSandboxPolicy(options.claudeSandbox) : options.yes ? 'auto' : await promptClaudeSandboxPolicy(sandboxDetected);
   const defaults = defaultClaudeInstallConfig(profile, scope);
   const steering = options.claudeSteering
     ? normalizeClaudeRoutingPolicy(options.claudeSteering)
@@ -542,18 +555,22 @@ async function resolveClaudeInstallConfig(options: InstallOptions): Promise<Clau
   const sanctions = options.claudeSanctions
     ? normalizeClaudeRoutingPolicy(options.claudeSanctions)
     : options.yes ? defaults.sanctions : await promptClaudeRoutingPolicy('sanctions / Claude permission prompts', defaults.sanctions);
+  const serverDomain = domainFromURL(server);
   return {
     profile,
     steering,
     sanctions,
     initialMode: options.claudeInitialMode ? normalizeAgentTickMode(options.claudeInitialMode) : defaults.initialMode,
-    scope
+    scope,
+    sandbox,
+    sandboxDetected,
+    ...(serverDomain ? { serverDomain } : {})
   };
 }
 
 function defaultClaudeInstallConfig(profile: ClaudeProfile, scope: ClaudeInstallScope = 'global'): ClaudeInstallConfig {
-  if (profile === 'headless') return { profile, scope, steering: 'always', sanctions: 'always', initialMode: 'afk' };
-  return { profile, scope, steering: 'afk', sanctions: 'afk', initialMode: 'pass-through' };
+  if (profile === 'headless') return { profile, scope, steering: 'always', sanctions: 'always', initialMode: 'afk', sandbox: 'auto', sandboxDetected: false };
+  return { profile, scope, steering: 'afk', sanctions: 'afk', initialMode: 'pass-through', sandbox: 'auto', sandboxDetected: false };
 }
 
 async function promptClaudeProfile(): Promise<ClaudeProfile> {
@@ -594,6 +611,22 @@ async function promptClaudeInstallScope(): Promise<ClaudeInstallScope> {
     if (!answer || answer === '1' || answer === 'global' || answer === 'user') return 'global';
     if (answer === '2' || answer === 'local' || answer === 'project') return 'local';
     return normalizeClaudeInstallScope(answer);
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptClaudeSandboxPolicy(sandboxDetected: boolean): Promise<ClaudeSandboxPolicy> {
+  if (!sandboxDetected || !process.stdin.isTTY || !process.stdout.isTTY) return 'auto';
+  process.stdout.write('\nClaude Code sandbox appears enabled. Agent Tick needs sandbox access to call Agent Tick and write local config/state.\n');
+  process.stdout.write('  1. allow — add Agent Tick sandbox allowances now\n');
+  process.stdout.write('  2. skip — leave sandbox settings unchanged\n');
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question('Add Agent Tick sandbox allowances [allow]? ')).trim().toLowerCase();
+    if (!answer || answer === '1' || answer === 'allow' || answer === 'yes' || answer === 'y') return 'allow';
+    if (answer === '2' || answer === 'skip' || answer === 'no' || answer === 'n') return 'skip';
+    return normalizeClaudeSandboxPolicy(answer);
   } finally {
     rl.close();
   }
@@ -646,7 +679,30 @@ function claudeSettingsPath(scope: ClaudeInstallScope): string {
   return scope === 'local' ? path.join(process.cwd(), '.claude', 'settings.local.json') : path.join(os.homedir(), '.claude', 'settings.json');
 }
 
+function claudeSettingsPathsToInspect(): string[] {
+  return [
+    path.join(os.homedir(), '.claude', 'settings.json'),
+    path.join(process.cwd(), '.claude', 'settings.json'),
+    path.join(process.cwd(), '.claude', 'settings.local.json')
+  ];
+}
+
+async function isClaudeSandboxEnabled(): Promise<boolean> {
+  for (const settingsPath of claudeSettingsPathsToInspect()) {
+    const settings = await readJSONFile(settingsPath);
+    if (isPlainObject(settings) && isPlainObject(settings.sandbox) && settings.sandbox.enabled === true) return true;
+  }
+  return false;
+}
+
+function shouldInstallClaudeSandboxAllowances(config: ClaudeInstallConfig): boolean {
+  return config.sandbox === 'allow' || (config.sandbox === 'auto' && config.sandboxDetected);
+}
+
 function claudeInstallDryRunSummary(config: ClaudeInstallConfig): string {
+  const sandboxLine = shouldInstallClaudeSandboxAllowances(config)
+    ? `  - add sandbox allowances: network ${claudeSandboxDomains(config).join(', ')}, write ~/.config/agent-tick, run agent-tick outside sandbox`
+    : config.sandboxDetected ? '  - leave existing Claude sandbox settings unchanged' : '  - no Claude sandbox enabled in inspected settings; no sandbox allowances needed';
   return [
     `  - scope: ${config.scope} (${claudeSettingsPath(config.scope)})`,
     `  - profile: ${config.profile}`,
@@ -656,6 +712,7 @@ function claudeInstallDryRunSummary(config: ClaudeInstallConfig): string {
     '  - add PreToolUse AskUserQuestion hook: agent-tick hook claude-pre-tool-use',
     '  - add PermissionRequest * hook: agent-tick hook claude-permission-request',
     '  - add permission allow rule: Bash(agent-tick:*)',
+    sandboxLine,
     `  - initialize Agent Tick mode state to ${config.initialMode}`,
     '  - Claude Code will need a restart before new hooks are active',
     ''
@@ -682,6 +739,7 @@ async function installClaudeHooks(settingsPath: string, config: ClaudeInstallCon
   const permissions = isPlainObject(root.permissions) ? root.permissions : {};
   permissions.allow = mergeStringArray(permissions.allow, ['Bash(agent-tick:*)']);
   root.permissions = permissions;
+  if (shouldInstallClaudeSandboxAllowances(config)) root.sandbox = mergeClaudeSandboxAllowances(root.sandbox, config);
   await writeJSONFile(settingsPath, root);
   await saveAgentTickState({
     ...(await loadAgentTickState()),
@@ -697,6 +755,32 @@ function mergeClaudeHookGroups(existing: unknown, additions: Array<Record<string
     if (!groups.some((group) => JSON.stringify(group) === key)) groups.push(addition);
   }
   return groups;
+}
+
+function mergeClaudeSandboxAllowances(existing: unknown, config: ClaudeInstallConfig): Record<string, unknown> {
+  const sandbox = isPlainObject(existing) ? { ...existing } : {};
+  const network = isPlainObject(sandbox.network) ? { ...sandbox.network } : {};
+  network.allowedDomains = mergeStringArray(network.allowedDomains, claudeSandboxDomains(config));
+  sandbox.network = network;
+
+  const filesystem = isPlainObject(sandbox.filesystem) ? { ...sandbox.filesystem } : {};
+  filesystem.allowWrite = mergeStringArray(filesystem.allowWrite, ['~/.config/agent-tick']);
+  sandbox.filesystem = filesystem;
+
+  sandbox.excludedCommands = mergeStringArray(sandbox.excludedCommands, ['agent-tick']);
+  return sandbox;
+}
+
+function claudeSandboxDomains(config: ClaudeInstallConfig): string[] {
+  return uniqueStrings(['agenttick.sh', ...(config.serverDomain && config.serverDomain !== 'agenttick.sh' ? [config.serverDomain] : [])]);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const unique: string[] = [];
+  for (const value of values) {
+    if (!unique.includes(value)) unique.push(value);
+  }
+  return unique;
 }
 
 function removeLegacyClaudeBashHookGroups(existing: unknown): unknown {
@@ -771,6 +855,14 @@ async function appendInstallBlock(filePath: string, block: string): Promise<void
 function normalizeURL(value: string): string {
   const url = new URL(value);
   return url.toString().replace(/\/$/, '');
+}
+
+function domainFromURL(value: string): string | undefined {
+  try {
+    return new URL(value).hostname || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function escapeRegExp(value: string): string {
@@ -1161,6 +1253,7 @@ interface InstallOptions extends SetupOptions {
   claudeSanctions?: string;
   claudeInitialMode?: string;
   claudeScope?: string;
+  claudeSandbox?: string;
 }
 
 interface StatusOptions extends ClientOptions {

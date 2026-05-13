@@ -32,11 +32,12 @@ For Claude Code setup, guide the user interactively before installing:
 5. Explain that sanctions route Claude Code's own permission prompts only; Agent Tick does not manage risky-command patterns for Claude Code setup yet.
 6. Avoid phrasing setup questions around a specific UI surface. Say "through Agent Tick" or "remotely" instead.
 7. Ask whether Claude Code hooks should be installed **globally** (`~/.claude/settings.json`, all projects on this machine) or **locally** (`.claude/settings.local.json`, current project only). Default to global if the user is unsure, but explain both choices.
-8. Inspect existing Claude settings before changing them: `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` if present. Look for existing hooks and permission rules that might conflict with `Bash(agent-tick:*)`.
-9. Run a dry run first and summarize exactly what will change. For interactive local sessions, use defaults:
+8. Inspect existing Claude settings before changing them: `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` if present. Look for existing hooks, permission rules that might conflict with `Bash(agent-tick:*)`, and whether `sandbox.enabled` is true in any scope.
+9. If Claude sandboxing is enabled, offer to add Agent Tick sandbox allowances. Explain that Agent Tick needs network access to the configured server, write access to `~/.config/agent-tick`, and an `agent-tick` sandbox exclusion so hooks can run correctly. Do not disable sandboxing.
+10. Run a dry run first and summarize exactly what will change. For interactive local sessions, use defaults:
 
 ```sh
-agent-tick install --target claude --claude-scope global --dry-run
+agent-tick install --target claude --claude-scope global --claude-sandbox auto --dry-run
 ```
 
 For headless loops, prefer explicit routing flags:
@@ -48,10 +49,11 @@ agent-tick install --target claude \
   --claude-sanctions always \
   --claude-initial-mode afk \
   --claude-scope global \
+  --claude-sandbox auto \
   --dry-run
 ```
 
-10. After user confirmation, run the install with the same options minus `--dry-run`, then verify the settings:
+11. After user confirmation, run the install with the same options minus `--dry-run`, then verify the settings:
 
 ```sh
 agent-tick mode

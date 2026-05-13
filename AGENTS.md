@@ -63,7 +63,7 @@ Current implemented CLI commands only:
 - `agent-tick abandon`
 - `agent-tick status`
 
-The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. For local repo development without a global install, use the workspace package name:
+The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. When bumping `packages/cli/package.json`, also bump `CLI_VERSION` in `packages/cli/src/index.ts` and the `agent-tick-cli.version` in `flake.nix` in the same change. For local repo development without a global install, use the workspace package name:
 
 ```sh
 corepack pnpm --filter @self-deprecated/agent-tick build

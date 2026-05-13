@@ -63,7 +63,25 @@ agent-tick install --target claude \
   --claude-initial-mode afk
 ```
 
-Available Claude routing policies are `off`, `afk`, and `always`. If you run the installer interactively without `--yes`, it asks for the Claude profile and steering/sanction policies. Restart Claude Code after installing or changing hook configuration.
+Available Claude routing policies are `off`, `afk`, and `always`. If you run the installer interactively without `--yes`, it asks for the Claude profile, steering/sanction policies, hook scope, and sandbox allowances when sandboxing is detected. Restart Claude Code after installing or changing hook configuration.
+
+When Claude sandboxing is enabled, Agent Tick can add compatibility settings so hooks can reach Agent Tick and persist local state:
+
+```json
+{
+  "sandbox": {
+    "network": {
+      "allowedDomains": ["agenttick.sh"]
+    },
+    "filesystem": {
+      "allowWrite": ["~/.config/agent-tick"]
+    },
+    "excludedCommands": ["agent-tick"]
+  }
+}
+```
+
+Use `--claude-sandbox auto` to add those only when sandboxing is detected, `--claude-sandbox allow` to add them explicitly, or `--claude-sandbox skip` to leave sandbox settings unchanged.
 
 Agent Tick does not maintain Claude Code command-risk policy yet. Users should manage Claude Code permissions normally; Agent Tick only handles the permission prompts Claude Code was already going to show.
 

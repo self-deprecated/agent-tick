@@ -85,6 +85,7 @@ agent-tick install --dry-run
 agent-tick install --server https://tick.example.com
 agent-tick install --target claude --claude-scope local
 agent-tick install --target claude --claude-scope global
+agent-tick install --target claude --claude-sandbox allow
 agent-tick install --target claude --claude-profile headless --claude-steering always --claude-sanctions always
 agent-tick install --no-login --target agents-md
 ```
