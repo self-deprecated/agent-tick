@@ -27,7 +27,7 @@ For CI, headless hosts, or single-mode self-hosting, create an agent token in th
 agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
-For lower-level browser setup without agent instruction installation, run `agent-tick setup --login --server https://agenttick.sh`.
+For lower-level browser setup without agent instruction installation, run `agent-tick login` (or `agent-tick setup --login --server https://agenttick.sh`).
 
 ## Claude Code AFK/pass-through mode
 

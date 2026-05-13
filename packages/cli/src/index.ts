@@ -9,7 +9,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
-import { Command } from 'commander';
+import { Command, CommanderError, type AddHelpTextContext } from 'commander';
 import { AgentTickClient, type ApprovalRequest } from '@agent-tick/sdk';
 import { EncryptedApprovalPayloadSchema, createEncryptedApprovalPayload, generateApprovalEncryptionKey, type EncryptedApprovalPayload } from '@agent-tick/shared';
 import { resolveServerAndToken, saveClientConfig } from './config.js';
@@ -21,9 +21,25 @@ export function createProgram(): Command {
     .description('Status, steering, and sanction gateway for AI agents')
     .version(CLI_VERSION)
     .option('--config <path>', 'config file path [env: AGENT_TICK_CONFIG]')
+    .exitOverride()
+    .configureOutput({ writeErr: () => undefined })
+    .configureHelp({ visibleCommands: orderedVisibleCommands })
+    .addHelpText('beforeAll', topLevelHelpText)
+    .addHelpText('afterAll', rootHelpFooter)
     .hook('preAction', (thisCommand) => {
       const config = thisCommand.optsWithGlobals<{ config?: string }>().config;
       if (config) process.env.AGENT_TICK_CONFIG = config;
+    });
+
+  program
+    .command('login')
+    .description('Sign in to Agent Tick in your browser')
+    .option('--server <url>', 'Agent Tick server URL', 'https://agenttick.sh')
+    .option('--name <name>', 'agent token name for browser sign-in', defaultAgentName())
+    .addHelpText('after', loginHelpText)
+    .action(async (options: SetupOptions) => {
+      const result = await setupWithBrowser({ ...options, login: true });
+      process.stdout.write(`${success('saved')} Agent Tick config to ${result.path}\n`);
     });
 
   program
@@ -33,13 +49,14 @@ export function createProgram(): Command {
     .option('--token <token>', 'Agent Tick agent token')
     .option('--login', 'open browser sign-in and create an agent token')
     .option('--name <name>', 'agent token name for browser sign-in', defaultAgentName())
+    .addHelpText('after', setupHelpText)
     .action(async (options: SetupOptions) => {
       if (options.login) {
         const result = await setupWithBrowser(options);
         process.stdout.write(`saved Agent Tick config to ${result.path}\n`);
         return;
       }
-      if (!options.token) throw new Error('setup requires --token, or use --login to sign in with your browser');
+      if (!options.token) throw cliUsageError('setup', 'setup requires --login for hosted sign-in, or --token for manual/self-hosted setup');
       const path = await saveClientConfig({ server: options.server, token: options.token });
       process.stdout.write(`saved Agent Tick config to ${path}\n`);
     });
@@ -59,6 +76,7 @@ export function createProgram(): Command {
     .option('--claude-initial-mode <mode>', 'initial Agent Tick mode for Claude Code: afk or pass-through')
     .option('--claude-scope <scope>', 'Claude Code hook install scope: global or local')
     .option('--claude-sandbox <policy>', 'Claude Code sandbox compatibility: auto, allow, or skip')
+    .addHelpText('after', installHelpText)
     .action(async (options: InstallOptions) => {
       await runInstall(options);
     });
@@ -76,7 +94,7 @@ export function createProgram(): Command {
       process.stdout.write(`Agent Tick mode: ${saved}\n`);
     });
 
-  const hook = program.command('hook').description('Internal hook entrypoints used by agent integrations');
+  const hook = program.command('hook', { hidden: true }).description('Internal hook entrypoints used by agent integrations');
 
   hook
     .command('claude-pre-tool-use')
@@ -120,6 +138,7 @@ export function createProgram(): Command {
     .option('--encrypted-payload-file <path>', 'read opaque end-to-end encrypted request envelope JSON from a file')
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
+    .addHelpText('after', sanctionHelpText)
     .action(async (commandParts: string[], options: RequestOptions) => {
       if (options.generateE2eeKey) {
         process.stdout.write(`${generateApprovalEncryptionKey()}\n`);
@@ -145,16 +164,24 @@ export function createProgram(): Command {
     .description('Ask a structured steering question and wait for a response')
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
-    .requiredOption('--title <title>', 'steering question title')
+    .option('--title <title>', 'steering question title')
     .option('--body <body>', 'additional context for the steering question')
     .option('--project <name>', 'project/repository display name')
     .option('--choice <choice>', 'steering choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
+    .addHelpText('after', steeringHelpText)
     .action(async (options: RequestOptions) => {
-      if (!options.choice?.length) throw new Error('steering requires at least one --choice');
+      if (!options.title?.trim()) throw cliUsageError('steering', 'steering requires --title');
+      if (!options.choice?.length) throw cliUsageError('steering', 'steering requires at least one --choice');
+      let choices: Array<{ id: string; label: string; kind: string }>;
+      try {
+        choices = parseChoices(options.choice);
+      } catch (error) {
+        throw cliUsageError('steering', error instanceof Error ? error.message : String(error));
+      }
       const { client, server } = await clientFromOptions(options);
-      const created = await createAndMaybeWait(client, server, options);
+      const created = await createAndMaybeWait(client, server, { ...options, hookChoices: choices });
       process.exitCode = exitCodeForRequest(created);
     });
 
@@ -170,10 +197,11 @@ export function createProgram(): Command {
     .option('--project <name>', 'project/repository display name')
     .option('--metadata <key=value>', 'metadata key/value, repeatable', collectOption, [])
     .option('--json', 'print machine-readable JSON')
+    .addHelpText('after', statusHelpText)
     .action(async (messageParts: string[], options: StatusOptions) => {
       const { client } = await clientFromOptions(options);
       const message = messageParts.join(' ').trim();
-      if (!message) throw new Error('status requires a message');
+      if (!message) throw cliUsageError('status', 'status requires a message');
       const update = await client.createStatusUpdate({
         threadId: options.thread ?? process.env.AGENT_TICK_THREAD_ID ?? defaultThreadId(),
         message,
@@ -195,6 +223,7 @@ export function createProgram(): Command {
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
     .option('--json', 'print machine-readable JSON')
+    .addHelpText('after', abandonHelpText)
     .action(async (requestId: string, options: ClientOptions & { json?: boolean }) => {
       const { client } = await clientFromOptions(options);
       const abandoned = await client.abandonApproval(requestId);
@@ -320,7 +349,72 @@ function defaultAgentName(): string {
   return `Agent on ${os.hostname() || 'local machine'}`;
 }
 
-const CLI_VERSION = '0.1.3';
+const CLI_VERSION = '0.1.4';
+
+function supportsColor(stream: NodeJS.WriteStream = process.stdout): boolean {
+  return stream.isTTY === true && !process.env.NO_COLOR;
+}
+
+function color(code: string, value: string, stream: NodeJS.WriteStream = process.stdout): string {
+  return supportsColor(stream) ? `\u001b[${code}m${value}\u001b[0m` : value;
+}
+
+function heading(value: string): string { return color('1;36', value); }
+function command(value: string): string { return color('32', value); }
+function muted(value: string): string { return color('2', value); }
+function warning(value: string): string { return color('33', value, process.stderr); }
+function errorText(value: string): string { return color('31', value, process.stderr); }
+function success(value: string): string { return color('32', value); }
+
+function topLevelHelpText(context?: AddHelpTextContext): string {
+  if (context?.command.parent) return '';
+  return `${heading('Agent Tick — status, steering, and sanctions for AI agents')}\n\n${heading('Most used')}\n  ${command('agent-tick status "Running tests now"')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick sanction --title "Deploy to production?"')}\n  ${command('agent-tick sanction -- npm install')}\n\n${heading('First-time setup')}\n  ${command('agent-tick login')}\n  ${command('agent-tick setup --login')}\n  ${command('agent-tick install --target claude')}\n\n`;
+}
+
+function rootHelpFooter(context?: AddHelpTextContext): string {
+  return context?.command.parent ? '' : `\n${muted('Run `agent-tick <command> --help` for command-specific examples.')}\n`;
+}
+
+function orderedVisibleCommands(cmd: Command): Command[] {
+  const priority = ['status', 'steering', 'sanction', 'login', 'setup', 'install', 'mode', 'abandon'];
+  return [...cmd.commands]
+    .filter((subcommand) => subcommand.name() !== 'hook')
+    .sort((left, right) => {
+      const leftIndex = priority.indexOf(left.name());
+      const rightIndex = priority.indexOf(right.name());
+      if (leftIndex === -1 && rightIndex === -1) return 0;
+      if (leftIndex === -1) return 1;
+      if (rightIndex === -1) return -1;
+      return leftIndex - rightIndex;
+    });
+}
+
+const loginHelpText = `\n${heading('Examples')}\n  ${command('agent-tick login')}\n  ${command('agent-tick login --name "Claude Code on laptop"')}\n`;
+
+const setupHelpText = `\n${heading('Recommended hosted setup')}\n  ${command('agent-tick setup --login')}\n\n${heading('Manual/self-hosted setup')}\n  ${command('agent-tick setup --server http://localhost:8787 --token agent_...')}\n`;
+
+const installHelpText = `\n${heading('Examples')}\n  ${command('agent-tick install --target claude')}\n  ${command('agent-tick install --target claude --claude-scope local')}\n  ${command('agent-tick install --target claude --claude-sandbox allow')}\n`;
+
+const statusHelpText = `\n${heading('Examples')}\n  ${command('agent-tick status "Finished edits; running tests now"')}\n  ${command('agent-tick status --state blocked "Need staging access"')}\n  ${command('agent-tick status --state done "Implemented and validated"')}\n`;
+
+const steeringHelpText = `\n${heading('Examples')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick steering --title "Proceed?" --choice yes="Yes" --choice no:deny="No"')}\n\n${muted('Choices may be plain labels, id=Label, or id:kind=Label. If no deny choice is provided, Agent Tick adds a Cancel choice.')}\n`;
+
+const sanctionHelpText = `\n${heading('Examples')}\n  ${command('agent-tick sanction --title "Deploy to production?"')}\n  ${command('agent-tick sanction --title "Run migration?" --body "Touches billing tables"')}\n  ${command('agent-tick sanction -- npm install')}\n`;
+
+const abandonHelpText = `\n${heading('Example')}\n  ${command('agent-tick abandon apr_123')}\n`;
+
+type UsageCommand = 'status' | 'steering' | 'sanction' | 'setup' | 'login' | 'install' | 'mode' | 'abandon' | 'unknown';
+
+class CliUsageError extends Error {
+  constructor(public usageCommand: UsageCommand, message: string) {
+    super(message);
+  }
+}
+
+function cliUsageError(usageCommand: UsageCommand, message: string): CliUsageError {
+  return new CliUsageError(usageCommand, message);
+}
+
 
 const installTargets = ['claude', 'codex', 'gemini', 'pi', 'cursor', 'opencode', 'agents-md'] as const;
 type InstallTarget = typeof installTargets[number];
@@ -1184,22 +1278,45 @@ function parseMetadata(values: string[] | undefined): Record<string, string> | u
 }
 
 export function parseChoices(values: string[] | undefined): Array<{ id: string; label: string; kind: string }> {
-  const choices = (values ?? []).map((value) => {
-    const separator = value.indexOf('=');
-    if (separator <= 0) throw new Error(`invalid choice: ${value}. Use id=Label or id:kind=Label.`);
-    const idAndKind = value.slice(0, separator).trim();
-    const label = value.slice(separator + 1).trim();
-    if (!label) throw new Error(`invalid choice: ${value}. Choice label cannot be empty.`);
-    const kindSeparator = idAndKind.indexOf(':');
-    const id = (kindSeparator === -1 ? idAndKind : idAndKind.slice(0, kindSeparator)).trim();
-    const kind = (kindSeparator === -1 ? inferredChoiceKind(id) : idAndKind.slice(kindSeparator + 1).trim()) || 'approve';
-    if (!id) throw new Error(`invalid choice: ${value}. Choice id cannot be empty.`);
-    return { id, label, kind };
-  });
+  const usedIds = new Set<string>();
+  const choices = (values ?? []).map((value, index) => parseChoice(value, index, usedIds));
   if (choices.length && !choices.some((choice) => choice.kind === 'deny')) {
-    throw new Error('custom choices require at least one choice with kind "deny", for example --choice cancel:deny="Cancel"');
+    choices.push({ id: 'cancel', label: 'Cancel / do not answer', kind: 'deny' });
   }
   return choices;
+}
+
+function parseChoice(value: string, index: number, usedIds: Set<string>): { id: string; label: string; kind: string } {
+  const separator = value.indexOf('=');
+  if (separator === -1) {
+    const label = value.trim();
+    if (!label) throw new Error('invalid choice: label cannot be empty. Use --choice "Small fix" or --choice id=Label.');
+    return uniquifyChoiceId({ id: slugifyChoiceId(label) || `choice_${index + 1}`, label, kind: inferredChoiceKind(label) }, usedIds);
+  }
+  if (separator <= 0) throw new Error(`invalid choice: ${value}. Use a plain label, id=Label, or id:kind=Label.`);
+  const idAndKind = value.slice(0, separator).trim();
+  const label = value.slice(separator + 1).trim();
+  if (!label) throw new Error(`invalid choice: ${value}. Choice label cannot be empty.`);
+  const kindSeparator = idAndKind.indexOf(':');
+  const id = (kindSeparator === -1 ? idAndKind : idAndKind.slice(0, kindSeparator)).trim();
+  const kind = (kindSeparator === -1 ? inferredChoiceKind(id) : idAndKind.slice(kindSeparator + 1).trim()) || 'approve';
+  if (!id) throw new Error(`invalid choice: ${value}. Choice id cannot be empty.`);
+  return uniquifyChoiceId({ id, label, kind }, usedIds);
+}
+
+function uniquifyChoiceId(choice: { id: string; label: string; kind: string }, usedIds: Set<string>): { id: string; label: string; kind: string } {
+  let id = choice.id;
+  let suffix = 2;
+  while (usedIds.has(id)) {
+    id = `${choice.id}_${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(id);
+  return { ...choice, id };
+}
+
+function slugifyChoiceId(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48);
 }
 
 function inferredChoiceKind(id: string): string {
@@ -1287,10 +1404,38 @@ function isDirectExecution(): boolean {
   return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
 }
 
-if (isDirectExecution()) {
-  createProgram().parseAsync(process.argv).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`${message}\n`);
+function commandFromArgv(argv: string[]): UsageCommand {
+  const commandName = argv.slice(2).find((arg) => !arg.startsWith('-'));
+  if (commandName === 'status' || commandName === 'steering' || commandName === 'sanction' || commandName === 'setup' || commandName === 'login' || commandName === 'install' || commandName === 'mode' || commandName === 'abandon') return commandName;
+  return 'unknown';
+}
+
+function usageHint(name: UsageCommand): string {
+  if (name === 'status') return `${statusHelpText}\nRun ${command('agent-tick status --help')} for all options.\n`;
+  if (name === 'steering') return `${steeringHelpText}\nRun ${command('agent-tick steering --help')} for all options.\n`;
+  if (name === 'sanction') return `${sanctionHelpText}\nRun ${command('agent-tick sanction --help')} for all options.\n`;
+  if (name === 'setup') return `${setupHelpText}\nRun ${command('agent-tick setup --help')} for all options.\n`;
+  if (name === 'login') return `${loginHelpText}\nRun ${command('agent-tick login --help')} for all options.\n`;
+  if (name === 'install') return `${installHelpText}\nRun ${command('agent-tick install --help')} for all options.\n`;
+  if (name === 'abandon') return `${abandonHelpText}\nRun ${command('agent-tick abandon --help')} for all options.\n`;
+  return `\n${topLevelHelpText()}Run ${command('agent-tick --help')} for all options.\n`;
+}
+
+function handleCliError(error: unknown): void {
+  if (error instanceof CommanderError && (error.code === 'commander.helpDisplayed' || error.code === 'commander.version')) {
+    process.exit(error.exitCode);
+  }
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const message = rawMessage.replace(/^error:\s*/i, '');
+  if (!(error instanceof CliUsageError) && !(error instanceof CommanderError)) {
+    process.stderr.write(`${errorText('Error:')} ${message}\n`);
     process.exit(1);
-  });
+  }
+  const usageCommand = error instanceof CliUsageError ? error.usageCommand : commandFromArgv(process.argv);
+  process.stderr.write(`${errorText('Error:')} ${warning(message)}\n${usageHint(usageCommand)}`);
+  process.exit(error instanceof CommanderError ? error.exitCode : 1);
+}
+
+if (isDirectExecution()) {
+  createProgram().parseAsync(process.argv).catch(handleCliError);
 }

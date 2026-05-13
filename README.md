@@ -19,10 +19,16 @@ Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it
 
 The linked skill-led flow works even when the target machine does not have this repo cloned. It guides you through interactive vs headless usage, AFK vs pass-through routing, permissions, dry-run, install, verification, and restart instructions while keeping status, steering, and sanctions enabled by default.
 
-If you prefer direct CLI setup, run one command on the machine where your coding agents run:
+If you prefer direct CLI setup, run the installer on the machine where your coding agents run:
 
 ```sh
 npx @self-deprecated/agent-tick install
+```
+
+To only sign in without installing hooks yet:
+
+```sh
+npx @self-deprecated/agent-tick login
 ```
 
 The installer opens Agent Tick in your browser, connects this machine to your hosted Agent Tick account, detects local AI coding agents, and installs verified hook integrations where available. Claude Code and Pi currently get real hooks; other detected agents are shown as disabled scaffolds until their hook/config path is verified.

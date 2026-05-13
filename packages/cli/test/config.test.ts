@@ -109,13 +109,20 @@ describe('parseChoices', () => {
     ]);
   });
 
+  it('accepts label-only choices and adds a cancel choice', () => {
+    expect(parseChoices(['Nothing', 'Everything'])).toEqual([
+      { id: 'nothing', label: 'Nothing', kind: 'approve' },
+      { id: 'everything', label: 'Everything', kind: 'approve' },
+      { id: 'cancel', label: 'Cancel / do not answer', kind: 'deny' }
+    ]);
+  });
+
   it('infers deny kind for deny-style ids', () => {
     expect(parseChoices(['deny=No thanks'])).toEqual([{ id: 'deny', label: 'No thanks', kind: 'deny' }]);
   });
 
   it('rejects malformed choices', () => {
     expect(() => parseChoices(['missing-label='])).toThrow(/label cannot be empty/);
-    expect(() => parseChoices(['missing-separator'])).toThrow(/invalid choice/);
-    expect(() => parseChoices(['red=Red option', 'blue=Blue option'])).toThrow(/kind "deny"/);
+    expect(() => parseChoices(['=Missing id'])).toThrow(/invalid choice/);
   });
 });

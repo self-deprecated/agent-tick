@@ -4,9 +4,10 @@ Command-line status, steering, and sanction interface for Agent Tick.
 
 ## Quickstart
 
-Run the hosted-product installer:
+Sign in to the hosted product and run the installer:
 
 ```sh
+npx @self-deprecated/agent-tick login
 npx @self-deprecated/agent-tick install
 ```
 
@@ -62,6 +63,13 @@ For unattended Claude Code runs, install with the headless profile:
 
 ```sh
 agent-tick install --target claude --claude-profile headless --claude-steering always --claude-sanctions always
+```
+
+Browser sign-in without installing hooks:
+
+```sh
+agent-tick login
+# equivalent: agent-tick setup --login
 ```
 
 Manual setup for CI or self-hosted servers:
