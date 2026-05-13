@@ -83,13 +83,15 @@ agent-tick install --target claude --target codex
 agent-tick install --all
 agent-tick install --dry-run
 agent-tick install --server https://tick.example.com
+agent-tick install --target claude --claude-scope local
+agent-tick install --target claude --claude-scope global
 agent-tick install --target claude --claude-profile headless --claude-steering always --claude-sanctions always
 agent-tick install --no-login --target agents-md
 ```
 
 Supported install targets:
 
-- `claude` — enabled. Adds mode-aware hooks in `~/.claude/settings.json` for `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions, plus `Bash(agent-tick:*)` so Agent Tick can run without recursive permission prompts. Hooks start in pass-through mode; use `agent-tick mode afk` to route prompts through Agent Tick and `agent-tick mode pass-through` to restore Claude Code's native prompts.
+- `claude` — enabled. Adds mode-aware hooks globally in `~/.claude/settings.json` or locally in `.claude/settings.local.json` for `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions, plus `Bash(agent-tick:*)` so Agent Tick can run without recursive permission prompts. Hooks start in pass-through mode; use `agent-tick mode afk` to route prompts through Agent Tick and `agent-tick mode pass-through` to restore Claude Code's native prompts.
 - `pi` — enabled. Installs the repo-maintained `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`, a Pi `tool_call` extension for risky bash commands.
 - `codex` — scaffold only until its hook/config path is verified.
 - `gemini` — scaffold only until its hook/config path is verified.

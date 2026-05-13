@@ -31,11 +31,12 @@ For lower-level browser setup without agent instruction installation, run `agent
 
 ## Claude Code AFK/pass-through mode
 
-`agent-tick install --target claude` installs Claude Code hooks that are inactive by default:
+`agent-tick install --target claude` installs Claude Code hooks that are inactive by default. The installer can write hooks globally for all Claude Code projects or locally for the current project:
 
 ```sh
 agent-tick install --target claude --dry-run
-agent-tick install --target claude
+agent-tick install --target claude --claude-scope global
+agent-tick install --target claude --claude-scope local
 ```
 
 The Claude Code integration adds:

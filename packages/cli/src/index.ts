@@ -19,6 +19,7 @@ export function createProgram(): Command {
   program
     .name('agent-tick')
     .description('Status, steering, and sanction gateway for AI agents')
+    .version(CLI_VERSION)
     .option('--config <path>', 'config file path [env: AGENT_TICK_CONFIG]')
     .hook('preAction', (thisCommand) => {
       const config = thisCommand.optsWithGlobals<{ config?: string }>().config;
@@ -56,6 +57,7 @@ export function createProgram(): Command {
     .option('--claude-steering <policy>', 'Claude Code steering policy: off, afk, or always')
     .option('--claude-sanctions <policy>', 'Claude Code sanction policy: off, afk, or always')
     .option('--claude-initial-mode <mode>', 'initial Agent Tick mode for Claude Code: afk or pass-through')
+    .option('--claude-scope <scope>', 'Claude Code hook install scope: global or local')
     .action(async (options: InstallOptions) => {
       await runInstall(options);
     });
@@ -317,6 +319,8 @@ function defaultAgentName(): string {
   return `Agent on ${os.hostname() || 'local machine'}`;
 }
 
+const CLI_VERSION = '0.1.2';
+
 const installTargets = ['claude', 'codex', 'gemini', 'pi', 'cursor', 'opencode', 'agents-md'] as const;
 type InstallTarget = typeof installTargets[number];
 
@@ -335,11 +339,13 @@ export type AgentTickMode = typeof agentTickModes[number];
 const claudeRoutingPolicies = ['off', 'afk', 'always'] as const;
 type ClaudeRoutingPolicy = typeof claudeRoutingPolicies[number];
 type ClaudeProfile = 'interactive' | 'headless';
+type ClaudeInstallScope = 'global' | 'local';
 interface ClaudeInstallConfig {
   profile: ClaudeProfile;
   steering: ClaudeRoutingPolicy;
   sanctions: ClaudeRoutingPolicy;
   initialMode: AgentTickMode;
+  scope: ClaudeInstallScope;
 }
 interface AgentTickState {
   mode: AgentTickMode;
@@ -408,6 +414,13 @@ function normalizeClaudeProfile(value: string): ClaudeProfile {
   const profile = value.trim().toLowerCase();
   if (profile === 'interactive' || profile === 'headless') return profile;
   throw new Error(`unknown Claude Code profile: ${value}. Expected interactive or headless.`);
+}
+
+function normalizeClaudeInstallScope(value: string): ClaudeInstallScope {
+  const scope = value.trim().toLowerCase();
+  if (scope === 'global' || scope === 'user') return 'global';
+  if (scope === 'local' || scope === 'project') return 'local';
+  throw new Error(`unknown Claude Code install scope: ${value}. Expected global or local.`);
 }
 
 async function runInstall(options: InstallOptions): Promise<void> {
@@ -521,7 +534,8 @@ function fileExistsSync(filePath: string): boolean {
 
 async function resolveClaudeInstallConfig(options: InstallOptions): Promise<ClaudeInstallConfig> {
   const profile = options.claudeProfile ? normalizeClaudeProfile(options.claudeProfile) : options.yes ? 'interactive' : await promptClaudeProfile();
-  const defaults = defaultClaudeInstallConfig(profile);
+  const scope = options.claudeScope ? normalizeClaudeInstallScope(options.claudeScope) : options.yes ? 'global' : await promptClaudeInstallScope();
+  const defaults = defaultClaudeInstallConfig(profile, scope);
   const steering = options.claudeSteering
     ? normalizeClaudeRoutingPolicy(options.claudeSteering)
     : options.yes ? defaults.steering : await promptClaudeRoutingPolicy('steering / AskUserQuestion', defaults.steering);
@@ -532,13 +546,14 @@ async function resolveClaudeInstallConfig(options: InstallOptions): Promise<Clau
     profile,
     steering,
     sanctions,
-    initialMode: options.claudeInitialMode ? normalizeAgentTickMode(options.claudeInitialMode) : defaults.initialMode
+    initialMode: options.claudeInitialMode ? normalizeAgentTickMode(options.claudeInitialMode) : defaults.initialMode,
+    scope
   };
 }
 
-function defaultClaudeInstallConfig(profile: ClaudeProfile): ClaudeInstallConfig {
-  if (profile === 'headless') return { profile, steering: 'always', sanctions: 'always', initialMode: 'afk' };
-  return { profile, steering: 'afk', sanctions: 'afk', initialMode: 'pass-through' };
+function defaultClaudeInstallConfig(profile: ClaudeProfile, scope: ClaudeInstallScope = 'global'): ClaudeInstallConfig {
+  if (profile === 'headless') return { profile, scope, steering: 'always', sanctions: 'always', initialMode: 'afk' };
+  return { profile, scope, steering: 'afk', sanctions: 'afk', initialMode: 'pass-through' };
 }
 
 async function promptClaudeProfile(): Promise<ClaudeProfile> {
@@ -568,6 +583,22 @@ async function promptClaudeRoutingPolicy(label: string, defaultPolicy: ClaudeRou
   }
 }
 
+async function promptClaudeInstallScope(): Promise<ClaudeInstallScope> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return 'global';
+  process.stdout.write('\nClaude Code hook install scope:\n');
+  process.stdout.write('  1. global — write ~/.claude/settings.json for all Claude Code projects on this machine\n');
+  process.stdout.write('  2. local — write .claude/settings.local.json for only this project checkout\n');
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question('Claude Code hook scope [global]? ')).trim().toLowerCase();
+    if (!answer || answer === '1' || answer === 'global' || answer === 'user') return 'global';
+    if (answer === '2' || answer === 'local' || answer === 'project') return 'local';
+    return normalizeClaudeInstallScope(answer);
+  } finally {
+    rl.close();
+  }
+}
+
 function targetCommand(target: InstallTarget): string {
   return target === 'claude' ? 'claude' : target === 'codex' ? 'codex' : target === 'gemini' ? 'gemini' : target === 'pi' ? 'pi' : target === 'cursor' ? 'cursor' : target === 'opencode' ? 'opencode' : '';
 }
@@ -585,7 +616,7 @@ type InstallPlan =
 
 function installPlanForTarget(target: InstallTarget, claudeConfig?: ClaudeInstallConfig): InstallPlan {
   if (target === 'claude') {
-    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    const settingsPath = claudeSettingsPath(claudeConfig?.scope ?? 'global');
     return {
       target,
       status: 'enabled',
@@ -611,8 +642,13 @@ function installPlanForTarget(target: InstallTarget, claudeConfig?: ClaudeInstal
   };
 }
 
+function claudeSettingsPath(scope: ClaudeInstallScope): string {
+  return scope === 'local' ? path.join(process.cwd(), '.claude', 'settings.local.json') : path.join(os.homedir(), '.claude', 'settings.json');
+}
+
 function claudeInstallDryRunSummary(config: ClaudeInstallConfig): string {
   return [
+    `  - scope: ${config.scope} (${claudeSettingsPath(config.scope)})`,
     `  - profile: ${config.profile}`,
     `  - steering policy: ${config.steering}`,
     `  - sanction policy: ${config.sanctions}`,
@@ -1124,6 +1160,7 @@ interface InstallOptions extends SetupOptions {
   claudeSteering?: string;
   claudeSanctions?: string;
   claudeInitialMode?: string;
+  claudeScope?: string;
 }
 
 interface StatusOptions extends ClientOptions {

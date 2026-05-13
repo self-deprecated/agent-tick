@@ -71,7 +71,7 @@ agent-tick status --state working --next "Run the build" "Tests are passing; che
 
 1. Runs browser-based CLI setup against `https://agenttick.sh` and saves an Agent Tick `agent_...` token locally in `~/.config/agent-tick/config.json`.
 2. Detects local agent configs and installs verified hook integrations:
-   - Claude Code: adds mode-aware hooks in `~/.claude/settings.json` for `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions; starts in pass-through mode and adds `Bash(agent-tick:*)` so the Agent Tick CLI itself is never permission-gated.
+   - Claude Code: adds mode-aware hooks globally in `~/.claude/settings.json` or locally in `.claude/settings.local.json` for `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions; starts in pass-through mode and adds `Bash(agent-tick:*)` so the Agent Tick CLI itself is never permission-gated.
    - Pi: installs the repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`; it gates risky bash commands through Agent Tick and always allows Agent Tick commands.
    - Codex, Gemini, Cursor, OpenCode, generic `AGENTS.md`: detected and shown as disabled scaffolds until their hook/config behavior is verified.
 
@@ -82,6 +82,8 @@ agent-tick install --target claude --target codex
 agent-tick install --all
 agent-tick install --dry-run
 agent-tick install --server https://tick.example.com
+agent-tick install --target claude --claude-scope local
+agent-tick install --target claude --claude-scope global
 agent-tick install --target claude --claude-profile headless --claude-steering always --claude-sanctions always
 ```
 
