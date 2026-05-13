@@ -13,6 +13,10 @@ import type {
   CleanupRetentionResult,
   CreateAgentStatusInput,
   CreateAgentTokenInput,
+  DeviceCredential,
+  DeviceRecord,
+  DeviceRegistrationInput,
+  DeviceTokenAuth,
   EventTicketAuth,
   EventTicketInput,
   EventTicketRecord,
@@ -24,6 +28,7 @@ import type {
   MobileDiagnosticInput,
   MobileDiagnosticRecord,
   OrganizationSeatUsage,
+  PairingTokenRecord,
   PolicyRecord,
   ProjectRecord,
   RemoveTeamMemberInput,
@@ -102,6 +107,26 @@ interface AgentTokenRow {
   last_request_at: string | null;
   created_at: string;
   revoked_at: string | null;
+}
+
+interface DeviceRow {
+  device_id: string;
+  user_id: string;
+  name: string;
+  platform: string | null;
+  installation_id: string | null;
+  expo_push_token: string | null;
+  token_hash: string | null;
+  created_at: string;
+  updated_at: string;
+  unregistered_at: string | null;
+}
+
+interface PairingCodeRow {
+  token_hash: string;
+  user_id: string;
+  organization_id: string;
+  expires_at: string;
 }
 
 interface EventTicketRow {
@@ -589,6 +614,129 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     };
   }
 
+  async registerDevice(input: DeviceRegistrationInput, now = new Date().toISOString()): Promise<DeviceRecord> {
+    const existing = input.installationId
+      ? await this.one<DeviceRow>('SELECT * FROM devices WHERE user_id = $1 AND installation_id = $2 AND unregistered_at IS NULL', [input.userId, input.installationId])
+      : null;
+    const deviceId = existing?.device_id ?? newID('dev');
+    const expoPushToken = input.expoPushToken?.trim() || null;
+
+    await this.transaction(async (query) => {
+      if (expoPushToken) {
+        await query('UPDATE devices SET expo_push_token = NULL, updated_at = $1 WHERE user_id = $2 AND expo_push_token = $3', [now, input.userId, expoPushToken]);
+      }
+      if (existing) {
+        await query('UPDATE devices SET name = $1, platform = $2, expo_push_token = $3, updated_at = $4 WHERE device_id = $5', [input.deviceName.trim(), input.platform ?? null, expoPushToken, now, deviceId]);
+      } else {
+        await query('INSERT INTO devices(device_id, user_id, name, platform, installation_id, expo_push_token, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [
+          deviceId,
+          input.userId,
+          input.deviceName.trim(),
+          input.platform ?? null,
+          input.installationId ?? null,
+          expoPushToken,
+          now,
+          now
+        ]);
+      }
+    });
+    const device = (await this.getDeviceForUser(deviceId, input.userId)) ?? missingDevice(deviceId);
+    const membership = await this.defaultMembershipForUser(input.userId);
+    await this.writeAuditEvent(membership.organizationId, input.userId, existing ? 'device.updated' : 'device.registered', deviceId, { name: input.deviceName.trim(), platform: input.platform }, now);
+    return device;
+  }
+
+  async createPairingToken(userId: string, organizationId: string, now = new Date().toISOString(), ttlSeconds = 10 * 60): Promise<PairingTokenRecord> {
+    const token = `pair_${randomToken()}`;
+    const expiresAt = new Date(new Date(now).getTime() + ttlSeconds * 1000).toISOString();
+    await this.pool.query('INSERT INTO pairing_codes(token_hash, user_id, organization_id, expires_at, created_at) VALUES ($1, $2, $3, $4, $5)', [hashToken(token), userId, organizationId, expiresAt, now]);
+    return { token, expiresAt };
+  }
+
+  async pairDeviceWithCode(pairingCode: string, deviceName: string, platform: string | undefined, now = new Date().toISOString()): Promise<DeviceCredential | null> {
+    if (!pairingCode.startsWith('pair_')) return null;
+    const row = await this.one<PairingCodeRow>('SELECT * FROM pairing_codes WHERE token_hash = $1 AND used_at IS NULL AND expires_at > $2', [hashToken(pairingCode), now]);
+    if (!row) return null;
+    const token = `device_${randomToken()}`;
+    const deviceId = newID('dev');
+    await this.transaction(async (query) => {
+      await query('INSERT INTO devices(device_id, user_id, name, platform, token_hash, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)', [deviceId, row.user_id, deviceName.trim(), platform ?? null, hashToken(token), now, now]);
+      await query('UPDATE pairing_codes SET used_at = $1 WHERE token_hash = $2', [now, row.token_hash]);
+    });
+    await this.writeAuditEvent(row.organization_id, row.user_id, 'device.paired', deviceId, { name: deviceName.trim(), platform }, now);
+    return { deviceId, token };
+  }
+
+  async verifyDeviceToken(token: string): Promise<DeviceTokenAuth | null> {
+    if (!token.startsWith('device_')) return null;
+    const row = await this.one<DeviceRow>('SELECT * FROM devices WHERE token_hash = $1 AND unregistered_at IS NULL', [hashToken(token)]);
+    if (!row) return null;
+    const membership = await this.defaultMembershipForUser(row.user_id);
+    return {
+      source: 'device',
+      deviceId: row.device_id,
+      userId: row.user_id,
+      organizationId: membership.organizationId
+    };
+  }
+
+  async listDevicesForUser(userId: string): Promise<DeviceRecord[]> {
+    const rows = await this.many<DeviceRow>('SELECT * FROM devices WHERE user_id = $1 ORDER BY updated_at DESC', [userId]);
+    return rows.map(mapDeviceRow);
+  }
+
+  async listPushDevicesForApprovalRecipients(requestId: string): Promise<DeviceRecord[]> {
+    const rows = await this.many<DeviceRow>(
+      `
+        SELECT DISTINCT d.*
+        FROM approval_recipients r
+        JOIN devices d ON d.user_id = r.user_id
+        WHERE r.request_id = $1
+          AND d.expo_push_token IS NOT NULL
+          AND d.unregistered_at IS NULL
+        ORDER BY d.updated_at DESC
+      `,
+      [requestId]
+    );
+    return rows.map(mapDeviceRow);
+  }
+
+  async listPushDevicesForUsers(userIds: string[]): Promise<DeviceRecord[]> {
+    if (!userIds.length) return [];
+    const placeholders = userIds.map((_, index) => `$${index + 1}`).join(', ');
+    const rows = await this.many<DeviceRow>(`SELECT DISTINCT * FROM devices WHERE user_id IN (${placeholders}) AND expo_push_token IS NOT NULL AND unregistered_at IS NULL ORDER BY updated_at DESC`, userIds);
+    return rows.map(mapDeviceRow);
+  }
+
+  async getDeviceForUser(deviceId: string, userId: string): Promise<DeviceRecord | null> {
+    const row = await this.one<DeviceRow>('SELECT * FROM devices WHERE device_id = $1 AND user_id = $2', [deviceId, userId]);
+    return row ? mapDeviceRow(row) : null;
+  }
+
+  async updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now = new Date().toISOString()): Promise<DeviceRecord | null> {
+    const token = expoPushToken.trim();
+    await this.transaction(async (query) => {
+      if (token) await query('UPDATE devices SET expo_push_token = NULL, updated_at = $1 WHERE user_id = $2 AND expo_push_token = $3', [now, userId, token]);
+      await query('UPDATE devices SET expo_push_token = $1, updated_at = $2 WHERE device_id = $3 AND user_id = $4 AND unregistered_at IS NULL', [token || null, now, deviceId, userId]);
+    });
+    const device = await this.getDeviceForUser(deviceId, userId);
+    if (device) {
+      const membership = await this.defaultMembershipForUser(userId);
+      await this.writeAuditEvent(membership.organizationId, userId, 'device.push_token.updated', deviceId, {}, now);
+    }
+    return device;
+  }
+
+  async unregisterDevice(deviceId: string, userId: string, now = new Date().toISOString()): Promise<DeviceRecord | null> {
+    await this.pool.query('UPDATE devices SET unregistered_at = $1, expo_push_token = NULL, updated_at = $2 WHERE device_id = $3 AND user_id = $4', [now, now, deviceId, userId]);
+    const device = await this.getDeviceForUser(deviceId, userId);
+    if (device) {
+      const membership = await this.defaultMembershipForUser(userId);
+      await this.writeAuditEvent(membership.organizationId, userId, 'device.unregistered', deviceId, {}, now);
+    }
+    return device;
+  }
+
   async createEventTicket(input: EventTicketInput, now = new Date().toISOString()): Promise<EventTicketRecord> {
     const ticket = `evt_${randomToken()}`;
     const ttlSeconds = Math.min(Math.max(input.ttlSeconds ?? 60, 5), 300);
@@ -880,6 +1028,20 @@ function mapPolicyRow(row: PolicyRow): PolicyRecord {
   };
 }
 
+function mapDeviceRow(row: DeviceRow): DeviceRecord {
+  return {
+    deviceId: row.device_id,
+    userId: row.user_id,
+    name: row.name,
+    platform: row.platform ?? undefined,
+    installationId: row.installation_id ?? undefined,
+    expoPushToken: row.expo_push_token ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    unregisteredAt: row.unregistered_at ?? undefined
+  };
+}
+
 function mapAvailabilityRow(row: AvailabilityRow): AvailabilityRecord {
   return {
     userId: row.user_id,
@@ -975,6 +1137,10 @@ function missingTeam(teamId: string): never {
 
 function missingPolicy(policyId: string): never {
   throw new Error(`policy ${policyId} was not created`);
+}
+
+function missingDevice(deviceId: string): never {
+  throw new Error(`device ${deviceId} was not created`);
 }
 
 function missingAvailability(userId: string): never {

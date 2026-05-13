@@ -56,6 +56,26 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.listAuditEventsAfter(created.organizationId, event!.eventId - 1)).toEqual([event]);
   });
 
+  it('manages devices and pairing codes', async () => {
+    await store!.migrate('2026-05-08T00:00:00.000Z');
+    await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const registered = await store!.registerDevice({ userId: 'usr_default', deviceName: 'iPhone', platform: 'ios', installationId: 'install_1', expoPushToken: 'ExponentPushToken[one]' }, '2026-05-08T02:06:00.000Z');
+    expect(registered).toMatchObject({ userId: 'usr_default', name: 'iPhone', platform: 'ios', installationId: 'install_1', expoPushToken: 'ExponentPushToken[one]' });
+    const updated = await store!.updateDevicePushToken(registered.deviceId, 'usr_default', 'ExponentPushToken[two]', '2026-05-08T02:07:00.000Z');
+    expect(updated).toMatchObject({ deviceId: registered.deviceId, expoPushToken: 'ExponentPushToken[two]' });
+    expect((await store!.listPushDevicesForUsers(['usr_default'])).map((device) => device.deviceId)).toContain(registered.deviceId);
+
+    const pairing = await store!.createPairingToken('usr_default', DEFAULT_ORGANIZATION_ID, '2026-05-08T02:08:00.000Z');
+    expect(pairing.token).toMatch(/^pair_/);
+    const credential = await store!.pairDeviceWithCode(pairing.token, 'Android', 'android', '2026-05-08T02:08:30.000Z');
+    expect(credential?.token).toMatch(/^device_/);
+    expect(await store!.verifyDeviceToken(credential!.token)).toMatchObject({ source: 'device', deviceId: credential!.deviceId, userId: 'usr_default', organizationId: DEFAULT_ORGANIZATION_ID });
+    expect(await store!.pairDeviceWithCode(pairing.token, 'Android again', 'android', '2026-05-08T02:09:00.000Z')).toBeNull();
+
+    expect(await store!.unregisterDevice(registered.deviceId, 'usr_default', '2026-05-08T02:09:30.000Z')).toMatchObject({ deviceId: registered.deviceId, unregisteredAt: '2026-05-08T02:09:30.000Z' });
+  });
+
   it('creates and verifies short-lived event and waiter tokens', async () => {
     await store!.migrate('2026-05-08T00:00:00.000Z');
     await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
