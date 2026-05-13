@@ -231,7 +231,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }, [isSignedIn, nativeSignedIn, signedOutManually]);
 
   useEffect(() => {
-    if (!isLoaded || isSignedIn || mobileSessionToken || signedOutManually) return;
+    if (!isLoaded || addingClerkAccount || isSignedIn || mobileSessionToken || signedOutManually) return;
     let cancelled = false;
     const restoreMobileSession = async () => {
       const savedSession = (await tokenCache?.getToken(agentTickMobileSessionJwtKey)) || null;
@@ -244,7 +244,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, mobileSessionToken, signedOutManually]);
+  }, [addingClerkAccount, isLoaded, isSignedIn, mobileSessionToken, signedOutManually]);
 
   useEffect(() => {
     if (!isLoaded || isSignedIn || nativeSignedIn || signedOutManually || mobileSessionToken || clerkLoginToken) return;
@@ -325,11 +325,15 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     setUsingSavedMobileAccount(false);
     setActiveMobileAccountID(null);
     setClerkLoginToken(null);
+    setMobileSessionToken(null);
+    await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
     try {
       await getNativeClerkModule()?.signOut?.();
       await signOut();
     } finally {
       setSignedOutManually(false);
+      setAddAccountSawSignedOut(true);
+      setSignOutInProgress(false);
     }
   }, [signOut]);
 
@@ -844,6 +848,9 @@ function AgentTickApp({
     if (runtimeAuthConfig?.authProvider !== "clerk" || !clerkSessionToken) return;
     setCurrentAccountProfile((current) => (current?.source === "mobile-saved-account" ? current : null));
     setSelectedOrganizationID("");
+    setDeviceID("");
+    setPushStatus("idle");
+    lastClerkPushRegistrationKey.current = "";
     setRequests([]);
     setHistory([]);
     setSelectedID(null);
@@ -908,6 +915,9 @@ function AgentTickApp({
         }
         recordDiagnostic("info", "auth", "saved_account_switch_selected", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
         setConnectionStatus("checking");
+        setDeviceID("");
+        setPushStatus("idle");
+        lastClerkPushRegistrationKey.current = "";
         setSelectedOrganizationID("");
         setRequests([]);
         setHistory([]);
@@ -1489,14 +1499,16 @@ function AgentTickApp({
 
   useEffect(() => {
     if (runtimeAuthConfig?.authProvider !== "clerk") return;
-    if (!settingsLoaded || pushStatus !== "registered" || !currentAccountProfile?.userId || !selectedOrganizationID) return;
+    if (!settingsLoaded || !currentAccountProfile?.userId || !selectedOrganizationID) return;
+    if (notificationStatus !== "granted" && pushStatus !== "registered") return;
+    if (pushStatus === "failed" || pushStatus === "unsupported") return;
     const registrationKey = `${normalizeServerURL(serverURL)}:${currentAccountProfile.userId}`;
     if (lastClerkPushRegistrationKey.current === registrationKey) return;
     lastClerkPushRegistrationKey.current = registrationKey;
     void registerPushToken().catch(() => {
       lastClerkPushRegistrationKey.current = "";
     });
-  }, [currentAccountProfile?.userId, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded]);
+  }, [currentAccountProfile?.userId, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded]);
 
   const clearStoredSessionForServer = useCallback(async (activeServerURL = serverURL) => {
     await AsyncStorage.multiRemove(mobileSessionStorageKeyList(activeServerURL));
