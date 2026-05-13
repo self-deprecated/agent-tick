@@ -2,7 +2,7 @@
 
 Use this guide when you want to run Agent Tick yourself. If you want the managed product instead, start at <https://agenttick.sh>.
 
-Agent Tick can run either as the published Docker image or as the Nix flake package/NixOS module. The server runs the TypeScript API server, serves the built Svelte dashboard, and stores SQLite data in a local SQLite database.
+Agent Tick can run either as the published Docker image or as the Nix flake package/NixOS module. The server runs the TypeScript API server, serves the built Svelte dashboard, and stores durable data in either local SQLite or PostgreSQL.
 
 ## Single-user local mode
 
@@ -64,6 +64,20 @@ agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
 The public product site is <https://agenttick.sh>, but self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
+
+## PostgreSQL and Redis production mode
+
+SQLite remains the simplest self-hosting default. For production-style multi-instance deployments, use PostgreSQL for durable data and Redis for cross-process coordination:
+
+```env
+AGENT_TICK_DATABASE_URL=postgres://agent_tick:change-me@postgres:5432/agent_tick
+AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+AGENT_TICK_REDIS_URL=redis://redis:6379
+AGENT_TICK_EVENT_BUS_BACKEND=redis
+AGENT_TICK_RATE_LIMIT_BACKEND=redis
+```
+
+For larger deployments, set `AGENT_TICK_DATABASE_MIGRATE_ON_START=false` on regular server tasks and run migrations as a separate one-off deployment step. Keep `/readyz` as the traffic readiness check so load balancers only route to tasks that can reach configured dependencies.
 
 ## Clerk multi-user mode
 

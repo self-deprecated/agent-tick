@@ -63,7 +63,7 @@ in {
     databaseUrl = lib.mkOption {
       type = lib.types.str;
       default = "file:/var/lib/agent-tick/agent-tick.db";
-      description = "Database URL. SQLite file URLs are supported today; PostgreSQL URLs are reserved for the AWS-ready backend.";
+      description = "Database URL. Supports SQLite file URLs for simple deployments and PostgreSQL URLs for production-style deployments.";
     };
 
     databaseMigrateOnStart = lib.mkOption {

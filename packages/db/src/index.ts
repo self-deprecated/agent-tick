@@ -498,7 +498,7 @@ export interface AsyncAgentTickStore {
 export function openAgentTickStore(options: OpenStoreOptions = {}): AsyncAgentTickStore {
   const databaseURL = options.databaseURL;
   if (isPostgresDatabaseURL(databaseURL)) {
-    return PostgresAgentTickStore.open({ databaseURL: databaseURL! }) as unknown as AsyncAgentTickStore;
+    return PostgresAgentTickStore.open({ databaseURL: databaseURL! });
   }
   return AgentTickStore.open(options);
 }

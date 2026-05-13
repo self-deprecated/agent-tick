@@ -19,6 +19,7 @@ import type {
   AgentTokenAuth,
   AcceptInviteResult,
   AgentTokenRecord,
+  AsyncAgentTickStore,
   ApprovalWaiterAuth,
   ApprovalWaiterTokenRecord,
   AuditEventRecord,
@@ -290,7 +291,7 @@ interface AuditEventRow {
   created_at: string;
 }
 
-export class PostgresAgentTickStore extends PostgresStoreConnection {
+export class PostgresAgentTickStore extends PostgresStoreConnection implements AsyncAgentTickStore {
   static open(options: PostgresStoreOptions): PostgresAgentTickStore {
     return new PostgresAgentTickStore(options);
   }
