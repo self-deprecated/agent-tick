@@ -1,6 +1,6 @@
 # @self-deprecated/agent-tick
 
-Command-line approval gate for Agent Tick.
+Command-line status, steering, and sanction interface for Agent Tick.
 
 ## Quickstart
 
@@ -21,22 +21,31 @@ The installer opens <https://agenttick.sh>, saves a local Agent Tick token, dete
 
 ## Use
 
-Create an approval request and wait for a response:
+Ask for a sanction and wait for approval:
 
 ```sh
-agent-tick request \
+agent-tick sanction \
   --title "Deploy production?" \
   --body "Deploy commit abc123" \
   --command "deploy production"
 ```
 
-Run a command only after approval:
+Run a command only after sanction approval:
 
 ```sh
-agent-tick guard --title "Run migration?" -- ./migrate.sh
+agent-tick sanction --title "Run migration?" -- ./migrate.sh
 ```
 
-Send a progress update without requesting approval:
+Ask a steering question with structured choices:
+
+```sh
+agent-tick steering \
+  --title "Which rollout?" \
+  --choice canary="Canary" \
+  --choice cancel:deny="Cancel"
+```
+
+Send a status update without requesting approval:
 
 ```sh
 agent-tick status --state working "Checking test failures"

@@ -57,9 +57,10 @@ Current implemented CLI commands only:
 
 - `agent-tick install`
 - `agent-tick setup`
-- `agent-tick request`
+- `agent-tick mode`
+- `agent-tick sanction`
+- `agent-tick steering`
 - `agent-tick abandon`
-- `agent-tick guard`
 - `agent-tick status`
 
 The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. For local repo development without a global install, use the workspace package name:
@@ -86,7 +87,7 @@ Do not document or call missing commands such as `agent-tick mcp`, `agent-tick a
 - Management routes should require owner/admin roles where appropriate.
 - Approval responders must be eligible for the relevant org/team/policy.
 - Approval expiration is enforced in list/get/respond/abandon/wait flows.
-- Treat request titles, bodies, commands, metadata, webhooks, logs, and notifications as disclosure surfaces. Do not include secrets.
+- Treat sanction titles, steering bodies, status messages, commands, metadata, webhooks, logs, and notifications as disclosure surfaces. Do not include secrets.
 
 ## Documentation expectations
 

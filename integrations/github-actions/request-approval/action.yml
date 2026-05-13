@@ -1,5 +1,5 @@
-name: Agent Tick Request Approval
-description: Create an Agent Tick approval request from GitHub Actions and wait for a decision.
+name: Agent Tick Sanction
+description: Create an Agent Tick sanction from GitHub Actions and wait for a decision.
 inputs:
   server:
     description: Agent Tick server URL
@@ -28,7 +28,7 @@ inputs:
     default: "true"
 outputs:
   request-id:
-    description: Created Agent Tick request ID
+    description: Created Agent Tick sanction request ID
     value: ${{ steps.request.outputs.request-id }}
   status:
     description: Final Agent Tick request status
@@ -66,7 +66,7 @@ runs:
       run: |
         set -euo pipefail
         events_file="${RUNNER_TEMP}/agent-tick-events.jsonl"
-        args=(request --json --server "$INPUT_SERVER" --token "$INPUT_TOKEN" --title "$INPUT_TITLE" --timeout "$INPUT_TIMEOUT")
+        args=(sanction --json --server "$INPUT_SERVER" --token "$INPUT_TOKEN" --title "$INPUT_TITLE" --timeout "$INPUT_TIMEOUT")
         if [[ -n "$INPUT_BODY" ]]; then args+=(--body "$INPUT_BODY"); fi
         if [[ -n "$INPUT_COMMAND" ]]; then args+=(--command "$INPUT_COMMAND"); fi
 

@@ -21,7 +21,7 @@ export default function (pi: ExtensionAPI) {
     const result = spawnSync(
       'agent-tick',
       [
-        'request',
+        'sanction',
         '--title',
         'Approve Pi command?',
         '--body',

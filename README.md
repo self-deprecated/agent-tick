@@ -1,6 +1,6 @@
 # Agent Tick
 
-Agent Tick is a human approval gate for AI agents. Your agent asks before doing something sensitive, a human approves or rejects it in Agent Tick, and the agent continues only after approval.
+Agent Tick is a human loop for AI agents: **status** updates, **steering** questions, and **sanctions** for actions that need approval.
 
 Website: <https://agenttick.sh>
 
@@ -23,22 +23,32 @@ npm install -g @self-deprecated/agent-tick
 agent-tick install
 ```
 
-After setup, agents can request approval with:
+After setup, agents can ask for a sanction before sensitive work:
 
 ```sh
-agent-tick request \
+agent-tick sanction \
   --title "Deploy production?" \
   --body "Deploy commit abc123 to production." \
   --command "deploy production"
 ```
 
-Or run a command only after approval:
+Or run a command only after sanction approval:
 
 ```sh
-agent-tick guard --title "Run migration?" -- ./migrate.sh
+agent-tick sanction --title "Run migration?" -- ./migrate.sh
 ```
 
-Agents can also send lightweight progress updates that appear in the mobile approval app:
+Agents can ask steering questions with structured choices:
+
+```sh
+agent-tick steering \
+  --title "Which rollout?" \
+  --choice canary="Canary" \
+  --choice blue_green="Blue/green" \
+  --choice cancel:deny="Cancel"
+```
+
+Agents can send lightweight status updates that appear in Agent Tick:
 
 ```sh
 agent-tick status --state working --next "Run the build" "Tests are passing; checking packaging next"
@@ -77,7 +87,7 @@ Self-hosting is not the default onboarding path. If you want it, use [SELFHOSTIN
 - Fastify API server
 - Svelte dashboard served by the server
 - Expo mobile app
-- `agent-tick` CLI with `install`, `setup`, `mode`, `request`, `abandon`, `guard`, and `status`
+- `agent-tick` CLI with `install`, `setup`, `mode`, `sanction`, `steering`, `abandon`, and `status`
 - SQLite persistence
 - optional Clerk human authentication for multi-user mode
 - local Agent Tick organizations, policies, approvals, audit logs, devices, and agent tokens

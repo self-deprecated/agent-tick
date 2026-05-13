@@ -63,7 +63,7 @@ Installed by Agent Tick:
 - Copies the versioned repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts` to `~/.pi/agent/extensions/agent-tick-approval.ts`
 - The extension watches `bash` tool calls
 - Agent Tick commands are allowed
-- Risky bash commands call `agent-tick request` and block if approval is denied, times out, or fails
+- Risky bash commands call `agent-tick sanction` and block if approval is denied, times out, or fails
 
 ## Scaffolded / disabled until verified
 

@@ -18,7 +18,7 @@ export function createProgram(): Command {
   const program = new Command();
   program
     .name('agent-tick')
-    .description('Human-in-the-loop approval gateway for AI agents')
+    .description('Status, steering, and sanction gateway for AI agents')
     .option('--config <path>', 'config file path [env: AGENT_TICK_CONFIG]')
     .hook('preAction', (thisCommand) => {
       const config = thisCommand.optsWithGlobals<{ config?: string }>().config;
@@ -100,27 +100,56 @@ export function createProgram(): Command {
     });
 
   program
-    .command('request')
-    .description('Create an approval request and wait for a response')
+    .command('sanction')
+    .description('Create a human sanction/approval request and wait for a response')
+    .allowUnknownOption(true)
+    .argument('[command...]', 'optional command to run after sanction approval')
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
-    .requiredOption('--title <title>', 'approval title')
-    .option('--body <body>', 'approval body')
-    .option('--command <command>', 'command or action to approve')
+    .option('--title <title>', 'sanction title')
+    .option('--body <body>', 'sanction body')
+    .option('--command <command>', 'command or action to approve without running it')
     .option('--project <name>', 'project/repository display name')
     .option('--encrypt', 'encrypt title/body/command before sending with AGENT_TICK_E2EE_KEY or --e2ee-key')
     .option('--e2ee-key <key>', 'approval encryption key or passphrase [env: AGENT_TICK_E2EE_KEY]')
     .option('--generate-e2ee-key', 'print a new high-entropy approval encryption key and exit')
     .option('--encrypted-payload-json <json>', 'opaque end-to-end encrypted request envelope JSON')
     .option('--encrypted-payload-file <path>', 'read opaque end-to-end encrypted request envelope JSON from a file')
-    .option('--choice <choice>', 'custom response choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
-    .action(async (options: RequestOptions) => {
+    .action(async (commandParts: string[], options: RequestOptions) => {
       if (options.generateE2eeKey) {
         process.stdout.write(`${generateApprovalEncryptionKey()}\n`);
         return;
       }
+      const commandText = commandParts.length ? commandParts.join(' ') : options.command;
+      const { client, server } = await clientFromOptions(options);
+      const finalRequest = await createAndMaybeWait(client, server, {
+        ...options,
+        title: options.title ?? (commandText ? 'Approve command?' : 'Approve action?'),
+        ...(commandText ? { command: commandText } : {})
+      });
+      const exitCode = exitCodeForRequest(finalRequest);
+      if (exitCode !== 0 || !commandParts.length) {
+        process.exitCode = exitCode;
+        return;
+      }
+      process.exitCode = await runCommand(commandParts);
+    });
+
+  program
+    .command('steering')
+    .description('Ask a structured steering question and wait for a response')
+    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
+    .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
+    .requiredOption('--title <title>', 'steering question title')
+    .option('--body <body>', 'additional context for the steering question')
+    .option('--project <name>', 'project/repository display name')
+    .option('--choice <choice>', 'steering choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
+    .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
+    .option('--json', 'print machine-readable JSON events')
+    .action(async (options: RequestOptions) => {
+      if (!options.choice?.length) throw new Error('steering requires at least one --choice');
       const { client, server } = await clientFromOptions(options);
       const created = await createAndMaybeWait(client, server, options);
       process.exitCode = exitCodeForRequest(created);
@@ -173,31 +202,6 @@ export function createProgram(): Command {
       }
     });
 
-  program
-    .command('guard')
-    .description('Run a command only after approval')
-    .allowUnknownOption(true)
-    .argument('[command...]', 'command to run after approval')
-    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
-    .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
-    .option('--title <title>', 'approval title')
-    .option('--body <body>', 'approval body')
-    .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m', '30m')
-    .action(async (commandParts: string[], options: RequestOptions) => {
-      if (!commandParts.length) throw new Error('guard requires a command after --');
-      const commandText = commandParts.join(' ');
-      const { client, server } = await clientFromOptions(options);
-      const finalRequest = await createAndMaybeWait(client, server, {
-        ...options,
-        title: options.title ?? `Run command?`,
-        command: commandText
-      });
-      if (exitCodeForRequest(finalRequest) !== 0) {
-        process.exitCode = exitCodeForRequest(finalRequest);
-        return;
-      }
-      process.exitCode = await runCommand(commandParts);
-    });
 
   return program;
 }
@@ -708,8 +712,8 @@ function packagedAssetPath(relativePath: string): string {
 }
 
 export function agentInstructionBlock(target: string = 'agent'): string {
-  const title = target === 'pi' ? '---\nname: agent-tick\ndescription: Use Agent Tick before risky commands or sensitive actions.\n---\n\n# Agent Tick approval gate' : '# Agent Tick approval gate';
-  return `${title}\n\nThis machine is connected to Agent Tick. Before running risky, destructive, expensive, production, data-accessing, or dependency-installing actions, request human approval.\n\nUse command approval when possible:\n\n\`\`\`sh\nagent-tick guard -- <command and args>\n\`\`\`\n\nFor decisions that are not a single command, ask for approval:\n\n\`\`\`sh\nagent-tick request --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in approval titles or bodies.\n`;
+  const title = target === 'pi' ? '---\nname: agent-tick\ndescription: Use Agent Tick for sanctions, steering, and status updates.\n---\n\n# Agent Tick human loop' : '# Agent Tick human loop';
+  return `${title}\n\nThis machine is connected to Agent Tick. Use the product language directly: status, steering, and sanctions.\n\nFor sanctions before risky, destructive, expensive, production, data-accessing, or dependency-installing actions:\n\n\`\`\`sh\nagent-tick sanction --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nFor a command that should run only after sanction approval:\n\n\`\`\`sh\nagent-tick sanction -- <command and args>\n\`\`\`\n\nFor structured choices that steer the work:\n\n\`\`\`sh\nagent-tick steering --title "Which approach?" --choice option_a="Option A" --choice cancel:deny="Cancel"\n\`\`\`\n\nFor non-blocking progress updates:\n\n\`\`\`sh\nagent-tick status --state working "Finished edits; validating now"\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in titles, bodies, commands, or status messages.\n`;
 }
 
 async function appendInstallBlock(filePath: string, block: string): Promise<void> {

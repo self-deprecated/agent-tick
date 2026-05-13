@@ -52,10 +52,13 @@ Affected areas:
 
 Current CLI commands are:
 
+- `install`
 - `setup`
-- `request`
+- `mode`
+- `sanction`
+- `steering`
+- `status`
 - `abandon`
-- `guard`
 
 Recommended action: either remove/update these docs and examples, or implement the missing commands intentionally.
 
@@ -80,7 +83,7 @@ Recommended action: update the action to match the current CLI, add tests/fixtur
 
 `scripts/claude-code-ask-user-question-hook.sh` calls `agent-tick adapter`, but the `adapter` command no longer exists.
 
-Recommended action: update the hook to the current `request`/`guard` flow or remove it until adapter support is intentionally rebuilt.
+Recommended action: update the hook to the current `sanction`/`steering` flow or remove it until adapter support is intentionally rebuilt.
 
 ### Management route authorization may be too broad
 

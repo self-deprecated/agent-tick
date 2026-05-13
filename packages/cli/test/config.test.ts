@@ -55,10 +55,11 @@ describe('browser setup', () => {
 });
 
 describe('install instructions', () => {
-  it('documents guard and request commands', () => {
+  it('documents sanction, steering, and status commands', () => {
     const block = agentInstructionBlock('claude');
-    expect(block).toContain('agent-tick guard -- <command and args>');
-    expect(block).toContain('agent-tick request --title');
+    expect(block).toContain('agent-tick sanction -- <command and args>');
+    expect(block).toContain('agent-tick steering --title');
+    expect(block).toContain('agent-tick status --state working');
     expect(block).toContain('Do not include secrets');
   });
 });

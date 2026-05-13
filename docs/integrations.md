@@ -1,6 +1,6 @@
 # Integrations
 
-Agent Tick currently supports the TypeScript CLI commands `install`, `setup`, `mode`, `request`, `abandon`, `guard`, and `status`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
+Agent Tick currently supports the TypeScript CLI commands `install`, `setup`, `mode`, `sanction`, `steering`, `abandon`, and `status`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
 
 For product-vs-self-hosting setup flows, see [Using Agent Tick](./using-agent-tick.md). The public product site is <https://agenttick.sh>.
 
@@ -102,22 +102,31 @@ Use it from a workflow:
 
 The action waits for the final decision and exposes `request-id`, `status`, and `choice-id` outputs. A fuller workflow example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml).
 
-### CLI approval gate
+### CLI status, steering, and sanctions
 
-Use `agent-tick request` to ask for approval without running a local command:
+Use `agent-tick sanction` to ask for approval before sensitive work:
 
 ```sh
-agent-tick request \
+agent-tick sanction \
   --title "Deploy production?" \
   --body "Deploy commit abc123 to production." \
   --command "deploy production" \
   --timeout 30m
 ```
 
-For multiple-choice questions, repeat `--choice` with `id=Label` or `id:kind=Label`. The mobile app and dashboard show each choice; the selected id is returned as the response `choiceId`. Custom choices must include at least one `kind` of `deny`, which is highlighted as the red/destructive option in the mobile app and makes the CLI exit non-zero if selected.
+Use `agent-tick sanction -- <command>` to run a command only after sanction approval:
 
 ```sh
-agent-tick request \
+agent-tick sanction \
+  --title "Run production migration?" \
+  --body "Run the migration against the production database." \
+  -- ./migrate-prod.sh
+```
+
+Use `agent-tick steering` for structured choices. Repeat `--choice` with `id=Label` or `id:kind=Label`. The mobile app and dashboard show each choice; the selected id is returned as the response `choiceId`. Custom choices must include at least one `kind` of `deny`, which is highlighted as the red/destructive option in the mobile app and makes the CLI exit non-zero if selected.
+
+```sh
+agent-tick steering \
   --title "Which rollout should I use?" \
   --body "Choose the deployment strategy." \
   --choice canary="Canary rollout" \
@@ -131,15 +140,6 @@ Use `agent-tick status` to publish AFK progress updates without blocking for app
 agent-tick status --state working --next "Run tests" "Finished edits; validating now"
 ```
 
-Use `agent-tick guard` to run a command only after approval:
-
-```sh
-agent-tick guard \
-  --title "Run production migration?" \
-  --body "Run the migration against the production database." \
-  -- ./migrate-prod.sh
-```
-
 ## Not currently implemented
 
 The previous Go-era/prototype integration docs mentioned additional surfaces such as MCP, JSON stdin adapters, constrained steering, Slack/Teams/SMTP notification sinks, and provider-specific webhook fanout. Those are not part of the current TypeScript CLI/server implementation.
@@ -149,6 +149,6 @@ If those capabilities become product-relevant again, add them intentionally with
 ## Security notes
 
 - Treat third-party sinks as external disclosure boundaries.
-- Do not send secrets in request titles, bodies, commands, or metadata.
+- Do not send secrets in sanction titles, steering bodies, status messages, commands, or metadata.
 - Prefer a short summary plus the dashboard link when routing notifications outside Agent Tick.
 - Set `AGENT_TICK_PUBLIC_URL` so generated links point at the correct dashboard origin.

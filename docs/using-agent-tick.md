@@ -24,27 +24,27 @@ npm install -g @self-deprecated/agent-tick
 agent-tick install
 ```
 
-## Ask for approval
+## Status, steering, and sanctions
 
-Create an approval request and wait for a response:
+Ask for a sanction and wait for approval before sensitive work:
 
 ```sh
-agent-tick request \
+agent-tick sanction \
   --title "Deploy production?" \
   --body "Deploy commit abc123" \
   --command "deploy production"
 ```
 
-Run a command only after approval:
+Run a command only after sanction approval:
 
 ```sh
-agent-tick guard --title "Run migration?" -- ./migrate.sh
+agent-tick sanction --title "Run migration?" -- ./migrate.sh
 ```
 
-Ask a multiple-choice question:
+Ask a steering question with structured choices:
 
 ```sh
-agent-tick request \
+agent-tick steering \
   --title "Which rollout?" \
   --choice canary="Canary" \
   --choice blue_green="Blue/green" \
@@ -129,8 +129,8 @@ Implemented today:
 - `agent-tick install`
 - `agent-tick setup`
 - `agent-tick mode`
-- `agent-tick request`
-- `agent-tick guard`
+- `agent-tick sanction`
+- `agent-tick steering`
 - `agent-tick abandon`
 - `agent-tick status`
 - dashboard approvals
@@ -141,7 +141,6 @@ Not currently implemented:
 
 - MCP server command
 - JSON stdin adapter command
-- steering command
 - Slack/Teams/SMTP-specific notification providers
 
 Those surfaces should be documented only when implementation and tests are added.
