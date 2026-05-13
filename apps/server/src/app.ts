@@ -59,6 +59,16 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
 
   app.get('/healthz', async () => ({ status: 'ok' as const, time: new Date().toISOString() }));
 
+  app.get('/readyz', async (request, reply) => {
+    try {
+      await store.ping();
+      return { status: 'ready' as const, time: new Date().toISOString(), dependencies: { database: 'ok' as const } };
+    } catch (error) {
+      request.log.error({ err: error }, 'readiness check failed');
+      return reply.status(503).send({ status: 'not_ready' as const, time: new Date().toISOString(), dependencies: { database: 'error' as const } });
+    }
+  });
+
   app.get('/v1/auth/config', async () => ({
     mode: config.mode,
     authProvider: config.authProvider,

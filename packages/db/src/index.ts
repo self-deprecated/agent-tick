@@ -408,6 +408,7 @@ export interface CleanupRetentionResult {
 export type Awaitable<T> = T | Promise<T>;
 
 export interface AsyncAgentTickStore {
+  ping(): Awaitable<void>;
   close(): Awaitable<void>;
   migrate(): Awaitable<void>;
   ensureSingleTenantDefaults(now?: string): Awaitable<void>;
@@ -505,6 +506,10 @@ export class AgentTickStore implements AsyncAgentTickStore {
 
   static open(options: OpenStoreOptions = {}): AgentTickStore {
     return new AgentTickStore(new Database(databasePathFromURL(options.databaseURL ?? 'file:./agent-tick.db')));
+  }
+
+  ping(): void {
+    this.db.prepare('SELECT 1').get();
   }
 
   close(): void {
