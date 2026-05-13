@@ -6,9 +6,19 @@ import type {
   CleanupExpiredSecretsResult,
   CleanupRetentionResult,
   HumanIdentityResult,
+  CreatePolicyInput,
+  CreateProjectInput,
+  CreateTeamInput,
   OrganizationMembershipRecord,
   OrganizationSeatUsage,
+  PolicyRecord,
+  ProjectRecord,
+  RemoveTeamMemberInput,
   RetentionPolicy,
+  TeamMembershipRecord,
+  TeamRecord,
+  UpdatePolicyInput,
+  UpsertTeamMemberInput,
   UserProfileRecord
 } from './index.js';
 
@@ -23,6 +33,47 @@ interface OrganizationMembershipRow {
   user_id: string;
   role: string;
   status: string | null;
+}
+
+interface ProjectRow {
+  project_id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+interface TeamRow {
+  team_id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+}
+
+interface TeamMembershipRow extends TeamRow {
+  user_id: string;
+  role: string;
+}
+
+interface PolicyRow {
+  policy_id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  project_id: string | null;
+  team_id: string | null;
+  required_approvals: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
 }
 
 interface AuditEventRow {
@@ -213,6 +264,180 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     return { organizationId, name: cleanName, userId, role: membership.role, status: 'active', createdAt: now, updatedAt: now };
   }
 
+  async listProjects(organizationId = DEFAULT_ORGANIZATION_ID): Promise<ProjectRecord[]> {
+    const rows = await this.many<ProjectRow>(
+      'SELECT * FROM projects WHERE organization_id = $1 ORDER BY archived_at IS NOT NULL, lower(name) ASC',
+      [organizationId]
+    );
+    return rows.map(mapProjectRow);
+  }
+
+  async createProject(input: CreateProjectInput, now = new Date().toISOString()): Promise<ProjectRecord> {
+    const projectId = newID('prj');
+    const cleanName = input.name.trim();
+    const slug = await this.uniqueProjectSlug(input.organizationId, input.slug ?? cleanName);
+    await this.pool.query(
+      'INSERT INTO projects(project_id, organization_id, name, slug, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [projectId, input.organizationId, cleanName, slug, input.description?.trim() || null, now, now]
+    );
+    await this.writeAuditEvent(input.organizationId, input.userId, 'project.created', projectId, { name: cleanName, slug }, now);
+    return (await this.getProject(projectId)) ?? missingProject(projectId);
+  }
+
+  async getProject(projectId: string): Promise<ProjectRecord | null> {
+    const row = await this.one<ProjectRow>('SELECT * FROM projects WHERE project_id = $1', [projectId]);
+    return row ? mapProjectRow(row) : null;
+  }
+
+  async listTeams(organizationId = DEFAULT_ORGANIZATION_ID): Promise<TeamRecord[]> {
+    const rows = await this.many<TeamRow>(
+      'SELECT * FROM teams WHERE organization_id = $1 ORDER BY archived_at IS NOT NULL, lower(name) ASC',
+      [organizationId]
+    );
+    return rows.map(mapTeamRow);
+  }
+
+  async createTeam(input: CreateTeamInput, now = new Date().toISOString()): Promise<TeamMembershipRecord> {
+    const teamId = newID('team');
+    const cleanName = input.name.trim();
+    const slug = await this.uniqueTeamSlug(input.organizationId, input.slug ?? cleanName);
+    await this.transaction(async (query) => {
+      await query(
+        'INSERT INTO teams(team_id, organization_id, name, slug, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [teamId, input.organizationId, cleanName, slug, input.description?.trim() || null, now, now]
+      );
+      await query(
+        'INSERT INTO team_memberships(team_id, organization_id, user_id, role, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)',
+        [teamId, input.organizationId, input.userId, 'owner', now, now]
+      );
+      await query('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+        input.organizationId,
+        input.userId,
+        'team.created',
+        teamId,
+        JSON.stringify({ name: cleanName, slug }),
+        now
+      ]);
+    });
+    return (await this.listTeamMembers(teamId))[0] ?? missingTeam(teamId);
+  }
+
+  async listTeamMembers(teamId: string): Promise<TeamMembershipRecord[]> {
+    const rows = await this.many<TeamMembershipRow>(
+      `
+        SELECT t.team_id, t.organization_id, t.name, t.slug, t.description, t.created_at, t.updated_at, t.archived_at, m.user_id, m.role
+        FROM team_memberships m
+        JOIN teams t ON t.team_id = m.team_id
+        WHERE m.team_id = $1
+        ORDER BY m.created_at ASC
+      `,
+      [teamId]
+    );
+    return rows.map(mapTeamMembershipRow);
+  }
+
+  async upsertTeamMember(input: UpsertTeamMemberInput, now = new Date().toISOString()): Promise<TeamMembershipRecord> {
+    if (!(await this.teamBelongsToOrganization(input.teamId, input.organizationId))) {
+      throw httpError(404, 'not_found', 'Team not found');
+    }
+    if (!(await this.organizationMembershipForUser(input.userId, input.organizationId))) {
+      throw httpError(400, 'bad_request', 'User is not a member of the selected organization');
+    }
+    const role = input.role?.trim() || 'member';
+    await this.pool.query(
+      `
+        INSERT INTO team_memberships(team_id, organization_id, user_id, role, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT(team_id, user_id) DO UPDATE SET role = excluded.role, updated_at = excluded.updated_at
+      `,
+      [input.teamId, input.organizationId, input.userId, role, now, now]
+    );
+    await this.writeAuditEvent(input.organizationId, input.actorUserId, 'team_member.upserted', input.teamId, { userId: input.userId, role }, now);
+    return (await this.listTeamMembers(input.teamId)).find((member) => member.userId === input.userId) ?? missingTeam(input.teamId);
+  }
+
+  async removeTeamMember(input: RemoveTeamMemberInput, now = new Date().toISOString()): Promise<TeamMembershipRecord | null> {
+    if (!(await this.teamBelongsToOrganization(input.teamId, input.organizationId))) {
+      throw httpError(404, 'not_found', 'Team not found');
+    }
+    const members = await this.listTeamMembers(input.teamId);
+    const member = members.find((entry) => entry.userId === input.userId);
+    if (!member) return null;
+    if (member.role === 'owner' && members.filter((entry) => entry.role === 'owner').length <= 1) {
+      throw httpError(400, 'bad_request', 'Cannot remove the last team owner');
+    }
+    await this.pool.query('DELETE FROM team_memberships WHERE team_id = $1 AND organization_id = $2 AND user_id = $3', [input.teamId, input.organizationId, input.userId]);
+    await this.writeAuditEvent(input.organizationId, input.actorUserId, 'team_member.removed', input.teamId, { userId: input.userId, role: member.role }, now);
+    return member;
+  }
+
+  async listPolicies(organizationId = DEFAULT_ORGANIZATION_ID): Promise<PolicyRecord[]> {
+    const rows = await this.many<PolicyRow>(
+      'SELECT * FROM policies WHERE organization_id = $1 ORDER BY archived_at IS NOT NULL, lower(name) ASC',
+      [organizationId]
+    );
+    return rows.map(mapPolicyRow);
+  }
+
+  async createPolicy(input: CreatePolicyInput, now = new Date().toISOString()): Promise<PolicyRecord> {
+    if (input.projectId && !(await this.projectBelongsToOrganization(input.projectId, input.organizationId))) {
+      throw httpError(400, 'bad_request', 'Project is not in the selected organization');
+    }
+    if (input.teamId && !(await this.teamBelongsToOrganization(input.teamId, input.organizationId))) {
+      throw httpError(400, 'bad_request', 'Team is not in the selected organization');
+    }
+    const policyId = newID('pol');
+    const cleanName = input.name.trim();
+    const requiredApprovals = Math.min(Math.max(Math.trunc(input.requiredApprovals ?? 1), 1), 10);
+    await this.pool.query(
+      'INSERT INTO policies(policy_id, organization_id, name, description, project_id, team_id, required_approvals, enabled, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+      [policyId, input.organizationId, cleanName, input.description?.trim() || null, input.projectId ?? null, input.teamId ?? null, requiredApprovals, input.enabled !== false, now, now]
+    );
+    await this.writeAuditEvent(input.organizationId, input.userId, 'policy.created', policyId, { name: cleanName, requiredApprovals }, now);
+    return (await this.getPolicy(policyId)) ?? missingPolicy(policyId);
+  }
+
+  async getPolicy(policyId: string): Promise<PolicyRecord | null> {
+    const row = await this.one<PolicyRow>('SELECT * FROM policies WHERE policy_id = $1', [policyId]);
+    return row ? mapPolicyRow(row) : null;
+  }
+
+  async updatePolicy(input: UpdatePolicyInput, now = new Date().toISOString()): Promise<PolicyRecord | null> {
+    const existing = await this.one<PolicyRow>('SELECT * FROM policies WHERE policy_id = $1 AND organization_id = $2', [input.policyId, input.organizationId]);
+    if (!existing) return null;
+    if (input.projectId && !(await this.projectBelongsToOrganization(input.projectId, input.organizationId))) {
+      throw httpError(400, 'bad_request', 'Project is not in the selected organization');
+    }
+    if (input.teamId && !(await this.teamBelongsToOrganization(input.teamId, input.organizationId))) {
+      throw httpError(400, 'bad_request', 'Team is not in the selected organization');
+    }
+    const name = input.name?.trim() || existing.name;
+    const description = input.description === undefined ? existing.description : input.description.trim() || null;
+    const projectId = input.projectId === undefined ? existing.project_id : input.projectId || null;
+    const teamId = input.teamId === undefined ? existing.team_id : input.teamId || null;
+    const requiredApprovals = input.requiredApprovals === undefined ? existing.required_approvals : Math.min(Math.max(Math.trunc(input.requiredApprovals), 1), 10);
+    const enabled = input.enabled === undefined ? existing.enabled : input.enabled;
+    const archivedAt = input.archived === undefined ? existing.archived_at : input.archived ? (existing.archived_at ?? now) : null;
+    await this.pool.query(
+      'UPDATE policies SET name = $1, description = $2, project_id = $3, team_id = $4, required_approvals = $5, enabled = $6, archived_at = $7, updated_at = $8 WHERE policy_id = $9 AND organization_id = $10',
+      [name, description, projectId, teamId, requiredApprovals, enabled, archivedAt, now, input.policyId, input.organizationId]
+    );
+    await this.writeAuditEvent(input.organizationId, input.userId, 'policy.updated', input.policyId, { name, requiredApprovals, projectId, teamId, enabled, archived: Boolean(archivedAt) }, now);
+    return (await this.getPolicy(input.policyId)) ?? missingPolicy(input.policyId);
+  }
+
+  async projectBelongsToOrganization(projectId: string, organizationId: string): Promise<boolean> {
+    return Boolean(await this.one('SELECT 1 FROM projects WHERE project_id = $1 AND organization_id = $2', [projectId, organizationId]));
+  }
+
+  async teamBelongsToOrganization(teamId: string, organizationId: string): Promise<boolean> {
+    return Boolean(await this.one('SELECT 1 FROM teams WHERE team_id = $1 AND organization_id = $2', [teamId, organizationId]));
+  }
+
+  async policyBelongsToOrganization(policyId: string, organizationId: string): Promise<boolean> {
+    return Boolean(await this.one('SELECT 1 FROM policies WHERE policy_id = $1 AND organization_id = $2', [policyId, organizationId]));
+  }
+
   async listAuditEvents(organizationId: string, limit = 100): Promise<AuditEventRecord[]> {
     const rows = await this.many<AuditEventRow>(
       'SELECT * FROM audit_events WHERE organization_id = $1 ORDER BY event_id DESC LIMIT $2',
@@ -234,6 +459,25 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
       'INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
       [organizationId, userId, eventType, targetId, JSON.stringify(payload ?? {}), now]
     );
+  }
+
+  private async uniqueProjectSlug(organizationId: string, input: string): Promise<string> {
+    return this.uniqueSlug('projects', 'slug', organizationId, input);
+  }
+
+  private async uniqueTeamSlug(organizationId: string, input: string): Promise<string> {
+    return this.uniqueSlug('teams', 'slug', organizationId, input);
+  }
+
+  private async uniqueSlug(table: 'projects' | 'teams', column: 'slug', organizationId: string, input: string): Promise<string> {
+    const base = slugify(input);
+    let candidate = base;
+    let suffix = 2;
+    while (await this.one(`SELECT 1 FROM ${table} WHERE organization_id = $1 AND ${column} = $2`, [organizationId, candidate])) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    return candidate;
   }
 
   private async one<T extends QueryResultRow>(sql: string, params: unknown[] = []): Promise<T | null> {
@@ -275,6 +519,56 @@ function mapOrganizationMembershipRow(row: OrganizationMembershipRow): Organizat
   };
 }
 
+function mapProjectRow(row: ProjectRow): ProjectRecord {
+  return {
+    projectId: row.project_id,
+    organizationId: row.organization_id,
+    name: row.name,
+    slug: row.slug,
+    description: row.description ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? undefined
+  };
+}
+
+function mapTeamRow(row: TeamRow): TeamRecord {
+  return {
+    teamId: row.team_id,
+    organizationId: row.organization_id,
+    name: row.name,
+    slug: row.slug,
+    description: row.description ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? undefined
+  };
+}
+
+function mapTeamMembershipRow(row: TeamMembershipRow): TeamMembershipRecord {
+  return {
+    ...mapTeamRow(row),
+    userId: row.user_id,
+    role: row.role
+  };
+}
+
+function mapPolicyRow(row: PolicyRow): PolicyRecord {
+  return {
+    policyId: row.policy_id,
+    organizationId: row.organization_id,
+    name: row.name,
+    description: row.description ?? undefined,
+    projectId: row.project_id ?? undefined,
+    teamId: row.team_id ?? undefined,
+    requiredApprovals: row.required_approvals,
+    enabled: Boolean(row.enabled),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at ?? undefined
+  };
+}
+
 function mapAuditEventRow(row: AuditEventRow): AuditEventRecord {
   return {
     eventId: Number(row.event_id),
@@ -285,6 +579,33 @@ function mapAuditEventRow(row: AuditEventRow): AuditEventRecord {
     payload: parseJSON(row.payload_json, {}),
     createdAt: row.created_at
   };
+}
+
+function slugify(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'project';
+}
+
+function httpError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
+  const error = new Error(message) as Error & { statusCode: number; code: string };
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
+}
+
+function missingProject(projectId: string): never {
+  throw new Error(`project ${projectId} was not created`);
+}
+
+function missingTeam(teamId: string): never {
+  throw new Error(`team ${teamId} was not created`);
+}
+
+function missingPolicy(policyId: string): never {
+  throw new Error(`policy ${policyId} was not created`);
 }
 
 function retentionCutoff(now: string, days: number): string {
