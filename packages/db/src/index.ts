@@ -298,7 +298,6 @@ export interface UpdatePolicyInput {
 
 export interface DeviceRegistrationInput {
   userId: string;
-  organizationId: string;
   deviceName: string;
   platform?: string;
   installationId?: string;
@@ -308,7 +307,6 @@ export interface DeviceRegistrationInput {
 export interface DeviceRecord {
   deviceId: string;
   userId: string;
-  organizationId: string;
   name: string;
   platform: string | undefined;
   installationId: string | undefined;
@@ -443,7 +441,8 @@ export class AgentTickStore {
     this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
     this.db.exec(MIGRATION_0003_AGENT_STATUS_UPDATES);
     this.db.exec('DROP INDEX IF EXISTS devices_user_installation_idx');
-    this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS devices_user_org_installation_idx ON devices(user_id, organization_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL');
+    this.db.exec('DROP INDEX IF EXISTS devices_user_org_installation_idx');
+    this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS devices_user_installation_idx ON devices(user_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL');
     this.db.exec('CREATE INDEX IF NOT EXISTS audit_events_org_event_idx ON audit_events(organization_id, event_id)');
     const appliedAt = new Date().toISOString();
     this.db.prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)').run('0001_core', appliedAt);
@@ -1254,55 +1253,78 @@ export class AgentTickStore {
     const title = parsed.encryptedPayload ? 'Encrypted approval request' : parsed.title;
     const body = parsed.encryptedPayload ? 'Open Agent Tick to decrypt this request.' : parsed.body ?? null;
     const command = parsed.encryptedPayload ? null : parsed.command ?? null;
-    this.db
-      .prepare(
-        `INSERT INTO approval_requests(
-          id, organization_id, user_id, requester_name, requester_agent_id, requester_host,
-          requester_working_directory, requester_project_name, requester_project_id, request_type,
-          title, body, command, encrypted_payload_json, choices_json, default_choice, allow_freeform_reply, expires_at,
-          risk, metadata_json, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        id,
+    const metadata = parsed.metadata ?? {};
+    const policy = this.approvalPolicyForMetadata(organizationId, metadata);
+    const recipients = this.resolveApprovalRecipients({ organizationId, ...(input.userId ? { requesterUserId: input.userId } : {}), policy });
+
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO approval_requests(
+            id, organization_id, user_id, requester_name, requester_agent_id, requester_host,
+            requester_working_directory, requester_project_name, requester_project_id, request_type,
+            title, body, command, encrypted_payload_json, choices_json, default_choice, allow_freeform_reply, expires_at,
+            risk, metadata_json, status, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          organizationId,
+          input.userId ?? null,
+          parsed.requester.name,
+          requesterAgentId,
+          parsed.requester.host ?? null,
+          parsed.requester.workingDirectory ?? null,
+          parsed.requester.projectName ?? null,
+          parsed.requester.projectId ?? null,
+          parsed.requestType,
+          title,
+          body,
+          command,
+          parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null,
+          JSON.stringify(choices),
+          parsed.defaultChoice ?? null,
+          parsed.allowFreeformReply ? 1 : 0,
+          parsed.expiresAt ?? null,
+          parsed.risk ?? null,
+          JSON.stringify(metadata),
+          'pending',
+          now
+        );
+      const insertRecipient = this.db.prepare('INSERT INTO approval_recipients(request_id, user_id, organization_id, source, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      for (const recipient of recipients) {
+        insertRecipient.run(id, recipient.userId, organizationId, recipient.source, 'pending', now, now);
+      }
+      this.writeAuditEvent(
         organizationId,
-        input.userId ?? null,
-        parsed.requester.name,
-        requesterAgentId,
-        parsed.requester.host ?? null,
-        parsed.requester.workingDirectory ?? null,
-        parsed.requester.projectName ?? null,
-        parsed.requester.projectId ?? null,
-        parsed.requestType,
-        title,
-        body,
-        command,
-        parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null,
-        JSON.stringify(choices),
-        parsed.defaultChoice ?? null,
-        parsed.allowFreeformReply ? 1 : 0,
-        parsed.expiresAt ?? null,
-        parsed.risk ?? null,
-        JSON.stringify(parsed.metadata ?? {}),
-        'pending',
+        input.userId ?? requesterAgentId,
+        'approval.created',
+        id,
+        parsed.encryptedPayload ? { encrypted: true, algorithm: parsed.encryptedPayload.algorithm, keyId: parsed.encryptedPayload.keyId } : { title: parsed.title },
         now
       );
-    this.writeAuditEvent(
-      organizationId,
-      input.userId ?? requesterAgentId,
-      'approval.created',
-      id,
-      parsed.encryptedPayload ? { encrypted: true, algorithm: parsed.encryptedPayload.algorithm, keyId: parsed.encryptedPayload.keyId } : { title: parsed.title },
-      now
-    );
-    return this.getApprovalRequest(id, undefined, now) ?? missingApproval(id);
+    });
+    tx();
+    return this.getApprovalRequest(id, input.userId, now) ?? missingApproval(id);
   }
 
   listApprovalRequests(organizationId = DEFAULT_ORGANIZATION_ID, currentUserId?: string, now = new Date().toISOString()): ApprovalRequest[] {
     this.expirePendingApprovals(organizationId, now);
+    if (!currentUserId) {
+      const rows = this.db
+        .prepare('SELECT * FROM approval_requests WHERE organization_id = ? ORDER BY created_at DESC')
+        .all(organizationId) as ApprovalRow[];
+      return rows.map((row) => this.mapApprovalWithProgress(row, currentUserId));
+    }
     const rows = this.db
-      .prepare('SELECT * FROM approval_requests WHERE organization_id = ? ORDER BY created_at DESC')
-      .all(organizationId) as ApprovalRow[];
+      .prepare(`
+        SELECT a.*
+        FROM approval_requests a
+        JOIN approval_recipients r ON r.request_id = a.id AND r.user_id = ?
+        WHERE a.organization_id = ?
+        ORDER BY a.created_at DESC
+      `)
+      .all(currentUserId, organizationId) as ApprovalRow[];
     return rows.map((row) => this.mapApprovalWithProgress(row, currentUserId));
   }
 
@@ -1315,7 +1337,9 @@ export class AgentTickStore {
   getApprovalRequestForOrganization(id: string, organizationId: string, currentUserId?: string, now = new Date().toISOString()): ApprovalRequest | null {
     this.expirePendingApproval(id, organizationId, now);
     const row = this.approvalRow(id, organizationId);
-    return row ? this.mapApprovalWithProgress(row, currentUserId) : null;
+    if (!row) return null;
+    if (currentUserId && !this.approvalRecipientExists(id, currentUserId)) return null;
+    return this.mapApprovalWithProgress(row, currentUserId);
   }
 
   respondToApprovalRequest(id: string, response: RespondApprovalRequest, responderUserId = DEFAULT_USER_ID, now = new Date().toISOString()): ApprovalRequest | null {
@@ -1405,23 +1429,67 @@ export class AgentTickStore {
 
   private approvalPolicyForRow(row: ApprovalRow): PolicyRow | null {
     const metadata = parseJSON<Record<string, string>>(row.metadata_json, {});
+    return this.approvalPolicyForMetadata(row.organization_id, metadata);
+  }
+
+  private approvalPolicyForMetadata(organizationId: string, metadata: Record<string, string>): PolicyRow | null {
     const policyId = metadata.defaultApprovalPolicy || metadata.policyId;
     if (!policyId) return null;
     const policy = this.db
       .prepare('SELECT * FROM policies WHERE policy_id = ? AND organization_id = ? AND enabled = 1 AND archived_at IS NULL')
-      .get(policyId, row.organization_id) as PolicyRow | undefined;
+      .get(policyId, organizationId) as PolicyRow | undefined;
     return policy ?? null;
+  }
+
+  private resolveApprovalRecipients(input: { organizationId: string; requesterUserId?: string; policy: PolicyRow | null }): Array<{ userId: string; source: string }> {
+    const recipients = new Map<string, string>();
+    if (input.requesterUserId) recipients.set(input.requesterUserId, 'requester');
+
+    if (input.policy?.team_id) {
+      const rows = this.db
+        .prepare(`
+          SELECT tm.user_id, tm.role, om.role AS organization_role
+          FROM team_memberships tm
+          JOIN organization_memberships om ON om.organization_id = tm.organization_id AND om.user_id = tm.user_id AND om.status = 'active'
+          WHERE tm.organization_id = ? AND tm.team_id = ?
+          ORDER BY tm.created_at ASC
+        `)
+        .all(input.organizationId, input.policy.team_id) as Array<{ user_id: string; role: string; organization_role: string }>;
+      for (const row of rows) {
+        if (approvalTeamRoleCanRespond(row.role) && approvalOrganizationRoleCanRespond(row.organization_role)) recipients.set(row.user_id, 'policy_team');
+      }
+    } else {
+      const members = this.listOrganizationMembers(input.organizationId);
+      for (const member of members) {
+        if (approvalOrganizationRoleCanRespond(member.role)) recipients.set(member.userId, input.policy ? 'policy_org' : 'organization');
+      }
+    }
+
+    if (!recipients.size) recipients.set(input.requesterUserId ?? DEFAULT_USER_ID, 'fallback');
+    return [...recipients.entries()].map(([userId, source]) => ({ userId, source }));
+  }
+
+  private approvalRecipientExists(requestId: string, userId: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM approval_recipients WHERE request_id = ? AND user_id = ?').get(requestId, userId));
+  }
+
+  private markApprovalRecipientResponded(requestId: string, userId: string, now: string): void {
+    this.db
+      .prepare("UPDATE approval_recipients SET status = 'responded', responded_at = ?, updated_at = ? WHERE request_id = ? AND user_id = ?")
+      .run(now, now, requestId, userId);
   }
 
   private assertApprovalResponderEligible(row: ApprovalRow, responderUserId: string, policy: PolicyRow | null): void {
     const membership = this.organizationMembershipForUser(responderUserId, row.organization_id);
     if (!membership) throw httpError(403, 'forbidden', 'Responder is not an active member of this organization');
     if (!approvalOrganizationRoleCanRespond(membership.role)) throw httpError(403, 'forbidden', 'Responder role is not eligible to approve requests');
-    if (!policy?.team_id) return;
-    const teamRole = this.teamMembershipRole(policy.team_id, row.organization_id, responderUserId);
-    if (!teamRole || !approvalTeamRoleCanRespond(teamRole)) {
-      throw httpError(403, 'forbidden', 'Responder is not eligible for this team approval policy');
+    if (policy?.team_id) {
+      const teamRole = this.teamMembershipRole(policy.team_id, row.organization_id, responderUserId);
+      if (!teamRole || !approvalTeamRoleCanRespond(teamRole)) {
+        throw httpError(403, 'forbidden', 'Responder is not eligible for this team approval policy');
+      }
     }
+    if (!this.approvalRecipientExists(row.id, responderUserId)) throw httpError(403, 'forbidden', 'Responder is not a recipient for this approval request');
   }
 
   private teamMembershipRole(teamId: string, organizationId: string, userId: string): string | null {
@@ -1446,6 +1514,7 @@ export class AgentTickStore {
     this.assertApprovalResponderEligible(row, responderUserId, policy);
     if (policy && policy.required_approvals > 1 && parsed.choiceId) {
       this.recordApprovalVote(row.id, policy.policy_id, responderUserId, parsed, now);
+      this.markApprovalRecipientResponded(row.id, responderUserId, now);
       this.writeAuditEvent(row.organization_id, responderUserId, 'approval.vote_recorded', row.id, { policyId: policy.policy_id, choiceId: parsed.choiceId }, now);
       if (parsed.choiceId === 'approve' && this.approvalVoteCount(row.id, 'approve') < policy.required_approvals) {
         return this.getApprovalRequestForOrganization(row.id, row.organization_id, responderUserId) ?? missingApproval(row.id);
@@ -1454,6 +1523,7 @@ export class AgentTickStore {
     this.db
       .prepare('UPDATE approval_requests SET status = ?, response_json = ?, responded_at = ? WHERE id = ? AND organization_id = ? AND status = ?')
       .run('responded', JSON.stringify(parsed), now, row.id, row.organization_id, 'pending');
+    this.markApprovalRecipientResponded(row.id, responderUserId, now);
     this.writeAuditEvent(row.organization_id, responderUserId, 'approval.responded', row.id, parsed, now);
     return this.getApprovalRequestForOrganization(row.id, row.organization_id, responderUserId) ?? missingApproval(row.id);
   }
@@ -1505,15 +1575,15 @@ export class AgentTickStore {
   registerDevice(input: DeviceRegistrationInput, now = new Date().toISOString()): DeviceRecord {
     const existing = input.installationId
       ? (this.db
-          .prepare('SELECT * FROM devices WHERE user_id = ? AND organization_id = ? AND installation_id = ? AND unregistered_at IS NULL')
-          .get(input.userId, input.organizationId, input.installationId) as DeviceRow | undefined)
+          .prepare('SELECT * FROM devices WHERE user_id = ? AND installation_id = ? AND unregistered_at IS NULL')
+          .get(input.userId, input.installationId) as DeviceRow | undefined)
       : undefined;
     const deviceId = existing?.device_id ?? newID('dev');
     const expoPushToken = input.expoPushToken?.trim() || null;
 
     const tx = this.db.transaction(() => {
       if (expoPushToken) {
-        this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE organization_id = ? AND expo_push_token = ?').run(now, input.organizationId, expoPushToken);
+        this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE user_id = ? AND expo_push_token = ?').run(now, input.userId, expoPushToken);
       }
       if (existing) {
         this.db
@@ -1521,13 +1591,14 @@ export class AgentTickStore {
           .run(input.deviceName.trim(), input.platform ?? null, expoPushToken, now, deviceId);
       } else {
         this.db
-          .prepare('INSERT INTO devices(device_id, user_id, organization_id, name, platform, installation_id, expo_push_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .run(deviceId, input.userId, input.organizationId, input.deviceName.trim(), input.platform ?? null, input.installationId ?? null, expoPushToken, now, now);
+          .prepare('INSERT INTO devices(device_id, user_id, name, platform, installation_id, expo_push_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(deviceId, input.userId, input.deviceName.trim(), input.platform ?? null, input.installationId ?? null, expoPushToken, now, now);
       }
     });
     tx();
     const device = this.getDeviceForUser(deviceId, input.userId) ?? missingDevice(deviceId);
-    this.writeAuditEvent(input.organizationId, input.userId, existing ? 'device.updated' : 'device.registered', deviceId, { name: input.deviceName.trim(), platform: input.platform }, now);
+    const membership = this.defaultMembershipForUser(input.userId);
+    this.writeAuditEvent(membership.organizationId, input.userId, existing ? 'device.updated' : 'device.registered', deviceId, { name: input.deviceName.trim(), platform: input.platform }, now);
     return device;
   }
 
@@ -1582,8 +1653,8 @@ export class AgentTickStore {
     const deviceId = newID('dev');
     const tx = this.db.transaction(() => {
       this.db
-        .prepare('INSERT INTO devices(device_id, user_id, organization_id, name, platform, token_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(deviceId, row.user_id, row.organization_id, deviceName.trim(), platform ?? null, hashToken(token), now, now);
+        .prepare('INSERT INTO devices(device_id, user_id, name, platform, token_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(deviceId, row.user_id, deviceName.trim(), platform ?? null, hashToken(token), now, now);
       this.db.prepare('UPDATE pairing_codes SET used_at = ? WHERE token_hash = ?').run(now, row.token_hash);
     });
     tx();
@@ -1597,11 +1668,12 @@ export class AgentTickStore {
       .prepare('SELECT * FROM devices WHERE token_hash = ? AND unregistered_at IS NULL')
       .get(hashToken(token)) as DeviceRow | undefined;
     if (!row) return null;
+    const membership = this.defaultMembershipForUser(row.user_id);
     return {
       source: 'device',
       deviceId: row.device_id,
       userId: row.user_id,
-      organizationId: row.organization_id
+      organizationId: membership.organizationId
     };
   }
 
@@ -1610,10 +1682,27 @@ export class AgentTickStore {
     return rows.map(mapDeviceRow);
   }
 
-  listPushDevicesForOrganization(organizationId: string): DeviceRecord[] {
+  listPushDevicesForApprovalRecipients(requestId: string): DeviceRecord[] {
     const rows = this.db
-      .prepare('SELECT * FROM devices WHERE organization_id = ? AND expo_push_token IS NOT NULL AND unregistered_at IS NULL ORDER BY updated_at DESC')
-      .all(organizationId) as DeviceRow[];
+      .prepare(`
+        SELECT DISTINCT d.*
+        FROM approval_recipients r
+        JOIN devices d ON d.user_id = r.user_id
+        WHERE r.request_id = ?
+          AND d.expo_push_token IS NOT NULL
+          AND d.unregistered_at IS NULL
+        ORDER BY d.updated_at DESC
+      `)
+      .all(requestId) as DeviceRow[];
+    return rows.map(mapDeviceRow);
+  }
+
+  listPushDevicesForUsers(userIds: string[]): DeviceRecord[] {
+    if (!userIds.length) return [];
+    const placeholders = userIds.map(() => '?').join(', ');
+    const rows = this.db
+      .prepare(`SELECT DISTINCT * FROM devices WHERE user_id IN (${placeholders}) AND expo_push_token IS NOT NULL AND unregistered_at IS NULL ORDER BY updated_at DESC`)
+      .all(...userIds) as DeviceRow[];
     return rows.map(mapDeviceRow);
   }
 
@@ -1625,22 +1714,25 @@ export class AgentTickStore {
   updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now = new Date().toISOString()): DeviceRecord | null {
     const token = expoPushToken.trim();
     const tx = this.db.transaction(() => {
-      if (token) {
-        const existing = this.db.prepare('SELECT organization_id FROM devices WHERE device_id = ? AND user_id = ? AND unregistered_at IS NULL').get(deviceId, userId) as { organization_id: string } | undefined;
-        if (existing) this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE organization_id = ? AND expo_push_token = ?').run(now, existing.organization_id, token);
-      }
+      if (token) this.db.prepare('UPDATE devices SET expo_push_token = NULL, updated_at = ? WHERE user_id = ? AND expo_push_token = ?').run(now, userId, token);
       this.db.prepare('UPDATE devices SET expo_push_token = ?, updated_at = ? WHERE device_id = ? AND user_id = ? AND unregistered_at IS NULL').run(token || null, now, deviceId, userId);
     });
     tx();
     const device = this.getDeviceForUser(deviceId, userId);
-    if (device) this.writeAuditEvent(device.organizationId, userId, 'device.push_token.updated', deviceId, {}, now);
+    if (device) {
+      const membership = this.defaultMembershipForUser(userId);
+      this.writeAuditEvent(membership.organizationId, userId, 'device.push_token.updated', deviceId, {}, now);
+    }
     return device;
   }
 
   unregisterDevice(deviceId: string, userId: string, now = new Date().toISOString()): DeviceRecord | null {
     this.db.prepare('UPDATE devices SET unregistered_at = ?, expo_push_token = NULL, updated_at = ? WHERE device_id = ? AND user_id = ?').run(now, now, deviceId, userId);
     const device = this.getDeviceForUser(deviceId, userId);
-    if (device) this.writeAuditEvent(device.organizationId, userId, 'device.unregistered', deviceId, {}, now);
+    if (device) {
+      const membership = this.defaultMembershipForUser(userId);
+      this.writeAuditEvent(membership.organizationId, userId, 'device.unregistered', deviceId, {}, now);
+    }
     return device;
   }
 
@@ -1987,7 +2079,6 @@ function mapDeviceRow(row: DeviceRow): DeviceRecord {
   return {
     deviceId: row.device_id,
     userId: row.user_id,
-    organizationId: row.organization_id,
     name: row.name,
     platform: row.platform ?? undefined,
     installationId: row.installation_id ?? undefined,
@@ -2384,7 +2475,6 @@ interface MobileDiagnosticRow {
 interface DeviceRow {
   device_id: string;
   user_id: string;
-  organization_id: string;
   name: string;
   platform: string | null;
   installation_id: string | null;
@@ -2645,6 +2735,23 @@ CREATE TABLE IF NOT EXISTS approval_requests (
 
 CREATE INDEX IF NOT EXISTS approval_requests_org_status_idx ON approval_requests(organization_id, status, created_at);
 
+CREATE TABLE IF NOT EXISTS approval_recipients (
+  request_id TEXT NOT NULL REFERENCES approval_requests(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  organization_id TEXT REFERENCES organizations(id),
+  source TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  notified_at TEXT,
+  seen_at TEXT,
+  responded_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(request_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS approval_recipients_user_idx ON approval_recipients(user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS approval_recipients_request_idx ON approval_recipients(request_id);
+
 CREATE TABLE IF NOT EXISTS approval_votes (
   vote_id TEXT PRIMARY KEY,
   request_id TEXT NOT NULL REFERENCES approval_requests(id) ON DELETE CASCADE,
@@ -2711,7 +2818,6 @@ CREATE INDEX IF NOT EXISTS pairing_codes_expires_idx ON pairing_codes(expires_at
 CREATE TABLE IF NOT EXISTS devices (
   device_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
-  organization_id TEXT NOT NULL REFERENCES organizations(id),
   name TEXT NOT NULL,
   platform TEXT,
   installation_id TEXT,
@@ -2723,7 +2829,7 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 
 CREATE INDEX IF NOT EXISTS devices_user_idx ON devices(user_id, unregistered_at);
-CREATE UNIQUE INDEX IF NOT EXISTS devices_user_org_installation_idx ON devices(user_id, organization_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS devices_user_installation_idx ON devices(user_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS audit_events (
   event_id INTEGER PRIMARY KEY AUTOINCREMENT,

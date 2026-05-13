@@ -579,6 +579,7 @@ function AgentTickApp({
   const didPrimeNotifications = useRef(false);
   const pairingInFlight = useRef(false);
   const previousScreenRef = useRef<Screen>(screen);
+  const lastClerkPushRegistrationKey = useRef("");
 
   const dismissedStatusScopeKey = `${normalizeServerURL(serverURL)}:${selectedOrganizationID || "default"}`;
   const visibleDismissedStatusID = dismissedStatusScope === dismissedStatusScopeKey ? dismissedStatusID : statusUpdates[0]?.statusId ?? null;
@@ -1468,6 +1469,17 @@ function AgentTickApp({
     }
   };
 
+  useEffect(() => {
+    if (runtimeAuthConfig?.authProvider !== "clerk") return;
+    if (!settingsLoaded || pushStatus !== "registered" || !currentAccountProfile?.userId || !selectedOrganizationID) return;
+    const registrationKey = `${normalizeServerURL(serverURL)}:${currentAccountProfile.userId}`;
+    if (lastClerkPushRegistrationKey.current === registrationKey) return;
+    lastClerkPushRegistrationKey.current = registrationKey;
+    void registerPushToken().catch(() => {
+      lastClerkPushRegistrationKey.current = "";
+    });
+  }, [currentAccountProfile?.userId, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded]);
+
   const clearStoredSessionForServer = useCallback(async (activeServerURL = serverURL) => {
     await AsyncStorage.multiRemove(mobileSessionStorageKeyList(activeServerURL));
   }, [serverURL]);
@@ -1532,16 +1544,11 @@ function AgentTickApp({
 
   const selectOrganization = useCallback((organizationID: string) => {
     if (organizationID === selectedOrganizationID) return;
-    if (runtimeAuthConfig?.authProvider === "clerk" && deviceID) {
-      void bestEffortUnregisterDevice();
-      setDeviceID("");
-      setPushStatus("idle");
-    }
     setSelectedOrganizationID(organizationID);
     setRequests([]);
     setHistory([]);
     setSelectedID(null);
-  }, [bestEffortUnregisterDevice, deviceID, runtimeAuthConfig?.authProvider, selectedOrganizationID]);
+  }, [selectedOrganizationID]);
 
   const handleServerURLChange = useCallback((value: string) => {
     const previousServerURL = normalizeServerURL(serverURL);

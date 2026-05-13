@@ -32,7 +32,6 @@ export async function registerDeviceRoutes(app: FastifyInstance, { config, store
     const input = RegisterDeviceSchema.parse(request.body);
     const device = store.registerDevice({
       userId: auth.userId ?? 'usr_default',
-      organizationId: auth.organizationId,
       deviceName: input.deviceName,
       ...(input.platform ? { platform: input.platform } : {}),
       ...(input.installationId ? { installationId: input.installationId } : {}),

@@ -51,8 +51,8 @@ export function createCompositeApprovalNotifier(notifiers: ApprovalNotifier[]): 
 export function createExpoPushNotifier({ store, fetch: fetchImpl = globalThis.fetch, endpoint = 'https://exp.host/--/api/v2/push/send' }: ExpoPushNotifierOptions): ApprovalNotifier {
   return {
     async notifyApprovalCreated(request) {
-      if (!fetchImpl || !request.organizationId) return;
-      const devices = store.listPushDevicesForOrganization(request.organizationId);
+      if (!fetchImpl) return;
+      const devices = store.listPushDevicesForApprovalRecipients(request.id);
       const targets = devices.map((device) => device.expoPushToken).filter((token): token is string => Boolean(token));
       if (!targets.length) return;
       await fetchImpl(endpoint, {
@@ -66,7 +66,7 @@ export function createExpoPushNotifier({ store, fetch: fetchImpl = globalThis.fe
             to,
             title: request.encryptedPayload ? 'Encrypted approval request' : request.title,
             body: request.encryptedPayload ? 'Open Agent Tick to decrypt and review.' : request.body ?? request.command ?? 'Approval requested',
-            data: { requestId: request.id, type: 'approval_request', encrypted: Boolean(request.encryptedPayload) }
+            data: { requestId: request.id, organizationId: request.organizationId, type: 'approval_request', encrypted: Boolean(request.encryptedPayload) }
           }))
         )
       });

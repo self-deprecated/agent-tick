@@ -637,7 +637,6 @@ export type RegisterDeviceResponse = z.infer<typeof RegisterDeviceResponseSchema
 export const DeviceRecordSchema = z.object({
   deviceId: z.string(),
   userId: z.string(),
-  organizationId: z.string(),
   name: z.string(),
   platform: z.string().optional(),
   installationId: z.string().optional(),
