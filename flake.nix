@@ -38,6 +38,56 @@
                 ]);
           };
 
+          agent-tick-cli = pkgs.stdenv.mkDerivation (finalAttrs: {
+            pname = "agent-tick-cli";
+            version = "0.1.2";
+            inherit src;
+
+            pnpmDeps = pkgs.fetchPnpmDeps {
+              inherit (finalAttrs) pname version src;
+              fetcherVersion = 2;
+              hash = "sha256-+y+K5ws7cYJEV2ZWRmFCdu76Nj7VMalRZBEInl2XUv0=";
+            };
+
+            nativeBuildInputs = [
+              nodejs
+              pnpm
+              pkgs.pnpmConfigHook
+              pkgs.makeWrapper
+            ];
+
+            dontCheckForBrokenSymlinks = true;
+
+            buildPhase = ''
+              runHook preBuild
+
+              pnpm --filter @self-deprecated/agent-tick build
+
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+
+              mkdir -p "$out/lib/agent-tick-cli/node_modules" "$out/bin"
+              cp packages/cli/package.json "$out/lib/agent-tick-cli/"
+              cp -R packages/cli/dist "$out/lib/agent-tick-cli/"
+              cp -RL packages/cli/node_modules/commander "$out/lib/agent-tick-cli/node_modules/commander"
+
+              makeWrapper ${nodejs}/bin/node "$out/bin/agent-tick" \
+                --add-flags "$out/lib/agent-tick-cli/dist/index.js"
+
+              runHook postInstall
+            '';
+
+            meta = {
+              description = "Human-in-the-loop approval CLI for Agent Tick";
+              homepage = "https://agenttick.sh";
+              mainProgram = "agent-tick";
+              platforms = lib.platforms.linux;
+            };
+          });
+
           agent-tick-server = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-server";
             version = "0.1.0";
@@ -106,14 +156,23 @@
           });
         in {
           packages = {
-            inherit agent-tick-server;
+            inherit agent-tick-cli agent-tick-server;
+            agent-tick = agent-tick-cli;
             default = agent-tick-server;
           };
 
-          apps.default = {
-            type = "app";
-            program = "${agent-tick-server}/bin/agent-tick-server";
-            meta.description = "Run the Agent Tick server";
+          apps = {
+            agent-tick = {
+              type = "app";
+              program = "${agent-tick-cli}/bin/agent-tick";
+              meta.description = "Run the Agent Tick CLI";
+            };
+
+            default = {
+              type = "app";
+              program = "${agent-tick-server}/bin/agent-tick-server";
+              meta.description = "Run the Agent Tick server";
+            };
           };
 
           devShells.default = pkgs.mkShell {
