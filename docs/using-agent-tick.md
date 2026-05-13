@@ -4,7 +4,15 @@ Agent Tick's default path is the hosted product at <https://agenttick.sh>. Self-
 
 ## Hosted product quickstart
 
-Run the installer on the machine where your AI coding agents run:
+For the smoothest Claude Code setup, paste this prompt into your coding agent chat:
+
+```text
+Use the Agent Tick skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, help me choose status, steering, and sanctions, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result.
+```
+
+The skill-led flow is recommended because it can inspect your local setup, explain conflicts, and choose the right AFK/pass-through behavior before writing hook settings.
+
+For direct CLI setup, run the installer on the machine where your AI coding agents run:
 
 ```sh
 npx @self-deprecated/agent-tick install

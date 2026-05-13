@@ -8,13 +8,21 @@ Website: <https://agenttick.sh>
 
 Most users should use the hosted service at <https://agenttick.sh>.
 
-Run one command on the machine where your coding agents run:
+For the smoothest Claude Code setup, paste this prompt into your coding agent chat:
+
+```text
+Use the Agent Tick skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, help me choose status, steering, and sanctions, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result.
+```
+
+The skill-led flow guides you through interactive vs headless usage, AFK vs pass-through routing, status policy, steering, sanctions, permissions, dry-run, install, verification, and restart instructions.
+
+If you prefer direct CLI setup, run one command on the machine where your coding agents run:
 
 ```sh
 npx @self-deprecated/agent-tick install
 ```
 
-The installer opens Agent Tick in your browser, connects this machine to your hosted Agent Tick account, detects local AI coding agents, and installs verified hook integrations where available. Claude Code and Pi currently get real pre-tool hooks; other detected agents are shown as disabled scaffolds until their hook/config path is verified.
+The installer opens Agent Tick in your browser, connects this machine to your hosted Agent Tick account, detects local AI coding agents, and installs verified hook integrations where available. Claude Code and Pi currently get real hooks; other detected agents are shown as disabled scaffolds until their hook/config path is verified.
 
 If you prefer a global install:
 
