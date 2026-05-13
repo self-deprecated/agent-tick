@@ -116,6 +116,7 @@ class MinimalMcpServer {
   readonly #name: string;
   readonly #version: string;
   #buffer = Buffer.alloc(0);
+  #newlineTransport = false;
 
   constructor(options: { name: string; version: string; tools: McpTool[] }) {
     this.#name = options.name;
@@ -133,24 +134,39 @@ class MinimalMcpServer {
 
   async #drain(): Promise<void> {
     for (;;) {
-      const separator = this.#buffer.indexOf('\r\n\r\n');
-      if (separator === -1) return;
-      const header = this.#buffer.subarray(0, separator).toString('utf8');
-      const contentLength = Number(/content-length:\s*(\d+)/i.exec(header)?.[1] ?? 0);
-      if (!contentLength) {
-        this.#buffer = this.#buffer.subarray(separator + 4);
+      const headerSeparator = this.#buffer.indexOf('\r\n\r\n');
+      const newlineSeparator = this.#buffer.indexOf('\n');
+      if (headerSeparator === -1 && newlineSeparator === -1) return;
+
+      if (headerSeparator !== -1 && (newlineSeparator === -1 || headerSeparator < newlineSeparator)) {
+        const header = this.#buffer.subarray(0, headerSeparator).toString('utf8');
+        const contentLength = Number(/content-length:\s*(\d+)/i.exec(header)?.[1] ?? 0);
+        if (!contentLength) {
+          this.#buffer = this.#buffer.subarray(headerSeparator + 4);
+          continue;
+        }
+        const bodyStart = headerSeparator + 4;
+        const bodyEnd = bodyStart + contentLength;
+        if (this.#buffer.length < bodyEnd) return;
+        const raw = this.#buffer.subarray(bodyStart, bodyEnd).toString('utf8');
+        this.#buffer = this.#buffer.subarray(bodyEnd);
+        await this.#handleSafely(raw);
         continue;
       }
-      const bodyStart = separator + 4;
-      const bodyEnd = bodyStart + contentLength;
-      if (this.#buffer.length < bodyEnd) return;
-      const raw = this.#buffer.subarray(bodyStart, bodyEnd).toString('utf8');
-      this.#buffer = this.#buffer.subarray(bodyEnd);
-      await this.#handle(raw).catch((error) => {
-        const request = safeJsonParse(raw) as Partial<JsonRpcRequest> | undefined;
-        this.#send({ jsonrpc: '2.0', id: request?.id ?? null, error: { code: -32603, message: error instanceof Error ? error.message : String(error) } });
-      });
+
+      const raw = this.#buffer.subarray(0, newlineSeparator).toString('utf8').trim();
+      this.#buffer = this.#buffer.subarray(newlineSeparator + 1);
+      if (!raw) continue;
+      this.#newlineTransport = true;
+      await this.#handleSafely(raw);
     }
+  }
+
+  async #handleSafely(raw: string): Promise<void> {
+    await this.#handle(raw).catch((error) => {
+      const request = safeJsonParse(raw) as Partial<JsonRpcRequest> | undefined;
+      this.#send({ jsonrpc: '2.0', id: request?.id ?? null, error: { code: -32603, message: error instanceof Error ? error.message : String(error) } });
+    });
   }
 
   async #handle(raw: string): Promise<void> {
@@ -176,6 +192,10 @@ class MinimalMcpServer {
 
   #send(message: unknown): void {
     const body = JSON.stringify(message);
+    if (this.#newlineTransport) {
+      process.stdout.write(`${body}\n`);
+      return;
+    }
     process.stdout.write(`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`);
   }
 }
