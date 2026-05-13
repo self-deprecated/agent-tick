@@ -27,7 +27,11 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
     },
     "plugins": [
       "expo-notifications",
@@ -45,6 +49,10 @@
         "projectId": "66c26d86-bff7-4681-a7b8-bc865a5212af"
       }
     },
-    "owner": "self-deprecated"
+    "owner": "self-deprecated",
+    "icon": "./assets/icon.png",
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
   }
 }
