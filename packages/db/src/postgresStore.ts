@@ -2,9 +2,13 @@ import crypto from 'node:crypto';
 import { type QueryResultRow } from 'pg';
 import { PostgresStoreConnection, type PostgresStoreOptions } from './postgres.js';
 import type {
+  AgentCredential,
+  AgentTokenAuth,
+  AgentTokenRecord,
   AuditEventRecord,
   CleanupExpiredSecretsResult,
   CleanupRetentionResult,
+  CreateAgentTokenInput,
   HumanIdentityResult,
   CreatePolicyInput,
   CreateProjectInput,
@@ -74,6 +78,20 @@ interface PolicyRow {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+}
+
+interface AgentTokenRow {
+  agent_id: string;
+  name: string;
+  scopes_json: string;
+  organization_id: string;
+  owner_user_id: string | null;
+  project_id: string | null;
+  team_id: string | null;
+  default_approval_policy: string | null;
+  last_request_at: string | null;
+  created_at: string;
+  revoked_at: string | null;
 }
 
 interface AuditEventRow {
@@ -438,6 +456,78 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     return Boolean(await this.one('SELECT 1 FROM policies WHERE policy_id = $1 AND organization_id = $2', [policyId, organizationId]));
   }
 
+  async createAgentToken(input: CreateAgentTokenInput, now = new Date().toISOString()): Promise<AgentCredential> {
+    const agentId = newID('agt');
+    const token = `agent_${randomToken()}`;
+    const scopes = input.scopes?.length ? input.scopes : ['approval:create'];
+    const organizationId = input.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    if (input.projectId && !(await this.projectBelongsToOrganization(input.projectId, organizationId))) {
+      throw httpError(400, 'bad_request', 'Project is not in the selected organization');
+    }
+    if (input.teamId && !(await this.teamBelongsToOrganization(input.teamId, organizationId))) {
+      throw httpError(400, 'bad_request', 'Team is not in the selected organization');
+    }
+    if (input.defaultApprovalPolicy && !(await this.policyBelongsToOrganization(input.defaultApprovalPolicy, organizationId))) {
+      throw httpError(400, 'bad_request', 'Policy is not in the selected organization');
+    }
+    const name = input.name.trim();
+    await this.pool.query(
+      `INSERT INTO agent_tokens(
+        agent_id, organization_id, owner_user_id, project_id, team_id, default_approval_policy, name, token_hash, scopes_json, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [agentId, organizationId, input.ownerUserId ?? null, input.projectId ?? null, input.teamId ?? null, input.defaultApprovalPolicy ?? null, name, hashToken(token), JSON.stringify(scopes), now]
+    );
+    await this.writeAuditEvent(organizationId, input.ownerUserId ?? agentId, 'agent_token.created', agentId, { name, scopes, projectId: input.projectId, teamId: input.teamId }, now);
+    return {
+      agentId,
+      name,
+      token,
+      scopes,
+      organizationId,
+      ownerUserId: input.ownerUserId,
+      projectId: input.projectId,
+      teamId: input.teamId,
+      defaultApprovalPolicy: input.defaultApprovalPolicy,
+      lastRequestAt: undefined,
+      createdAt: now,
+      revokedAt: undefined
+    };
+  }
+
+  async listAgentTokens(organizationId = DEFAULT_ORGANIZATION_ID): Promise<AgentTokenRecord[]> {
+    const rows = await this.many<AgentTokenRow>('SELECT * FROM agent_tokens WHERE organization_id = $1 ORDER BY created_at DESC', [organizationId]);
+    return rows.map(mapAgentTokenRow);
+  }
+
+  async revokeAgentToken(agentId: string, organizationId = DEFAULT_ORGANIZATION_ID, now = new Date().toISOString()): Promise<AgentTokenRecord | null> {
+    const row = await this.one<AgentTokenRow>('SELECT * FROM agent_tokens WHERE agent_id = $1 AND organization_id = $2', [agentId, organizationId]);
+    if (!row) return null;
+    if (!row.revoked_at) {
+      await this.pool.query('UPDATE agent_tokens SET revoked_at = $1 WHERE agent_id = $2 AND organization_id = $3', [now, agentId, organizationId]);
+      row.revoked_at = now;
+      await this.writeAuditEvent(organizationId, row.owner_user_id ?? agentId, 'agent_token.revoked', agentId, { name: row.name }, now);
+    }
+    return mapAgentTokenRow(row);
+  }
+
+  async verifyAgentToken(token: string, now = new Date().toISOString()): Promise<AgentTokenAuth | null> {
+    if (!token.startsWith('agent_')) return null;
+    const row = await this.one<AgentTokenRow>('SELECT * FROM agent_tokens WHERE token_hash = $1 AND revoked_at IS NULL', [hashToken(token)]);
+    if (!row) return null;
+    await this.pool.query('UPDATE agent_tokens SET last_request_at = $1 WHERE agent_id = $2', [now, row.agent_id]);
+    return {
+      source: 'agent',
+      agentId: row.agent_id,
+      name: row.name,
+      scopes: parseJSON<string[]>(row.scopes_json, []),
+      organizationId: row.organization_id,
+      ownerUserId: row.owner_user_id ?? undefined,
+      projectId: row.project_id ?? undefined,
+      teamId: row.team_id ?? undefined,
+      defaultApprovalPolicy: row.default_approval_policy ?? undefined
+    };
+  }
+
   async listAuditEvents(organizationId: string, limit = 100): Promise<AuditEventRecord[]> {
     const rows = await this.many<AuditEventRow>(
       'SELECT * FROM audit_events WHERE organization_id = $1 ORDER BY event_id DESC LIMIT $2',
@@ -569,6 +659,22 @@ function mapPolicyRow(row: PolicyRow): PolicyRecord {
   };
 }
 
+function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
+  return {
+    agentId: row.agent_id,
+    name: row.name,
+    scopes: parseJSON<string[]>(row.scopes_json, []),
+    organizationId: row.organization_id,
+    ownerUserId: row.owner_user_id ?? undefined,
+    projectId: row.project_id ?? undefined,
+    teamId: row.team_id ?? undefined,
+    defaultApprovalPolicy: row.default_approval_policy ?? undefined,
+    lastRequestAt: row.last_request_at ?? undefined,
+    createdAt: row.created_at,
+    revokedAt: row.revoked_at ?? undefined
+  };
+}
+
 function mapAuditEventRow(row: AuditEventRow): AuditEventRecord {
   return {
     eventId: Number(row.event_id),
@@ -630,4 +736,8 @@ function newID(prefix: string): string {
 
 function randomToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString('base64url');
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }

@@ -56,7 +56,7 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.listAuditEventsAfter(created.organizationId, event!.eventId - 1)).toEqual([event]);
   });
 
-  it('manages projects, teams, team members, and policies', async () => {
+  it('manages projects, teams, team members, policies, and agent tokens', async () => {
     await store!.migrate('2026-05-08T00:00:00.000Z');
     await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
 
@@ -82,5 +82,12 @@ describePostgres('PostgresAgentTickStore', () => {
     expect((await store!.listProjects(org.organizationId)).map((entry) => entry.projectId)).toContain(project.projectId);
     expect((await store!.listTeams(org.organizationId)).map((entry) => entry.teamId)).toContain(team.teamId);
     expect((await store!.listPolicies(org.organizationId)).map((entry) => entry.policyId)).toContain(policy.policyId);
+
+    const credential = await store!.createAgentToken({ organizationId: org.organizationId, ownerUserId: 'usr_default', name: 'Deploy bot', projectId: project.projectId, teamId: team.teamId, defaultApprovalPolicy: policy.policyId }, '2026-05-08T02:03:00.000Z');
+    expect(credential.token).toMatch(/^agent_/);
+    expect(JSON.stringify(await store!.listAgentTokens(org.organizationId))).not.toContain(credential.token);
+    expect(await store!.verifyAgentToken(credential.token, '2026-05-08T02:04:00.000Z')).toMatchObject({ source: 'agent', agentId: credential.agentId, organizationId: org.organizationId, projectId: project.projectId, teamId: team.teamId, defaultApprovalPolicy: policy.policyId });
+    expect(await store!.revokeAgentToken(credential.agentId, org.organizationId, '2026-05-08T02:05:00.000Z')).toMatchObject({ agentId: credential.agentId, revokedAt: '2026-05-08T02:05:00.000Z' });
+    expect(await store!.verifyAgentToken(credential.token)).toBeNull();
   });
 });
