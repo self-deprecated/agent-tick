@@ -218,6 +218,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   const [addAccountSawSignedOut, setAddAccountSawSignedOut] = useState(false);
   const [openSignInAfterSignOut, setOpenSignInAfterSignOut] = useState(false);
   const [usingSavedMobileAccount, setUsingSavedMobileAccount] = useState(false);
+  const [activeMobileAccountID, setActiveMobileAccountID] = useState<string | null>(null);
   const refreshedMobileSessionFromClerk = useRef(false);
   const wasNativeSignedIn = useRef(false);
 
@@ -236,6 +237,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       const savedSession = (await tokenCache?.getToken(agentTickMobileSessionJwtKey)) || null;
       if (cancelled || !savedSession) return;
       setUsingSavedMobileAccount(false);
+      setActiveMobileAccountID(null);
       setMobileSessionToken(savedSession);
     };
     void restoreMobileSession();
@@ -293,11 +295,13 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       setAddAccountSawSignedOut(false);
       setClerkLoginToken(null);
       setMobileSessionToken(session.token);
-      const accountTokenKey = mobileAccountSessionTokenKey(savedMobileAccountID({
+      const accountID = savedMobileAccountID({
         serverURL: props.initialServerURL ?? defaultServer,
         authProvider: "clerk",
         userID: session.userId,
-      }));
+      });
+      setActiveMobileAccountID(accountID);
+      const accountTokenKey = mobileAccountSessionTokenKey(accountID);
       void tokenCache?.saveToken(accountTokenKey, session.token).catch(() => undefined);
       void tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token).catch(() => undefined);
       void getNativeClerkModule()?.signOut?.().catch(() => undefined);
@@ -319,6 +323,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     setOpenSignInAfterSignOut(true);
     refreshedMobileSessionFromClerk.current = false;
     setUsingSavedMobileAccount(false);
+    setActiveMobileAccountID(null);
     setClerkLoginToken(null);
     try {
       await getNativeClerkModule()?.signOut?.();
@@ -336,6 +341,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     setOpenSignInAfterSignOut(false);
     refreshedMobileSessionFromClerk.current = false;
     setUsingSavedMobileAccount(false);
+    setActiveMobileAccountID(null);
     setClerkLoginToken(null);
     setMobileSessionToken(null);
     await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
@@ -380,6 +386,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }
   return (
     <AgentTickApp
+      key={activeMobileAccountID ?? `session:${mobileSessionToken.slice(-16)}`}
       {...props}
       clerkSignedIn={true}
       clerkSessionToken={mobileSessionToken}
@@ -400,6 +407,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         }
         refreshedMobileSessionFromClerk.current = true;
         setUsingSavedMobileAccount(true);
+        setActiveMobileAccountID(account.id);
         setSignedOutManually(false);
         setOpenSignInAfterSignOut(false);
         setClerkLoginToken(null);

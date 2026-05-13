@@ -139,6 +139,7 @@ export function SettingsScreen({
     return () => clearTimeout(timer);
   }, [e2eeFocusToken]);
   const isClerkMode = authProvider === "clerk";
+  const hasMultipleAccounts = isClerkMode && accounts.length > 1;
   const isPaired = isClerkMode || !!deviceID;
   const shouldRemindNotifications = isPaired && (notificationStatus === "denied" || notificationStatus === "undetermined");
 
@@ -288,8 +289,8 @@ export function SettingsScreen({
           <Pressable onPress={onCheck} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Check Connection</Text>
           </Pressable>
-          <Pressable onPress={onForgetDevice} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>{isClerkMode ? "Sign Out" : "Forget Device"}</Text>
+          <Pressable onPress={hasMultipleAccounts ? () => setAccountsOpen(true) : onForgetDevice} style={styles.secondaryActionButton}>
+            <Text style={styles.secondaryActionText}>{isClerkMode ? hasMultipleAccounts ? "Switch Account" : "Sign Out" : "Forget Device"}</Text>
           </Pressable>
           {!isClerkMode && onUseHosted ? (
             <Pressable onPress={onUseHosted} style={styles.secondaryActionButton}>
