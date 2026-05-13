@@ -48,6 +48,8 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 # AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS=90
 # AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
 # AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES=60
+# AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
+# AGENT_TICK_RETENTION_CLEANUP_LOCK_TTL_MS=600000
 ```
 
 Start it:
@@ -75,9 +77,10 @@ AGENT_TICK_DATABASE_MIGRATE_ON_START=true
 AGENT_TICK_REDIS_URL=redis://redis:6379
 AGENT_TICK_EVENT_BUS_BACKEND=redis
 AGENT_TICK_RATE_LIMIT_BACKEND=redis
+AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
 ```
 
-For larger deployments, set `AGENT_TICK_DATABASE_MIGRATE_ON_START=false` on regular server tasks and run migrations as a separate one-off deployment step. Keep `/readyz` as the traffic readiness check so load balancers only route to tasks that can reach configured dependencies.
+For larger deployments, set `AGENT_TICK_DATABASE_MIGRATE_ON_START=false` on regular server tasks and run migrations as a separate one-off deployment step. With Redis configured, retention cleanup uses a Redis lock by default so duplicate cleanup workers do not run concurrently. Keep `/readyz` as the traffic readiness check so load balancers only route to tasks that can reach configured dependencies.
 
 ## Clerk multi-user mode
 
@@ -112,6 +115,7 @@ AGENT_TICK_AUDIT_RETENTION_DAYS=365
 AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
 AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS=90
 AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
+AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
 ```
 
 Optional networkless verification key:

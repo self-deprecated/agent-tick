@@ -2,6 +2,7 @@ import { openAgentTickStore } from '@agent-tick/db';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { hasRetentionCleanupChanges, runRetentionCleanup, startRetentionCleanupTimer } from './services/retention.js';
+import { createConfiguredRetentionCleanupLock } from './services/retentionLock.js';
 
 const config = loadConfig();
 const store = openAgentTickStore({ databaseURL: config.databaseURL });
@@ -9,12 +10,14 @@ if (config.databaseMigrateOnStart) await store.migrate();
 await store.ensureSingleTenantDefaults();
 
 const app = await buildApp({ config, store });
-const startupCleanup = config.retentionCleanupEnabled ? await runRetentionCleanup(store, config) : null;
+const retentionCleanupLock = config.retentionCleanupEnabled ? await createConfiguredRetentionCleanupLock(config) : null;
+const startupCleanup = config.retentionCleanupEnabled ? await runRetentionCleanup(store, config, new Date().toISOString(), retentionCleanupLock ?? undefined) : null;
 if (startupCleanup && hasRetentionCleanupChanges(startupCleanup)) app.log.info({ result: startupCleanup }, 'cleaned retained data at startup');
-const retentionCleanup = config.retentionCleanupEnabled ? startRetentionCleanupTimer({ store, config, logger: app.log }) : null;
+const retentionCleanup = config.retentionCleanupEnabled ? startRetentionCleanupTimer({ store, config, logger: app.log, ...(retentionCleanupLock ? { lock: retentionCleanupLock } : {}) }) : null;
 
 const shutdown = async (): Promise<void> => {
   retentionCleanup?.stop();
+  await retentionCleanupLock?.close?.();
   await app.close();
   await store.close();
 };

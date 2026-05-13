@@ -1,6 +1,7 @@
 import type { AsyncAgentTickStore as AgentTickStore, CleanupExpiredSecretsResult, CleanupRetentionResult, RetentionPolicy } from '@agent-tick/db';
 import type { FastifyBaseLogger } from 'fastify';
 import type { ServerConfig } from '../config.js';
+import type { RetentionCleanupLock } from './retentionLock.js';
 
 export interface RetentionCleanupRunResult {
   secrets: CleanupExpiredSecretsResult;
@@ -21,20 +22,21 @@ export function retentionPolicyFromConfig(config: ServerConfig): RetentionPolicy
   };
 }
 
-export async function runRetentionCleanup(store: AgentTickStore, config: ServerConfig, now = new Date().toISOString()): Promise<RetentionCleanupRunResult> {
-  return {
+export async function runRetentionCleanup(store: AgentTickStore, config: ServerConfig, now = new Date().toISOString(), lock?: RetentionCleanupLock): Promise<RetentionCleanupRunResult | null> {
+  const run = async () => ({
     secrets: await store.cleanupExpiredSecrets(now),
     retention: await store.cleanupRetention(retentionPolicyFromConfig(config), now)
-  };
+  });
+  return lock ? lock.runExclusive(run) : run();
 }
 
-export function hasRetentionCleanupChanges(result: RetentionCleanupRunResult): boolean {
-  return Object.values(result.secrets).some((count) => count > 0) || Object.values(result.retention).some((count) => count > 0);
+export function hasRetentionCleanupChanges(result: RetentionCleanupRunResult | null): boolean {
+  return Boolean(result && (Object.values(result.secrets).some((count) => count > 0) || Object.values(result.retention).some((count) => count > 0)));
 }
 
-export function startRetentionCleanupTimer(options: { store: AgentTickStore; config: ServerConfig; logger: FastifyBaseLogger }): RetentionCleanupTimer {
-  const { store, config, logger } = options;
-  const run = (): Promise<RetentionCleanupRunResult> => runRetentionCleanup(store, config);
+export function startRetentionCleanupTimer(options: { store: AgentTickStore; config: ServerConfig; logger: FastifyBaseLogger; lock?: RetentionCleanupLock }): RetentionCleanupTimer {
+  const { store, config, logger, lock } = options;
+  const run = (): Promise<RetentionCleanupRunResult> => runRetentionCleanup(store, config, new Date().toISOString(), lock).then((result) => result ?? emptyRetentionCleanupResult());
   const timer = setInterval(() => {
     run()
       .then((result) => {
@@ -48,5 +50,12 @@ export function startRetentionCleanupTimer(options: { store: AgentTickStore; con
   return {
     run,
     stop: () => clearInterval(timer)
+  };
+}
+
+function emptyRetentionCleanupResult(): RetentionCleanupRunResult {
+  return {
+    secrets: { eventTickets: 0, pairingCodes: 0, approvalWaiterTokens: 0 },
+    retention: { approvalRequests: 0, auditEvents: 0, devices: 0, organizationInviteTeams: 0, organizationInvites: 0 }
   };
 }

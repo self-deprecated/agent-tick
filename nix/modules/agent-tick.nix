@@ -139,6 +139,8 @@ in {
       expiredInviteDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       cleanupEnabled = lib.mkOption { type = lib.types.bool; default = true; };
       cleanupIntervalMinutes = lib.mkOption { type = lib.types.ints.positive; default = 60; };
+      cleanupLockBackend = lib.mkOption { type = lib.types.enum [ "none" "redis" ]; default = "none"; };
+      cleanupLockTtlMs = lib.mkOption { type = lib.types.ints.positive; default = 600000; };
     };
 
     rateLimit = {
@@ -189,6 +191,8 @@ in {
       // optionalEnv "AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS" cfg.retention.expiredInviteDays
       // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_ENABLED" cfg.retention.cleanupEnabled
       // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES" cfg.retention.cleanupIntervalMinutes
+      // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND" cfg.retention.cleanupLockBackend
+      // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_LOCK_TTL_MS" cfg.retention.cleanupLockTtlMs
       // optionalEnv "AGENT_TICK_RATE_LIMIT_WINDOW_MS" cfg.rateLimit.windowMs
       // optionalEnv "AGENT_TICK_RATE_LIMIT_MAX_REQUESTS" cfg.rateLimit.maxRequests
       // cfg.environment;

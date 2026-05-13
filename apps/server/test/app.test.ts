@@ -77,6 +77,8 @@ describe('server skeleton', () => {
       AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS: '30',
       AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS: '14',
       AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES: '15',
+      AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND: 'none',
+      AGENT_TICK_RETENTION_CLEANUP_LOCK_TTL_MS: '120000',
       AGENT_TICK_RATE_LIMIT_WINDOW_MS: '5000',
       AGENT_TICK_RATE_LIMIT_MAX_REQUESTS: '2'
     });
@@ -87,10 +89,13 @@ describe('server skeleton', () => {
     expect(config.unregisteredDeviceRetentionDays).toBe(30);
     expect(config.expiredInviteRetentionDays).toBe(14);
     expect(config.retentionCleanupIntervalMinutes).toBe(15);
+    expect(config.retentionCleanupLockBackend).toBe('none');
+    expect(config.retentionCleanupLockTtlMs).toBe(120000);
     expect(config.rateLimitWindowMs).toBe(5000);
     expect(config.rateLimitMaxRequests).toBe(2);
     expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_MAX_ACTIVE_MEMBERS: '' }).maxActiveMembers).toBeUndefined();
     expect(loadConfig({ AGENT_TICK_MODE: 'single' }).retentionCleanupIntervalMinutes).toBe(60);
+    expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_REDIS_URL: 'redis://localhost:6379' }).retentionCleanupLockBackend).toBe('redis');
     expect(loadConfig({ AGENT_TICK_MODE: 'single' }).rateLimitWindowMs).toBe(60_000);
     expect(loadConfig({ AGENT_TICK_MODE: 'single' }).rateLimitMaxRequests).toBeUndefined();
   });
