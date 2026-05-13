@@ -63,7 +63,26 @@ in {
     databaseUrl = lib.mkOption {
       type = lib.types.str;
       default = "file:/var/lib/agent-tick/agent-tick.db";
-      description = "SQLite database URL.";
+      description = "Database URL. SQLite file URLs are supported today; PostgreSQL URLs are reserved for the AWS-ready backend.";
+    };
+
+    redisUrl = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "redis://127.0.0.1:6379";
+      description = "Optional Redis URL for cross-process event wakeups and shared rate limiting.";
+    };
+
+    eventBusBackend = lib.mkOption {
+      type = lib.types.enum [ "memory" "redis" ];
+      default = "memory";
+      description = "Backend used for approval/audit event wakeups.";
+    };
+
+    rateLimitBackend = lib.mkOption {
+      type = lib.types.enum [ "memory" "redis" ];
+      default = "memory";
+      description = "Backend used for auth-sensitive route rate limits.";
     };
 
     secretEnvironmentFile = lib.mkOption {
@@ -148,6 +167,9 @@ in {
         AGENT_TICK_DATABASE_URL = cfg.databaseUrl;
       }
       // optionalEnv "AGENT_TICK_PUBLIC_URL" cfg.publicUrl
+      // optionalEnv "AGENT_TICK_REDIS_URL" cfg.redisUrl
+      // optionalEnv "AGENT_TICK_EVENT_BUS_BACKEND" cfg.eventBusBackend
+      // optionalEnv "AGENT_TICK_RATE_LIMIT_BACKEND" cfg.rateLimitBackend
       // optionalEnv "AGENT_TICK_CLERK_PUBLISHABLE_KEY" cfg.clerkPublishableKey
       // optionalCSVEnv "AGENT_TICK_CLERK_AUTHORIZED_PARTIES" cfg.clerkAuthorizedParties
       // optionalEnv "AGENT_TICK_MAX_ACTIVE_MEMBERS" cfg.maxActiveMembers
