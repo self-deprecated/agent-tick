@@ -40,15 +40,15 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "commander": "^14.0.2"
+    "commander": "14.0.3"
   },
   "devDependencies": {
     "@agent-tick/sdk": "workspace:*",
     "@agent-tick/shared": "workspace:*",
-    "@types/node": "^24.10.0",
-    "esbuild": "^0.27.0",
-    "tsx": "^4.21.0",
+    "@types/node": "24.12.3",
+    "esbuild": "0.27.7",
+    "tsx": "4.21.0",
     "typescript": "6.0.3",
-    "vitest": "^4.0.14"
+    "vitest": "4.1.5"
   }
 }

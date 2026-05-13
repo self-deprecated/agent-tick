@@ -43,6 +43,8 @@ corepack pnpm test
 corepack pnpm build
 ```
 
+Follow `docs/dependency-policy.md` for npm dependency changes. Pin npm package versions exactly, commit `pnpm-lock.yaml` with dependency changes, use frozen lockfile installs for CI/release/Docker/reproducibility checks, and keep the `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml` minimal and explicit.
+
 Docker is the official server distribution path:
 
 ```sh

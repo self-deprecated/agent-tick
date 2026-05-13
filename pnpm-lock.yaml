@@ -9,16 +9,16 @@ importers:
   .:
     devDependencies:
       '@playwright/test':
-        specifier: ^1.59.1
+        specifier: 1.59.1
         version: 1.59.1
       '@types/node':
-        specifier: ^24.10.0
+        specifier: 24.12.3
         version: 24.12.3
       typescript:
         specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^4.0.14
+        specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.3)(jsdom@20.0.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(vite@8.0.10(@types/node@24.12.3)(esbuild@0.27.7)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
 
   apps/admin:
@@ -30,7 +30,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared
       '@clerk/clerk-js':
-        specifier: ^6.10.0
+        specifier: 6.10.0
         version: 6.10.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(@types/react@19.1.17)(bs58@6.0.0)(bufferutil@4.1.0)(react-dom@19.2.6(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.4.3)
     devDependencies:
       '@sveltejs/vite-plugin-svelte':
@@ -56,13 +56,13 @@ importers:
         version: link:../../packages/db
     devDependencies:
       '@types/node':
-        specifier: ^24.10.0
+        specifier: 24.12.3
         version: 24.12.3
       typescript:
         specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^4.0.14
+        specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.3)(jsdom@20.0.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(vite@8.0.10(@types/node@24.12.3)(esbuild@0.27.7)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
 
   apps/mobile:
@@ -80,34 +80,34 @@ importers:
         specifier: 2.2.0
         version: 2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))
       expo:
-        specifier: ~54.0.0
+        specifier: 54.0.34
         version: 54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       expo-auth-session:
-        specifier: ~7.0.11
+        specifier: 7.0.11
         version: 7.0.11(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)
       expo-camera:
-        specifier: ~17.0.10
+        specifier: 17.0.10
         version: 17.0.10(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)
       expo-constants:
-        specifier: ~18.0.13
+        specifier: 18.0.13
         version: 18.0.13(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))
       expo-dev-client:
-        specifier: ~6.0.21
+        specifier: 6.0.21
         version: 6.0.21(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
       expo-notifications:
-        specifier: ~0.32.16
+        specifier: 0.32.17
         version: 0.32.17(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)
       expo-secure-store:
-        specifier: ~15.0.8
+        specifier: 15.0.8
         version: 15.0.8(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
       expo-status-bar:
-        specifier: ~3.0.9
+        specifier: 3.0.9
         version: 3.0.9(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)
       expo-updates:
-        specifier: ~29.0.17
+        specifier: 29.0.17
         version: 29.0.17(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)
       expo-web-browser:
-        specifier: ~15.0.11
+        specifier: 15.0.11
         version: 15.0.11(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))
       react:
         specifier: 19.1.0
@@ -117,19 +117,19 @@ importers:
         version: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6)
     devDependencies:
       '@testing-library/react-native':
-        specifier: ^13.3.3
+        specifier: 13.3.3
         version: 13.3.3(jest@29.7.0(@types/node@24.12.3))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react-test-renderer@19.1.0(react@19.1.0))(react@19.1.0)
       '@types/jest':
-        specifier: ^29.5.14
+        specifier: 29.5.14
         version: 29.5.14
       '@types/react':
-        specifier: ~19.1.10
+        specifier: 19.1.17
         version: 19.1.17
       jest:
-        specifier: ^29.7.0
+        specifier: 29.7.0
         version: 29.7.0(@types/node@24.12.3)
       jest-expo:
-        specifier: ^54.0.17
+        specifier: 54.0.17
         version: 54.0.17(@babel/core@7.29.0)(bufferutil@4.1.0)(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(jest@29.7.0(@types/node@24.12.3))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(utf-8-validate@6.0.6)
       react-dom:
         specifier: 19.1.0
@@ -138,7 +138,7 @@ importers:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
       typescript:
-        specifier: ~5.9.2
+        specifier: 5.9.3
         version: 5.9.3
 
   apps/server:
@@ -150,38 +150,38 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared
       '@clerk/backend':
-        specifier: ^3.4.6
+        specifier: 3.4.6
         version: 3.4.6(react-dom@19.2.6(react@19.1.0))(react@19.1.0)
       '@fastify/static':
-        specifier: ^8.3.0
+        specifier: 8.3.0
         version: 8.3.0
       fastify:
-        specifier: ^5.6.2
+        specifier: 5.8.5
         version: 5.8.5
       redis:
-        specifier: ^5.12.1
+        specifier: 5.12.1
         version: 5.12.1
       zod:
-        specifier: ^4.1.13
+        specifier: 4.4.3
         version: 4.4.3
     devDependencies:
       '@types/node':
-        specifier: ^24.10.0
+        specifier: 24.12.3
         version: 24.12.3
       tsx:
-        specifier: ^4.21.0
+        specifier: 4.21.0
         version: 4.21.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^4.0.14
+        specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.3)(jsdom@20.0.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(vite@8.0.10(@types/node@24.12.3)(esbuild@0.27.7)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
 
   packages/cli:
     dependencies:
       commander:
-        specifier: ^14.0.2
+        specifier: 14.0.3
         version: 14.0.3
     devDependencies:
       '@agent-tick/sdk':
@@ -191,19 +191,19 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@types/node':
-        specifier: ^24.10.0
+        specifier: 24.12.3
         version: 24.12.3
       esbuild:
-        specifier: ^0.27.0
+        specifier: 0.27.7
         version: 0.27.7
       tsx:
-        specifier: ^4.21.0
+        specifier: 4.21.0
         version: 4.21.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^4.0.14
+        specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.3)(jsdom@20.0.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(vite@8.0.10(@types/node@24.12.3)(esbuild@0.27.7)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
 
   packages/db:
@@ -212,26 +212,26 @@ importers:
         specifier: workspace:*
         version: link:../shared
       better-sqlite3:
-        specifier: ^12.5.0
+        specifier: 12.9.0
         version: 12.9.0
       pg:
-        specifier: ^8.20.0
+        specifier: 8.20.0
         version: 8.20.0
     devDependencies:
       '@types/better-sqlite3':
-        specifier: ^7.6.13
+        specifier: 7.6.13
         version: 7.6.13
       '@types/node':
-        specifier: ^24.10.0
+        specifier: 24.12.3
         version: 24.12.3
       '@types/pg':
-        specifier: ^8.20.0
+        specifier: 8.20.0
         version: 8.20.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^4.0.14
+        specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.3)(jsdom@20.0.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(vite@8.0.10(@types/node@24.12.3)(esbuild@0.27.7)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
 
   packages/sdk:
@@ -240,33 +240,33 @@ importers:
         specifier: workspace:*
         version: link:../shared
       zod:
-        specifier: ^4.1.13
+        specifier: 4.4.3
         version: 4.4.3
     devDependencies:
       typescript:
         specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^4.0.14
+        specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.3)(jsdom@20.0.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(vite@8.0.10(@types/node@24.12.3)(esbuild@0.27.7)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
 
   packages/shared:
     dependencies:
       '@noble/ciphers':
-        specifier: ^2.2.0
+        specifier: 2.2.0
         version: 2.2.0
       '@noble/hashes':
-        specifier: ^2.2.0
+        specifier: 2.2.0
         version: 2.2.0
       zod:
-        specifier: ^4.1.13
+        specifier: 4.4.3
         version: 4.4.3
     devDependencies:
       typescript:
         specifier: 6.0.3
         version: 6.0.3
       vitest:
-        specifier: ^4.0.14
+        specifier: 4.1.5
         version: 4.1.5(@types/node@24.12.3)(jsdom@20.0.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(vite@8.0.10(@types/node@24.12.3)(esbuild@0.27.7)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
 
 packages:
@@ -837,18 +837,6 @@ packages:
     peerDependencies:
       react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
       react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
-
-  '@clerk/shared@4.10.1':
-    resolution: {integrity: sha512-Vdl/Ox5rh9NpeIYgZbV2Y0zfm4AjStRB9DbNWxK7PDXFDHuYwjlOYFXwFULFqa0kbRs9M1Q+oR7hujAtesZ36w==}
-    engines: {node: '>=20.9.0'}
-    peerDependencies:
-      react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
-      react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
-    peerDependenciesMeta:
-      react:
-        optional: true
-      react-dom:
-        optional: true
 
   '@clerk/shared@4.10.2':
     resolution: {integrity: sha512-2RXGaCV94U2wYWaMQZA/AhVkqjcSx8f+oVjh6wgr4yXDmZ24BQRjPJ+K4L6IHiB/agoaXtKWJ0GI8InRZjo9/g==}
@@ -5953,7 +5941,7 @@ snapshots:
 
   '@clerk/backend@3.4.6(react-dom@19.2.6(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@clerk/shared': 4.10.1(react-dom@19.2.6(react@19.1.0))(react@19.1.0)
+      '@clerk/shared': 4.10.2(react-dom@19.2.6(react@19.1.0))(react@19.1.0)
       standardwebhooks: 1.0.0
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -5963,7 +5951,7 @@ snapshots:
   '@clerk/clerk-js@6.10.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(@types/react@19.1.17)(bs58@6.0.0)(bufferutil@4.1.0)(react-dom@19.2.6(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.4.3)':
     dependencies:
       '@base-org/account': 2.0.1(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.4.3)
-      '@clerk/shared': 4.10.1(react-dom@19.2.6(react@19.1.0))(react@19.1.0)
+      '@clerk/shared': 4.10.2(react-dom@19.2.6(react@19.1.0))(react@19.1.0)
       '@coinbase/wallet-sdk': 4.3.7(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.4.3)
       '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))
       '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@6.0.3)
@@ -6063,17 +6051,6 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
       tslib: 2.8.1
 
-  '@clerk/shared@4.10.1(react-dom@19.2.6(react@19.1.0))(react@19.1.0)':
-    dependencies:
-      '@tanstack/query-core': 5.100.9
-      dequal: 2.0.3
-      glob-to-regexp: 0.4.1
-      js-cookie: 3.0.5
-      std-env: 3.10.0
-    optionalDependencies:
-      react: 19.1.0
-      react-dom: 19.2.6(react@19.1.0)
-
   '@clerk/shared@4.10.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@tanstack/query-core': 5.100.9
@@ -6084,6 +6061,17 @@ snapshots:
     optionalDependencies:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
+
+  '@clerk/shared@4.10.2(react-dom@19.2.6(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@tanstack/query-core': 5.100.9
+      dequal: 2.0.3
+      glob-to-regexp: 0.4.1
+      js-cookie: 3.0.5
+      std-env: 3.10.0
+    optionalDependencies:
+      react: 19.1.0
+      react-dom: 19.2.6(react@19.1.0)
 
   '@coinbase/wallet-sdk@4.3.7(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
@@ -7002,7 +6990,7 @@ snapshots:
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 
@@ -10296,7 +10284,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)
+      abitype: 1.2.4(typescript@5.9.3)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -10311,7 +10299,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@6.0.3)(zod@4.4.3)
+      abitype: 1.2.4(typescript@6.0.3)(zod@4.4.3)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 6.0.3
