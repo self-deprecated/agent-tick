@@ -26,9 +26,16 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 # Optional approval notification webhook in addition to mobile push.
 # AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/approvals
 
-# Optional in-memory rate limit overrides for auth-sensitive token endpoints.
+# Optional rate limit overrides for auth-sensitive token endpoints.
 # AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
 # AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
+
+# Optional Redis coordination for multi-process deployments. SQLite remains the
+# default simple self-hosted path; use Redis when multiple server instances need
+# shared event wakeups/rate limits.
+# AGENT_TICK_REDIS_URL=redis://redis:6379
+# AGENT_TICK_EVENT_BUS_BACKEND=redis
+# AGENT_TICK_RATE_LIMIT_BACKEND=redis
 
 # Optional retention cleanup windows. Omit to retain operational history indefinitely.
 # AGENT_TICK_APPROVAL_RETENTION_DAYS=180
@@ -69,7 +76,7 @@ AGENT_TICK_CLERK_SECRET_KEY=sk_...
 AGENT_TICK_CLERK_AUTHORIZED_PARTIES=https://tick.example.com
 ```
 
-Optional local active-member seat guard, webhooks, rate limits, and retention cleanup windows (also available in single mode):
+Optional local active-member seat guard, webhooks, rate limits, Redis coordination, and retention cleanup windows (also available in single mode):
 
 ```env
 AGENT_TICK_MAX_ACTIVE_MEMBERS=10
@@ -77,6 +84,9 @@ AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
 AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/approvals
 AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
 AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
+AGENT_TICK_REDIS_URL=redis://redis:6379
+AGENT_TICK_EVENT_BUS_BACKEND=redis
+AGENT_TICK_RATE_LIMIT_BACKEND=redis
 AGENT_TICK_APPROVAL_RETENTION_DAYS=180
 AGENT_TICK_AUDIT_RETENTION_DAYS=365
 AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
@@ -133,6 +143,11 @@ This repository exposes a flake package and NixOS module:
             port = 8787;
             publicUrl = "https://agenttick.sh";
 
+            # Optional Redis coordination for multi-process deployments.
+            # redisUrl = "redis://127.0.0.1:6379";
+            # eventBusBackend = "redis";
+            # rateLimitBackend = "redis";
+
             # Secret env file from agenix/sops-nix/etc.
             # Example contents: AGENT_TICK_ADMIN_TOKEN=...
             secretEnvironmentFile = "/run/agenix/agent-tick-env";
@@ -165,7 +180,7 @@ nix run .
 
 SQLite data is in the `agent_tick_data` Docker volume for Docker deployments, or `/var/lib/agent-tick/agent-tick.db` by default for the NixOS module. Back up the database regularly. It contains users, Clerk identity mappings, organizations, agent token hashes, approval history, device registrations, and audit events.
 
-By default, operational history is retained indefinitely except short-lived event tickets and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites that have no acceptance history.
+By default, operational history is retained indefinitely except short-lived event tickets, approval waiter tokens, and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites that have no acceptance history.
 
 Do not store or back up Clerk session tokens; Agent Tick only verifies them at request time.
 
@@ -181,6 +196,6 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 
 ## Current implementation scope
 
-The TypeScript server currently covers the core vertical slice: server health/config, SQLite schema management, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait/abandon, one-use ticketed event streams, dashboard approval UI, workspace-built CLI request/guard flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, Expo push plus optional approval notification webhooks, configurable in-memory rate limits, and configurable retention cleanup.
+The TypeScript server currently covers the core vertical slice: server health/readiness/config, SQLite schema management, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait/abandon, one-use ticketed event streams, dashboard approval UI, workspace-built CLI request/guard flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, Expo push plus optional approval notification webhooks, configurable memory or Redis-backed rate limits/event wakeups, and configurable retention cleanup.
 
 Agent Tick is a fresh TypeScript service; no Go-era CLI/server compatibility or prototype database migration path is supported. Future work should add only product-relevant features for the current architecture.
