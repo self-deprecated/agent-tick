@@ -9,7 +9,10 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "migrations"],
+  "files": [
+    "dist",
+    "migrations"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -17,11 +20,13 @@
   },
   "dependencies": {
     "@agent-tick/shared": "workspace:*",
-    "better-sqlite3": "^12.5.0"
+    "better-sqlite3": "^12.5.0",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.0",
+    "@types/pg": "^8.20.0",
     "typescript": "6.0.3",
     "vitest": "^4.0.14"
   }

@@ -66,6 +66,12 @@ in {
       description = "Database URL. SQLite file URLs are supported today; PostgreSQL URLs are reserved for the AWS-ready backend.";
     };
 
+    databaseMigrateOnStart = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether the server should run database migrations during startup.";
+    };
+
     redisUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -166,6 +172,7 @@ in {
         AGENT_TICK_HOST = cfg.host;
         AGENT_TICK_PORT = toString cfg.port;
         AGENT_TICK_DATABASE_URL = cfg.databaseUrl;
+        AGENT_TICK_DATABASE_MIGRATE_ON_START = envValue cfg.databaseMigrateOnStart;
       }
       // optionalEnv "AGENT_TICK_PUBLIC_URL" cfg.publicUrl
       // optionalEnv "AGENT_TICK_REDIS_URL" cfg.redisUrl

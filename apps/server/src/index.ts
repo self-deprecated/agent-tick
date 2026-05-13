@@ -5,7 +5,7 @@ import { hasRetentionCleanupChanges, runRetentionCleanup, startRetentionCleanupT
 
 const config = loadConfig();
 const store = openAgentTickStore({ databaseURL: config.databaseURL });
-await store.migrate();
+if (config.databaseMigrateOnStart) await store.migrate();
 await store.ensureSingleTenantDefaults();
 
 const app = await buildApp({ config, store });

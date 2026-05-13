@@ -14,6 +14,10 @@ AGENT_TICK_MODE=single
 AGENT_TICK_PUBLIC_URL=https://tick.example.com
 AGENT_TICK_PORT=8787
 
+# Optional. Defaults to true for simple self-hosting; larger deployments can
+# disable this and run migrations as an explicit deployment step.
+# AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+
 # Optional but recommended outside localhost.
 AGENT_TICK_ADMIN_TOKEN=change-me
 
@@ -72,6 +76,7 @@ AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
 AGENT_TICK_MODE=clerk
 AGENT_TICK_PUBLIC_URL=https://tick.example.com
 AGENT_TICK_PORT=8787
+# AGENT_TICK_DATABASE_MIGRATE_ON_START=true
 AGENT_TICK_CLERK_PUBLISHABLE_KEY=pk_...
 AGENT_TICK_CLERK_SECRET_KEY=sk_...
 AGENT_TICK_CLERK_AUTHORIZED_PARTIES=https://tick.example.com
