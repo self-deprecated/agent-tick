@@ -28,6 +28,7 @@ import {
   HeartbeatResponseSchema,
   InvitePreviewSchema,
   MeResponseSchema,
+  MobileDiagnosticRecordSchema,
   MobileDiagnosticsResponseSchema,
   MobileSessionResponseSchema,
   OrganizationInviteEmailResultSchema,
@@ -84,6 +85,7 @@ import {
   type InviteEmailDelivery,
   type InvitePreview,
   type MeResponse,
+  type MobileDiagnosticRecord,
   type MobileDiagnosticsResponse,
   type MobileSessionResponse,
   type OrganizationInviteEmailResult,
@@ -173,6 +175,13 @@ export class AgentTickClient {
     return this.#request('POST', '/v1/mobile-diagnostics', MobileDiagnosticsResponseSchema, {
       body: CreateMobileDiagnosticsSchema.parse(input)
     });
+  }
+
+  listMobileDiagnostics(options: { limit?: number } = {}): Promise<MobileDiagnosticRecord[]> {
+    const params = new URLSearchParams();
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    const suffix = params.size ? `?${params.toString()}` : '';
+    return this.#request('GET', `/v1/mobile-diagnostics${suffix}`, MobileDiagnosticRecordSchema.array());
   }
 
   listAuditEvents(options: { limit?: number } = {}): Promise<AuditEventRecord[]> {

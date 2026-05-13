@@ -85,6 +85,7 @@ import {
   initializeDiagnostics,
   recordDiagnostic,
   sendDiagnosticSnapshot,
+  setDiagnosticContext,
   setDiagnosticsEnabled as saveDiagnosticsEnabled,
 } from "./diagnostics";
 
@@ -127,6 +128,7 @@ type AgentTickAppProps = {
   clerkTokenProvider?: ClerkTokenProvider;
   clerkSessionToken?: string | null;
   clerkSignedIn?: boolean;
+  clerkDebugState?: Record<string, unknown>;
   onRuntimeAuthConfig?: (serverURL: string, config: RuntimeAuthConfig | null) => void;
 };
 
@@ -226,6 +228,26 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   const hasClerkLogin = !signedOutManually && Boolean(isSignedIn || nativeSignedIn || clerkLoginToken || mobileSessionToken);
 
   useEffect(() => {
+    setDiagnosticContext({
+      appLayer: "clerk-bound",
+      isClerkLoaded: isLoaded,
+      isClerkSignedIn: isSignedIn,
+      isNativeClerkSignedIn: nativeSignedIn,
+      signedOutManually,
+      signOutInProgress,
+      addingClerkAccount,
+      addAccountSawSignedOut,
+      openSignInAfterSignOut,
+      usingSavedMobileAccount,
+      activeMobileAccountID: activeMobileAccountID || undefined,
+      hasClerkLoginToken: Boolean(clerkLoginToken),
+      hasMobileSessionToken: Boolean(mobileSessionToken),
+      hasClerkLogin,
+    });
+    recordDiagnostic("info", "auth_state", "clerk_bound_render");
+  }, [activeMobileAccountID, addAccountSawSignedOut, addingClerkAccount, clerkLoginToken, hasClerkLogin, isLoaded, isSignedIn, mobileSessionToken, nativeSignedIn, openSignInAfterSignOut, signOutInProgress, signedOutManually, usingSavedMobileAccount]);
+
+  useEffect(() => {
     if (signedOutManually && !wasNativeSignedIn.current && (isSignedIn || nativeSignedIn)) setSignedOutManually(false);
     wasNativeSignedIn.current = Boolean(isSignedIn || nativeSignedIn);
   }, [isSignedIn, nativeSignedIn, signedOutManually]);
@@ -267,13 +289,22 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     const resolveClerkLoginToken = async () => {
       const sessionToken = await getToken();
       if (cancelled || sessionToken) {
-        if (sessionToken) setClerkLoginToken(sessionToken);
+        if (sessionToken) {
+          recordDiagnostic("info", "auth", "clerk_login_token_from_use_auth", { addingClerkAccount });
+          setClerkLoginToken(sessionToken);
+        }
         return;
       }
-      if (addingClerkAccount) return;
+      if (addingClerkAccount) {
+        recordDiagnostic("info", "auth", "skip_native_clerk_token_while_adding_account", { nativeSignedIn });
+        return;
+      }
       if (!nativeSignedIn) return;
       const nativeClientToken = await getNativeClerkClientToken();
-      if (!cancelled && nativeClientToken) setClerkLoginToken(nativeClientToken);
+      if (!cancelled && nativeClientToken) {
+        recordDiagnostic("info", "auth", "clerk_login_token_from_native_client");
+        setClerkLoginToken(nativeClientToken);
+      }
     };
     void resolveClerkLoginToken();
     return () => {
@@ -288,8 +319,10 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     let cancelled = false;
     const createAgentTickSession = async () => {
       const client = new AgentTickClient({ baseUrl: props.initialServerURL ?? defaultServer });
+      recordDiagnostic("info", "auth", "create_mobile_session_start", { addingClerkAccount });
       const session = await client.createMobileSession({ clerkToken: clerkLoginToken });
       if (cancelled) return;
+      recordDiagnostic("info", "auth", "create_mobile_session_success", { userID: session.userId, organizationID: session.organizationId, role: session.role, addingClerkAccount });
       refreshedMobileSessionFromClerk.current = true;
       setUsingSavedMobileAccount(false);
       setAddingClerkAccount(false);
@@ -308,7 +341,8 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       void getNativeClerkModule()?.signOut?.().catch(() => undefined);
       void signOut().catch(() => undefined);
     };
-    void createAgentTickSession().catch(() => {
+    void createAgentTickSession().catch((error) => {
+      recordDiagnostic("error", "auth", "create_mobile_session_failed", { message: error instanceof Error ? error.message : String(error), addingClerkAccount });
       refreshedMobileSessionFromClerk.current = true;
       if (!mobileSessionToken) setClerkLoginToken(null);
     });
@@ -318,6 +352,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
   }, [clerkLoginToken, mobileSessionToken, props.initialServerURL, signOut, signedOutManually, usingSavedMobileAccount]);
 
   const handleAddClerkAccount = useCallback(async () => {
+    recordDiagnostic("info", "button", "add_clerk_account_start");
     setSignOutInProgress(true);
     setAddingClerkAccount(true);
     setAddAccountSawSignedOut(false);
@@ -332,6 +367,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       await getNativeClerkModule()?.signOut?.();
       await signOut();
     } finally {
+      recordDiagnostic("info", "auth", "add_clerk_account_signed_out");
       setSignedOutManually(false);
       setAddAccountSawSignedOut(true);
       setSignOutInProgress(false);
@@ -340,6 +376,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
 
   const handleForgetClerkSession = useCallback(async (options?: { reopenSignIn?: boolean }) => {
     const reopenSignIn = Boolean(options?.reopenSignIn);
+    recordDiagnostic("info", "button", "forget_clerk_session", { reopenSignIn });
     setSignOutInProgress(true);
     setAddingClerkAccount(false);
     setAddAccountSawSignedOut(false);
@@ -396,6 +433,19 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       clerkSignedIn={true}
       clerkSessionToken={mobileSessionToken}
       clerkTokenProvider={async () => mobileSessionToken}
+      clerkDebugState={{
+        activeMobileAccountID: activeMobileAccountID || undefined,
+        usingSavedMobileAccount,
+        addingClerkAccount,
+        addAccountSawSignedOut,
+        signedOutManually,
+        signOutInProgress,
+        isClerkLoaded: isLoaded,
+        isClerkSignedIn: isSignedIn,
+        isNativeClerkSignedIn: nativeSignedIn,
+        hasMobileSessionToken: Boolean(mobileSessionToken),
+        hasClerkLoginToken: Boolean(clerkLoginToken),
+      }}
       onAddClerkAccount={() => void handleAddClerkAccount()}
       onForgetClerkSession={(options) => void handleForgetClerkSession(options)}
       onSelectSavedClerkAccount={async (account) => {
@@ -536,6 +586,7 @@ function AgentTickApp({
   initialAuthConfig,
   clerkSessionToken,
   clerkTokenProvider,
+  clerkDebugState,
   onRuntimeAuthConfig,
   onAddClerkAccount,
   onForgetClerkSession,
@@ -638,10 +689,38 @@ function AgentTickApp({
   }, [selectedOrganizationID, serverURL]);
 
   useEffect(() => {
+    setDiagnosticContext({
+      authProvider: runtimeAuthConfig?.authProvider,
+      currentScreen: screen,
+      connectionStatus,
+      pushStatus,
+      notificationStatus,
+      settingsLoaded,
+      hasRequestAuth,
+      hasToken: Boolean(token),
+      hasDeviceID: Boolean(deviceID),
+      deviceID: deviceID || undefined,
+      selectedOrganizationID: selectedOrganizationID || undefined,
+      currentUserID: currentAccountProfile?.userId,
+      currentUserEmail: currentAccountProfile?.email,
+      currentSignInMethod: currentAccountProfile?.signInMethod,
+      currentAccountSource: currentAccountProfile?.source,
+      savedAccountCount: savedAccounts.length,
+      savedAccountIDs: savedAccounts.map((account) => account.id),
+      ...(clerkDebugState ?? {}),
+      organizationCount: organizations.length,
+      requestCount: requests.length,
+      pendingRequestCount: requests.filter((request) => request.status === "pending").length,
+      selectedRequestID: selectedID || undefined,
+      selectedProjectID: selectedProjectID || undefined,
+      errorMessage: error ?? undefined,
+    });
+  }, [clerkDebugState, connectionStatus, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.source, currentAccountProfile?.userId, deviceID, error, hasRequestAuth, notificationStatus, organizations.length, pushStatus, requests, runtimeAuthConfig?.authProvider, savedAccounts, screen, selectedID, selectedOrganizationID, selectedProjectID, settingsLoaded, token]);
+
+  useEffect(() => {
     const previousScreen = previousScreenRef.current;
     if (previousScreen === screen) return;
     previousScreenRef.current = screen;
-    if (!diagnosticsEnabled) return;
     recordDiagnostic("info", "navigation", "screen_changed", {
       from: previousScreen,
       to: screen,
@@ -652,7 +731,7 @@ function AgentTickApp({
       connectionStatus,
     });
     setDiagnosticsEventCount(diagnosticEvents().length);
-  }, [connectionStatus, diagnosticsEnabled, requests.length, screen, selectedID, selectedOrganizationID, selectedProjectID]);
+  }, [connectionStatus, requests.length, screen, selectedID, selectedOrganizationID, selectedProjectID]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1685,11 +1764,12 @@ function AgentTickApp({
         <View style={styles.headerActions}>
           <Pressable
             accessibilityLabel={screen === "history" ? "Approvals" : "History"}
-            onPress={() =>
+            onPress={() => {
+              recordDiagnostic("info", "button", screen === "history" ? "open_approvals" : "open_history");
               setScreen((current) =>
                 current === "history" ? "approvals" : "history",
-              )
-            }
+              );
+            }}
             style={styles.iconButton}
           >
             <Text style={styles.iconButtonText}>
@@ -1698,11 +1778,12 @@ function AgentTickApp({
           </Pressable>
           <Pressable
             accessibilityLabel={screen === "settings" ? "Approvals" : "Settings"}
-            onPress={() =>
+            onPress={() => {
+              recordDiagnostic("info", "button", screen === "settings" ? "open_approvals" : "open_settings");
               setScreen((current) =>
                 current === "settings" ? "approvals" : "settings",
-              )
-            }
+              );
+            }}
             style={styles.iconButton}
           >
             <Text style={styles.iconButtonText}>
@@ -1725,6 +1806,7 @@ function AgentTickApp({
           onAvailabilityChange={(state) => void updateAvailability(state as AvailabilityState)}
           onCheck={() => void checkConnection()}
           onDiagnosticsEnabledChange={(enabled) => void toggleDiagnostics(enabled)}
+          onDiagnosticEvent={(area, message, metadata) => recordDiagnostic("info", area, message, metadata)}
           onForgetDevice={() => void forgetDevice()}
           onSignInAnotherClerkAccount={onAddClerkAccount}
           onPairDevice={() => void pairDevice()}

@@ -60,6 +60,7 @@ export function SettingsScreen({
   onForgetDevice,
   onPairDevice,
   onDiagnosticsEnabledChange,
+  onDiagnosticEvent,
   onSignInAnotherClerkAccount,
   onRegisterPush,
   onRequestNotifications,
@@ -100,6 +101,7 @@ export function SettingsScreen({
   onForgetDevice: () => void;
   onPairDevice: () => void;
   onDiagnosticsEnabledChange?: (enabled: boolean) => void;
+  onDiagnosticEvent?: (area: string, message: string, metadata?: Record<string, unknown>) => void;
   onRegisterPush: () => void;
   onRequestNotifications: () => void;
   onSavedAccountRemove?: (account: SavedMobileAccount) => void;
@@ -142,6 +144,9 @@ export function SettingsScreen({
   const hasMultipleAccounts = isClerkMode && accounts.length > 1;
   const isPaired = isClerkMode || !!deviceID;
   const shouldRemindNotifications = isPaired && (notificationStatus === "denied" || notificationStatus === "undetermined");
+  const trackButton = (button: string, metadata?: Record<string, unknown>) => {
+    onDiagnosticEvent?.("button", button, { settingsView: accountsOpen ? "accounts" : "settings", ...metadata });
+  };
 
   const currentAccountTitle = currentAccountLabel({ authProvider, currentAccountProfile, deviceID, serverURL });
   const currentAccountMeta = currentAccountDetails({ authProvider, currentAccountProfile, selectedOrganizationID, serverURL });
@@ -157,7 +162,7 @@ export function SettingsScreen({
           <Text style={styles.notificationReminderText}>
             Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed.
           </Text>
-          <Pressable onPress={onRequestNotifications} style={styles.primaryButton}>
+          <Pressable onPress={() => { trackButton("enable_notifications_reminder"); onRequestNotifications(); }} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Enable Notifications</Text>
           </Pressable>
         </View>
@@ -173,13 +178,13 @@ export function SettingsScreen({
       </Text>
       <View style={styles.notificationActions}>
         <Pressable
-          onPress={onRequestNotifications}
+          onPress={() => { trackButton("enable_notifications"); onRequestNotifications(); }}
           style={styles.secondaryActionButton}
         >
           <Text style={styles.secondaryActionText}>Enable</Text>
         </Pressable>
         <Pressable
-          onPress={onSendTestNotification}
+          onPress={() => { trackButton("send_test_notification"); onSendTestNotification(); }}
           style={styles.secondaryActionButton}
         >
           <Text style={styles.secondaryActionText}>Test</Text>
@@ -188,7 +193,7 @@ export function SettingsScreen({
       <Text style={styles.notificationStatus}>
         Push: {pushStatus === "registered" ? "Registered" : pushStatus}
       </Text>
-      <Pressable onPress={onRegisterPush} style={styles.secondaryActionButton}>
+      <Pressable onPress={() => { trackButton("register_push"); onRegisterPush(); }} style={styles.secondaryActionButton}>
         <Text style={styles.secondaryActionText}>Register Push</Text>
       </Pressable>
       {diagnosticsRevealed ? (
@@ -200,10 +205,10 @@ export function SettingsScreen({
           <Text style={styles.notificationStatus}>Status: {diagnosticsEnabled ? "Enabled" : "Disabled"}</Text>
           <Text style={styles.pairingHint}>Buffered events: {diagnosticsEventCount}{diagnosticsLastSentAt ? ` · last sent ${diagnosticsLastSentAt}` : ""}</Text>
           <View style={styles.notificationActions}>
-            <Pressable onPress={() => onDiagnosticsEnabledChange?.(!diagnosticsEnabled)} style={styles.secondaryActionButton}>
+            <Pressable onPress={() => { trackButton("toggle_diagnostics", { nextEnabled: !diagnosticsEnabled }); onDiagnosticsEnabledChange?.(!diagnosticsEnabled); }} style={styles.secondaryActionButton}>
               <Text style={styles.secondaryActionText}>{diagnosticsEnabled ? "Disable" : "Enable"}</Text>
             </Pressable>
-            <Pressable onPress={onSendDiagnosticSnapshot} style={styles.secondaryActionButton}>
+            <Pressable onPress={() => { trackButton("send_diagnostic_snapshot"); onSendDiagnosticSnapshot?.(); }} style={styles.secondaryActionButton}>
               <Text style={styles.secondaryActionText}>Send Snapshot</Text>
             </Pressable>
           </View>
@@ -220,7 +225,7 @@ export function SettingsScreen({
         style={styles.settingsPane}
       >
         <View style={styles.settingsSection}>
-          <Pressable onPress={() => setAccountsOpen(false)} style={styles.backButton}>
+          <Pressable onPress={() => { trackButton("accounts_back"); setAccountsOpen(false); }} style={styles.backButton}>
             <Text style={styles.secondaryActionText}>‹ Settings</Text>
           </Pressable>
           <Text style={styles.sectionHeading}>Accounts</Text>
@@ -228,7 +233,7 @@ export function SettingsScreen({
         </View>
         <View style={styles.settingsSection}>
           <View style={styles.organizationList}>
-            <Pressable onPress={() => setAccountsOpen(false)} style={[styles.organizationButton, styles.organizationButtonActive]}>
+            <Pressable onPress={() => { trackButton("current_account_selected"); setAccountsOpen(false); }} style={[styles.organizationButton, styles.organizationButtonActive]}>
               <Text style={[styles.label, styles.organizationNameActive]}>Current</Text>
               <Text style={[styles.organizationName, styles.organizationNameActive]}>{currentAccountTitle}</Text>
               <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
@@ -237,6 +242,7 @@ export function SettingsScreen({
               <View key={account.id} style={styles.organizationButton}>
                 <Pressable
                   onPress={() => {
+                    trackButton("saved_account_select", { targetAccountID: account.id, targetAuthProvider: account.authProvider, targetUserID: account.userID, targetEmail: account.email, targetSignInMethod: account.signInMethod });
                     setAccountsOpen(false);
                     onSavedAccountSelect?.(account);
                   }}
@@ -246,7 +252,7 @@ export function SettingsScreen({
                   <Text style={styles.organizationMeta}>{savedAccountDetails(account)}</Text>
                 </Pressable>
                 {onSavedAccountRemove ? (
-                  <Pressable onPress={() => onSavedAccountRemove(account)} style={styles.removeAccountButton}>
+                  <Pressable onPress={() => { trackButton("saved_account_remove", { targetAccountID: account.id, targetAuthProvider: account.authProvider, targetUserID: account.userID, targetEmail: account.email, targetSignInMethod: account.signInMethod }); onSavedAccountRemove(account); }} style={styles.removeAccountButton}>
                     <Text style={styles.removeAccountText}>Remove</Text>
                   </Pressable>
                 ) : null}
@@ -254,11 +260,11 @@ export function SettingsScreen({
             ))}
           </View>
           {isClerkMode && onSignInAnotherClerkAccount ? (
-            <Pressable onPress={onSignInAnotherClerkAccount} style={styles.primaryButton}>
+            <Pressable onPress={() => { trackButton("add_another_clerk_account"); onSignInAnotherClerkAccount(); }} style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Add another account</Text>
             </Pressable>
           ) : onUseHosted ? (
-            <Pressable onPress={onUseHosted} style={styles.primaryButton}>
+            <Pressable onPress={() => { trackButton("add_hosted_account"); onUseHosted(); }} style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Add agenttick.sh account</Text>
             </Pressable>
           ) : null}
@@ -280,20 +286,20 @@ export function SettingsScreen({
             {loading ? <ActivityIndicator color="#202124" /> : null}
           </View>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          <Pressable onPress={() => setAccountsOpen(true)} style={styles.accountSummaryButton}>
+          <Pressable onPress={() => { trackButton("open_account_switcher"); setAccountsOpen(true); }} style={styles.accountSummaryButton}>
             <Text style={styles.label}>Current account</Text>
             <Text style={styles.accountSummaryName}>{currentAccountTitle}</Text>
             <Text style={styles.accountSummaryMeta}>{currentAccountMeta}</Text>
             <Text style={styles.accountSummaryAction}>Switch accounts ›</Text>
           </Pressable>
-          <Pressable onPress={onCheck} style={styles.primaryButton}>
+          <Pressable onPress={() => { trackButton("check_connection"); onCheck(); }} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Check Connection</Text>
           </Pressable>
-          <Pressable onPress={hasMultipleAccounts ? () => setAccountsOpen(true) : onForgetDevice} style={styles.secondaryActionButton}>
+          <Pressable onPress={hasMultipleAccounts ? () => { trackButton("switch_account"); setAccountsOpen(true); } : () => { trackButton(isClerkMode ? "sign_out" : "forget_device"); onForgetDevice(); }} style={styles.secondaryActionButton}>
             <Text style={styles.secondaryActionText}>{isClerkMode ? hasMultipleAccounts ? "Switch Account" : "Sign Out" : "Forget Device"}</Text>
           </Pressable>
           {!isClerkMode && onUseHosted ? (
-            <Pressable onPress={onUseHosted} style={styles.secondaryActionButton}>
+            <Pressable onPress={() => { trackButton("use_hosted"); onUseHosted(); }} style={styles.secondaryActionButton}>
               <Text style={styles.secondaryActionText}>Use agenttick.sh</Text>
             </Pressable>
           ) : null}
@@ -310,7 +316,7 @@ export function SettingsScreen({
                 return (
                   <Pressable
                     key={membership.organizationId}
-                    onPress={() => setSelectedOrganizationID?.(membership.organizationId)}
+                    onPress={() => { trackButton("select_organization", { organizationID: membership.organizationId, organizationRole: membership.role }); setSelectedOrganizationID?.(membership.organizationId); }}
                     style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
                   >
                     <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{membership.name}</Text>
@@ -332,7 +338,7 @@ export function SettingsScreen({
             {(["available", "busy", "do-not-disturb", "off-call"] as AvailabilityState[]).map((state) => (
               <Pressable
                 key={state}
-                onPress={() => onAvailabilityChange?.(state)}
+                onPress={() => { trackButton("set_availability", { availability: state }); onAvailabilityChange?.(state); }}
                 style={[
                   styles.availabilityButton,
                   availability === state ? styles.availabilityButtonActive : null,
@@ -383,7 +389,7 @@ export function SettingsScreen({
         <Text style={styles.pairingHint}>
           Scan the QR code from <Text style={styles.pairingCode}>agent-tick pair</Text> to connect.
         </Text>
-        <Pressable onPress={onScanPairing} style={styles.primaryButton}>
+        <Pressable onPress={() => { trackButton("scan_pairing_qr"); onScanPairing(); }} style={styles.primaryButton}>
           <Text style={styles.primaryButtonText}>Scan Pairing QR</Text>
         </Pressable>
       </View>
@@ -407,11 +413,11 @@ export function SettingsScreen({
             value={serverURL}
           />
         </View>
-        <Pressable onPress={onCheck} style={styles.primaryButton}>
+        <Pressable onPress={() => { trackButton("check_connection_unpaired"); onCheck(); }} style={styles.primaryButton}>
           <Text style={styles.primaryButtonText}>Check Connection</Text>
         </Pressable>
         {onUseHosted ? (
-          <Pressable onPress={onUseHosted} style={styles.secondaryActionButton}>
+          <Pressable onPress={() => { trackButton("use_hosted_unpaired"); onUseHosted(); }} style={styles.secondaryActionButton}>
             <Text style={styles.secondaryActionText}>Use agenttick.sh</Text>
           </Pressable>
         ) : null}
@@ -419,7 +425,7 @@ export function SettingsScreen({
 
       <View style={styles.settingsSection}>
         <Pressable
-          onPress={() => setAdvancedOpen((v) => !v)}
+          onPress={() => { trackButton("toggle_advanced", { nextOpen: !advancedOpen }); setAdvancedOpen((v) => !v); }}
           style={styles.advancedToggle}
         >
           <Text style={styles.sectionHeading}>Advanced</Text>
@@ -437,7 +443,7 @@ export function SettingsScreen({
                 style={styles.input}
                 value={pairingCode}
               />
-              <Pressable onPress={onPairDevice} style={styles.primaryButton}>
+              <Pressable onPress={() => { trackButton("pair_manually", { hasPairingCode: Boolean(pairingCode) }); onPairDevice(); }} style={styles.primaryButton}>
                 <Text style={styles.primaryButtonText}>Pair Manually</Text>
               </Pressable>
             </View>

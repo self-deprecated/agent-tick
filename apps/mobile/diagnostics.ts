@@ -28,11 +28,12 @@ export type DiagnosticSnapshot = {
 export const diagnosticsEnabledStorageKey = "agent-tick.diagnostics.enabled";
 export const diagnosticsBufferStorageKey = "agent-tick.diagnostics.buffer";
 
-const maxBufferedEvents = 100;
+const maxBufferedEvents = 1000;
 let enabled = false;
 let buffer: DiagnosticEvent[] = [];
 let initialized = false;
 let globalHandlersInstalled = false;
+let context: Record<string, unknown> = {};
 
 export async function initializeDiagnostics(): Promise<boolean> {
   if (initialized) return enabled;
@@ -56,13 +57,17 @@ export function diagnosticEvents(): DiagnosticEvent[] {
   return [...buffer];
 }
 
+export function setDiagnosticContext(next: Record<string, unknown>): void {
+  context = sanitizeMetadata(next);
+}
+
 export function recordDiagnostic(level: DiagnosticLevel, area: string, message: string, metadata?: Record<string, unknown>): void {
   const event: DiagnosticEvent = {
     level,
     area: sanitizeText(area, 80),
     message: sanitizeText(message, 200),
     at: new Date().toISOString(),
-    ...(metadata ? { metadata: sanitizeMetadata(metadata) } : {}),
+    metadata: sanitizeMetadata({ ...context, ...(metadata ?? {}) }),
   };
   buffer = [...buffer, event].slice(-maxBufferedEvents);
   void persistBuffer();
@@ -70,14 +75,19 @@ export function recordDiagnostic(level: DiagnosticLevel, area: string, message: 
 
 export async function flushDiagnostics(client: AgentTickClient, snapshot: DiagnosticSnapshot): Promise<number> {
   if (!enabled || buffer.length === 0) return 0;
-  const events = [...buffer];
-  const response = await client.sendMobileDiagnostics({
-    ...snapshot,
-    events,
-  });
-  buffer = buffer.slice(events.length);
-  await persistBuffer();
-  return response.accepted;
+  let accepted = 0;
+  while (buffer.length > 0) {
+    const events = buffer.slice(0, 100);
+    const response = await client.sendMobileDiagnostics({
+      ...snapshot,
+      events,
+    });
+    accepted += response.accepted;
+    buffer = buffer.slice(events.length);
+    await persistBuffer();
+    if (events.length < 100) break;
+  }
+  return accepted;
 }
 
 export async function sendDiagnosticSnapshot(client: AgentTickClient, snapshot: DiagnosticSnapshot): Promise<number> {
@@ -141,6 +151,7 @@ function sanitizeMetadata(metadata: Record<string, unknown>): Record<string, unk
     if (/token|secret|authorization|cookie/i.test(key)) continue;
     if (typeof value === "string") safe[key] = sanitizeText(value, 300);
     else if (typeof value === "number" || typeof value === "boolean" || value === null) safe[key] = value;
+    else if (Array.isArray(value)) safe[key] = value.map((item) => typeof item === "string" ? sanitizeText(item, 120) : item).slice(0, 20);
   }
   return safe;
 }

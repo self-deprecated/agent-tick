@@ -82,7 +82,7 @@ export const CreateMobileDiagnosticsSchema = z.object({
   notificationStatus: z.string().max(40).optional(),
   currentScreen: z.string().max(40).optional(),
   lastErrorMessage: z.string().max(500).optional(),
-  events: z.array(MobileDiagnosticEventSchema).max(100).default([])
+  events: z.array(MobileDiagnosticEventSchema).max(1000).default([])
 });
 export type CreateMobileDiagnostics = z.input<typeof CreateMobileDiagnosticsSchema>;
 
@@ -90,6 +90,19 @@ export const MobileDiagnosticsResponseSchema = z.object({
   accepted: z.number().int().min(0)
 });
 export type MobileDiagnosticsResponse = z.infer<typeof MobileDiagnosticsResponseSchema>;
+
+export const MobileDiagnosticRecordSchema = z.object({
+  diagnosticId: z.string(),
+  organizationId: z.string(),
+  userId: z.string(),
+  deviceId: z.string().optional(),
+  level: z.string(),
+  area: z.string(),
+  message: z.string(),
+  metadata: z.unknown().optional(),
+  createdAt: z.string()
+});
+export type MobileDiagnosticRecord = z.infer<typeof MobileDiagnosticRecordSchema>;
 
 export const OrganizationRoleSchema = z.enum(['owner', 'admin', 'approver', 'member', 'viewer']);
 export type OrganizationRole = z.infer<typeof OrganizationRoleSchema>;

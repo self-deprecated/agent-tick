@@ -217,6 +217,15 @@ export function createProgram(): Command {
     });
 
   program
+    .command('diagnostics-mcp', { hidden: true })
+    .description('Run an MCP server exposing Agent Tick diagnostics')
+    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
+    .option('--token <token>', 'Agent Tick human/admin token [env: AGENT_TICK_TOKEN]')
+    .action(async (options: ClientOptions) => {
+      await runDiagnosticsMcp(options);
+    });
+
+  program
     .command('abandon')
     .description('Abandon a pending approval request')
     .argument('<request-id>', 'approval request ID')
@@ -241,6 +250,35 @@ export function createProgram(): Command {
 async function clientFromOptions(options: ClientOptions): Promise<{ client: AgentTickClient; server: string; token: string }> {
   const { server, token } = await resolveServerAndToken(options);
   return { server, token, client: new AgentTickClient({ baseUrl: server, tokenProvider: () => token }) };
+}
+
+async function runDiagnosticsMcp(options: ClientOptions): Promise<void> {
+  const { client, server } = await clientFromOptions(options);
+  const mcp = new MinimalMcpServer({
+    name: 'agent-tick-diagnostics',
+    version: CLI_VERSION,
+    tools: [
+      {
+        name: 'mobile_diagnostics',
+        description: 'List recent mobile diagnostic events for the authenticated admin organization.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', description: 'Maximum events to return, default 100, max 500' }
+          },
+          additionalProperties: false
+        },
+        call: async (args) => {
+          const limit = typeof args.limit === 'number' ? args.limit : 100;
+          const diagnostics = await client.listMobileDiagnostics({ limit });
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ server, diagnostics }, null, 2) }]
+          };
+        }
+      }
+    ]
+  });
+  await mcp.run();
 }
 
 async function setupWithBrowser(options: SetupOptions): Promise<{ path: string }> {
@@ -1347,6 +1385,109 @@ export function parseDurationMs(value: string | number | undefined): number {
   const unit = match[2] ?? 'ms';
   const multiplier = unit === 'h' ? 3_600_000 : unit === 'm' ? 60_000 : unit === 's' ? 1_000 : 1;
   return Math.round(amount * multiplier);
+}
+
+class MinimalMcpServer {
+  readonly #tools: McpTool[];
+  readonly #name: string;
+  readonly #version: string;
+  #buffer = Buffer.alloc(0);
+
+  constructor(options: { name: string; version: string; tools: McpTool[] }) {
+    this.#name = options.name;
+    this.#version = options.version;
+    this.#tools = options.tools;
+  }
+
+  run(): Promise<void> {
+    process.stdin.on('data', (chunk: Buffer) => {
+      this.#buffer = Buffer.concat([this.#buffer, chunk]);
+      void this.#drain();
+    });
+    return new Promise((resolve) => process.stdin.on('end', resolve));
+  }
+
+  async #drain(): Promise<void> {
+    for (;;) {
+      const separator = this.#buffer.indexOf('\r\n\r\n');
+      if (separator === -1) return;
+      const header = this.#buffer.subarray(0, separator).toString('utf8');
+      const contentLength = Number(/content-length:\s*(\d+)/i.exec(header)?.[1] ?? 0);
+      if (!contentLength) {
+        this.#buffer = this.#buffer.subarray(separator + 4);
+        continue;
+      }
+      const bodyStart = separator + 4;
+      const bodyEnd = bodyStart + contentLength;
+      if (this.#buffer.length < bodyEnd) return;
+      const raw = this.#buffer.subarray(bodyStart, bodyEnd).toString('utf8');
+      this.#buffer = this.#buffer.subarray(bodyEnd);
+      await this.#handle(JSON.parse(raw) as JsonRpcRequest).catch((error) => {
+        const request = safeJsonParse(raw) as Partial<JsonRpcRequest> | undefined;
+        this.#send({ jsonrpc: '2.0', id: request?.id ?? null, error: { code: -32603, message: error instanceof Error ? error.message : String(error) } });
+      });
+    }
+  }
+
+  async #handle(request: JsonRpcRequest): Promise<void> {
+    if (request.method === 'notifications/initialized') return;
+    if (request.method === 'initialize') {
+      this.#send({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: {
+          protocolVersion: '2024-11-05',
+          serverInfo: { name: this.#name, version: this.#version },
+          capabilities: { tools: {} }
+        }
+      });
+      return;
+    }
+    if (request.method === 'tools/list') {
+      this.#send({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: { tools: this.#tools.map(({ call: _call, ...tool }) => tool) }
+      });
+      return;
+    }
+    if (request.method === 'tools/call') {
+      const params = request.params as { name?: string; arguments?: Record<string, unknown> } | undefined;
+      const tool = this.#tools.find((candidate) => candidate.name === params?.name);
+      if (!tool) throw new Error(`Unknown tool: ${params?.name ?? ''}`);
+      const result = await tool.call(params?.arguments ?? {});
+      this.#send({ jsonrpc: '2.0', id: request.id, result });
+      return;
+    }
+    this.#send({ jsonrpc: '2.0', id: request.id, error: { code: -32601, message: `Method not found: ${request.method}` } });
+  }
+
+  #send(message: unknown): void {
+    const body = JSON.stringify(message);
+    process.stdout.write(`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`);
+  }
+}
+
+function safeJsonParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+interface JsonRpcRequest {
+  jsonrpc: '2.0';
+  id?: string | number | null;
+  method: string;
+  params?: unknown;
+}
+
+interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  call: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: 'text'; text: string }> }>;
 }
 
 interface ClientOptions {
