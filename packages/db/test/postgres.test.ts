@@ -174,9 +174,10 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.verifyEventTicket(eventTicket.ticket, '2026-05-08T02:10:01.000Z')).toMatchObject({ source: 'dashboard', organizationId: DEFAULT_ORGANIZATION_ID, userId: 'usr_default' });
     expect(await store!.verifyEventTicket(eventTicket.ticket, '2026-05-08T02:10:02.000Z')).toBeNull();
 
-    const waiter = await store!.createApprovalWaiterToken('req_test', DEFAULT_ORGANIZATION_ID, 'agt_test', undefined, '2026-05-08T02:11:00.000Z');
+    const approval = await store!.createApprovalRequest({ requester: { name: 'agent', agentId: 'agt_test' }, title: 'Wait?' }, '2026-05-08T02:11:00.000Z');
+    const waiter = await store!.createApprovalWaiterToken(approval.id, DEFAULT_ORGANIZATION_ID, 'agt_test', undefined, '2026-05-08T02:11:00.000Z');
     expect(waiter.token).toMatch(/^wait_/);
-    expect(await store!.verifyApprovalWaiterToken(waiter.token, 'req_test', '2026-05-08T02:12:00.000Z')).toMatchObject({ requestId: 'req_test', organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_test' });
+    expect(await store!.verifyApprovalWaiterToken(waiter.token, approval.id, '2026-05-08T02:12:00.000Z')).toMatchObject({ requestId: approval.id, organizationId: DEFAULT_ORGANIZATION_ID, agentId: 'agt_test' });
     expect(await store!.verifyApprovalWaiterToken(waiter.token, 'req_other', '2026-05-08T02:12:00.000Z')).toBeNull();
   });
 

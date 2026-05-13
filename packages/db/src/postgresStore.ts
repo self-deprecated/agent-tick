@@ -1011,7 +1011,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
           parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null,
           JSON.stringify(choices),
           parsed.defaultChoice ?? null,
-          parsed.allowFreeformReply,
+          Boolean(parsed.allowFreeformReply),
           parsed.expiresAt ?? null,
           parsed.risk ?? null,
           JSON.stringify(metadata),
