@@ -1,6 +1,18 @@
 import crypto from 'node:crypto';
 import { type QueryResultRow } from 'pg';
-import { AgentStatusUpdateSchema, CreateAgentStatusUpdateSchema, type AgentStatusUpdate } from '@agent-tick/shared';
+import {
+  AgentStatusUpdateSchema,
+  ApprovalRequestSchema,
+  CreateAgentStatusUpdateSchema,
+  CreateApprovalRequestSchema,
+  RespondApprovalRequestSchema,
+  type AgentStatusUpdate,
+  type ApprovalPolicyProgress,
+  type ApprovalRequest,
+  type ApprovalVoteRecord,
+  type Choice,
+  type RespondApprovalRequest
+} from '@agent-tick/shared';
 import { PostgresStoreConnection, type PostgresStoreOptions } from './postgres.js';
 import type {
   AgentCredential,
@@ -13,6 +25,7 @@ import type {
   CleanupRetentionResult,
   ClerkIdentityProfile,
   CreateAgentStatusInput,
+  CreateApprovalInput,
   CreateAgentTokenInput,
   DeviceCredential,
   DeviceRecord,
@@ -108,6 +121,46 @@ interface AgentTokenRow {
   last_request_at: string | null;
   created_at: string;
   revoked_at: string | null;
+}
+
+interface ApprovalRow {
+  id: string;
+  organization_id: string;
+  user_id: string | null;
+  requester_name: string;
+  requester_agent_id: string;
+  requester_host: string | null;
+  requester_working_directory: string | null;
+  requester_project_name: string | null;
+  requester_project_id: string | null;
+  request_type: string;
+  title: string;
+  body: string | null;
+  command: string | null;
+  encrypted_payload_json: string | null;
+  choices_json: string;
+  default_choice: string | null;
+  allow_freeform_reply: boolean;
+  expires_at: string | null;
+  risk: string | null;
+  metadata_json: string;
+  status: string;
+  created_at: string;
+  responded_at: string | null;
+  response_json: string | null;
+}
+
+interface ApprovalVoteRow {
+  vote_id: string;
+  request_id: string;
+  policy_id: string | null;
+  step: number;
+  approver_user_id: string;
+  source: string;
+  choice_id: string;
+  message: string | null;
+  answers_json: string | null;
+  created_at: string;
 }
 
 interface DeviceRow {
@@ -656,6 +709,130 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     };
   }
 
+  async createApprovalRequest(input: CreateApprovalInput, now = new Date().toISOString()): Promise<ApprovalRequest> {
+    const parsed = CreateApprovalRequestSchema.parse(input);
+    const id = newID('req');
+    const organizationId = input.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    const requesterAgentId = input.agentId ?? parsed.requester.agentId ?? 'agent_unknown';
+    const choices = parsed.choices?.length ? parsed.choices : defaultChoices();
+    const title = parsed.encryptedPayload ? 'Encrypted approval request' : parsed.title;
+    const body = parsed.encryptedPayload ? 'Open Agent Tick to decrypt this request.' : parsed.body ?? null;
+    const command = parsed.encryptedPayload ? null : parsed.command ?? null;
+    const metadata = parsed.metadata ?? {};
+    const policy = await this.approvalPolicyForMetadata(organizationId, metadata);
+    const recipients = await this.resolveApprovalRecipients({ organizationId, ...(input.userId ? { requesterUserId: input.userId } : {}), policy });
+
+    await this.transaction(async (query) => {
+      await query(
+        `INSERT INTO approval_requests(
+          id, organization_id, user_id, requester_name, requester_agent_id, requester_host,
+          requester_working_directory, requester_project_name, requester_project_id, request_type,
+          title, body, command, encrypted_payload_json, choices_json, default_choice, allow_freeform_reply, expires_at,
+          risk, metadata_json, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+        [
+          id,
+          organizationId,
+          input.userId ?? null,
+          parsed.requester.name,
+          requesterAgentId,
+          parsed.requester.host ?? null,
+          parsed.requester.workingDirectory ?? null,
+          parsed.requester.projectName ?? null,
+          parsed.requester.projectId ?? null,
+          parsed.requestType,
+          title,
+          body,
+          command,
+          parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null,
+          JSON.stringify(choices),
+          parsed.defaultChoice ?? null,
+          parsed.allowFreeformReply,
+          parsed.expiresAt ?? null,
+          parsed.risk ?? null,
+          JSON.stringify(metadata),
+          'pending',
+          now
+        ]
+      );
+      for (const recipient of recipients) {
+        await query('INSERT INTO approval_recipients(request_id, user_id, organization_id, source, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)', [
+          id,
+          recipient.userId,
+          organizationId,
+          recipient.source,
+          'pending',
+          now,
+          now
+        ]);
+      }
+      await query('INSERT INTO audit_events(organization_id, user_id, event_type, target_id, payload_json, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+        organizationId,
+        input.userId ?? requesterAgentId,
+        'approval.created',
+        id,
+        JSON.stringify(parsed.encryptedPayload ? { encrypted: true, algorithm: parsed.encryptedPayload.algorithm, keyId: parsed.encryptedPayload.keyId } : { title: parsed.title }),
+        now
+      ]);
+    });
+    return (await this.getApprovalRequest(id, input.userId, now)) ?? missingApproval(id);
+  }
+
+  async listApprovalRequests(organizationId = DEFAULT_ORGANIZATION_ID, currentUserId?: string, now = new Date().toISOString()): Promise<ApprovalRequest[]> {
+    await this.expirePendingApprovals(organizationId, now);
+    const rows = currentUserId
+      ? await this.many<ApprovalRow>(
+          `
+            SELECT a.*
+            FROM approval_requests a
+            JOIN approval_recipients r ON r.request_id = a.id AND r.user_id = $1
+            WHERE a.organization_id = $2
+            ORDER BY a.created_at DESC
+          `,
+          [currentUserId, organizationId]
+        )
+      : await this.many<ApprovalRow>('SELECT * FROM approval_requests WHERE organization_id = $1 ORDER BY created_at DESC', [organizationId]);
+    return Promise.all(rows.map((row) => this.mapApprovalWithProgress(row, currentUserId)));
+  }
+
+  async getApprovalRequest(id: string, currentUserId?: string, now = new Date().toISOString()): Promise<ApprovalRequest | null> {
+    await this.expirePendingApproval(id, undefined, now);
+    const row = await this.approvalRow(id);
+    return row ? this.mapApprovalWithProgress(row, currentUserId) : null;
+  }
+
+  async getApprovalRequestForOrganization(id: string, organizationId: string, currentUserId?: string, now = new Date().toISOString()): Promise<ApprovalRequest | null> {
+    await this.expirePendingApproval(id, organizationId, now);
+    const row = await this.approvalRow(id, organizationId);
+    if (!row) return null;
+    if (currentUserId && !(await this.approvalRecipientExists(id, currentUserId))) return null;
+    return this.mapApprovalWithProgress(row, currentUserId);
+  }
+
+  async respondToApprovalRequest(id: string, response: RespondApprovalRequest, responderUserId = DEFAULT_USER_ID, now = new Date().toISOString()): Promise<ApprovalRequest | null> {
+    await this.expirePendingApproval(id, undefined, now);
+    const row = await this.approvalRow(id);
+    return row ? this.respondToApprovalRow(row, response, responderUserId, now) : null;
+  }
+
+  async respondToApprovalRequestForOrganization(id: string, organizationId: string, response: RespondApprovalRequest, responderUserId = DEFAULT_USER_ID, now = new Date().toISOString()): Promise<ApprovalRequest | null> {
+    await this.expirePendingApproval(id, organizationId, now);
+    const row = await this.approvalRow(id, organizationId);
+    return row ? this.respondToApprovalRow(row, response, responderUserId, now) : null;
+  }
+
+  async abandonApprovalRequest(id: string, actorId: string, now = new Date().toISOString()): Promise<ApprovalRequest | null> {
+    await this.expirePendingApproval(id, undefined, now);
+    const row = await this.approvalRow(id);
+    return row ? this.abandonApprovalRow(row, actorId, now) : null;
+  }
+
+  async abandonApprovalRequestForOrganization(id: string, organizationId: string, actorId: string, now = new Date().toISOString()): Promise<ApprovalRequest | null> {
+    await this.expirePendingApproval(id, organizationId, now);
+    const row = await this.approvalRow(id, organizationId);
+    return row ? this.abandonApprovalRow(row, actorId, now) : null;
+  }
+
   async registerDevice(input: DeviceRegistrationInput, now = new Date().toISOString()): Promise<DeviceRecord> {
     const existing = input.installationId
       ? await this.one<DeviceRow>('SELECT * FROM devices WHERE user_id = $1 AND installation_id = $2 AND unregistered_at IS NULL', [input.userId, input.installationId])
@@ -962,6 +1139,180 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     );
   }
 
+  private async expirePendingApprovals(organizationId: string, now: string): Promise<void> {
+    const rows = await this.many<{ id: string; organization_id: string }>(
+      'SELECT id, organization_id FROM approval_requests WHERE organization_id = $1 AND status = $2 AND expires_at IS NOT NULL AND expires_at <= $3',
+      [organizationId, 'pending', now]
+    );
+    for (const row of rows) await this.markApprovalExpired(row.id, row.organization_id, now);
+  }
+
+  private async expirePendingApproval(id: string, organizationId: string | undefined, now: string): Promise<void> {
+    const row = organizationId
+      ? await this.one<{ id: string; organization_id: string }>('SELECT id, organization_id FROM approval_requests WHERE id = $1 AND organization_id = $2 AND status = $3 AND expires_at IS NOT NULL AND expires_at <= $4', [id, organizationId, 'pending', now])
+      : await this.one<{ id: string; organization_id: string }>('SELECT id, organization_id FROM approval_requests WHERE id = $1 AND status = $2 AND expires_at IS NOT NULL AND expires_at <= $3', [id, 'pending', now]);
+    if (row) await this.markApprovalExpired(row.id, row.organization_id, now);
+  }
+
+  private async markApprovalExpired(id: string, organizationId: string, now: string): Promise<void> {
+    const result = await this.pool.query('UPDATE approval_requests SET status = $1, responded_at = $2, response_json = $3 WHERE id = $4 AND organization_id = $5 AND status = $6', [
+      'expired',
+      now,
+      JSON.stringify({ message: 'expired' }),
+      id,
+      organizationId,
+      'pending'
+    ]);
+    if ((result.rowCount ?? 0) > 0) await this.writeAuditEvent(organizationId, 'system', 'approval.expired', id, {}, now);
+  }
+
+  private async approvalRow(id: string, organizationId?: string): Promise<ApprovalRow | null> {
+    return organizationId
+      ? this.one<ApprovalRow>('SELECT * FROM approval_requests WHERE id = $1 AND organization_id = $2', [id, organizationId])
+      : this.one<ApprovalRow>('SELECT * FROM approval_requests WHERE id = $1', [id]);
+  }
+
+  private async mapApprovalWithProgress(row: ApprovalRow, currentUserId?: string): Promise<ApprovalRequest> {
+    return mapApprovalRow(row, await this.approvalPolicyProgress(row, currentUserId));
+  }
+
+  private async approvalPolicyProgress(row: ApprovalRow, currentUserId?: string): Promise<ApprovalPolicyProgress | undefined> {
+    const policy = await this.approvalPolicyForRow(row);
+    if (!policy) return undefined;
+    const voteRows = await this.many<ApprovalVoteRow>('SELECT * FROM approval_votes WHERE request_id = $1 ORDER BY step ASC, created_at ASC', [row.id]);
+    const votes = voteRows.map(mapApprovalVoteRow);
+    const receivedApprovals = votes.filter((vote) => vote.choiceId === 'approve').length;
+    const currentUserVote = currentUserId ? votes.find((vote) => vote.approverUserId === currentUserId) : undefined;
+    const response = row.response_json ? parseJSON<{ choiceId?: string } | undefined>(row.response_json, undefined) : undefined;
+    const state = row.status === 'responded' ? (response?.choiceId && response.choiceId !== 'approve' ? 'denied' : 'approved') : row.status;
+    return {
+      policyId: policy.policy_id,
+      state,
+      currentStep: 1,
+      totalSteps: 1,
+      requiredApprovals: policy.required_approvals,
+      receivedApprovals,
+      currentUserHasVoted: Boolean(currentUserVote),
+      ...(currentUserVote ? { currentUserVote } : {}),
+      waitingFor: Math.max(policy.required_approvals - receivedApprovals, 0),
+      votes
+    };
+  }
+
+  private async approvalPolicyForRow(row: ApprovalRow): Promise<PolicyRow | null> {
+    const metadata = parseJSON<Record<string, string>>(row.metadata_json, {});
+    return this.approvalPolicyForMetadata(row.organization_id, metadata);
+  }
+
+  private async approvalPolicyForMetadata(organizationId: string, metadata: Record<string, string>): Promise<PolicyRow | null> {
+    const policyId = metadata.defaultApprovalPolicy || metadata.policyId;
+    if (!policyId) return null;
+    return this.one<PolicyRow>('SELECT * FROM policies WHERE policy_id = $1 AND organization_id = $2 AND enabled = true AND archived_at IS NULL', [policyId, organizationId]);
+  }
+
+  private async resolveApprovalRecipients(input: { organizationId: string; requesterUserId?: string; policy: PolicyRow | null }): Promise<Array<{ userId: string; source: string }>> {
+    const recipients = new Map<string, string>();
+    if (input.requesterUserId) recipients.set(input.requesterUserId, 'requester');
+    if (input.policy?.team_id) {
+      const rows = await this.many<{ user_id: string; role: string; organization_role: string }>(
+        `
+          SELECT tm.user_id, tm.role, om.role AS organization_role
+          FROM team_memberships tm
+          JOIN organization_memberships om ON om.organization_id = tm.organization_id AND om.user_id = tm.user_id AND om.status = 'active'
+          WHERE tm.organization_id = $1 AND tm.team_id = $2
+          ORDER BY tm.created_at ASC
+        `,
+        [input.organizationId, input.policy.team_id]
+      );
+      for (const row of rows) {
+        if (approvalTeamRoleCanRespond(row.role) && approvalOrganizationRoleCanRespond(row.organization_role)) recipients.set(row.user_id, 'policy_team');
+      }
+    } else {
+      const members = await this.listOrganizationMembers(input.organizationId);
+      for (const member of members) {
+        if (approvalOrganizationRoleCanRespond(member.role)) recipients.set(member.userId, input.policy ? 'policy_org' : 'organization');
+      }
+    }
+    if (!recipients.size) recipients.set(input.requesterUserId ?? DEFAULT_USER_ID, 'fallback');
+    return [...recipients.entries()].map(([userId, source]) => ({ userId, source }));
+  }
+
+  private async approvalRecipientExists(requestId: string, userId: string): Promise<boolean> {
+    return Boolean(await this.one('SELECT 1 FROM approval_recipients WHERE request_id = $1 AND user_id = $2', [requestId, userId]));
+  }
+
+  private async markApprovalRecipientResponded(requestId: string, userId: string, now: string): Promise<void> {
+    await this.pool.query("UPDATE approval_recipients SET status = 'responded', responded_at = $1, updated_at = $2 WHERE request_id = $3 AND user_id = $4", [now, now, requestId, userId]);
+  }
+
+  private async assertApprovalResponderEligible(row: ApprovalRow, responderUserId: string, policy: PolicyRow | null): Promise<void> {
+    const membership = await this.organizationMembershipForUser(responderUserId, row.organization_id);
+    if (!membership) throw httpError(403, 'forbidden', 'Responder is not an active member of this organization');
+    if (!approvalOrganizationRoleCanRespond(membership.role)) throw httpError(403, 'forbidden', 'Responder role is not eligible to approve requests');
+    if (policy?.team_id) {
+      const teamRole = await this.teamMembershipRole(policy.team_id, row.organization_id, responderUserId);
+      if (!teamRole || !approvalTeamRoleCanRespond(teamRole)) throw httpError(403, 'forbidden', 'Responder is not eligible for this team approval policy');
+    }
+    if (!(await this.approvalRecipientExists(row.id, responderUserId))) throw httpError(403, 'forbidden', 'Responder is not a recipient for this approval request');
+  }
+
+  private async teamMembershipRole(teamId: string, organizationId: string, userId: string): Promise<string | null> {
+    const row = await this.one<{ role: string }>('SELECT role FROM team_memberships WHERE team_id = $1 AND organization_id = $2 AND user_id = $3', [teamId, organizationId, userId]);
+    return row?.role ?? null;
+  }
+
+  private async respondToApprovalRow(row: ApprovalRow, response: RespondApprovalRequest, responderUserId: string, now: string): Promise<ApprovalRequest> {
+    const parsed = RespondApprovalRequestSchema.parse(response);
+    const current = await this.mapApprovalWithProgress(row, responderUserId);
+    if (current.status !== 'pending') return current;
+    if (parsed.choiceId && !current.choices.some((choice) => choice.id === parsed.choiceId)) throw httpError(400, 'bad_request', `unknown choiceId: ${parsed.choiceId}`);
+    const choice = parsed.choiceId ? current.choices.find((candidate) => candidate.id === parsed.choiceId) : undefined;
+    if (row.encrypted_payload_json && parsed.encryptedPayloadAcknowledged !== true && choice?.kind !== 'deny') throw httpError(400, 'bad_request', 'Encrypted approval requests must be decrypted before approving');
+    const policy = await this.approvalPolicyForRow(row);
+    await this.assertApprovalResponderEligible(row, responderUserId, policy);
+    if (policy && policy.required_approvals > 1 && parsed.choiceId) {
+      await this.recordApprovalVote(row.id, policy.policy_id, responderUserId, parsed, now);
+      await this.markApprovalRecipientResponded(row.id, responderUserId, now);
+      await this.writeAuditEvent(row.organization_id, responderUserId, 'approval.vote_recorded', row.id, { policyId: policy.policy_id, choiceId: parsed.choiceId }, now);
+      if (parsed.choiceId === 'approve' && (await this.approvalVoteCount(row.id, 'approve')) < policy.required_approvals) {
+        return (await this.getApprovalRequestForOrganization(row.id, row.organization_id, responderUserId)) ?? missingApproval(row.id);
+      }
+    }
+    await this.pool.query('UPDATE approval_requests SET status = $1, response_json = $2, responded_at = $3 WHERE id = $4 AND organization_id = $5 AND status = $6', ['responded', JSON.stringify(parsed), now, row.id, row.organization_id, 'pending']);
+    await this.markApprovalRecipientResponded(row.id, responderUserId, now);
+    await this.writeAuditEvent(row.organization_id, responderUserId, 'approval.responded', row.id, parsed, now);
+    return (await this.getApprovalRequestForOrganization(row.id, row.organization_id, responderUserId)) ?? missingApproval(row.id);
+  }
+
+  private async recordApprovalVote(requestId: string, policyId: string, responderUserId: string, response: RespondApprovalRequest, now: string): Promise<void> {
+    const parsed = RespondApprovalRequestSchema.parse(response);
+    await this.pool.query(
+      `
+        INSERT INTO approval_votes(vote_id, request_id, policy_id, step, approver_user_id, source, choice_id, message, answers_json, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT(request_id, approver_user_id, step) DO UPDATE SET
+          choice_id = excluded.choice_id,
+          message = excluded.message,
+          answers_json = excluded.answers_json,
+          updated_at = excluded.updated_at
+      `,
+      [newID('vote'), requestId, policyId, 1, responderUserId, 'human', parsed.choiceId ?? 'response', parsed.message ?? null, parsed.answers ? JSON.stringify(parsed.answers) : null, now, now]
+    );
+  }
+
+  private async approvalVoteCount(requestId: string, choiceId: string): Promise<number> {
+    const row = await this.one<{ count: string }>('SELECT COUNT(*) AS count FROM approval_votes WHERE request_id = $1 AND step = 1 AND choice_id = $2', [requestId, choiceId]);
+    return Number(row?.count ?? 0);
+  }
+
+  private async abandonApprovalRow(row: ApprovalRow, actorId: string, now: string): Promise<ApprovalRequest> {
+    const current = await this.mapApprovalWithProgress(row);
+    if (current.status !== 'pending') return current;
+    await this.pool.query('UPDATE approval_requests SET status = $1, responded_at = $2, response_json = $3 WHERE id = $4 AND organization_id = $5 AND status = $6', ['abandoned', now, JSON.stringify({ message: 'abandoned' }), row.id, row.organization_id, 'pending']);
+    await this.writeAuditEvent(row.organization_id, actorId, 'approval.abandoned', row.id, {}, now);
+    return (await this.getApprovalRequestForOrganization(row.id, row.organization_id)) ?? missingApproval(row.id);
+  }
+
   private async uniqueProjectSlug(organizationId: string, input: string): Promise<string> {
     return this.uniqueSlug('projects', 'slug', organizationId, input);
   }
@@ -1068,6 +1419,60 @@ function mapPolicyRow(row: PolicyRow): PolicyRecord {
     updatedAt: row.updated_at,
     archivedAt: row.archived_at ?? undefined
   };
+}
+
+function mapApprovalRow(row: ApprovalRow, policyProgress?: ApprovalPolicyProgress): ApprovalRequest {
+  return ApprovalRequestSchema.parse({
+    id: row.id,
+    organizationId: row.organization_id,
+    userId: row.user_id ?? undefined,
+    requester: {
+      name: row.requester_name,
+      agentId: row.requester_agent_id,
+      host: row.requester_host ?? undefined,
+      workingDirectory: row.requester_working_directory ?? undefined,
+      projectName: row.requester_project_name ?? undefined,
+      projectId: row.requester_project_id ?? undefined
+    },
+    requestType: row.request_type,
+    title: row.title,
+    body: row.body ?? undefined,
+    command: row.command ?? undefined,
+    encryptedPayload: parseJSON(row.encrypted_payload_json, undefined),
+    choices: parseJSON<Choice[]>(row.choices_json, defaultChoices()),
+    defaultChoice: row.default_choice ?? undefined,
+    allowFreeformReply: Boolean(row.allow_freeform_reply),
+    expiresAt: row.expires_at ?? undefined,
+    risk: row.risk ?? undefined,
+    metadata: parseJSON<Record<string, string>>(row.metadata_json, {}),
+    status: row.status,
+    createdAt: row.created_at,
+    respondedAt: row.responded_at ?? undefined,
+    response: row.response_json ? parseJSON(row.response_json, undefined) : undefined,
+    policyProgress
+  });
+}
+
+function mapApprovalVoteRow(row: ApprovalVoteRow): ApprovalVoteRecord {
+  return {
+    voteId: row.vote_id,
+    requestId: row.request_id,
+    policyId: row.policy_id ?? undefined,
+    step: row.step,
+    approverUserId: row.approver_user_id,
+    source: row.source,
+    choiceId: row.choice_id,
+    message: row.message ?? undefined,
+    answers: parseJSON<Record<string, string[]> | undefined>(row.answers_json, undefined),
+    createdAt: row.created_at
+  };
+}
+
+function defaultChoices(): Choice[] {
+  return [
+    { id: 'approve', label: 'Approve', kind: 'approve' },
+    { id: 'reject', label: 'Reject', kind: 'deny' }
+  ];
 }
 
 function mapDeviceRow(row: DeviceRow): DeviceRecord {
@@ -1181,6 +1586,10 @@ function missingPolicy(policyId: string): never {
   throw new Error(`policy ${policyId} was not created`);
 }
 
+function missingApproval(id: string): never {
+  throw new Error(`approval request ${id} was not created`);
+}
+
 function missingDevice(deviceId: string): never {
   throw new Error(`device ${deviceId} was not created`);
 }
@@ -1191,6 +1600,14 @@ function missingAvailability(userId: string): never {
 
 function missingAgentStatus(statusId: string): never {
   throw new Error(`agent status ${statusId} was not created`);
+}
+
+function approvalOrganizationRoleCanRespond(role: string): boolean {
+  return ['owner', 'admin', 'approver', 'member'].includes(role);
+}
+
+function approvalTeamRoleCanRespond(role: string): boolean {
+  return ['owner', 'lead', 'member'].includes(role);
 }
 
 function waiterExpiresAt(now: string, requestExpiresAt: string | undefined): string {

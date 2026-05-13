@@ -78,6 +78,22 @@ describePostgres('PostgresAgentTickStore', () => {
     expect(await store!.listAuditEventsAfter(created.organizationId, event!.eventId - 1)).toEqual([event]);
   });
 
+  it('creates, responds to, expires, and abandons approval requests', async () => {
+    await store!.migrate('2026-05-08T00:00:00.000Z');
+    await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const request = await store!.createApprovalRequest({ requester: { name: 'agent', agentId: 'agt_test' }, title: 'Deploy?' }, '2026-05-08T01:10:00.000Z');
+    expect(request).toMatchObject({ title: 'Deploy?', status: 'pending', organizationId: DEFAULT_ORGANIZATION_ID });
+    expect((await store!.listApprovalRequests(DEFAULT_ORGANIZATION_ID, 'usr_default')).map((entry) => entry.id)).toContain(request.id);
+    expect(await store!.respondToApprovalRequestForOrganization(request.id, DEFAULT_ORGANIZATION_ID, { choiceId: 'approve' }, 'usr_default', '2026-05-08T01:11:00.000Z')).toMatchObject({ status: 'responded', response: { choiceId: 'approve' } });
+
+    const abandoned = await store!.createApprovalRequest({ requester: { name: 'agent', agentId: 'agt_test' }, title: 'Stop?' }, '2026-05-08T01:12:00.000Z');
+    expect(await store!.abandonApprovalRequestForOrganization(abandoned.id, DEFAULT_ORGANIZATION_ID, 'agt_test', '2026-05-08T01:13:00.000Z')).toMatchObject({ status: 'abandoned' });
+
+    const expiring = await store!.createApprovalRequest({ requester: { name: 'agent', agentId: 'agt_test' }, title: 'Expired?', expiresAt: '2026-05-08T01:14:00.000Z' }, '2026-05-08T01:13:00.000Z');
+    expect(await store!.getApprovalRequestForOrganization(expiring.id, DEFAULT_ORGANIZATION_ID, undefined, '2026-05-08T01:15:00.000Z')).toMatchObject({ status: 'expired' });
+  });
+
   it('manages devices and pairing codes', async () => {
     await store!.migrate('2026-05-08T00:00:00.000Z');
     await store!.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
