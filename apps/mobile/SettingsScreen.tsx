@@ -316,9 +316,11 @@ export function SettingsScreen({
           <Pressable onPress={() => { trackButton("check_connection"); onCheck(); }} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Check Connection</Text>
           </Pressable>
-          <Pressable onPress={hasMultipleAccounts ? () => { trackButton("switch_account"); setAccountsOpen(true); } : () => { trackButton(isClerkMode ? "sign_out" : "forget_device"); onForgetDevice(); }} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>{isClerkMode ? hasMultipleAccounts ? "Switch Account" : "Sign Out" : "Forget Device"}</Text>
-          </Pressable>
+          {!hasMultipleAccounts ? (
+            <Pressable onPress={() => { trackButton(isClerkMode ? "sign_out" : "forget_device"); onForgetDevice(); }} style={styles.secondaryActionButton}>
+              <Text style={styles.secondaryActionText}>{isClerkMode ? "Sign Out" : "Forget Device"}</Text>
+            </Pressable>
+          ) : null}
           {!isClerkMode && onUseHosted ? (
             <Pressable onPress={() => { trackButton("use_hosted"); onUseHosted(); }} style={styles.secondaryActionButton}>
               <Text style={styles.secondaryActionText}>Use agenttick.sh</Text>
