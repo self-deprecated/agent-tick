@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -663,6 +664,7 @@ function AgentTickApp({
   onSelectSavedClerkAccount?: (account: SavedMobileAccount) => Promise<"selected" | "reauth_started" | "missing">;
 }) {
   const [screen, setScreen] = useState<Screen>("approvals");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [serverURL, setServerURL] = useState(initialServerURL ?? defaultServer);
   const [runtimeAuthConfig, setRuntimeAuthConfig] = useState<RuntimeAuthConfig | null>(initialAuthConfig ?? null);
   const [token, setToken] = useState("");
@@ -719,6 +721,7 @@ function AgentTickApp({
     () => filterRequestsByProject(requests, selectedProjectID),
     [requests, selectedProjectID],
   );
+  const selectedOrganization = organizations.find((organization) => organization.organizationId === selectedOrganizationID);
   const selected = useMemo(
     () => visibleRequests.find((request) => request.id === selectedID) ?? visibleRequests[0],
     [selectedID, visibleRequests],
@@ -1879,35 +1882,32 @@ function AgentTickApp({
         </View>
         <View style={styles.headerActions}>
           <Pressable
-            accessibilityLabel={screen === "history" ? "Approvals" : "History"}
+            accessibilityLabel="Open menu"
             onPress={() => {
-              recordDiagnostic("info", "button", screen === "history" ? "open_approvals" : "open_history");
-              setScreen((current) =>
-                current === "history" ? "approvals" : "history",
-              );
+              recordDiagnostic("info", "button", "open_menu");
+              setMenuOpen(true);
             }}
             style={styles.iconButton}
           >
-            <Text style={styles.iconButtonText}>
-              {screen === "history" ? "Tick" : "Hist"}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel={screen === "settings" ? "Approvals" : "Settings"}
-            onPress={() => {
-              recordDiagnostic("info", "button", screen === "settings" ? "open_approvals" : "open_settings");
-              setScreen((current) =>
-                current === "settings" ? "approvals" : "settings",
-              );
-            }}
-            style={styles.iconButton}
-          >
-            <Text style={styles.iconButtonText}>
-              {screen === "settings" ? "Tick" : "Set"}
-            </Text>
+            <Text style={styles.menuIconText}>☰</Text>
           </Pressable>
         </View>
       </View>
+
+      <SideMenu
+        accountProfile={currentAccountProfile}
+        connectionStatus={connectionStatus}
+        currentScreen={screen}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={(nextScreen) => {
+          recordDiagnostic("info", "navigation", "menu_item_selected", { to: nextScreen });
+          setScreen(nextScreen);
+          setMenuOpen(false);
+        }}
+        organizationName={selectedOrganization?.name ?? selectedOrganizationID}
+        serverURL={serverURL}
+        visible={menuOpen}
+      />
 
       {screen === "settings" ? (
         <SettingsScreen
@@ -2009,6 +2009,111 @@ function AgentTickApp({
         />
       )}
     </View>
+  );
+}
+
+type SideMenuProps = {
+  accountProfile: MeResponse | null;
+  connectionStatus: ConnectionStatus;
+  currentScreen: Screen;
+  onClose: () => void;
+  onNavigate: (screen: Screen) => void;
+  organizationName?: string;
+  serverURL: string;
+  visible: boolean;
+};
+
+function SideMenu({
+  accountProfile,
+  connectionStatus,
+  currentScreen,
+  onClose,
+  onNavigate,
+  organizationName,
+  serverURL,
+  visible,
+}: SideMenuProps) {
+  const accountLabel = accountProfile?.email || accountProfile?.userId || "Not signed in";
+  const signInLabel = accountProfile?.signInMethod ? `${accountProfile.signInMethod} account` : "Mobile session";
+
+  return (
+    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.menuOverlay}>
+        <Pressable accessibilityLabel="Close menu" onPress={onClose} style={styles.menuBackdrop} />
+        <View style={styles.sideMenu}>
+          <View style={styles.sideMenuHeader}>
+            <View style={styles.sideMenuTitleRow}>
+              <Text style={styles.sideMenuTitle}>Menu</Text>
+              <Pressable accessibilityLabel="Close menu" onPress={onClose} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>×</Text>
+              </Pressable>
+            </View>
+            <View style={styles.accountCard}>
+              <Text style={styles.accountEyebrow}>Signed in as</Text>
+              <Text numberOfLines={1} style={styles.accountName}>{accountLabel}</Text>
+              <Text numberOfLines={1} style={styles.accountMeta}>{signInLabel}</Text>
+              {organizationName ? <Text numberOfLines={1} style={styles.accountMeta}>Org: {organizationName}</Text> : null}
+              <ConnectionBadge status={connectionStatus} />
+            </View>
+          </View>
+
+          <View style={styles.menuItems}>
+            <SideMenuItem
+              active={currentScreen === "approvals"}
+              icon="✓"
+              label="Approvals"
+              onPress={() => onNavigate("approvals")}
+            />
+            <SideMenuItem
+              active={currentScreen === "history"}
+              icon="🕘"
+              label="History"
+              onPress={() => onNavigate("history")}
+            />
+            <SideMenuItem
+              active={currentScreen === "settings"}
+              icon="⚙"
+              label="Settings"
+              onPress={() => onNavigate("settings")}
+            />
+            <SideMenuItem
+              active={currentScreen === "scanner"}
+              icon="▣"
+              label="Scan pairing QR"
+              onPress={() => onNavigate("scanner")}
+            />
+          </View>
+
+          <View style={styles.sideMenuFooter}>
+            <Text numberOfLines={2} style={styles.serverLabel}>{normalizeServerURL(serverURL)}</Text>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function SideMenuItem({
+  active,
+  icon,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  icon: string;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[styles.menuItem, active ? styles.menuItemActive : null]}
+    >
+      <Text style={[styles.menuItemIcon, active ? styles.menuItemTextActive : null]}>{icon}</Text>
+      <Text style={[styles.menuItemText, active ? styles.menuItemTextActive : null]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -2770,6 +2875,127 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: "row",
     gap: 8,
+  },
+  menuIconText: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "900",
+    lineHeight: 28,
+  },
+  menuOverlay: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  menuBackdrop: {
+    backgroundColor: "rgba(32, 33, 36, 0.38)",
+    flex: 1,
+  },
+  sideMenu: {
+    backgroundColor: "#f7f2e8",
+    borderLeftColor: "#ded6c6",
+    borderLeftWidth: 1,
+    maxWidth: 360,
+    paddingBottom: 20,
+    paddingHorizontal: 18,
+    paddingTop: Constants.statusBarHeight + 18,
+    width: "82%",
+  },
+  sideMenuHeader: {
+    gap: 14,
+  },
+  sideMenuTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  sideMenuTitle: {
+    color: "#202124",
+    fontSize: 26,
+    fontWeight: "900",
+  },
+  closeButton: {
+    alignItems: "center",
+    borderColor: "#202124",
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  closeButtonText: {
+    color: "#202124",
+    fontSize: 28,
+    fontWeight: "800",
+    lineHeight: 30,
+  },
+  accountCard: {
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 6,
+    padding: 14,
+  },
+  accountEyebrow: {
+    color: "#7a725f",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  accountName: {
+    color: "#202124",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  accountMeta: {
+    color: "#6d6657",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  menuItems: {
+    gap: 8,
+    marginTop: 22,
+  },
+  menuItem: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 52,
+    paddingHorizontal: 14,
+  },
+  menuItemActive: {
+    backgroundColor: "#202124",
+    borderColor: "#202124",
+  },
+  menuItemIcon: {
+    color: "#202124",
+    fontSize: 20,
+    fontWeight: "900",
+    width: 26,
+  },
+  menuItemText: {
+    color: "#202124",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  menuItemTextActive: {
+    color: "#ffffff",
+  },
+  sideMenuFooter: {
+    borderTopColor: "#ded6c6",
+    borderTopWidth: 1,
+    marginTop: "auto",
+    paddingTop: 14,
+  },
+  serverLabel: {
+    color: "#6d6657",
+    fontSize: 12,
+    fontWeight: "700",
   },
   scannerPane: {
     flex: 1,
