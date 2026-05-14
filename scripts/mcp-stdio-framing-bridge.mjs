@@ -25,19 +25,28 @@ process.stdin.on('end', () => child.stdin.end());
 function drainInput() {
   for (;;) {
     const headerEnd = input.indexOf('\r\n\r\n');
-    if (headerEnd === -1) return;
-    const header = input.subarray(0, headerEnd).toString('utf8');
-    const length = Number(/content-length:\s*(\d+)/i.exec(header)?.[1] ?? 0);
-    if (!length) {
-      input = input.subarray(headerEnd + 4);
+    const newlineEnd = input.indexOf('\n');
+    if (headerEnd === -1 && newlineEnd === -1) return;
+
+    if (headerEnd !== -1 && (newlineEnd === -1 || headerEnd < newlineEnd)) {
+      const header = input.subarray(0, headerEnd).toString('utf8');
+      const length = Number(/content-length:\s*(\d+)/i.exec(header)?.[1] ?? 0);
+      if (!length) {
+        input = input.subarray(headerEnd + 4);
+        continue;
+      }
+      const bodyStart = headerEnd + 4;
+      const bodyEnd = bodyStart + length;
+      if (input.length < bodyEnd) return;
+      const body = input.subarray(bodyStart, bodyEnd).toString('utf8');
+      input = input.subarray(bodyEnd);
+      child.stdin.write(`${body}\n`);
       continue;
     }
-    const bodyStart = headerEnd + 4;
-    const bodyEnd = bodyStart + length;
-    if (input.length < bodyEnd) return;
-    const body = input.subarray(bodyStart, bodyEnd).toString('utf8');
-    input = input.subarray(bodyEnd);
-    child.stdin.write(`${body}\n`);
+
+    const body = input.subarray(0, newlineEnd).toString('utf8').trim();
+    input = input.subarray(newlineEnd + 1);
+    if (body) child.stdin.write(`${body}\n`);
   }
 }
 
