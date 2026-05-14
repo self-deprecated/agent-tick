@@ -306,10 +306,6 @@ export function SettingsScreen({
         style={styles.settingsPane}
       >
         <View style={styles.settingsSection}>
-          <View style={styles.statusRow}>
-            <ConnectionBadge status={connectionStatus} />
-            {loading ? <ActivityIndicator color="#202124" /> : null}
-          </View>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           <Pressable onPress={() => { trackButton("open_account_switcher"); setAccountsOpen(true); }} style={styles.accountSummaryButton}>
             <Text style={styles.label}>Current account</Text>
