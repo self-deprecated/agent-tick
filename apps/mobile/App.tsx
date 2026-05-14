@@ -488,15 +488,18 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       onAddClerkAccount={() => void handleAddClerkAccount()}
       onForgetClerkSession={(options) => void handleForgetClerkSession(options)}
       onSelectSavedClerkAccount={async (account) => {
+        recordDiagnostic("info", "auth", "saved_account_token_lookup_start", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID) });
         const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
         if (!savedToken) {
-          recordDiagnostic("warn", "auth", "saved_account_token_missing", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
+          recordDiagnostic("warn", "auth", "saved_account_token_missing", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID) });
           return "missing";
         }
-        const tokenMatchesAccount = await savedSessionMatchesAccount(account, savedToken).catch(() => false);
+        const tokenSubject = mobileSessionTokenSubject(savedToken);
+        const tokenMatchesAccount = !account.userID || tokenSubject === account.userID;
+        recordDiagnostic("info", "auth", "saved_account_token_loaded", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID), tokenMatchesAccount, tokenSubjectMatchesTarget: tokenSubject === account.userID });
         if (!tokenMatchesAccount) {
           await tokenCache?.saveToken(mobileAccountSessionTokenKey(account.id), "");
-          recordDiagnostic("warn", "auth", "saved_account_token_mismatch", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email) });
+          recordDiagnostic("warn", "auth", "saved_account_token_mismatch", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID) });
           return "missing";
         }
         refreshedMobileSessionFromClerk.current = true;
@@ -507,6 +510,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         setClerkLoginToken(null);
         setMobileSessionToken(savedToken);
         await tokenCache?.saveToken(agentTickMobileSessionJwtKey, savedToken);
+        recordDiagnostic("info", "auth", "saved_account_session_activated", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID) });
         return "selected";
       }}
     />
@@ -539,14 +543,21 @@ async function hasSavedLocalSession(serverURL: string) {
   return entries.some(([, value]) => Boolean(value));
 }
 
-async function savedSessionMatchesAccount(account: SavedMobileAccount, token: string) {
-  if (!account.userID) return true;
-  const client = new AgentTickClient({
-    baseUrl: account.serverURL,
-    tokenProvider: async () => token,
-  });
-  const profile = await client.getMe();
-  return profile.userId === account.userID;
+function mobileSessionTokenSubject(token: string): string | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  const atobFn = (globalThis as { atob?: (value: string) => string }).atob;
+  if (!atobFn) return null;
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    const parsed = JSON.parse(atobFn(padded)) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const subject = (parsed as { sub?: unknown }).sub;
+    return typeof subject === "string" && subject ? subject : null;
+  } catch {
+    return null;
+  }
 }
 
 function selfHostedInitialURL(serverURL?: string) {
