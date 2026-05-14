@@ -83,6 +83,32 @@ function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options
 }
 
 describe("ApprovalsScreen policy-aware approval UI", () => {
+  it("does not render raw request-load errors over the waiting screen", () => {
+    render(
+      <ApprovalsScreen
+        error={'[{"message":"duplicate choice id: id"}]'}
+        loading={false}
+        onRefresh={jest.fn()}
+        onRespond={jest.fn()}
+        onSubmitQuestionnaire={jest.fn()}
+        projectGroups={[]}
+        questionnaireAnswers={{}}
+        reply=""
+        requests={[]}
+        selected={undefined}
+        selectedID={null}
+        selectedProjectID={null}
+        statusUpdates={[]}
+        setProjectID={jest.fn()}
+        setQuestionnaireAnswer={jest.fn()}
+        setReply={jest.fn()}
+        setSelectedID={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Waiting")).toBeTruthy();
+    expect(screen.queryByText(/duplicate choice id/)).toBeNull();
+  });
+
   it("requires decrypting encrypted requests before responding", () => {
     const key = generateApprovalEncryptionKey();
     const onRespond = jest.fn();

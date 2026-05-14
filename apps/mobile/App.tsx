@@ -1178,7 +1178,7 @@ function AgentTickApp({
       const message = err instanceof Error ? err.message : "Failed to load requests";
       recordDiagnostic("warn", "requests", "load_failed", { message });
       setDiagnosticsEventCount(diagnosticEvents().length);
-      setError(message);
+      setError(null);
     } finally {
       if (visible) {
         setLoading(false);
@@ -2206,7 +2206,6 @@ export function ApprovalsScreen({
       <View style={styles.waitingPane}>
         {loading ? <ActivityIndicator color="#202124" /> : null}
         <Text style={styles.waitingTitle}>Waiting</Text>
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <LatestStatusCard statusUpdates={statusUpdates} compact dismissedStatusID={dismissedStatusID} onDismiss={onDismissStatus} />
         <Pressable onPress={onRefresh} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonText}>Refresh</Text>
