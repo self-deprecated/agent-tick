@@ -267,7 +267,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       const accounts = normalizeSavedMobileAccounts(parsedAccounts);
       for (const account of accounts) {
         if (account.authProvider !== "clerk") continue;
-        const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
+        const savedToken = await getStoredMobileSessionToken(mobileAccountSessionTokenKey(account.id));
         if (!savedToken || cancelled) continue;
         const client = new AgentTickClient({ baseUrl: props.initialServerURL ?? defaultServer, tokenProvider: () => savedToken });
         try {
@@ -295,7 +295,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     if (!isLoaded || addingClerkAccount || isSignedIn || mobileSessionToken || signedOutManually) return;
     let cancelled = false;
     const restoreMobileSession = async () => {
-      const savedSession = (await tokenCache?.getToken(agentTickMobileSessionJwtKey)) || null;
+      const savedSession = await getStoredMobileSessionToken(agentTickMobileSessionJwtKey);
       if (cancelled || !savedSession) return;
       setUsingSavedMobileAccount(false);
       setActiveMobileAccountID(null);
@@ -375,8 +375,8 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       });
       setActiveMobileAccountID(accountID);
       const accountTokenKey = mobileAccountSessionTokenKey(accountID);
-      void tokenCache?.saveToken(accountTokenKey, session.token).catch(() => undefined);
-      void tokenCache?.saveToken(agentTickMobileSessionJwtKey, session.token).catch(() => undefined);
+      void saveStoredMobileSessionToken(accountTokenKey, session.token);
+      void saveStoredMobileSessionToken(agentTickMobileSessionJwtKey, session.token);
       void getNativeClerkModule()?.signOut?.().catch(() => undefined);
       void signOut().catch(() => undefined);
     };
@@ -401,7 +401,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     setActiveMobileAccountID(null);
     setClerkLoginToken(null);
     setMobileSessionToken(null);
-    await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
+    await clearStoredMobileSessionToken(agentTickMobileSessionJwtKey);
     try {
       await getNativeClerkModule()?.signOut?.();
       await signOut();
@@ -425,7 +425,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
     setActiveMobileAccountID(null);
     setClerkLoginToken(null);
     setMobileSessionToken(null);
-    await tokenCache?.saveToken(agentTickMobileSessionJwtKey, "");
+    await clearStoredMobileSessionToken(agentTickMobileSessionJwtKey);
     try {
       await getNativeClerkModule()?.signOut?.();
       await signOut();
@@ -489,7 +489,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       onForgetClerkSession={(options) => void handleForgetClerkSession(options)}
       onSelectSavedClerkAccount={async (account) => {
         recordDiagnostic("info", "auth", "saved_account_token_lookup_start", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID) });
-        const savedToken = (await tokenCache?.getToken(mobileAccountSessionTokenKey(account.id))) || null;
+        const savedToken = await getStoredMobileSessionToken(mobileAccountSessionTokenKey(account.id));
         if (!savedToken) {
           recordDiagnostic("warn", "auth", "saved_account_token_missing", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID) });
           return "missing";
@@ -498,7 +498,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         const tokenMatchesAccount = !account.userID || tokenSubject === account.userID;
         recordDiagnostic("info", "auth", "saved_account_token_loaded", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID), tokenMatchesAccount, tokenSubjectMatchesTarget: tokenSubject === account.userID });
         if (!tokenMatchesAccount) {
-          await tokenCache?.saveToken(mobileAccountSessionTokenKey(account.id), "");
+          await clearStoredMobileSessionToken(mobileAccountSessionTokenKey(account.id));
           recordDiagnostic("warn", "auth", "saved_account_token_mismatch", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID) });
           return "missing";
         }
@@ -509,7 +509,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         setOpenSignInAfterSignOut(false);
         setClerkLoginToken(null);
         setMobileSessionToken(savedToken);
-        await tokenCache?.saveToken(agentTickMobileSessionJwtKey, savedToken);
+        await saveStoredMobileSessionToken(agentTickMobileSessionJwtKey, savedToken);
         recordDiagnostic("info", "auth", "saved_account_session_activated", { targetSignInMethod: account.signInMethod, hasTargetEmail: Boolean(account.email), hasTargetUser: Boolean(account.userID) });
         return "selected";
       }}
@@ -541,6 +541,19 @@ async function hasSavedLocalSession(serverURL: string) {
   const keys = mobileSessionStorageKeys(serverURL);
   const entries = await AsyncStorage.multiGet([keys.token, keys.deviceID]);
   return entries.some(([, value]) => Boolean(value));
+}
+
+async function getStoredMobileSessionToken(key: string): Promise<string | null> {
+  const token = await AsyncStorage.getItem(key);
+  return token || null;
+}
+
+async function saveStoredMobileSessionToken(key: string, token: string): Promise<void> {
+  await AsyncStorage.setItem(key, token);
+}
+
+async function clearStoredMobileSessionToken(key: string): Promise<void> {
+  await AsyncStorage.removeItem(key);
 }
 
 function mobileSessionTokenSubject(token: string): string | null {
@@ -966,7 +979,7 @@ function AgentTickApp({
         });
         const savedAccount = next[0];
         if (savedAccount && runtimeAuthConfig?.authProvider === "clerk" && clerkSessionToken && currentAccountProfile?.source !== "mobile-saved-account") {
-          void tokenCache?.saveToken(mobileAccountSessionTokenKey(savedAccount.id), clerkSessionToken);
+          void saveStoredMobileSessionToken(mobileAccountSessionTokenKey(savedAccount.id), clerkSessionToken);
         }
         void AsyncStorage.setItem(mobileAccountsStorageKey, JSON.stringify(next));
         return next;
@@ -1021,7 +1034,7 @@ function AgentTickApp({
       void AsyncStorage.setItem(mobileAccountsStorageKey, JSON.stringify(next));
       return next;
     });
-    void tokenCache?.saveToken(mobileAccountSessionTokenKey(account.id), "");
+    void clearStoredMobileSessionToken(mobileAccountSessionTokenKey(account.id));
     recordDiagnostic("info", "auth", "saved_account_removed", { authProvider: account.authProvider, signInMethod: account.signInMethod, hasEmail: Boolean(account.email) });
   }, []);
 
