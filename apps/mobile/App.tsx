@@ -334,14 +334,17 @@ function ClerkBoundApp(props: AgentTickAppProps) {
         }
         return;
       }
-      if (addingClerkAccount) {
-        recordDiagnostic("info", "auth", "skip_native_clerk_token_while_adding_account", { nativeSignedIn });
+      if (!nativeSignedIn) {
+        if (addingClerkAccount) recordDiagnostic("info", "auth", "wait_for_native_clerk_sign_in_while_adding_account");
         return;
       }
-      if (!nativeSignedIn) return;
+      if (addingClerkAccount && !addAccountSawSignedOut) {
+        recordDiagnostic("info", "auth", "skip_stale_native_clerk_token_while_adding_account");
+        return;
+      }
       const nativeClientToken = await getNativeClerkClientToken();
       if (!cancelled && nativeClientToken) {
-        recordDiagnostic("info", "auth", "clerk_login_token_from_native_client");
+        recordDiagnostic("info", "auth", "clerk_login_token_from_native_client", { addingClerkAccount });
         setClerkLoginToken(nativeClientToken);
       }
     };
