@@ -125,4 +125,8 @@ describe('parseChoices', () => {
     expect(() => parseChoices(['missing-label='])).toThrow(/label cannot be empty/);
     expect(() => parseChoices(['=Missing id'])).toThrow(/invalid choice/);
   });
+
+  it('rejects duplicate explicit choice ids', () => {
+    expect(() => parseChoices(['id:test=nothing', 'id:other=other'])).toThrow(/Duplicate explicit choice id: id/);
+  });
 });

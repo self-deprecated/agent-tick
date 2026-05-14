@@ -2422,9 +2422,9 @@ export function ApprovalsScreen({
             <Text style={styles.choiceText}>Submit Answers</Text>
           </Pressable>
         ) : canRespond ? (
-          (selected.choices ?? []).map((choice) => (
+          (selected.choices ?? []).map((choice, index) => (
             <Pressable
-              key={choice.id}
+              key={`${choice.id}:${index}`}
               onPress={() => onRespond(selected, choice)}
               style={[
                 styles.choiceButton,

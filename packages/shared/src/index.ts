@@ -383,6 +383,20 @@ export const ChoiceSchema = z.object({
 });
 export type Choice = z.infer<typeof ChoiceSchema>;
 
+export const ChoiceListSchema = z.array(ChoiceSchema).superRefine((choices, ctx) => {
+  const seen = new Set<string>();
+  for (const [index, choice] of choices.entries()) {
+    if (seen.has(choice.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, 'id'],
+        message: `duplicate choice id: ${choice.id}`
+      });
+    }
+    seen.add(choice.id);
+  }
+});
+
 export const ResponsePayloadSchema = z.object({
   choiceId: z.string().optional(),
   message: z.string().optional(),
@@ -507,7 +521,7 @@ export const ApprovalRequestSchema = z.object({
   body: z.string().optional(),
   command: z.string().optional(),
   encryptedPayload: EncryptedApprovalPayloadSchema.optional(),
-  choices: z.array(ChoiceSchema),
+  choices: ChoiceListSchema,
   defaultChoice: z.string().optional(),
   allowFreeformReply: z.boolean().default(false),
   expiresAt: z.string().optional(),
@@ -531,7 +545,7 @@ export const CreateApprovalRequestSchema = z.object({
   body: z.string().optional(),
   command: z.string().optional(),
   encryptedPayload: EncryptedApprovalPayloadSchema.optional(),
-  choices: z.array(ChoiceSchema).optional(),
+  choices: ChoiceListSchema.optional(),
   defaultChoice: z.string().optional(),
   allowFreeformReply: z.boolean().optional(),
   expiresAt: z.string().optional(),

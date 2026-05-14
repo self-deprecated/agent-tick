@@ -1301,7 +1301,9 @@ function parseChoice(value: string, index: number, usedIds: Set<string>): { id: 
   const id = (kindSeparator === -1 ? idAndKind : idAndKind.slice(0, kindSeparator)).trim();
   const kind = (kindSeparator === -1 ? inferredChoiceKind(id) : idAndKind.slice(kindSeparator + 1).trim()) || 'approve';
   if (!id) throw new Error(`invalid choice: ${value}. Choice id cannot be empty.`);
-  return uniquifyChoiceId({ id, label, kind }, usedIds);
+  if (usedIds.has(id)) throw new Error(`invalid choice: ${value}. Duplicate explicit choice id: ${id}.`);
+  usedIds.add(id);
+  return { id, label, kind };
 }
 
 function uniquifyChoiceId(choice: { id: string; label: string; kind: string }, usedIds: Set<string>): { id: string; label: string; kind: string } {
