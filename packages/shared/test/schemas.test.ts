@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiErrorEnvelopeSchema, ApprovalRequestSchema, AuthConfigSchema, BillingStatusSchema, CreateApprovalRequestSchema, CreateMobileDiagnosticsSchema, InviteEmailDeliverySchema, OrganizationInviteEmailResultSchema, UpdateDevicePushTokenSchema, createEncryptedApprovalPayload, decryptApprovalPayload, generateApprovalEncryptionKey } from '../src/index.js';
+import { ApiErrorEnvelopeSchema, ApprovalRequestSchema, AuthConfigSchema, BillingStatusSchema, ChoiceListSchema, CreateApprovalRequestSchema, CreateMobileDiagnosticsSchema, InviteEmailDeliverySchema, OrganizationInviteEmailResultSchema, UpdateDevicePushTokenSchema, createEncryptedApprovalPayload, decryptApprovalPayload, generateApprovalEncryptionKey } from '../src/index.js';
 
 describe('shared schemas', () => {
   it('validates public auth config', () => {
@@ -124,6 +124,20 @@ describe('shared schemas', () => {
     ).toEqual([
       { id: 'canary', label: 'Canary', kind: 'approve' },
       { id: 'cancel', label: 'Cancel', kind: 'deny' }
+    ]);
+  });
+
+  it('deduplicates duplicate choice ids for display and response safety', () => {
+    expect(
+      ChoiceListSchema.parse([
+        { id: 'id', label: 'First', kind: 'steer' },
+        { id: 'id', label: 'Second', kind: 'steer' },
+        { id: 'id', label: 'Third', kind: 'deny' }
+      ])
+    ).toEqual([
+      { id: 'id', label: 'First', kind: 'steer' },
+      { id: 'id_2', label: 'Second', kind: 'steer' },
+      { id: 'id_3', label: 'Third', kind: 'deny' }
     ]);
   });
 

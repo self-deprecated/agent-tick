@@ -383,18 +383,14 @@ export const ChoiceSchema = z.object({
 });
 export type Choice = z.infer<typeof ChoiceSchema>;
 
-export const ChoiceListSchema = z.array(ChoiceSchema).superRefine((choices, ctx) => {
-  const seen = new Set<string>();
-  for (const [index, choice] of choices.entries()) {
-    if (seen.has(choice.id)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [index, 'id'],
-        message: `duplicate choice id: ${choice.id}`
-      });
-    }
-    seen.add(choice.id);
-  }
+export const ChoiceListSchema = z.array(ChoiceSchema).transform((choices) => {
+  const seen = new Map<string, number>();
+  return choices.map((choice) => {
+    const count = seen.get(choice.id) ?? 0;
+    seen.set(choice.id, count + 1);
+    if (count === 0) return choice;
+    return { ...choice, id: `${choice.id}_${count + 1}` };
+  });
 });
 
 export const ResponsePayloadSchema = z.object({
