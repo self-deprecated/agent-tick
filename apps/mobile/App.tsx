@@ -671,7 +671,6 @@ function AgentTickApp({
 }) {
   const [screen, setScreen] = useState<Screen>("approvals");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [accountSwitcherToken, setAccountSwitcherToken] = useState(0);
   const [serverURL, setServerURL] = useState(initialServerURL ?? defaultServer);
   const [runtimeAuthConfig, setRuntimeAuthConfig] = useState<RuntimeAuthConfig | null>(initialAuthConfig ?? null);
   const [token, setToken] = useState("");
@@ -2013,12 +2012,6 @@ function AgentTickApp({
           setScreen(nextScreen);
           setMenuOpen(false);
         }}
-        onSwitchAccount={() => {
-          recordDiagnostic("info", "navigation", "menu_switch_account");
-          setAccountSwitcherToken((value) => value + 1);
-          setScreen("settings");
-          setMenuOpen(false);
-        }}
         organizationName={selectedOrganization?.name ?? selectedOrganizationID}
         otherAccounts={otherAccounts}
         serverURL={serverURL}
@@ -2027,7 +2020,6 @@ function AgentTickApp({
 
       {screen === "settings" ? (
         <SettingsScreen
-          accountSwitcherToken={accountSwitcherToken}
           accounts={savedAccounts}
           availability={availability}
           connectionStatus={connectionStatus}
@@ -2137,7 +2129,6 @@ type SideMenuProps = {
   onAccountSelect: (account: SavedMobileAccount) => void;
   onClose: () => void;
   onNavigate: (screen: Screen) => void;
-  onSwitchAccount: () => void;
   organizationName?: string;
   otherAccounts: SavedMobileAccount[];
   serverURL: string;
@@ -2152,7 +2143,6 @@ function SideMenu({
   onAccountSelect,
   onClose,
   onNavigate,
-  onSwitchAccount,
   organizationName,
   otherAccounts,
   serverURL,
@@ -2201,24 +2191,22 @@ function SideMenu({
                 <Text style={styles.closeButtonText}>×</Text>
               </Pressable>
             </View>
-            <Pressable accessibilityLabel="Switch accounts" onPress={onSwitchAccount} style={styles.accountCard}>
-              <Text style={styles.accountEyebrow}>Signed in as</Text>
-              <View style={styles.accountIdentityRow}>
-                <View style={[styles.accountColorDot, { backgroundColor: accountColorForKey(accountProfile?.userId || accountProfile?.email || accountLabel) }]} />
-                <Text numberOfLines={1} style={[styles.accountName, styles.accountNameInRow]}>{accountLabel}</Text>
-              </View>
-              <Text numberOfLines={1} style={styles.accountMeta}>{signInLabel}</Text>
-              {organizationName ? <Text numberOfLines={1} style={styles.accountMeta}>Org: {organizationName}</Text> : null}
-              <ConnectionBadge status={connectionStatus} />
-              <Text style={styles.accountSwitchAction}>Switch accounts ›</Text>
-            </Pressable>
           </View>
 
-          {otherAccounts.length > 0 ? (
-            <View style={styles.otherAccountsSection}>
-              <Text style={styles.menuSectionLabel}>Other accounts</Text>
+          <View style={styles.accountsSection}>
+            <Text style={styles.menuSectionLabel}>Accounts</Text>
+            <View style={styles.accountsList}>
+              <AccountMenuItem
+                active
+                colorKey={accountProfile?.userId || accountProfile?.email || accountLabel}
+                label={accountLabel}
+                meta={[signInLabel, organizationName ? `Org: ${organizationName}` : undefined].filter(Boolean).join(" · ")}
+                onPress={() => {
+                  onNavigate("approvals");
+                }}
+              />
               {otherAccounts.map((account) => (
-                <OtherAccountMenuItem
+                <AccountMenuItem
                   account={account}
                   key={account.id}
                   onPress={() => {
@@ -2229,7 +2217,7 @@ function SideMenu({
                 />
               ))}
             </View>
-          ) : null}
+          </View>
 
           <View style={styles.menuItems}>
             <SideMenuItem
@@ -2285,23 +2273,37 @@ function SideMenuItem({
   );
 }
 
-function OtherAccountMenuItem({
+function AccountMenuItem({
   account,
+  active = false,
+  colorKey,
+  label,
+  meta,
   onPress,
   pending,
 }: {
-  account: SavedMobileAccount;
+  account?: SavedMobileAccount;
+  active?: boolean;
+  colorKey?: string;
+  label?: string;
+  meta?: string;
   onPress: () => void;
   pending?: AccountPendingState;
 }) {
-  const pendingLabel = accountPendingLabel(pending);
+  const accountLabel = label || (account ? savedAccountMenuLabel(account) : "Account");
+  const pendingLabel = active ? "Current account" : accountPendingLabel(pending);
   const pendingCount = pending?.status === "ready" ? pending.count : 0;
+  const dotColor = account ? accountColor(account) : accountColorForKey(colorKey || accountLabel);
   return (
-    <Pressable accessibilityLabel={`Switch to ${savedAccountMenuLabel(account)}`} onPress={onPress} style={styles.otherAccountItem}>
-      <View style={[styles.accountColorDot, { backgroundColor: accountColor(account) }]} />
-      <View style={styles.otherAccountTextWrap}>
-        <Text numberOfLines={1} style={styles.otherAccountName}>{savedAccountMenuLabel(account)}</Text>
-        {pendingLabel ? <Text numberOfLines={1} style={styles.otherAccountMeta}>{pendingLabel}</Text> : null}
+    <Pressable accessibilityLabel={active ? `Open ${accountLabel}` : `Switch to ${accountLabel}`} onPress={onPress} style={[styles.accountMenuItem, active ? styles.accountMenuItemActive : null]}>
+      <View style={[styles.accountColorDot, { backgroundColor: dotColor }]} />
+      <View style={styles.accountMenuTextWrap}>
+        <View style={styles.accountMenuTitleRow}>
+          <Text numberOfLines={1} style={styles.accountMenuName}>{accountLabel}</Text>
+          {active ? <Text style={styles.currentAccountPill}>Current</Text> : null}
+        </View>
+        {meta ? <Text numberOfLines={1} style={styles.accountMenuMeta}>{meta}</Text> : null}
+        {pendingLabel ? <Text numberOfLines={1} style={styles.accountMenuStatus}>{pendingLabel}</Text> : null}
       </View>
       {pendingCount > 0 ? (
         <View style={styles.accountPendingBadge}>
@@ -3137,19 +3139,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#d97706",
     borderColor: "#f7f2e8",
-    borderRadius: 11,
+    borderRadius: 12,
     borderWidth: 2,
+    height: 24,
     justifyContent: "center",
-    minWidth: 22,
-    paddingHorizontal: 5,
+    minWidth: 24,
+    paddingHorizontal: 6,
     position: "absolute",
-    right: -7,
-    top: -7,
+    right: -8,
+    top: -8,
+    zIndex: 2,
   },
   headerBadgeText: {
     color: "#ffffff",
     fontSize: 11,
     fontWeight: "900",
+    includeFontPadding: false,
+    lineHeight: 13,
+    textAlign: "center",
   },
   menuOverlay: {
     flex: 1,
@@ -3207,55 +3214,26 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 30,
   },
-  accountCard: {
-    backgroundColor: "#ffffff",
+  accountsSection: {
+    backgroundColor: "#efe8da",
     borderColor: "#ded6c6",
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
+    gap: 8,
+    marginTop: 18,
+    padding: 10,
+  },
+  accountsList: {
     gap: 6,
-    padding: 14,
-  },
-  accountEyebrow: {
-    color: "#7a725f",
-    fontSize: 12,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  accountIdentityRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  accountName: {
-    color: "#202124",
-    fontSize: 17,
-    fontWeight: "900",
-  },
-  accountNameInRow: {
-    flex: 1,
-  },
-  accountMeta: {
-    color: "#6d6657",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  accountSwitchAction: {
-    color: "#202124",
-    fontSize: 13,
-    fontWeight: "900",
-    marginTop: 4,
-  },
-  otherAccountsSection: {
-    gap: 8,
-    marginTop: 22,
   },
   menuSectionLabel: {
     color: "#7a725f",
     fontSize: 12,
     fontWeight: "900",
+    paddingHorizontal: 4,
     textTransform: "uppercase",
   },
-  otherAccountItem: {
+  accountMenuItem: {
     alignItems: "center",
     backgroundColor: "#ffffff",
     borderColor: "#ded6c6",
@@ -3263,26 +3241,54 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     gap: 10,
-    minHeight: 58,
+    minHeight: 62,
     paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  accountMenuItemActive: {
+    borderColor: "#202124",
+    borderWidth: 2,
   },
   accountColorDot: {
     borderRadius: 7,
     height: 14,
     width: 14,
   },
-  otherAccountTextWrap: {
+  accountMenuTextWrap: {
     flex: 1,
   },
-  otherAccountName: {
+  accountMenuTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  accountMenuName: {
     color: "#202124",
+    flex: 1,
     fontSize: 15,
     fontWeight: "900",
   },
-  otherAccountMeta: {
+  currentAccountPill: {
+    backgroundColor: "#202124",
+    borderRadius: 8,
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    textTransform: "uppercase",
+  },
+  accountMenuMeta: {
     color: "#6d6657",
     fontSize: 12,
     fontWeight: "700",
+    marginTop: 2,
+  },
+  accountMenuStatus: {
+    color: "#7a725f",
+    fontSize: 12,
+    fontWeight: "800",
     marginTop: 2,
   },
   accountPendingBadge: {

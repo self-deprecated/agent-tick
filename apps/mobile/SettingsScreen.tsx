@@ -45,7 +45,6 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
 }
 
 export function SettingsScreen({
-  accountSwitcherToken = 0,
   accounts = [],
   availability,
   authProvider,
@@ -89,7 +88,6 @@ export function SettingsScreen({
   setToken,
   token,
 }: {
-  accountSwitcherToken?: number;
   accounts?: SavedMobileAccount[];
   availability?: AvailabilityState;
   authProvider?: string;
@@ -147,10 +145,6 @@ export function SettingsScreen({
     return () => clearTimeout(timer);
   }, [e2eeFocusToken]);
 
-  useEffect(() => {
-    if (!accountSwitcherToken) return;
-    setAccountsOpen(true);
-  }, [accountSwitcherToken]);
   const isClerkMode = authProvider === "clerk";
   const hasMultipleAccounts = isClerkMode && accounts.length > 1;
   const isPaired = isClerkMode || !!deviceID;
