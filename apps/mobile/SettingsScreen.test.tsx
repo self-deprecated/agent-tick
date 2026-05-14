@@ -224,7 +224,7 @@ describe("SettingsScreen — paired state", () => {
     expect(onSavedAccountSelect).toHaveBeenCalledWith(account);
   });
 
-  it("removes saved accounts without selecting them", () => {
+  it("signs out saved accounts without selecting them", () => {
     const onSavedAccountRemove = jest.fn();
     const account = {
       id: "clerk:https://agenttick.sh:usr_2",
@@ -247,8 +247,17 @@ describe("SettingsScreen — paired state", () => {
     );
 
     fireEvent.press(screen.getByText("Switch accounts ›"));
-    fireEvent.press(screen.getByText("Remove"));
+    fireEvent.press(screen.getAllByText("Sign Out").at(-1)!);
     expect(onSavedAccountRemove).toHaveBeenCalledWith(account);
+  });
+
+  it("signs out the current account from the account switcher", () => {
+    const onForgetDevice = jest.fn();
+    render(<SettingsScreen {...pairedProps} onForgetDevice={onForgetDevice} />);
+
+    fireEvent.press(screen.getByText("Switch accounts ›"));
+    fireEvent.press(screen.getByText("Sign Out"));
+    expect(onForgetDevice).toHaveBeenCalled();
   });
 
   it("shows the Clerk account summary and lets users add another account from the switcher", () => {

@@ -258,11 +258,16 @@ export function SettingsScreen({
         </View>
         <View style={styles.settingsSection}>
           <View style={styles.organizationList}>
-            <Pressable onPress={() => { trackButton("current_account_selected"); setAccountsOpen(false); }} style={[styles.organizationButton, styles.organizationButtonActive]}>
-              <Text style={[styles.label, styles.organizationNameActive]}>Current</Text>
-              <Text style={[styles.organizationName, styles.organizationNameActive]}>{currentAccountTitle}</Text>
-              <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
-            </Pressable>
+            <View style={[styles.organizationButton, styles.organizationButtonActive]}>
+              <Pressable onPress={() => { trackButton("current_account_selected"); setAccountsOpen(false); }} style={styles.accountSelectArea}>
+                <Text style={[styles.label, styles.organizationNameActive]}>Current</Text>
+                <Text style={[styles.organizationName, styles.organizationNameActive]}>{currentAccountTitle}</Text>
+                <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
+              </Pressable>
+              <Pressable onPress={() => { trackButton(isClerkMode ? "sign_out_current_account" : "forget_current_device"); setAccountsOpen(false); onForgetDevice(); }} style={styles.signOutAccountButton}>
+                <Text style={styles.signOutAccountText}>Sign Out</Text>
+              </Pressable>
+            </View>
             {accounts.filter((account) => !isCurrentSavedAccount(account, { authProvider, currentAccountProfile, deviceID, selectedOrganizationID, serverURL })).map((account) => (
               <View key={account.id} style={styles.organizationButton}>
                 <Pressable
@@ -278,7 +283,7 @@ export function SettingsScreen({
                 </Pressable>
                 {onSavedAccountRemove ? (
                   <Pressable onPress={() => { trackButton("saved_account_remove", { targetAccountID: account.id, targetAuthProvider: account.authProvider, targetUserID: account.userID, targetEmail: account.email, targetSignInMethod: account.signInMethod }); onSavedAccountRemove(account); }} style={styles.removeAccountButton}>
-                    <Text style={styles.removeAccountText}>Remove</Text>
+                    <Text style={styles.removeAccountText}>Sign Out</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -769,6 +774,19 @@ const styles = StyleSheet.create({
   },
   removeAccountText: {
     color: "#9b1c1c",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  signOutAccountButton: {
+    alignSelf: "flex-start",
+    borderColor: "#ffffff",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  signOutAccountText: {
+    color: "#ffffff",
     fontSize: 13,
     fontWeight: "900",
   },
