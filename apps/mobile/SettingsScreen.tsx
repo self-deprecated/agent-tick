@@ -143,6 +143,7 @@ export function SettingsScreen({
   const isClerkMode = authProvider === "clerk";
   const hasMultipleAccounts = isClerkMode && accounts.length > 1;
   const isPaired = isClerkMode || !!deviceID;
+  const isPushRegistered = pushStatus === "registered";
   const shouldRemindNotifications = isPaired && (notificationStatus === "denied" || notificationStatus === "undetermined");
   const trackButton = (button: string, metadata?: Record<string, unknown>) => {
     onDiagnosticEvent?.("button", button, { settingsView: accountsOpen ? "accounts" : "settings", ...metadata });
@@ -193,8 +194,15 @@ export function SettingsScreen({
       <Text style={styles.notificationStatus}>
         Push: {pushStatus === "registered" ? "Registered" : pushStatus}
       </Text>
-      <Pressable onPress={() => { trackButton("register_push"); onRegisterPush(); }} style={styles.secondaryActionButton}>
-        <Text style={styles.secondaryActionText}>Register Push</Text>
+      <Pressable
+        accessibilityState={{ disabled: isPushRegistered }}
+        disabled={isPushRegistered}
+        onPress={() => { trackButton("register_push"); onRegisterPush(); }}
+        style={[styles.secondaryActionButton, isPushRegistered ? styles.secondaryActionButtonDisabled : null]}
+      >
+        <Text style={[styles.secondaryActionText, isPushRegistered ? styles.secondaryActionTextDisabled : null]}>
+          {isPushRegistered ? "Push Registered" : "Register Push"}
+        </Text>
       </Pressable>
       {diagnosticsRevealed ? (
         <View style={styles.diagnosticsPanel}>
@@ -776,6 +784,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 12,
   },
+  secondaryActionButtonDisabled: {
+    backgroundColor: "#f1ede4",
+    borderColor: "#b9ad9b",
+    opacity: 0.7,
+  },
   diagnosticsPanel: {
     borderTopColor: "#e3dbc9",
     borderTopWidth: 1,
@@ -786,6 +799,9 @@ const styles = StyleSheet.create({
     color: "#202124",
     fontSize: 15,
     fontWeight: "900",
+  },
+  secondaryActionTextDisabled: {
+    color: "#5f5a4f",
   },
   connectionBadge: {
     alignItems: "center",

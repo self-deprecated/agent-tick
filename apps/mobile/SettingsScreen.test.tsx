@@ -138,6 +138,15 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByText("Enable approval alerts")).toBeNull();
   });
 
+  it("disables push registration when push is already registered", () => {
+    const onRegisterPush = jest.fn();
+    render(<SettingsScreen {...pairedProps} onRegisterPush={onRegisterPush} pushStatus="registered" />);
+    expect(screen.getByText("Push Registered")).toBeTruthy();
+    expect(screen.queryByText("Register Push")).toBeNull();
+    fireEvent.press(screen.getByText("Push Registered"));
+    expect(onRegisterPush).not.toHaveBeenCalled();
+  });
+
   it("reveals hidden diagnostics controls by long-pressing Notifications", () => {
     const onDiagnosticsEnabledChange = jest.fn();
     render(<SettingsScreen {...pairedProps} onDiagnosticsEnabledChange={onDiagnosticsEnabledChange} />);
