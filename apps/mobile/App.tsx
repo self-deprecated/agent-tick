@@ -92,6 +92,11 @@ import {
 } from "./diagnostics";
 
 type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
+type AccountPendingState =
+  | { status: "checking"; count: 0 }
+  | { status: "ready"; count: number }
+  | { status: "needs-sign-in"; count: 0 }
+  | { status: "error"; count: 0 };
 
 const defaultServer = hostedServerURL;
 const approvalCategoryID = "approval-request";
@@ -683,6 +688,7 @@ function AgentTickApp({
   const [dismissedStatusID, setDismissedStatusID] = useState<string | null>(null);
   const [dismissedStatusScope, setDismissedStatusScope] = useState("");
   const [history, setHistory] = useState<ApprovalRequest[]>([]);
+  const [accountPending, setAccountPending] = useState<Record<string, AccountPendingState>>({});
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [selectedProjectID, setSelectedProjectID] = useState<string | null>(null);
   const [notificationTargetID, setNotificationTargetID] = useState<string | null>(
@@ -724,6 +730,24 @@ function AgentTickApp({
     [requests, selectedProjectID],
   );
   const selectedOrganization = organizations.find((organization) => organization.organizationId === selectedOrganizationID);
+  const currentAccountContext = useMemo(() => ({
+    authProvider: runtimeAuthConfig?.authProvider,
+    currentAccountProfile,
+    deviceID,
+    selectedOrganizationID,
+    serverURL,
+  }), [currentAccountProfile, deviceID, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL]);
+  const otherAccounts = useMemo(
+    () => savedAccounts.filter((account) => !isCurrentSavedAccount(account, currentAccountContext)),
+    [currentAccountContext, savedAccounts],
+  );
+  const otherAccountPendingTotal = useMemo(
+    () => otherAccounts.reduce((total, account) => {
+      const pending = accountPending[account.id];
+      return total + (pending?.status === "ready" ? pending.count : 0);
+    }, 0),
+    [accountPending, otherAccounts],
+  );
   const selected = useMemo(
     () => visibleRequests.find((request) => request.id === selectedID) ?? visibleRequests[0],
     [selectedID, visibleRequests],
@@ -1052,6 +1076,10 @@ function AgentTickApp({
   }, []);
 
   const switchSavedAccount = useCallback((account: SavedMobileAccount) => {
+    setAccountPending((current) => {
+      const { [account.id]: _switchedAccount, ...remaining } = current;
+      return remaining;
+    });
     interruptRealtime();
     const switchAccount = async () => {
       if (account.authProvider === "clerk") {
@@ -1096,6 +1124,78 @@ function AgentTickApp({
     };
     void switchAccount();
   }, [interruptRealtime, onSelectSavedClerkAccount]);
+
+  const checkSavedAccountPending = useCallback(async (account: SavedMobileAccount): Promise<AccountPendingState> => {
+    try {
+      const token = account.authProvider === "clerk"
+        ? await getStoredMobileSessionToken(mobileAccountSessionTokenKey(account.id))
+        : await getStoredMobileSessionToken(mobileSessionStorageKeys(account.serverURL).token);
+      if (!token) return { status: "needs-sign-in", count: 0 };
+
+      if (account.authProvider === "clerk") {
+        const accountClient = new AgentTickClient({
+          baseUrl: account.serverURL,
+          tokenProvider: () => token,
+        });
+        const memberships = await accountClient.listOrganizations();
+        const counts = await Promise.all(memberships.map(async (membership) => {
+          const organizationClient = new AgentTickClient({
+            baseUrl: account.serverURL,
+            tokenProvider: () => token,
+            organizationIdProvider: () => membership.organizationId,
+          });
+          const approvals = await organizationClient.listApprovalRequests();
+          return normalizeApprovals(approvals).filter((request) => request.status === "pending").length;
+        }));
+        return { status: "ready", count: counts.reduce((total, count) => total + count, 0) };
+      }
+
+      const scopedKeys = mobileSessionStorageKeys(account.serverURL);
+      const organizationID = account.organizationID || (await AsyncStorage.getItem(scopedKeys.organizationID)) || "";
+      const accountClient = new AgentTickClient({
+        baseUrl: account.serverURL,
+        tokenProvider: () => token,
+        organizationIdProvider: () => organizationID || null,
+      });
+      const approvals = await accountClient.listApprovalRequests();
+      return { status: "ready", count: normalizeApprovals(approvals).filter((request) => request.status === "pending").length };
+    } catch {
+      return { status: "error", count: 0 };
+    }
+  }, []);
+
+  const refreshOtherAccountPending = useCallback(async () => {
+    const accountsToCheck = savedAccounts.filter((account) => !isCurrentSavedAccount(account, currentAccountContext));
+    if (accountsToCheck.length === 0) {
+      setAccountPending({});
+      return;
+    }
+    setAccountPending((current) => {
+      const next: Record<string, AccountPendingState> = {};
+      for (const account of accountsToCheck) {
+        next[account.id] = current[account.id] ?? { status: "checking", count: 0 };
+      }
+      return next;
+    });
+    await Promise.all(accountsToCheck.map(async (account) => {
+      const state = await checkSavedAccountPending(account);
+      setAccountPending((current) => ({ ...current, [account.id]: state }));
+    }));
+  }, [checkSavedAccountPending, currentAccountContext, savedAccounts]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    void refreshOtherAccountPending();
+  }, [menuOpen, refreshOtherAccountPending]);
+
+  useEffect(() => {
+    if (!settingsLoaded || savedAccounts.length < 2) return;
+    void refreshOtherAccountPending();
+    const timer = setInterval(() => {
+      if (AppState.currentState === "active") void refreshOtherAccountPending();
+    }, 120000);
+    return () => clearInterval(timer);
+  }, [refreshOtherAccountPending, savedAccounts.length, settingsLoaded]);
 
   const refreshOrganizations = useCallback(async () => {
     if (runtimeAuthConfig?.authProvider !== "clerk") {
@@ -1892,6 +1992,11 @@ function AgentTickApp({
             style={styles.iconButton}
           >
             <Text style={styles.menuIconText}>☰</Text>
+            {otherAccountPendingTotal > 0 ? (
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>{badgeLabel(otherAccountPendingTotal)}</Text>
+              </View>
+            ) : null}
           </Pressable>
         </View>
       </View>
@@ -1899,7 +2004,9 @@ function AgentTickApp({
       <SideMenu
         accountProfile={currentAccountProfile}
         connectionStatus={connectionStatus}
+        accountPending={accountPending}
         currentScreen={screen}
+        onAccountSelect={switchSavedAccount}
         onClose={() => setMenuOpen(false)}
         onNavigate={(nextScreen) => {
           recordDiagnostic("info", "navigation", "menu_item_selected", { to: nextScreen });
@@ -1913,6 +2020,7 @@ function AgentTickApp({
           setMenuOpen(false);
         }}
         organizationName={selectedOrganization?.name ?? selectedOrganizationID}
+        otherAccounts={otherAccounts}
         serverURL={serverURL}
         visible={menuOpen}
       />
@@ -2022,25 +2130,31 @@ function AgentTickApp({
 }
 
 type SideMenuProps = {
+  accountPending: Record<string, AccountPendingState>;
   accountProfile: MeResponse | null;
   connectionStatus: ConnectionStatus;
   currentScreen: Screen;
+  onAccountSelect: (account: SavedMobileAccount) => void;
   onClose: () => void;
   onNavigate: (screen: Screen) => void;
   onSwitchAccount: () => void;
   organizationName?: string;
+  otherAccounts: SavedMobileAccount[];
   serverURL: string;
   visible: boolean;
 };
 
 function SideMenu({
+  accountPending,
   accountProfile,
   connectionStatus,
   currentScreen,
+  onAccountSelect,
   onClose,
   onNavigate,
   onSwitchAccount,
   organizationName,
+  otherAccounts,
   serverURL,
   visible,
 }: SideMenuProps) {
@@ -2089,13 +2203,33 @@ function SideMenu({
             </View>
             <Pressable accessibilityLabel="Switch accounts" onPress={onSwitchAccount} style={styles.accountCard}>
               <Text style={styles.accountEyebrow}>Signed in as</Text>
-              <Text numberOfLines={1} style={styles.accountName}>{accountLabel}</Text>
+              <View style={styles.accountIdentityRow}>
+                <View style={[styles.accountColorDot, { backgroundColor: accountColorForKey(accountProfile?.userId || accountProfile?.email || accountLabel) }]} />
+                <Text numberOfLines={1} style={[styles.accountName, styles.accountNameInRow]}>{accountLabel}</Text>
+              </View>
               <Text numberOfLines={1} style={styles.accountMeta}>{signInLabel}</Text>
               {organizationName ? <Text numberOfLines={1} style={styles.accountMeta}>Org: {organizationName}</Text> : null}
               <ConnectionBadge status={connectionStatus} />
               <Text style={styles.accountSwitchAction}>Switch accounts ›</Text>
             </Pressable>
           </View>
+
+          {otherAccounts.length > 0 ? (
+            <View style={styles.otherAccountsSection}>
+              <Text style={styles.menuSectionLabel}>Other accounts</Text>
+              {otherAccounts.map((account) => (
+                <OtherAccountMenuItem
+                  account={account}
+                  key={account.id}
+                  onPress={() => {
+                    onAccountSelect(account);
+                    onClose();
+                  }}
+                  pending={accountPending[account.id]}
+                />
+              ))}
+            </View>
+          ) : null}
 
           <View style={styles.menuItems}>
             <SideMenuItem
@@ -2149,6 +2283,88 @@ function SideMenuItem({
       <Text style={[styles.menuItemText, active ? styles.menuItemTextActive : null]}>{label}</Text>
     </Pressable>
   );
+}
+
+function OtherAccountMenuItem({
+  account,
+  onPress,
+  pending,
+}: {
+  account: SavedMobileAccount;
+  onPress: () => void;
+  pending?: AccountPendingState;
+}) {
+  const pendingLabel = accountPendingLabel(pending);
+  const pendingCount = pending?.status === "ready" ? pending.count : 0;
+  return (
+    <Pressable accessibilityLabel={`Switch to ${savedAccountMenuLabel(account)}`} onPress={onPress} style={styles.otherAccountItem}>
+      <View style={[styles.accountColorDot, { backgroundColor: accountColor(account) }]} />
+      <View style={styles.otherAccountTextWrap}>
+        <Text numberOfLines={1} style={styles.otherAccountName}>{savedAccountMenuLabel(account)}</Text>
+        {pendingLabel ? <Text numberOfLines={1} style={styles.otherAccountMeta}>{pendingLabel}</Text> : null}
+      </View>
+      {pendingCount > 0 ? (
+        <View style={styles.accountPendingBadge}>
+          <Text style={styles.accountPendingBadgeText}>{badgeLabel(pendingCount)}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+function accountPendingLabel(pending?: AccountPendingState) {
+  if (!pending || pending.status === "checking") return "Checking pending approvals…";
+  if (pending.status === "needs-sign-in") return "Needs sign-in";
+  if (pending.status === "error") return "Unable to check";
+  if (pending.count === 0) return "No pending approvals";
+  return `${pending.count} pending approval${pending.count === 1 ? "" : "s"}`;
+}
+
+function savedAccountMenuLabel(account: SavedMobileAccount) {
+  return account.email || account.label || account.userID || account.deviceID || hostLabel(account.serverURL);
+}
+
+function badgeLabel(count: number) {
+  return count > 99 ? "99+" : String(count);
+}
+
+function accountColor(account: SavedMobileAccount) {
+  return accountColorForKey(account.userID || account.email || account.id);
+}
+
+function accountColorForKey(key: string) {
+  const palette = ["#2563eb", "#7c3aed", "#059669", "#dc2626", "#d97706", "#0891b2", "#be185d", "#4f46e5"];
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) hash = ((hash << 5) - hash + key.charCodeAt(index)) | 0;
+  return palette[Math.abs(hash) % palette.length];
+}
+
+function isCurrentSavedAccount(
+  account: SavedMobileAccount,
+  current: {
+    authProvider?: string;
+    currentAccountProfile?: Pick<MeResponse, "userId" | "email"> | null;
+    deviceID: string;
+    selectedOrganizationID?: string;
+    serverURL: string;
+  },
+) {
+  if (account.authProvider !== current.authProvider || normalizeServerURL(account.serverURL) !== normalizeServerURL(current.serverURL)) return false;
+  if (account.authProvider === "clerk") {
+    if (account.userID && current.currentAccountProfile?.userId) return account.userID === current.currentAccountProfile.userId;
+    if (account.email && current.currentAccountProfile?.email) return account.email.trim().toLowerCase() === current.currentAccountProfile.email.trim().toLowerCase();
+    return false;
+  }
+  if (account.deviceID && current.deviceID) return account.deviceID === current.deviceID;
+  return Boolean(account.organizationID && account.organizationID === current.selectedOrganizationID);
+}
+
+function hostLabel(serverURL: string) {
+  try {
+    return new URL(serverURL).host;
+  } catch {
+    return serverURL;
+  }
 }
 
 function filterRequestsByProject(
@@ -2905,6 +3121,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minWidth: 64,
     paddingHorizontal: 12,
+    position: "relative",
   },
   headerActions: {
     flexDirection: "row",
@@ -2915,6 +3132,24 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "900",
     lineHeight: 28,
+  },
+  headerBadge: {
+    alignItems: "center",
+    backgroundColor: "#d97706",
+    borderColor: "#f7f2e8",
+    borderRadius: 11,
+    borderWidth: 2,
+    justifyContent: "center",
+    minWidth: 22,
+    paddingHorizontal: 5,
+    position: "absolute",
+    right: -7,
+    top: -7,
+  },
+  headerBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "900",
   },
   menuOverlay: {
     flex: 1,
@@ -2986,10 +3221,18 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textTransform: "uppercase",
   },
+  accountIdentityRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
   accountName: {
     color: "#202124",
     fontSize: 17,
     fontWeight: "900",
+  },
+  accountNameInRow: {
+    flex: 1,
   },
   accountMeta: {
     color: "#6d6657",
@@ -3001,6 +3244,60 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     marginTop: 4,
+  },
+  otherAccountsSection: {
+    gap: 8,
+    marginTop: 22,
+  },
+  menuSectionLabel: {
+    color: "#7a725f",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  otherAccountItem: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#ded6c6",
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 58,
+    paddingHorizontal: 12,
+  },
+  accountColorDot: {
+    borderRadius: 7,
+    height: 14,
+    width: 14,
+  },
+  otherAccountTextWrap: {
+    flex: 1,
+  },
+  otherAccountName: {
+    color: "#202124",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  otherAccountMeta: {
+    color: "#6d6657",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  accountPendingBadge: {
+    alignItems: "center",
+    backgroundColor: "#d97706",
+    borderRadius: 12,
+    justifyContent: "center",
+    minWidth: 24,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  accountPendingBadgeText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "900",
   },
   menuItems: {
     gap: 8,
