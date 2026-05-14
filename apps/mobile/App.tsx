@@ -2077,6 +2077,7 @@ function AgentTickApp({
         />
       ) : screen === "history" ? (
         <HistoryScreen
+          e2eeKey={e2eeKey}
           error={error}
           history={history}
           loading={historyLoading}
@@ -2932,16 +2933,31 @@ function ContextRow({ label, value }: { label: string; value: string }) {
 }
 
 export function HistoryScreen({
+  e2eeKey,
   error,
   history,
   loading,
   onRefresh,
 }: {
+  e2eeKey?: string;
   error: string | null;
   history: ApprovalRequest[];
   loading: boolean;
   onRefresh: () => void;
 }) {
+  const [selectedHistoryID, setSelectedHistoryID] = useState<string | null>(null);
+  const selectedHistory = history.find((request) => request.id === selectedHistoryID);
+
+  if (selectedHistory) {
+    return (
+      <HistoryDetailScreen
+        e2eeKey={e2eeKey}
+        onBack={() => setSelectedHistoryID(null)}
+        request={selectedHistory}
+      />
+    );
+  }
+
   return (
     <View style={styles.historyPane}>
       <View style={styles.historyHeader}>
@@ -2956,7 +2972,13 @@ export function HistoryScreen({
           <Text style={styles.emptyText}>No approval history yet.</Text>
         ) : (
           history.map((request) => (
-            <View key={request.id} style={styles.historyRow}>
+            <Pressable
+              accessibilityLabel={`Open history item ${request.title}`}
+              accessibilityRole="button"
+              key={request.id}
+              onPress={() => setSelectedHistoryID(request.id)}
+              style={styles.historyRow}
+            >
               <View style={styles.historyRowTop}>
                 <Text numberOfLines={2} style={styles.historyTitle}>
                   {request.title}
@@ -2976,14 +2998,14 @@ export function HistoryScreen({
                 </Text>
               </View>
               <Text numberOfLines={1} style={styles.historyMeta}>
-                {request.requester.host || request.requester.name || "Agent"}
+                {historyKindLabel(request)} · {request.requester.host || request.requester.name || "Agent"} · Tap for details
               </Text>
               {request.command ? (
                 <View style={styles.historyCommandPanel}>
-                  {requestCommandDetails(request).map((detail) => (
+                  {requestCommandDetails(request).slice(0, 2).map((detail) => (
                     <View key={detail.label} style={styles.historyCommandRow}>
                       <Text style={styles.historyCommandLabel}>{detail.label}</Text>
-                      <Text selectable numberOfLines={detail.label === "Command" ? 6 : 2} style={styles.historyCommandValue}>
+                      <Text selectable numberOfLines={detail.label === "Command" ? 3 : 1} style={styles.historyCommandValue}>
                         {detail.value}
                       </Text>
                     </View>
@@ -2992,19 +3014,98 @@ export function HistoryScreen({
               ) : null}
               {requestVoteHistory(request).length > 0 ? (
                 <View style={styles.historyVotes}>
-                  {requestVoteHistory(request).map((vote) => (
+                  {requestVoteHistory(request).slice(0, 2).map((vote) => (
                     <Text key={vote.id} style={styles.historyVoteText}>
                       {vote.label}
                     </Text>
                   ))}
                 </View>
               ) : null}
-            </View>
+            </Pressable>
           ))
         )}
       </ScrollView>
     </View>
   );
+}
+
+function HistoryDetailScreen({ e2eeKey, onBack, request }: { e2eeKey?: string; onBack: () => void; request: ApprovalRequest }) {
+  const decrypted = decryptedApprovalPlaintext(request, e2eeKey);
+  const encryptedLocked = isEncryptedApprovalRequest(request) && !decrypted;
+  const title = decrypted?.title ?? request.title;
+  const body = decrypted?.body ?? request.body;
+  const command = decrypted?.command ?? request.command;
+  const responseAnswers = request.response?.answers ?? request.policyProgress?.currentUserVote?.answers;
+
+  return (
+    <View style={styles.historyPane}>
+      <View style={styles.historyHeader}>
+        <Pressable accessibilityLabel="Back to history" onPress={onBack} style={styles.smallButton}>
+          <Text style={styles.smallButtonText}>Back</Text>
+        </Pressable>
+        <Text style={styles.historyStatus}>{requestStatusLabel(request)}</Text>
+      </View>
+      <ScrollView contentContainerStyle={styles.historyDetailContent}>
+        <Text style={styles.historyDetailType}>{historyKindLabel(request)}</Text>
+        <Text selectable style={styles.detailTitle}>{title}</Text>
+        <Text style={styles.detailMeta}>
+          {requestRequesterLabel(request)} · {formatRequestTime(request.createdAt)}
+        </Text>
+        {encryptedLocked ? <Text style={styles.errorText}>{encryptedLockMessage(request, e2eeKey)}</Text> : null}
+        {!encryptedLocked && body ? <Text selectable style={styles.bodyText}>{body}</Text> : null}
+        {!encryptedLocked && command ? (
+          <Text selectable style={styles.commandText}>{command}</Text>
+        ) : null}
+        <RequestContextPanel request={request} />
+        <PolicyProgressPanel request={request} />
+        {request.questions && request.questions.length > 0 ? (
+          <View style={styles.questionnairePanel}>
+            <Text style={styles.contextSummaryTitle}>Questions</Text>
+            {request.questions.map((question) => (
+              <View key={question.question} style={styles.questionCard}>
+                <Text style={styles.questionHeader}>{question.header}</Text>
+                <Text selectable style={styles.questionText}>{question.question}</Text>
+                {(responseAnswers?.[question.question] ?? []).length ? (
+                  <Text selectable style={styles.historyAnswerText}>
+                    Answer: {(responseAnswers?.[question.question] ?? []).join(", ")}
+                  </Text>
+                ) : null}
+                <Text style={styles.questionHint}>
+                  Options: {question.options.map((option) => option.label).join(", ")}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        {request.response?.message ? (
+          <View style={styles.contextPanel}>
+            <Text style={styles.contextTitle}>Response message</Text>
+            <Text selectable style={styles.contextText}>{request.response.message}</Text>
+          </View>
+        ) : null}
+        {request.metadata?.context ? (
+          <View style={styles.contextPanel}>
+            <Text style={styles.contextTitle}>{request.metadata.contextFile || "Context"}</Text>
+            <Text selectable style={styles.contextText}>{request.metadata.context}</Text>
+          </View>
+        ) : null}
+        <View style={styles.historyCommandPanel}>
+          {requestCommandDetails(request).map((detail) => (
+            <View key={detail.label} style={styles.historyCommandRow}>
+              <Text style={styles.historyCommandLabel}>{detail.label}</Text>
+              <Text selectable style={styles.historyCommandValue}>{detail.value}</Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function historyKindLabel(request: ApprovalRequest) {
+  if (isQuestionnaireRequest(request)) return "Question";
+  if (request.requestType === "steer") return "Steering";
+  return "Approval request";
 }
 
 function ScannerScreen({
@@ -3413,6 +3514,16 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingBottom: 22,
   },
+  historyDetailContent: {
+    paddingBottom: 24,
+  },
+  historyDetailType: {
+    color: "#6d6657",
+    fontSize: 13,
+    fontWeight: "900",
+    marginBottom: 8,
+    textTransform: "uppercase",
+  },
   historyRow: {
     backgroundColor: "#ffffff",
     borderColor: "#ded6c6",
@@ -3786,6 +3897,12 @@ const styles = StyleSheet.create({
     color: "#5f5a4f",
     fontSize: 13,
     fontWeight: "700",
+  },
+  historyAnswerText: {
+    color: "#184f42",
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 21,
   },
   questionOptions: {
     gap: 8,

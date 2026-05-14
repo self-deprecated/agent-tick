@@ -302,4 +302,43 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
     expect(screen.getByText("Step 1: usr_a approved via device")).toBeTruthy();
     expect(screen.getByText("Step 1: usr_c denied via device")).toBeTruthy();
   });
+
+  it("opens a history item detail with the original questionnaire and answer", () => {
+    render(<HistoryScreen error={null} history={[approval({
+      requestType: "questionnaire",
+      title: "Choose rollout plan",
+      status: "responded",
+      questions: [{
+        header: "Rollout",
+        question: "Which deployment window should we use?",
+        options: [{ label: "Now" }, { label: "Tonight" }],
+        multiSelect: false,
+      }],
+      response: { answers: { "Which deployment window should we use?": ["Tonight"] } },
+    })]} loading={false} onRefresh={jest.fn()} />);
+
+    fireEvent.press(screen.getByLabelText("Open history item Choose rollout plan"));
+
+    expect(screen.getByText("Question")).toBeTruthy();
+    expect(screen.getByText("Which deployment window should we use?")).toBeTruthy();
+    expect(screen.getByText("Answer: Tonight")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Back to history"));
+    expect(screen.getByText("History")).toBeTruthy();
+  });
+
+  it("opens a steering history detail with the full steering body", () => {
+    render(<HistoryScreen error={null} history={[approval({
+      requestType: "steer",
+      title: "Refocus the implementation",
+      body: "Please stop changing the API and only polish the mobile history view.",
+      command: undefined,
+      status: "responded",
+      response: { choiceId: "acknowledge" },
+    })]} loading={false} onRefresh={jest.fn()} />);
+
+    fireEvent.press(screen.getByLabelText("Open history item Refocus the implementation"));
+
+    expect(screen.getByText("Steering")).toBeTruthy();
+    expect(screen.getByText("Please stop changing the API and only polish the mobile history view.")).toBeTruthy();
+  });
 });
