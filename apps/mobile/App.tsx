@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   AppState,
   Modal,
   Platform,
@@ -665,6 +666,7 @@ function AgentTickApp({
 }) {
   const [screen, setScreen] = useState<Screen>("approvals");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountSwitcherToken, setAccountSwitcherToken] = useState(0);
   const [serverURL, setServerURL] = useState(initialServerURL ?? defaultServer);
   const [runtimeAuthConfig, setRuntimeAuthConfig] = useState<RuntimeAuthConfig | null>(initialAuthConfig ?? null);
   const [token, setToken] = useState("");
@@ -1904,6 +1906,12 @@ function AgentTickApp({
           setScreen(nextScreen);
           setMenuOpen(false);
         }}
+        onSwitchAccount={() => {
+          recordDiagnostic("info", "navigation", "menu_switch_account");
+          setAccountSwitcherToken((value) => value + 1);
+          setScreen("settings");
+          setMenuOpen(false);
+        }}
         organizationName={selectedOrganization?.name ?? selectedOrganizationID}
         serverURL={serverURL}
         visible={menuOpen}
@@ -1911,6 +1919,7 @@ function AgentTickApp({
 
       {screen === "settings" ? (
         <SettingsScreen
+          accountSwitcherToken={accountSwitcherToken}
           accounts={savedAccounts}
           availability={availability}
           connectionStatus={connectionStatus}
@@ -2018,6 +2027,7 @@ type SideMenuProps = {
   currentScreen: Screen;
   onClose: () => void;
   onNavigate: (screen: Screen) => void;
+  onSwitchAccount: () => void;
   organizationName?: string;
   serverURL: string;
   visible: boolean;
@@ -2029,18 +2039,32 @@ function SideMenu({
   currentScreen,
   onClose,
   onNavigate,
+  onSwitchAccount,
   organizationName,
   serverURL,
   visible,
 }: SideMenuProps) {
   const accountLabel = accountProfile?.email || accountProfile?.userId || "Not signed in";
   const signInLabel = accountProfile?.signInMethod ? `${accountProfile.signInMethod} account` : "Mobile session";
+  const slideX = useRef(new Animated.Value(380)).current;
+
+  useEffect(() => {
+    if (!visible) {
+      slideX.setValue(380);
+      return;
+    }
+    Animated.timing(slideX, {
+      duration: 220,
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+  }, [slideX, visible]);
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+    <Modal animationType="none" transparent visible={visible} onRequestClose={onClose}>
       <View style={styles.menuOverlay}>
         <Pressable accessibilityLabel="Close menu" onPress={onClose} style={styles.menuBackdrop} />
-        <View style={styles.sideMenu}>
+        <Animated.View style={[styles.sideMenu, { transform: [{ translateX: slideX }] }]}>
           <View style={styles.sideMenuHeader}>
             <View style={styles.sideMenuTitleRow}>
               <Text style={styles.sideMenuTitle}>Menu</Text>
@@ -2048,13 +2072,14 @@ function SideMenu({
                 <Text style={styles.closeButtonText}>×</Text>
               </Pressable>
             </View>
-            <View style={styles.accountCard}>
+            <Pressable accessibilityLabel="Switch accounts" onPress={onSwitchAccount} style={styles.accountCard}>
               <Text style={styles.accountEyebrow}>Signed in as</Text>
               <Text numberOfLines={1} style={styles.accountName}>{accountLabel}</Text>
               <Text numberOfLines={1} style={styles.accountMeta}>{signInLabel}</Text>
               {organizationName ? <Text numberOfLines={1} style={styles.accountMeta}>Org: {organizationName}</Text> : null}
               <ConnectionBadge status={connectionStatus} />
-            </View>
+              <Text style={styles.accountSwitchAction}>Switch accounts ›</Text>
+            </Pressable>
           </View>
 
           <View style={styles.menuItems}>
@@ -2076,18 +2101,12 @@ function SideMenu({
               label="Settings"
               onPress={() => onNavigate("settings")}
             />
-            <SideMenuItem
-              active={currentScreen === "scanner"}
-              icon="▣"
-              label="Scan pairing QR"
-              onPress={() => onNavigate("scanner")}
-            />
           </View>
 
           <View style={styles.sideMenuFooter}>
             <Text numberOfLines={2} style={styles.serverLabel}>{normalizeServerURL(serverURL)}</Text>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -2952,6 +2971,12 @@ const styles = StyleSheet.create({
     color: "#6d6657",
     fontSize: 13,
     fontWeight: "700",
+  },
+  accountSwitchAction: {
+    color: "#202124",
+    fontSize: 13,
+    fontWeight: "900",
+    marginTop: 4,
   },
   menuItems: {
     gap: 8,
