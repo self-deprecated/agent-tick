@@ -12,6 +12,7 @@ const baseProps = {
   onPairDevice: jest.fn(),
   onRegisterPush: jest.fn(),
   onDiagnosticsEnabledChange: jest.fn(),
+  onNotificationsEnabledChange: jest.fn(),
   onRequestNotifications: jest.fn(),
   onSendDiagnosticSnapshot: jest.fn(),
   onSendTestNotification: jest.fn(),
@@ -144,6 +145,34 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText("Push Registered")).toBeTruthy();
     expect(screen.queryByText("Register Push")).toBeNull();
     fireEvent.press(screen.getByText("Push Registered"));
+    expect(onRegisterPush).not.toHaveBeenCalled();
+  });
+
+  it("lets users turn app notifications off and disables notification actions", () => {
+    const onNotificationsEnabledChange = jest.fn();
+    const onRequestNotifications = jest.fn();
+    const onSendTestNotification = jest.fn();
+    const onRegisterPush = jest.fn();
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        notificationStatus="granted"
+        notificationsEnabled={false}
+        onNotificationsEnabledChange={onNotificationsEnabledChange}
+        onRequestNotifications={onRequestNotifications}
+        onSendTestNotification={onSendTestNotification}
+        onRegisterPush={onRegisterPush}
+      />,
+    );
+
+    expect(screen.getByText("Off in Agent Tick")).toBeTruthy();
+    fireEvent.press(screen.getByText("Turn On"));
+    expect(onNotificationsEnabledChange).toHaveBeenCalledWith(true);
+    fireEvent.press(screen.getByText("Enable"));
+    fireEvent.press(screen.getByText("Test"));
+    fireEvent.press(screen.getByText("Register Push"));
+    expect(onRequestNotifications).not.toHaveBeenCalled();
+    expect(onSendTestNotification).not.toHaveBeenCalled();
     expect(onRegisterPush).not.toHaveBeenCalled();
   });
 

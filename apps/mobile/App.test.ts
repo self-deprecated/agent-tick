@@ -416,10 +416,11 @@ describe("request normalization and notification helpers", () => {
     ).toBe(true);
   });
 
-  it("skips local notifications when remote push is registered", () => {
+  it("skips local notifications when remote push is registered or notifications are off", () => {
     expect(shouldScheduleLocalNotifications("registered")).toBe(false);
     expect(shouldScheduleLocalNotifications("idle")).toBe(true);
     expect(shouldScheduleLocalNotifications("failed")).toBe(true);
+    expect(shouldScheduleLocalNotifications("idle", false)).toBe(false);
   });
 });
 

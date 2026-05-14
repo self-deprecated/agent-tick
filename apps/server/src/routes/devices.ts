@@ -14,7 +14,7 @@ const RegisterDeviceSchema = z.object({
 const PushTokenSchema = z.object({
   expoPushToken: z.string().optional(),
   token: z.string().optional()
-}).refine((value) => Boolean(value.expoPushToken || value.token), { message: 'expoPushToken is required' });
+}).refine((value) => Object.prototype.hasOwnProperty.call(value, 'expoPushToken') || Object.prototype.hasOwnProperty.call(value, 'token'), { message: 'expoPushToken is required' });
 
 export interface DeviceRoutesOptions {
   config: ServerConfig;

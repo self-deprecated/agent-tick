@@ -463,8 +463,8 @@ export function supportsNotificationActions(request: ApprovalRequest) {
   );
 }
 
-export function shouldScheduleLocalNotifications(pushStatus: string) {
-  return pushStatus !== "registered";
+export function shouldScheduleLocalNotifications(pushStatus: string, notificationsEnabled = true) {
+  return notificationsEnabled && pushStatus !== "registered";
 }
 
 export function notificationBody(request: ApprovalRequest) {

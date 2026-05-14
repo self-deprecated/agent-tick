@@ -665,7 +665,7 @@ export type DeviceRecord = z.infer<typeof DeviceRecordSchema>;
 export const UpdateDevicePushTokenSchema = z.object({
   expoPushToken: z.string().optional(),
   token: z.string().optional()
-}).refine((value) => Boolean(value.expoPushToken || value.token), { message: 'expoPushToken is required' });
+}).refine((value) => Object.prototype.hasOwnProperty.call(value, 'expoPushToken') || Object.prototype.hasOwnProperty.call(value, 'token'), { message: 'expoPushToken is required' });
 export type UpdateDevicePushToken = z.input<typeof UpdateDevicePushTokenSchema>;
 
 export const EventTicketResponseSchema = z.object({

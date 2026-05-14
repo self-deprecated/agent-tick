@@ -696,6 +696,7 @@ function AgentTickApp({
     useState<ConnectionStatus>("checking");
   const [notificationStatus, setNotificationStatus] =
     useState<NotificationStatus>("checking");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
   const [diagnosticsEventCount, setDiagnosticsEventCount] = useState(0);
@@ -761,6 +762,7 @@ function AgentTickApp({
       connectionStatus,
       pushStatus,
       notificationStatus,
+      notificationsEnabled,
       settingsLoaded,
       hasRequestAuth,
       hasToken: Boolean(token),
@@ -781,7 +783,7 @@ function AgentTickApp({
       selectedProjectID: selectedProjectID || undefined,
       errorMessage: error ?? undefined,
     });
-  }, [clerkDebugState, connectionStatus, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.source, currentAccountProfile?.userId, deviceID, error, hasRequestAuth, notificationStatus, organizations.length, pushStatus, requests, runtimeAuthConfig?.authProvider, savedAccounts, screen, selectedID, selectedOrganizationID, selectedProjectID, settingsLoaded, token]);
+  }, [clerkDebugState, connectionStatus, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.source, currentAccountProfile?.userId, deviceID, error, hasRequestAuth, notificationStatus, notificationsEnabled, organizations.length, pushStatus, requests, runtimeAuthConfig?.authProvider, savedAccounts, screen, selectedID, selectedOrganizationID, selectedProjectID, settingsLoaded, token]);
 
   useEffect(() => {
     const previousScreen = previousScreenRef.current;
@@ -845,6 +847,7 @@ function AgentTickApp({
         scopedKeys.deviceID,
         scopedKeys.organizationID,
         scopedKeys.pushStatus,
+        scopedKeys.notificationsEnabled,
       ]);
       if (cancelled || normalizeServerURL(serverURL) !== activeServerURL) {
         return;
@@ -855,6 +858,7 @@ function AgentTickApp({
       setSelectedOrganizationID(runtimeAuthConfig?.authProvider === "clerk" ? "" : entryValue(scopedKeys.organizationID) ?? "");
       const savedPushStatus = entryValue(scopedKeys.pushStatus);
       setPushStatus(isPushStatus(savedPushStatus) ? savedPushStatus : "idle");
+      setNotificationsEnabled(entryValue(scopedKeys.notificationsEnabled) !== "false");
       setLoadedSessionServerURL(activeServerURL);
     };
 
@@ -966,6 +970,7 @@ function AgentTickApp({
       [scopedKeys.deviceID, deviceID],
       [scopedKeys.organizationID, runtimeAuthConfig?.authProvider === "clerk" ? "" : selectedOrganizationID],
       [scopedKeys.pushStatus, pushStatus],
+      [scopedKeys.notificationsEnabled, notificationsEnabled ? "true" : "false"],
     ]);
     const shouldSaveAccount = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(currentAccountProfile?.userId && clerkSessionToken) : Boolean(token || deviceID);
     if (shouldSaveAccount) {
@@ -988,7 +993,7 @@ function AgentTickApp({
         return next;
       });
     }
-  }, [clerkSessionToken, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.userId, deviceID, loadedSessionServerURL, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
+  }, [clerkSessionToken, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.userId, deviceID, loadedSessionServerURL, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
 
   useEffect(() => {
     if (runtimeAuthConfig?.authProvider !== "clerk" || !clerkSessionToken) return;
@@ -1151,7 +1156,7 @@ function AgentTickApp({
         pendingRequests,
         seenRequestIDs,
         didPrimeNotifications,
-        shouldScheduleLocalNotifications(pushStatus),
+        shouldScheduleLocalNotifications(pushStatus, notificationsEnabled),
       );
       setRequests(pendingRequests);
       setConnectionStatus("connected");
@@ -1184,7 +1189,7 @@ function AgentTickApp({
         setLoading(false);
       }
     }
-  }, [notificationTargetID, pushStatus, runtimeAuthConfig?.authProvider, sdk, selectedOrganizationID, selectedProjectID]);
+  }, [notificationTargetID, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, sdk, selectedOrganizationID, selectedProjectID]);
 
   useEffect(() => {
     loadRef.current = load;
@@ -1237,13 +1242,14 @@ function AgentTickApp({
       connectionStatus,
       pushStatus,
       notificationStatus,
+      notificationsEnabled,
       currentScreen: screen,
       lastErrorMessage: error ?? undefined,
     })).then((accepted) => {
       if (accepted > 0) setDiagnosticsLastSentAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
       setDiagnosticsEventCount(diagnosticEvents().length);
     }).catch(() => undefined);
-  }, [connectionStatus, diagnosticsEnabled, error, hasRequestAuth, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, screen, sdk, serverURL, settingsLoaded]);
+  }, [connectionStatus, diagnosticsEnabled, error, hasRequestAuth, notificationStatus, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, screen, sdk, serverURL, settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded || !hasRequestAuth || realtimeUnavailable || !mobileEventStreamsAvailable()) {
@@ -1457,6 +1463,7 @@ function AgentTickApp({
   };
 
   const requestNotifications = async () => {
+    setNotificationsEnabled(true);
     setNotificationStatus("checking");
     const permissions = await Notifications.requestPermissionsAsync({
       ios: {
@@ -1468,7 +1475,44 @@ function AgentTickApp({
     setNotificationStatus(toNotificationStatus(permissions));
   };
 
+  const clearRemotePushToken = async () => {
+    if (!deviceID) return;
+    const activeToken = await currentAuthToken();
+    if (!activeToken) return;
+    const pushClient = runtimeAuthConfig?.authProvider === "clerk"
+      ? sdk
+      : new AgentTickClient({ baseUrl: normalizeServerURL(serverURL), tokenProvider: () => activeToken });
+    await pushClient.updateDevicePushToken(deviceID, { token: "" });
+  };
+
+  const toggleNotifications = async (enabled: boolean) => {
+    if (!enabled) {
+      setNotificationsEnabled(false);
+      lastClerkPushRegistrationKey.current = "";
+      await Notifications.cancelAllScheduledNotificationsAsync().catch(() => undefined);
+      if (pushStatus === "registered") {
+        await clearRemotePushToken().catch((err) => {
+          recordDiagnostic("warn", "notifications", "push_unregister_failed", { message: err instanceof Error ? err.message : String(err) });
+          setDiagnosticsEventCount(diagnosticEvents().length);
+        });
+      }
+      setPushStatus("idle");
+      recordDiagnostic("info", "notifications", "disabled");
+      setDiagnosticsEventCount(diagnosticEvents().length);
+      return;
+    }
+
+    await requestNotifications();
+    const permissions = await Notifications.getPermissionsAsync();
+    if (!permissions.granted) return;
+    await registerPushToken(undefined, undefined, undefined, true);
+  };
+
   const sendTestNotification = async () => {
+    if (!notificationsEnabled) {
+      Alert.alert("Notifications are off", "Turn on notifications in Agent Tick first.");
+      return;
+    }
     const permissions = await Notifications.getPermissionsAsync();
     setNotificationStatus(toNotificationStatus(permissions));
     if (!permissions.granted) {
@@ -1548,7 +1592,7 @@ function AgentTickApp({
       pending,
       seenRequestIDs,
       didPrimeNotifications,
-      shouldScheduleLocalNotifications(pushStatus),
+      shouldScheduleLocalNotifications(pushStatus, notificationsEnabled),
     );
     setRequests(pending);
     setConnectionStatus("connected");
@@ -1561,7 +1605,12 @@ function AgentTickApp({
     overrideDeviceID?: string,
     overrideToken?: string,
     overrideServerURL?: string,
+    overrideNotificationsEnabled = notificationsEnabled,
   ) => {
+    if (!overrideNotificationsEnabled) {
+      Alert.alert("Notifications are off", "Turn on notifications before registering push notifications.");
+      return;
+    }
     const activeDeviceID = overrideDeviceID ?? deviceID;
     const activeToken = overrideToken ?? token;
     if (runtimeAuthConfig?.authProvider !== "clerk" && (!activeDeviceID || !activeToken)) {
@@ -1645,7 +1694,7 @@ function AgentTickApp({
 
   useEffect(() => {
     if (runtimeAuthConfig?.authProvider !== "clerk") return;
-    if (!settingsLoaded || !currentAccountProfile?.userId || !selectedOrganizationID) return;
+    if (!settingsLoaded || !notificationsEnabled || !currentAccountProfile?.userId || !selectedOrganizationID) return;
     if (notificationStatus !== "granted" && pushStatus !== "registered") return;
     if (pushStatus === "failed" || pushStatus === "unsupported") return;
     const registrationKey = `${normalizeServerURL(serverURL)}:${currentAccountProfile.userId}`;
@@ -1654,7 +1703,7 @@ function AgentTickApp({
     void registerPushToken().catch(() => {
       lastClerkPushRegistrationKey.current = "";
     });
-  }, [currentAccountProfile?.userId, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded]);
+  }, [currentAccountProfile?.userId, notificationStatus, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded]);
 
   const clearStoredSessionForServer = useCallback(async (activeServerURL = serverURL) => {
     await AsyncStorage.multiRemove(mobileSessionStorageKeyList(activeServerURL));
@@ -1769,6 +1818,7 @@ function AgentTickApp({
         connectionStatus,
         pushStatus,
         notificationStatus,
+        notificationsEnabled,
         currentScreen: screen,
         lastErrorMessage: error ?? undefined,
       }));
@@ -1778,7 +1828,7 @@ function AgentTickApp({
     } catch (err) {
       Alert.alert("Diagnostics failed", err instanceof Error ? err.message : "Could not send diagnostics");
     }
-  }, [connectionStatus, error, notificationStatus, pushStatus, runtimeAuthConfig?.authProvider, screen, sdk, serverURL]);
+  }, [connectionStatus, error, notificationStatus, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, screen, sdk, serverURL]);
 
   const handlePairingScan = async (result: BarcodeScanningResult) => {
     if (pairingInFlight.current) {
@@ -1869,6 +1919,7 @@ function AgentTickApp({
           e2eeKey={e2eeKey}
           loading={loading}
           notificationStatus={notificationStatus}
+          notificationsEnabled={notificationsEnabled}
           onAvailabilityChange={(state) => void updateAvailability(state as AvailabilityState)}
           onCheck={() => void checkConnection()}
           onDiagnosticsEnabledChange={(enabled) => void toggleDiagnostics(enabled)}
@@ -1876,6 +1927,7 @@ function AgentTickApp({
           onForgetDevice={() => void forgetDevice()}
           onSignInAnotherClerkAccount={onAddClerkAccount}
           onPairDevice={() => void pairDevice()}
+          onNotificationsEnabledChange={(enabled) => void toggleNotifications(enabled)}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
           onSavedAccountRemove={removeSavedAccount}
@@ -2016,6 +2068,7 @@ function diagnosticsSnapshot(input: {
   connectionStatus: ConnectionStatus;
   pushStatus: PushStatus;
   notificationStatus: NotificationStatus;
+  notificationsEnabled?: boolean;
   currentScreen?: Screen;
   lastErrorMessage?: string;
 }) {
@@ -2027,6 +2080,7 @@ function diagnosticsSnapshot(input: {
     connectionStatus: input.connectionStatus,
     pushStatus: input.pushStatus,
     notificationStatus: input.notificationStatus,
+    notificationsEnabled: input.notificationsEnabled,
     currentScreen: input.currentScreen,
     ...(input.lastErrorMessage ? { lastErrorMessage: input.lastErrorMessage } : {}),
   };

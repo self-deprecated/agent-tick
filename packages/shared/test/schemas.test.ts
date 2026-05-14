@@ -129,6 +129,7 @@ describe('shared schemas', () => {
 
   it('validates device push-token aliases', () => {
     expect(UpdateDevicePushTokenSchema.parse({ token: 'ExponentPushToken[1]' })).toEqual({ token: 'ExponentPushToken[1]' });
+    expect(UpdateDevicePushTokenSchema.parse({ token: '' })).toEqual({ token: '' });
     expect(() => UpdateDevicePushTokenSchema.parse({})).toThrow();
   });
 

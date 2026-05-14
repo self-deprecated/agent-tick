@@ -55,6 +55,7 @@ export function SettingsScreen({
   error,
   loading,
   notificationStatus,
+  notificationsEnabled = true,
   onAvailabilityChange,
   onCheck,
   onForgetDevice,
@@ -62,6 +63,7 @@ export function SettingsScreen({
   onDiagnosticsEnabledChange,
   onDiagnosticEvent,
   onSignInAnotherClerkAccount,
+  onNotificationsEnabledChange,
   onRegisterPush,
   onRequestNotifications,
   onSavedAccountRemove,
@@ -102,6 +104,8 @@ export function SettingsScreen({
   onPairDevice: () => void;
   onDiagnosticsEnabledChange?: (enabled: boolean) => void;
   onDiagnosticEvent?: (area: string, message: string, metadata?: Record<string, unknown>) => void;
+  notificationsEnabled?: boolean;
+  onNotificationsEnabledChange?: (enabled: boolean) => void;
   onRegisterPush: () => void;
   onRequestNotifications: () => void;
   onSavedAccountRemove?: (account: SavedMobileAccount) => void;
@@ -144,7 +148,8 @@ export function SettingsScreen({
   const hasMultipleAccounts = isClerkMode && accounts.length > 1;
   const isPaired = isClerkMode || !!deviceID;
   const isPushRegistered = pushStatus === "registered";
-  const shouldRemindNotifications = isPaired && (notificationStatus === "denied" || notificationStatus === "undetermined");
+  const isPushRegistrationDisabled = !notificationsEnabled || isPushRegistered;
+  const shouldRemindNotifications = notificationsEnabled && isPaired && (notificationStatus === "denied" || notificationStatus === "undetermined");
   const trackButton = (button: string, metadata?: Record<string, unknown>) => {
     onDiagnosticEvent?.("button", button, { settingsView: accountsOpen ? "accounts" : "settings", ...metadata });
   };
@@ -169,38 +174,50 @@ export function SettingsScreen({
         </View>
       ) : null}
       <Text style={styles.notificationStatus}>
-        {notificationStatus === "granted"
-          ? "On"
-          : notificationStatus === "denied"
-            ? "Off"
-            : notificationStatus === "checking"
-              ? "Checking"
-              : "Not Asked"}
+        {!notificationsEnabled
+          ? "Off in Agent Tick"
+          : notificationStatus === "granted"
+            ? "On"
+            : notificationStatus === "denied"
+              ? "Off in system settings"
+              : notificationStatus === "checking"
+                ? "Checking"
+                : "Not Asked"}
       </Text>
       <View style={styles.notificationActions}>
         <Pressable
-          onPress={() => { trackButton("enable_notifications"); onRequestNotifications(); }}
+          onPress={() => { trackButton(notificationsEnabled ? "disable_notifications" : "enable_notifications_toggle"); onNotificationsEnabledChange?.(!notificationsEnabled); }}
           style={styles.secondaryActionButton}
         >
-          <Text style={styles.secondaryActionText}>Enable</Text>
+          <Text style={styles.secondaryActionText}>{notificationsEnabled ? "Turn Off" : "Turn On"}</Text>
         </Pressable>
         <Pressable
-          onPress={() => { trackButton("send_test_notification"); onSendTestNotification(); }}
-          style={styles.secondaryActionButton}
+          accessibilityState={{ disabled: !notificationsEnabled }}
+          disabled={!notificationsEnabled}
+          onPress={() => { trackButton("enable_notifications"); onRequestNotifications(); }}
+          style={[styles.secondaryActionButton, !notificationsEnabled ? styles.secondaryActionButtonDisabled : null]}
         >
-          <Text style={styles.secondaryActionText}>Test</Text>
+          <Text style={[styles.secondaryActionText, !notificationsEnabled ? styles.secondaryActionTextDisabled : null]}>Enable</Text>
+        </Pressable>
+        <Pressable
+          accessibilityState={{ disabled: !notificationsEnabled }}
+          disabled={!notificationsEnabled}
+          onPress={() => { trackButton("send_test_notification"); onSendTestNotification(); }}
+          style={[styles.secondaryActionButton, !notificationsEnabled ? styles.secondaryActionButtonDisabled : null]}
+        >
+          <Text style={[styles.secondaryActionText, !notificationsEnabled ? styles.secondaryActionTextDisabled : null]}>Test</Text>
         </Pressable>
       </View>
       <Text style={styles.notificationStatus}>
         Push: {pushStatus === "registered" ? "Registered" : pushStatus}
       </Text>
       <Pressable
-        accessibilityState={{ disabled: isPushRegistered }}
-        disabled={isPushRegistered}
+        accessibilityState={{ disabled: isPushRegistrationDisabled }}
+        disabled={isPushRegistrationDisabled}
         onPress={() => { trackButton("register_push"); onRegisterPush(); }}
-        style={[styles.secondaryActionButton, isPushRegistered ? styles.secondaryActionButtonDisabled : null]}
+        style={[styles.secondaryActionButton, isPushRegistrationDisabled ? styles.secondaryActionButtonDisabled : null]}
       >
-        <Text style={[styles.secondaryActionText, isPushRegistered ? styles.secondaryActionTextDisabled : null]}>
+        <Text style={[styles.secondaryActionText, isPushRegistrationDisabled ? styles.secondaryActionTextDisabled : null]}>
           {isPushRegistered ? "Push Registered" : "Register Push"}
         </Text>
       </Pressable>

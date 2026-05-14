@@ -14,12 +14,14 @@ describe("mobile auth config", () => {
       deviceID: "agent-tick.session.https%3A%2F%2Ftick.example.com.deviceID",
       organizationID: "agent-tick.session.https%3A%2F%2Ftick.example.com.organizationID",
       pushStatus: "agent-tick.session.https%3A%2F%2Ftick.example.com.pushStatus",
+      notificationsEnabled: "agent-tick.session.https%3A%2F%2Ftick.example.com.notificationsEnabled",
     });
     expect(mobileSessionStorageKeyList("https://tick.example.com/")).toEqual([
       "agent-tick.session.https%3A%2F%2Ftick.example.com.token",
       "agent-tick.session.https%3A%2F%2Ftick.example.com.deviceID",
       "agent-tick.session.https%3A%2F%2Ftick.example.com.organizationID",
       "agent-tick.session.https%3A%2F%2Ftick.example.com.pushStatus",
+      "agent-tick.session.https%3A%2F%2Ftick.example.com.notificationsEnabled",
     ]);
   });
 

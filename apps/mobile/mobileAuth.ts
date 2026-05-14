@@ -53,12 +53,13 @@ export function mobileSessionStorageKeys(serverURL: string) {
     deviceID: `${namespace}.deviceID`,
     organizationID: `${namespace}.organizationID`,
     pushStatus: `${namespace}.pushStatus`,
+    notificationsEnabled: `${namespace}.notificationsEnabled`,
   };
 }
 
 export function mobileSessionStorageKeyList(serverURL: string): string[] {
   const keys = mobileSessionStorageKeys(serverURL);
-  return [keys.token, keys.deviceID, keys.organizationID, keys.pushStatus];
+  return [keys.token, keys.deviceID, keys.organizationID, keys.pushStatus, keys.notificationsEnabled];
 }
 
 export function savedMobileAccountID(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { userID?: string; email?: string; organizationID?: string; deviceID?: string }) {
