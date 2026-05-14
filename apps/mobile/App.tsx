@@ -2046,24 +2046,39 @@ function SideMenu({
 }: SideMenuProps) {
   const accountLabel = accountProfile?.email || accountProfile?.userId || "Not signed in";
   const signInLabel = accountProfile?.signInMethod ? `${accountProfile.signInMethod} account` : "Mobile session";
-  const slideX = useRef(new Animated.Value(380)).current;
+  const [rendered, setRendered] = useState(visible);
+  const menuProgress = useRef(new Animated.Value(visible ? 1 : 0)).current;
 
   useEffect(() => {
-    if (!visible) {
-      slideX.setValue(380);
-      return;
-    }
-    Animated.timing(slideX, {
+    if (visible) setRendered(true);
+  }, [visible]);
+
+  useEffect(() => {
+    if (!rendered) return;
+    Animated.timing(menuProgress, {
       duration: 220,
-      toValue: 0,
+      toValue: visible ? 1 : 0,
       useNativeDriver: true,
-    }).start();
-  }, [slideX, visible]);
+    }).start(({ finished }) => {
+      if (finished && !visible) setRendered(false);
+    });
+  }, [menuProgress, rendered, visible]);
+
+  const slideX = menuProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [380, 0],
+  });
+  const backdropOpacity = menuProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
 
   return (
-    <Modal animationType="none" transparent visible={visible} onRequestClose={onClose}>
+    <Modal animationType="none" transparent visible={rendered} onRequestClose={onClose}>
       <View style={styles.menuOverlay}>
-        <Pressable accessibilityLabel="Close menu" onPress={onClose} style={styles.menuBackdrop} />
+        <Animated.View style={[styles.menuBackdrop, { opacity: backdropOpacity }]}>
+          <Pressable accessibilityLabel="Close menu" onPress={onClose} style={styles.menuBackdropPressable} />
+        </Animated.View>
         <Animated.View style={[styles.sideMenu, { transform: [{ translateX: slideX }] }]}>
           <View style={styles.sideMenuHeader}>
             <View style={styles.sideMenuTitleRow}>
@@ -2903,21 +2918,30 @@ const styles = StyleSheet.create({
   },
   menuOverlay: {
     flex: 1,
-    flexDirection: "row",
-    justifyContent: "flex-end",
   },
   menuBackdrop: {
     backgroundColor: "rgba(32, 33, 36, 0.38)",
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  menuBackdropPressable: {
     flex: 1,
   },
   sideMenu: {
     backgroundColor: "#f7f2e8",
     borderLeftColor: "#ded6c6",
     borderLeftWidth: 1,
+    bottom: 0,
     maxWidth: 360,
     paddingBottom: 20,
     paddingHorizontal: 18,
     paddingTop: Constants.statusBarHeight + 18,
+    position: "absolute",
+    right: 0,
+    top: 0,
     width: "82%",
   },
   sideMenuHeader: {
