@@ -341,4 +341,23 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
     expect(screen.getByText("Steering")).toBeTruthy();
     expect(screen.getByText("Please stop changing the API and only polish the mobile history view.")).toBeTruthy();
   });
+
+  it("navigates to previous and next history items from the detail view", () => {
+    render(<HistoryScreen error={null} history={[
+      approval({ id: "req_first", title: "First request" }),
+      approval({ id: "req_second", title: "Second request" }),
+      approval({ id: "req_third", title: "Third request" }),
+    ]} loading={false} onRefresh={jest.fn()} />);
+
+    fireEvent.press(screen.getByLabelText("Open history item Second request"));
+    expect(screen.getByText("Second request")).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText("Previous history item"));
+    expect(screen.getByText("First request")).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText("Next history item"));
+    expect(screen.getByText("Second request")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Next history item"));
+    expect(screen.getByText("Third request")).toBeTruthy();
+  });
 });

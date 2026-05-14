@@ -2946,13 +2946,18 @@ export function HistoryScreen({
   onRefresh: () => void;
 }) {
   const [selectedHistoryID, setSelectedHistoryID] = useState<string | null>(null);
-  const selectedHistory = history.find((request) => request.id === selectedHistoryID);
+  const selectedHistoryIndex = history.findIndex((request) => request.id === selectedHistoryID);
+  const selectedHistory = selectedHistoryIndex >= 0 ? history[selectedHistoryIndex] : undefined;
+  const previousHistory = selectedHistoryIndex > 0 ? history[selectedHistoryIndex - 1] : undefined;
+  const nextHistory = selectedHistoryIndex >= 0 && selectedHistoryIndex < history.length - 1 ? history[selectedHistoryIndex + 1] : undefined;
 
   if (selectedHistory) {
     return (
       <HistoryDetailScreen
         e2eeKey={e2eeKey}
         onBack={() => setSelectedHistoryID(null)}
+        onNext={nextHistory ? () => setSelectedHistoryID(nextHistory.id) : undefined}
+        onPrevious={previousHistory ? () => setSelectedHistoryID(previousHistory.id) : undefined}
         request={selectedHistory}
       />
     );
@@ -3029,7 +3034,19 @@ export function HistoryScreen({
   );
 }
 
-function HistoryDetailScreen({ e2eeKey, onBack, request }: { e2eeKey?: string; onBack: () => void; request: ApprovalRequest }) {
+function HistoryDetailScreen({
+  e2eeKey,
+  onBack,
+  onNext,
+  onPrevious,
+  request,
+}: {
+  e2eeKey?: string;
+  onBack: () => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  request: ApprovalRequest;
+}) {
   const decrypted = decryptedApprovalPlaintext(request, e2eeKey);
   const encryptedLocked = isEncryptedApprovalRequest(request) && !decrypted;
   const title = decrypted?.title ?? request.title;
@@ -3044,6 +3061,26 @@ function HistoryDetailScreen({ e2eeKey, onBack, request }: { e2eeKey?: string; o
           <Text style={styles.smallButtonText}>Back</Text>
         </Pressable>
         <Text style={styles.historyStatus}>{requestStatusLabel(request)}</Text>
+      </View>
+      <View style={styles.historyDetailNav}>
+        <Pressable
+          accessibilityLabel="Previous history item"
+          accessibilityRole="button"
+          disabled={!onPrevious}
+          onPress={onPrevious}
+          style={[styles.historyNavButton, !onPrevious ? styles.historyNavButtonDisabled : null]}
+        >
+          <Text style={[styles.historyNavButtonText, !onPrevious ? styles.historyNavButtonTextDisabled : null]}>‹ Previous</Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Next history item"
+          accessibilityRole="button"
+          disabled={!onNext}
+          onPress={onNext}
+          style={[styles.historyNavButton, !onNext ? styles.historyNavButtonDisabled : null]}
+        >
+          <Text style={[styles.historyNavButtonText, !onNext ? styles.historyNavButtonTextDisabled : null]}>Next ›</Text>
+        </Pressable>
       </View>
       <ScrollView contentContainerStyle={styles.historyDetailContent}>
         <Text style={styles.historyDetailType}>{historyKindLabel(request)}</Text>
@@ -3523,6 +3560,31 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginBottom: 8,
     textTransform: "uppercase",
+  },
+  historyDetailNav: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  historyNavButton: {
+    alignItems: "center",
+    backgroundColor: "#202124",
+    borderRadius: 8,
+    flex: 1,
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  historyNavButtonDisabled: {
+    backgroundColor: "#e3dbc9",
+  },
+  historyNavButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  historyNavButtonTextDisabled: {
+    color: "#8e8778",
   },
   historyRow: {
     backgroundColor: "#ffffff",
