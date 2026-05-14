@@ -7,10 +7,29 @@ export type Requester = {
   projectId?: string;
 };
 
+export type ChoiceFlag =
+  | "favorite"
+  | "safest"
+  | "fastest"
+  | "thorough"
+  | "reversible"
+  | "experimental"
+  | "blocked"
+  | "needs_context"
+  | "destructive"
+  | "external_effect"
+  | "security_sensitive"
+  | "costly"
+  | "production"
+  | "time_sensitive"
+  | "audit_relevant";
+
 export type Choice = {
   id: string;
   label: string;
   kind: "approve" | "deny" | "custom" | string;
+  flags?: ChoiceFlag[];
+  tags?: string[];
 };
 
 export type QuestionOption = {

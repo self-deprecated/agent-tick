@@ -123,13 +123,14 @@ The action waits for the final decision and exposes `request-id`, `status`, and 
 
 ### CLI status, steering, and sanctions
 
-Use `agent-tick sanction` to ask for approval before sensitive work:
+Use `agent-tick sanction` to ask for approval before sensitive work. Add `--choice-flag approve=...` when the approve action needs mobile-visible warnings such as `production`, `destructive`, or `security_sensitive`:
 
 ```sh
 agent-tick sanction \
   --title "Deploy production?" \
   --body "Deploy commit abc123 to production." \
   --command "deploy production" \
+  --choice-flag approve=production \
   --timeout 30m
 ```
 
@@ -142,7 +143,7 @@ agent-tick sanction \
   -- ./migrate-prod.sh
 ```
 
-Use `agent-tick steering` for structured choices. Repeat `--choice` with `id=Label` or `id:kind=Label`. The mobile app and dashboard show each choice; the selected id is returned as the response `choiceId`. Custom choices must include at least one `kind` of `deny`, which is highlighted as the red/destructive option in the mobile app and makes the CLI exit non-zero if selected.
+Use `agent-tick steering` for structured choices. Repeat `--choice` with `id=Label` or `id:kind=Label`. The mobile app and dashboard show each choice; the selected id is returned as the response `choiceId`. Custom choices must include at least one `kind` of `deny`, which is highlighted as the red/destructive option in the mobile app and makes the CLI exit non-zero if selected. Add `--choice-flag choiceId=favorite` for the agent's recommendation; the mobile app shows it with a yellow star. Use `--choice-tag choiceId=tag` for short custom labels.
 
 ```sh
 agent-tick steering \
@@ -150,8 +151,12 @@ agent-tick steering \
   --body "Choose the deployment strategy." \
   --choice canary="Canary rollout" \
   --choice blue_green="Blue/green rollout" \
-  --choice cancel:deny="Do not deploy"
+  --choice cancel:deny="Do not deploy" \
+  --choice-flag canary=favorite \
+  --choice-flag canary=reversible
 ```
+
+Supported choice flags are `favorite`, `safest`, `fastest`, `thorough`, `reversible`, `experimental`, `blocked`, `needs_context`, `destructive`, `external_effect`, `security_sensitive`, `costly`, `production`, `time_sensitive`, and `audit_relevant`.
 
 Use `agent-tick status` to publish AFK progress updates without blocking for approval. Set `AGENT_TICK_THREAD_ID` from an agent integration when a chat/thread id is available; otherwise the CLI scopes updates to the current host and working directory.
 

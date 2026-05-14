@@ -59,8 +59,11 @@ agent-tick steering \
   --title "Which rollout?" \
   --choice canary="Canary" \
   --choice blue_green="Blue/green" \
-  --choice cancel:deny="Cancel"
+  --choice cancel:deny="Cancel" \
+  --choice-flag canary=favorite
 ```
+
+Use `--choice-flag choiceId=favorite` to mark the agent's recommended steering choice; the mobile app shows a yellow star. Other supported flags include `safest`, `fastest`, `reversible`, `experimental`, `destructive`, `production`, and `security_sensitive`. Use `--choice-tag choiceId=tag` for a short custom label.
 
 Cancel a pending request:
 

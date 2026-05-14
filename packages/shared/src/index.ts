@@ -376,10 +376,31 @@ export const RequesterSchema = z.object({
 });
 export type Requester = z.infer<typeof RequesterSchema>;
 
+export const ChoiceFlagSchema = z.enum([
+  'favorite',
+  'safest',
+  'fastest',
+  'thorough',
+  'reversible',
+  'experimental',
+  'blocked',
+  'needs_context',
+  'destructive',
+  'external_effect',
+  'security_sensitive',
+  'costly',
+  'production',
+  'time_sensitive',
+  'audit_relevant'
+]);
+export type ChoiceFlag = z.infer<typeof ChoiceFlagSchema>;
+
 export const ChoiceSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
-  kind: z.string().default('approve')
+  kind: z.string().default('approve'),
+  flags: z.array(ChoiceFlagSchema).max(8).optional(),
+  tags: z.array(z.string().min(1).max(40)).max(8).optional()
 });
 export type Choice = z.infer<typeof ChoiceSchema>;
 

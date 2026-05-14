@@ -11,7 +11,7 @@ import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, type AddHelpTextContext } from 'commander';
 import { AgentTickClient, type ApprovalRequest } from '@agent-tick/sdk';
-import { EncryptedApprovalPayloadSchema, createEncryptedApprovalPayload, generateApprovalEncryptionKey, type EncryptedApprovalPayload } from '@agent-tick/shared';
+import { ChoiceFlagSchema, EncryptedApprovalPayloadSchema, createEncryptedApprovalPayload, generateApprovalEncryptionKey, type ChoiceFlag, type EncryptedApprovalPayload } from '@agent-tick/shared';
 import { resolveServerAndToken, saveClientConfig } from './config.js';
 
 export function createProgram(): Command {
@@ -136,6 +136,8 @@ export function createProgram(): Command {
     .option('--generate-e2ee-key', 'print a new high-entropy approval encryption key and exit')
     .option('--encrypted-payload-json <json>', 'opaque end-to-end encrypted request envelope JSON')
     .option('--encrypted-payload-file <path>', 'read opaque end-to-end encrypted request envelope JSON from a file')
+    .option('--choice-flag <choice=flag>', 'default sanction choice UI flag, repeatable: approve=production|reject=favorite|...', collectOption, [])
+    .option('--choice-tag <choice=tag>', 'default sanction choice display tag, repeatable: approve=tag', collectOption, [])
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
     .addHelpText('after', sanctionHelpText)
@@ -168,15 +170,17 @@ export function createProgram(): Command {
     .option('--body <body>', 'additional context for the steering question')
     .option('--project <name>', 'project/repository display name')
     .option('--choice <choice>', 'steering choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
+    .option('--choice-flag <choice=flag>', 'choice UI flag, repeatable: choiceId=favorite|production|destructive|...', collectOption, [])
+    .option('--choice-tag <choice=tag>', 'choice display tag, repeatable: choiceId=tag', collectOption, [])
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
     .addHelpText('after', steeringHelpText)
     .action(async (options: RequestOptions) => {
       if (!options.title?.trim()) throw cliUsageError('steering', 'steering requires --title');
       if (!options.choice?.length) throw cliUsageError('steering', 'steering requires at least one --choice');
-      let choices: Array<{ id: string; label: string; kind: string }>;
+      let choices: ChoiceInput[];
       try {
-        choices = parseChoices(options.choice);
+        choices = parseChoices(options.choice, options.choiceFlag, options.choiceTag);
       } catch (error) {
         throw cliUsageError('steering', error instanceof Error ? error.message : String(error));
       }
@@ -397,9 +401,9 @@ const installHelpText = `\n${heading('Examples')}\n  ${command('agent-tick insta
 
 const statusHelpText = `\n${heading('Examples')}\n  ${command('agent-tick status "Finished edits; running tests now"')}\n  ${command('agent-tick status --state blocked "Need staging access"')}\n  ${command('agent-tick status --state done "Implemented and validated"')}\n`;
 
-const steeringHelpText = `\n${heading('Examples')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick steering --title "Proceed?" --choice yes="Yes" --choice no:deny="No"')}\n\n${muted('Choices may be plain labels, id=Label, or id:kind=Label. If no deny choice is provided, Agent Tick adds a Cancel choice.')}\n`;
+const steeringHelpText = `\n${heading('Examples')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick steering --title "Proceed?" --choice yes="Yes" --choice no:deny="No"')}\n  ${command('agent-tick steering --title "Which fix?" --choice small="Small fix" --choice rewrite="Rewrite" --choice-flag small=favorite')}\n\n${muted('Choices may be plain labels, id=Label, or id:kind=Label. If no deny choice is provided, Agent Tick adds a Cancel choice. Use --choice-flag choiceId=favorite and --choice-tag choiceId=tag for mobile-visible annotations.')}\n`;
 
-const sanctionHelpText = `\n${heading('Examples')}\n  ${command('agent-tick sanction --title "Deploy to production?"')}\n  ${command('agent-tick sanction --title "Run migration?" --body "Touches billing tables"')}\n  ${command('agent-tick sanction -- npm install')}\n`;
+const sanctionHelpText = `\n${heading('Examples')}\n  ${command('agent-tick sanction --title "Deploy to production?"')}\n  ${command('agent-tick sanction --title "Run migration?" --body "Touches billing tables" --choice-flag approve=production --choice-flag approve=destructive')}\n  ${command('agent-tick sanction -- npm install')}\n`;
 
 const abandonHelpText = `\n${heading('Example')}\n  ${command('agent-tick abandon apr_123')}\n`;
 
@@ -1173,7 +1177,7 @@ async function readStdin(): Promise<string> {
 }
 
 async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
-  const choices = options.hookChoices ?? parseChoices(options.choice);
+  const choices = options.hookChoices ?? parseRequestChoices(options);
   const encryptedPayload = await encryptedPayloadFromOptions(options);
   const created = await client.createApprovalRequest({
     requester: {
@@ -1277,16 +1281,25 @@ function parseMetadata(values: string[] | undefined): Record<string, string> | u
   return Object.keys(metadata).length ? metadata : undefined;
 }
 
-export function parseChoices(values: string[] | undefined): Array<{ id: string; label: string; kind: string }> {
+function parseRequestChoices(options: RequestOptions): ChoiceInput[] {
+  const hasAnnotations = Boolean(options.choiceFlag?.length || options.choiceTag?.length);
+  const values = options.choice?.length || !hasAnnotations
+    ? options.choice
+    : ['approve:approve=Approve', 'reject:deny=Reject'];
+  return parseChoices(values, options.choiceFlag, options.choiceTag);
+}
+
+export function parseChoices(values: string[] | undefined, flagValues?: string[], tagValues?: string[]): ChoiceInput[] {
   const usedIds = new Set<string>();
   const choices = (values ?? []).map((value, index) => parseChoice(value, index, usedIds));
   if (choices.length && !choices.some((choice) => choice.kind === 'deny')) {
     choices.push({ id: 'cancel', label: 'Cancel / do not answer', kind: 'deny' });
   }
+  applyChoiceAnnotations(choices, flagValues, tagValues);
   return choices;
 }
 
-function parseChoice(value: string, index: number, usedIds: Set<string>): { id: string; label: string; kind: string } {
+function parseChoice(value: string, index: number, usedIds: Set<string>): ChoiceInput {
   const separator = value.indexOf('=');
   if (separator === -1) {
     const label = value.trim();
@@ -1306,7 +1319,34 @@ function parseChoice(value: string, index: number, usedIds: Set<string>): { id: 
   return { id, label, kind };
 }
 
-function uniquifyChoiceId(choice: { id: string; label: string; kind: string }, usedIds: Set<string>): { id: string; label: string; kind: string } {
+function applyChoiceAnnotations(choices: ChoiceInput[], flagValues?: string[], tagValues?: string[]): void {
+  const byId = new Map(choices.map((choice) => [choice.id, choice]));
+  for (const value of flagValues ?? []) {
+    const { choice, entry } = parseChoiceAnnotation(value, byId, 'flag');
+    const parsed = ChoiceFlagSchema.safeParse(entry);
+    if (!parsed.success) throw new Error(`invalid choice flag: ${entry}. Use a supported Agent Tick choice flag.`);
+    const flag = parsed.data;
+    choice.flags = [...new Set([...(choice.flags ?? []), flag])];
+  }
+  for (const value of tagValues ?? []) {
+    const { choice, entry } = parseChoiceAnnotation(value, byId, 'tag');
+    if (entry.length > 40) throw new Error(`invalid choice tag: ${entry}. Tags must be 40 characters or fewer.`);
+    choice.tags = [...new Set([...(choice.tags ?? []), entry])].slice(0, 8);
+  }
+}
+
+function parseChoiceAnnotation(value: string, byId: Map<string, ChoiceInput>, kind: 'flag' | 'tag'): { choice: ChoiceInput; entry: string } {
+  const separator = value.indexOf('=');
+  if (separator <= 0) throw new Error(`invalid choice ${kind}: ${value}. Use choiceId=${kind}.`);
+  const id = value.slice(0, separator).trim();
+  const entry = value.slice(separator + 1).trim();
+  if (!entry) throw new Error(`invalid choice ${kind}: ${value}. ${kind} cannot be empty.`);
+  const choice = byId.get(id);
+  if (!choice) throw new Error(`invalid choice ${kind}: unknown choice id ${id}.`);
+  return { choice, entry };
+}
+
+function uniquifyChoiceId(choice: ChoiceInput, usedIds: Set<string>): ChoiceInput {
   let id = choice.id;
   let suffix = 2;
   while (usedIds.has(id)) {
@@ -1384,6 +1424,14 @@ interface StatusOptions extends ClientOptions {
   json?: boolean;
 }
 
+type ChoiceInput = {
+  id: string;
+  label: string;
+  kind: string;
+  flags?: ChoiceFlag[];
+  tags?: string[];
+};
+
 interface RequestOptions extends ClientOptions {
   title: string;
   body?: string;
@@ -1395,7 +1443,9 @@ interface RequestOptions extends ClientOptions {
   encryptedPayloadJson?: string;
   encryptedPayloadFile?: string;
   choice?: string[];
-  hookChoices?: Array<{ id: string; label: string; kind: string }>;
+  choiceFlag?: string[];
+  choiceTag?: string[];
+  hookChoices?: ChoiceInput[];
   timeout?: string;
   json?: boolean;
   silent?: boolean;

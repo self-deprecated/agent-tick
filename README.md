@@ -62,8 +62,11 @@ agent-tick steering \
   --title "Which rollout?" \
   --choice canary="Canary" \
   --choice blue_green="Blue/green" \
-  --choice cancel:deny="Cancel"
+  --choice cancel:deny="Cancel" \
+  --choice-flag canary=favorite
 ```
+
+Choice flags add mobile-visible cues. For example, `favorite` shows a yellow star; sanction approve choices can also be marked with warnings such as `production`, `destructive`, or `security_sensitive`.
 
 Agents can send lightweight status updates that appear in Agent Tick:
 

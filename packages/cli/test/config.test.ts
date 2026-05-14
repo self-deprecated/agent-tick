@@ -121,9 +121,18 @@ describe('parseChoices', () => {
     expect(parseChoices(['deny=No thanks'])).toEqual([{ id: 'deny', label: 'No thanks', kind: 'deny' }]);
   });
 
+  it('applies choice flags and tags', () => {
+    expect(parseChoices(['small=Small fix', 'stop:deny=Stop'], ['small=favorite', 'small=reversible'], ['small=quick'])).toEqual([
+      { id: 'small', label: 'Small fix', kind: 'approve', flags: ['favorite', 'reversible'], tags: ['quick'] },
+      { id: 'stop', label: 'Stop', kind: 'deny' }
+    ]);
+  });
+
   it('rejects malformed choices', () => {
     expect(() => parseChoices(['missing-label='])).toThrow(/label cannot be empty/);
     expect(() => parseChoices(['=Missing id'])).toThrow(/invalid choice/);
+    expect(() => parseChoices(['small=Small', 'stop:deny=Stop'], ['missing=favorite'])).toThrow(/unknown choice id/);
+    expect(() => parseChoices(['small=Small', 'stop:deny=Stop'], ['small=unknown'])).toThrow(/invalid choice flag/);
   });
 
   it('rejects duplicate explicit choice ids', () => {

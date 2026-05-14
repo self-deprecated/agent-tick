@@ -111,8 +111,12 @@ Use a custom title/body when the risk is not obvious:
 agent-tick sanction \
   --title "Modify production database?" \
   --body "Run the migration against the production database." \
+  --choice-flag approve=production \
+  --choice-flag approve=destructive \
   -- ./migrate-prod.sh
 ```
+
+Use `--choice-flag approve=...` on sanctions when the approve action should carry mobile-visible warnings such as `production`, `destructive`, `external_effect`, or `security_sensitive`.
 
 If denied, stop the gated action and report that the user denied it.
 
@@ -126,8 +130,12 @@ agent-tick steering \
   --body "Choose the deployment strategy." \
   --choice canary="Canary rollout" \
   --choice blue_green="Blue/green rollout" \
-  --choice cancel:deny="Do not deploy"
+  --choice cancel:deny="Do not deploy" \
+  --choice-flag canary=favorite \
+  --choice-flag canary=reversible
 ```
+
+When you have a preferred steering answer, mark exactly that choice with `--choice-flag choiceId=favorite`; the mobile app shows a yellow star. Other supported flags: `safest`, `fastest`, `thorough`, `reversible`, `experimental`, `blocked`, `needs_context`, `destructive`, `external_effect`, `security_sensitive`, `costly`, `production`, `time_sensitive`, and `audit_relevant`. Use `--choice-tag choiceId=tag` for short custom labels. Do not use flags to smuggle secrets or long context.
 
 Treat denial or any selected `deny` choice as a hard stop unless the user gives a new instruction.
 

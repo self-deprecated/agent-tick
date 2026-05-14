@@ -109,6 +109,20 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
     expect(screen.queryByText(/duplicate choice id/)).toBeNull();
   });
 
+  it("shows choice flags and tags on action buttons", () => {
+    renderApproval(approval({
+      choices: [
+        { id: "small", label: "Small fix", kind: "approve", flags: ["favorite", "reversible"], tags: ["quick"] },
+        { id: "reject", label: "Reject", kind: "deny" },
+      ],
+    }));
+
+    expect(screen.getByLabelText("Favorite choice")).toBeTruthy();
+    expect(screen.getByText("Small fix")).toBeTruthy();
+    expect(screen.getByText("reversible")).toBeTruthy();
+    expect(screen.getByText("quick")).toBeTruthy();
+  });
+
   it("requires decrypting encrypted requests before responding", () => {
     const key = generateApprovalEncryptionKey();
     const onRespond = jest.fn();

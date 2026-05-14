@@ -43,8 +43,11 @@ Ask a steering question with structured choices:
 agent-tick steering \
   --title "Which rollout?" \
   --choice canary="Canary" \
-  --choice cancel:deny="Cancel"
+  --choice cancel:deny="Cancel" \
+  --choice-flag canary=favorite
 ```
+
+Use `--choice-flag choiceId=favorite` for a mobile-visible recommendation star, or warning flags such as `production`, `destructive`, and `security_sensitive` on sanction approve choices.
 
 Send a status update without requesting approval:
 

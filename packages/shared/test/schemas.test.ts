@@ -117,14 +117,27 @@ describe('shared schemas', () => {
         requester: { name: 'agent' },
         title: 'Which rollout?',
         choices: [
-          { id: 'canary', label: 'Canary' },
+          { id: 'canary', label: 'Canary', flags: ['favorite', 'reversible'], tags: ['recommended'] },
           { id: 'cancel', label: 'Cancel', kind: 'deny' }
         ]
       }).choices
     ).toEqual([
-      { id: 'canary', label: 'Canary', kind: 'approve' },
+      { id: 'canary', label: 'Canary', kind: 'approve', flags: ['favorite', 'reversible'], tags: ['recommended'] },
       { id: 'cancel', label: 'Cancel', kind: 'deny' }
     ]);
+  });
+
+  it('validates choice flags and tags', () => {
+    expect(() =>
+      CreateApprovalRequestSchema.parse({
+        requester: { name: 'agent' },
+        title: 'Which rollout?',
+        choices: [
+          { id: 'canary', label: 'Canary', flags: ['unknown'] },
+          { id: 'cancel', label: 'Cancel', kind: 'deny' }
+        ]
+      })
+    ).toThrow();
   });
 
   it('deduplicates duplicate choice ids for display and response safety', () => {

@@ -2841,9 +2841,16 @@ export function ApprovalsScreen({
                 styles.choiceButton,
                 choice.kind === "approve" ? styles.approveButton : null,
                 choice.kind === "deny" ? styles.denyButton : null,
+                choice.flags?.includes("destructive") || choice.flags?.includes("production") || choice.flags?.includes("security_sensitive") ? styles.flaggedChoiceButton : null,
               ]}
             >
-              <Text style={styles.choiceText}>{choice.label}</Text>
+              <View style={styles.choiceContent}>
+                {choice.flags?.includes("favorite") ? <Text accessibilityLabel="Favorite choice" style={styles.choiceFavoriteIcon}>★</Text> : null}
+                <View style={styles.choiceLabelStack}>
+                  <Text style={styles.choiceText}>{choice.label}</Text>
+                  <ChoiceFlagBadges choice={choice} />
+                </View>
+              </View>
             </Pressable>
           ))
         ) : (
@@ -2855,6 +2862,25 @@ export function ApprovalsScreen({
       )}
     </View>
   );
+}
+
+function ChoiceFlagBadges({ choice }: { choice: Choice }) {
+  const badges = [
+    ...(choice.flags ?? []).filter((flag) => flag !== "favorite").map(choiceFlagLabel),
+    ...(choice.tags ?? []),
+  ].slice(0, 4);
+  if (!badges.length) return null;
+  return (
+    <View style={styles.choiceBadgeRow}>
+      {badges.map((badge) => (
+        <Text key={badge} style={styles.choiceBadge}>{badge}</Text>
+      ))}
+    </View>
+  );
+}
+
+function choiceFlagLabel(flag: string): string {
+  return flag.replace(/_/g, " ");
 }
 
 function encryptedDismissChoice(request: ApprovalRequest): Choice {
@@ -4041,6 +4067,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
     justifyContent: "center",
     paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   approveButton: {
     backgroundColor: "#1f6f5b",
@@ -4050,6 +4077,10 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: "#202124",
+  },
+  flaggedChoiceButton: {
+    borderColor: "#fbbc04",
+    borderWidth: 2,
   },
   choiceButtonDisabled: {
     backgroundColor: "#8e8778",
@@ -4070,10 +4101,43 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textAlign: "center",
   },
+  choiceContent: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "center",
+  },
+  choiceFavoriteIcon: {
+    color: "#fbbc04",
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  choiceLabelStack: {
+    alignItems: "center",
+    gap: 4,
+  },
   choiceText: {
     color: "#ffffff",
     fontSize: 17,
     fontWeight: "900",
+    textAlign: "center",
+  },
+  choiceBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    justifyContent: "center",
+  },
+  choiceBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: 999,
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "800",
+    overflow: "hidden",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    textTransform: "uppercase",
   },
   primaryButton: {
     alignItems: "center",
