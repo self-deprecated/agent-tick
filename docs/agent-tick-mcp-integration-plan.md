@@ -16,6 +16,7 @@ There are two different servers in this design:
 
 - **Agent Tick product server** — the existing Agent Tick HTTP API and dashboard/mobile backend, for example `https://agenttick.sh` or a self-hosted server.
 - **Agent Tick MCP server** — a local or remote MCP adapter that the agent connects to. It exposes MCP tools and calls the Agent Tick product server internally.
+- **Resolved request** — a request that has reached a terminal non-response outcome, such as local prompt winning a mirrored race, wait deadline reached, or explicit user cancellation. `resolved` replaces the older `abandoned` terminology throughout the product; no compatibility migration is needed.
 
 For the first implementation, the MCP server is a local stdio process started by the agent:
 
@@ -44,7 +45,7 @@ Agent Tick product server
   └─ approval/status persistence
 ```
 
-The MCP server is an agent-facing adapter, not a new source of truth. Agent Tick approval requests, status updates, audit records, and routing still live in the existing Agent Tick product server.
+The MCP server is an agent-facing adapter, not a new source of truth. Agent Tick requests, status updates, audit records, and routing still live in the existing Agent Tick product server.
 
 ## Relevant MCP and agent-client behavior
 
@@ -144,7 +145,7 @@ approval_policy = { granular = {
 }}
 ```
 
-Codex also has MCP tool approval settings on configured MCP servers. The Agent Tick MCP tools themselves should normally be configured as approved so Codex does not require a separate local approval before Agent Tick can ask the human.
+Codex also has MCP tool approval settings on configured MCP servers. The Agent Tick MCP tools themselves should normally be configured as approved so Codex does not require a separate local approval before Agent Tick can ask the human. Pre-approve Agent Tick MCP tools only where the client supports it; document Claude behavior separately rather than inventing unsupported Claude approval config.
 
 ## Product behavior
 
@@ -158,11 +159,28 @@ The desired behavior is the same across clients:
 2. The tool creates an Agent Tick request or status update against the product server.
 3. For steering/sanctions, the tool can also show a local MCP elicitation dialog.
 4. The tool races local MCP response vs remote Agent Tick mobile/web response.
-5. The first terminal response wins, including local decline/cancel/timeout.
-6. If local wins, abandon the pending Agent Tick request with non-secret reason/source and structured local outcome metadata when available.
+5. The first terminal response wins, including explicit local decline/cancel/timeout. If local elicitation is unsupported or rejected before a user sees/answers it, continue remote-only.
+6. If local wins, resolve the pending Agent Tick request with non-secret reason/source and structured local outcome metadata when available.
 7. If remote wins, best-effort cancel the local elicitation and return the remote structured decision to the agent.
-8. If remote creation fails but local elicitation succeeds, return the local result with a non-secret warning.
-9. If denied, cancelled, or timed out, the tool returns a structured negative result and the agent must stop or ask for further instruction. MCP/CLI timeouts are request deadlines: set `expiresAt` and abandon the pending request when the timeout is reached.
+8. If remote creation fails but local elicitation succeeds, return the local result with `source: "local_elicitation"`, no `requestId`, and a concise non-secret warning such as `remote_mirror_failed`.
+9. If denied, cancelled, or timed out, the tool returns a structured negative result and the agent must stop or ask for further instruction. MCP/CLI timeouts are request deadlines: set `expiresAt` and resolve the pending request when the timeout is reached.
+
+## Request resolution
+
+Rename the current abandon concept to resolve throughout the product: API routes, SDK methods, CLI commands, store methods, audit events, request status values, admin/mobile labels, and documentation. Use request status `resolved` for terminal non-response outcomes. A resolution reason explains whether it was abandoned, cancelled, timed out, or answered elsewhere.
+
+Resolution endpoint shape:
+
+```ts
+type ResolveRequestInput = {
+  reason: "local_answered" | "local_denied" | "local_cancelled" | "local_timed_out" | "wait_timed_out" | "manual";
+  source: "local_elicitation" | "agent_tick_mcp" | "cli" | "manual";
+  terminalStatus?: "answered" | "approved" | "denied" | "cancelled" | "timed_out" | "resolved";
+  localChoiceIds?: string[];
+};
+```
+
+Do not accept freeform resolution messages or arbitrary resolution metadata. Store the constrained resolution metadata in the request response/audit payload while keeping it distinct from a remote Agent Tick human response.
 
 ## MCP tools
 
@@ -182,8 +200,19 @@ type AgentTickStatusInput = {
 };
 ```
 
+Output schema:
+
+```ts
+type AgentTickStatusOutput = {
+  statusId: string;
+  threadId: string;
+  state: string;
+};
+```
+
 Behavior:
 
+- Define an MCP `outputSchema` and return both `structuredContent` and concise text content.
 - Keep metadata behavior in sync with `agent-tick status --metadata`: arbitrary string key/value pairs with validation, best-effort redaction, and length limits.
 - Resolve Agent Tick config using the same order as the CLI.
 - Call `createStatusUpdate`.
@@ -232,15 +261,18 @@ type AgentTickSteeringOutput = {
 
 Behavior:
 
-1. Validate choice ids are unique and short enough for Agent Tick.
-2. Validate at least one caller-provided choice has `kind: "deny"`.
-3. Create Agent Tick request with `requestType: "steer"` semantics using the existing approval request API.
-4. If local elicitation is enabled and the MCP client supports it, send a form elicitation:
+1. Define an MCP `outputSchema` and return both `structuredContent` and concise text content.
+2. Validate choice ids are unique and short enough for Agent Tick.
+3. Validate the non-empty choice set has at least one caller-provided choice with `kind: "deny"`.
+4. Create Agent Tick request with `requestType: "steer"` semantics using the existing approval request API.
+5. If local elicitation is enabled and the MCP client supports it, send a form elicitation:
    - single-select: string enum / `oneOf`;
    - multi-select: array enum / `items.anyOf`.
-5. Race local elicitation and Agent Tick wait.
-6. Map result to `AgentTickSteeringOutput`; silently ignore any remote response messages.
-7. Abandon pending remote request when local wins or when the MCP tool reaches its timeout.
+6. Race local elicitation and Agent Tick wait using one shared deadline.
+7. Map result to `AgentTickSteeringOutput`; silently ignore any remote response messages.
+8. If a multi-select response includes both deny and normal choices, deny wins.
+9. Resolve the pending remote request when local wins or when the MCP tool reaches its timeout.
+10. Do not support `timeoutMs: 0`; MCP steering must wait for a terminal result.
 
 Single-select local schema:
 
@@ -317,13 +349,15 @@ type AgentTickSanctionOutput = {
 
 Behavior:
 
-1. Create Agent Tick request with `requestType: "sanction"` and fixed approve/deny choices.
-2. If local elicitation is enabled, ask for approve/deny locally.
-3. Race local and remote responses.
-4. Silently ignore any remote response messages.
-5. Return `approved: true` only for explicit approve.
-6. Abandon pending remote request when local wins or when the MCP tool reaches its timeout.
-7. Agents must treat all non-approved outputs as stop conditions.
+1. Define an MCP `outputSchema` and return both `structuredContent` and concise text content.
+2. Create Agent Tick request with `requestType: "sanction"` and fixed approve/deny choices. Sanction choices use canonical kinds `approve` and `deny`; steering choices use `option` and `deny`.
+3. If local elicitation is enabled, ask for approve/deny locally.
+4. Race local and remote responses using one shared deadline.
+5. Silently ignore any remote response messages.
+6. Return `approved: true` only for explicit approve.
+7. Resolve pending remote request when local wins or when the MCP tool reaches its timeout.
+8. Do not support `timeoutMs: 0`; MCP sanctions must wait for a terminal result.
+9. Agents must treat all non-approved outputs as stop conditions.
 
 Local sanction schema:
 
@@ -363,6 +397,8 @@ agent-tick mcp \
 ```
 
 All options are optional when normal Agent Tick config is present. `--server`/`--token` mirror existing CLI overrides and are not written by default installers. `stdio` is the only supported MVP transport; do not implement or document HTTP MCP mode in the first slice.
+
+Do not add MCP tool annotations in MVP. Rely on clear tool descriptions and Agent Tick choice flags such as `favorite`, `safest`, `production`, and `destructive`, keeping those flags aligned with the CLI.
 
 Suggested files:
 
@@ -430,7 +466,7 @@ Agent instructions should tell Claude:
 
 Add a Codex MCP install path. Codex MCP is the default recommended Codex integration path.
 
-Recommended `~/.codex/config.toml` or project `.codex/config.toml` snippet:
+Default Codex MCP install should create a tokenless project `.codex/config.toml` so the repository records that Agent Tick MCP is available without committing credentials. Recommended project `.codex/config.toml` snippet:
 
 ```toml
 [mcp_servers.agent_tick]
@@ -491,11 +527,12 @@ Agent instructions should tell Codex to use Agent Tick MCP tools for status, ste
 
 ### Slice 3 — remote-only steering and sanction tools
 
+- Before implementing MCP steering/sanction tools, rename abandon to resolve everywhere, change the terminal status to `resolved`, add the constrained resolve input schema, update store/audit/SDK/CLI methods, and align admin/mobile labels.
 - Implement `agent_tick_steering` and `agent_tick_sanction` using the Agent Tick HTTP API.
 - Use `requestType: "steer"` for all steering, including multi-select/questionnaire-style collection.
-- Use `requestType: "sanction"` for sanctions, and update the existing CLI sanction path to do the same.
+- Use `requestType: "sanction"` for sanctions, update the existing CLI sanction path to do the same, and update admin/mobile to show sanction requests with approval-gate behavior and Sanction labeling.
 - No local MCP elicitation yet.
-- Wait for Agent Tick response with a reusable long-wait loop, set request deadlines from timeouts, abandon on timeout, and return structured outputs.
+- Wait for Agent Tick response with a reusable long-wait loop, set request deadlines from timeouts, resolve on timeout, and return structured outputs.
 - Add tests for response mapping, timeout, deny, cancel, and API failures.
 
 ### Slice 4 — local MCP elicitation
@@ -504,7 +541,7 @@ Agent instructions should tell Codex to use Agent Tick MCP tools for status, ste
 - Add `localElicitation` modes: `auto`, `off`, `only`.
 - Use the server-level `--local-elicitation` value as the default only; per-call values may override it.
 - Race local elicitation vs Agent Tick wait concurrently.
-- Abandon remote request if local wins, including decline/cancel/timeout; if local wins before remote creation completes, create-then-abandon when possible.
+- Resolve remote request if local wins, including decline/cancel/timeout; if local wins before remote creation completes, create-then-resolve when possible.
 - Best-effort cancel local elicitation if remote wins.
 - Add tests for schema building and result mapping.
 
@@ -532,6 +569,7 @@ Agent instructions should tell Codex to use Agent Tick MCP tools for status, ste
 
 ## Security and disclosure rules
 
+- Include only constrained non-secret MCP source metadata on MCP-created requests, such as `source=agent-tick-mcp`, `tool`, `cliVersion`, and `localElicitationMode`; never include raw prompts, environment, transcripts, or full tool inputs as metadata.
 - Never include tokens, secrets, private keys, credentials, or full environment files in titles, bodies, commands, metadata, or form fields.
 - Redact command/tool inputs before sending to Agent Tick.
 - Keep MCP tool output concise; do not return huge Agent Tick request payloads.
@@ -547,16 +585,16 @@ Agent instructions should tell Codex to use Agent Tick MCP tools for status, ste
 - Tool names keep the `agent_tick_` prefix.
 - Claude hooks remain native/default; Claude MCP is an explicit install option.
 - Codex MCP is the default recommended Codex integration.
-- Agent Tick MCP tools should be pre-approved/allowed by installers, without broadening other client permissions.
-- MCP outputs use MCP `structuredContent` plus concise text summaries.
+- Agent Tick MCP tools should be pre-approved/allowed by installers where the client supports it, without broadening other client permissions. Document Claude behavior separately if no verified per-tool approval config exists.
+- MCP outputs use MCP `outputSchema`, `structuredContent`, and concise text summaries.
 - Expected domain/API failures return structured failed outputs; reserve MCP tool errors for malformed inputs, protocol failures, or unexpected crashes.
 - Agentic decisions return structured choices only; no comments/freeform text are returned to agents.
-- Steering requires a non-empty structured choice set. Choices expose the existing `kind` field and must include a caller-provided deny choice. In multi-select steering, deny choices are mutually exclusive with normal choices.
+- Steering requires a non-empty structured choice set. Choices expose the existing `kind` field and must include a caller-provided deny choice. In multi-select steering, deny choices are mutually exclusive with normal choices, and deny wins if mixed selections are received.
 - Sanctions are fixed approve/deny gates in MVP, and MCP sanctions never execute commands.
 - `agent_tick_sanction` remains model-callable MCP surface only; provider-native hooks keep their existing implementation paths.
 - `agent-tick mcp` fails at startup when config is missing or invalid.
 - `agent-tick mcp --timeout` is a default that per-call `timeoutMs` may override.
 - CLI and MCP should stay in sync where practical, including status metadata behavior, config resolution, redaction, and timeout/deadline semantics.
-- MCP and CLI sanction/steering timeouts are request deadlines: set `expiresAt` and abandon on timeout.
+- MCP and CLI sanction/steering timeouts are request deadlines: set `expiresAt` and resolve on timeout. MCP steering/sanction do not support no-wait `timeoutMs: 0`.
 - Installers should install MCP usage instructions.
-- Claude and Codex MCP installs default to tokenless project config; users may explicitly use `--server`/`--token` at their own risk.
+- Claude and Codex MCP installs default to tokenless project config (`.mcp.json` and `.codex/config.toml` respectively); users may explicitly use `--server`/`--token` at their own risk.

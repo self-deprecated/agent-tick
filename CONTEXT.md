@@ -45,16 +45,16 @@ A same-session prompt shown by the agent client to the person at the terminal.
 _Avoid_: local approval, canonical response
 
 **Mirrored Prompt**:
-A prompt presented both as a Local Prompt and as an Agent Tick Request, where the first terminal local result or remote answer is used and the losing surface is abandoned or closed.
+A prompt presented both as a Local Prompt and as an Agent Tick Request, where the first terminal local result or remote answer is used and the losing surface is resolved or closed.
 _Avoid_: duplicate prompt, two approvals
 
 **Local-only Prompt**:
 A Local Prompt used when remote routing is intentionally disabled after the MCP Adapter has been configured.
 _Avoid_: offline Agent Tick request, implicit approval
 
-**Abandoned Request**:
+**Resolved Request**:
 An Agent Tick Request that stopped waiting because another path resolved or invalidated it before a remote answer arrived.
-_Avoid_: denied request, failed request
+_Avoid_: denied request, failed request, abandoned request
 
 ## Relationships
 
@@ -70,19 +70,19 @@ _Avoid_: denied request, failed request
 - A **Local-only Prompt** has no corresponding **Agent Tick Request**.
 - A **Mirrored Prompt** is preferred for configured MCP flows; a **Local-only Prompt** is an explicit mode, not a substitute for missing setup.
 - Both **Steering** and **Sanctions** may use a **Local-only Prompt** when explicitly requested.
-- A **Mirrored Prompt** can leave an **Abandoned Request** when its **Local Prompt** wins the race, including local decline, cancellation, or timeout.
-- An unanswered **Agent Tick Request** should become an **Abandoned Request** when the MCP tool reaches its **Request Deadline**.
-- An **Abandoned Request** from a locally answered **Mirrored Prompt** can record constrained structured local outcome metadata without becoming a remote Agent Tick response.
+- A **Mirrored Prompt** can leave a **Resolved Request** when its **Local Prompt** wins the race, including local decline, cancellation, or timeout.
+- An unanswered **Agent Tick Request** should become a **Resolved Request** when the MCP tool reaches its **Request Deadline**.
+- A **Resolved Request** from a locally answered **Mirrored Prompt** can record constrained structured local outcome metadata without becoming a remote Agent Tick response.
 
 ## Example dialogue
 
 > **Dev:** "If a phone response and terminal response both arrive for a **Sanction**, do we need two approvals?"
-> **Domain expert:** "No — this is a **Mirrored Prompt**. Whichever surface answers first resolves it, and the other surface is abandoned or closed."
+> **Domain expert:** "No — this is a **Mirrored Prompt**. Whichever surface answers first resolves it, and the other surface is resolved or closed."
 
 ## Flagged ambiguities
 
 - "local MCP elicitation" could mean either an Agent Tick human decision or a local agent-client answer — resolved: it behaves like the Pi extension's local half of a **Mirrored Prompt**.
 - "without Agent Tick config" could mean either failing MCP startup or falling back to the client prompt — resolved: the **MCP Adapter** fails with setup instructions when no Agent Token is configured.
-- "abandoned" could mean either an unexplained cancellation or a local-won mirrored flow — resolved: **Abandoned Requests** should carry a non-secret reason/source and structured local outcome metadata when another path resolved the decision.
+- "abandoned" could mean either an unexplained cancellation or a local-won mirrored flow — resolved: use **Resolved Request** with a resolution reason/source and structured local outcome metadata when another path resolved the decision.
 - "questionnaire" could mean a separate product primitive or the presentation used for multi-select **Steering** — resolved: new questionnaire-style collection should use **Steering**, while historical Questionnaire records may remain labeled as such.
 - "freeform" or "comment" could mean extra context returned to the agent — resolved: **Agentic Decisions** must not return human-written comments or freeform instructions.
