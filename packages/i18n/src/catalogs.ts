@@ -1,5 +1,21 @@
-import type { Messages } from "@lingui/core";
-import { activateLocale, defaultLocale, normalizeLocale, type SupportedLocale } from "./index.js";
+import { i18n, type Messages } from "@lingui/core";
+
+const defaultLocale = "en";
+const supportedLocaleCodes = new Set(["en", "da"]);
+
+type SupportedLocale = "en" | "da";
+
+function normalizeLocale(value: string | null | undefined): SupportedLocale {
+  if (!value) return defaultLocale;
+  const normalized = value.trim().replace("_", "-").toLowerCase();
+  if (supportedLocaleCodes.has(normalized)) return normalized as SupportedLocale;
+  const language = normalized.split("-")[0];
+  return supportedLocaleCodes.has(language ?? "") ? language as SupportedLocale : defaultLocale;
+}
+
+function activateLocale(locale: SupportedLocale, messages: Messages): void {
+  i18n.loadAndActivate({ locale, messages });
+}
 
 export async function loadMessages(locale: SupportedLocale): Promise<Messages> {
   switch (locale) {
