@@ -415,6 +415,20 @@ export const ChoiceListSchema = z.array(ChoiceSchema).transform((choices) => {
   });
 });
 
+export const QuestionOptionSchema = z.object({
+  label: z.string().min(1),
+  description: z.string().max(2_000).optional()
+});
+export type QuestionOption = z.infer<typeof QuestionOptionSchema>;
+
+export const QuestionSchema = z.object({
+  header: z.string().optional(),
+  question: z.string().min(1),
+  options: z.array(QuestionOptionSchema).max(50).default([]),
+  multiSelect: z.boolean().default(false)
+});
+export type Question = z.infer<typeof QuestionSchema>;
+
 export const ResponsePayloadSchema = z.object({
   choiceId: z.string().optional(),
   message: z.string().optional(),
@@ -540,6 +554,7 @@ export const ApprovalRequestSchema = z.object({
   command: z.string().optional(),
   encryptedPayload: EncryptedApprovalPayloadSchema.optional(),
   choices: ChoiceListSchema,
+  questions: z.array(QuestionSchema).max(20).optional(),
   defaultChoice: z.string().optional(),
   allowFreeformReply: z.boolean().default(false),
   expiresAt: z.string().optional(),
@@ -564,6 +579,7 @@ export const CreateApprovalRequestSchema = z.object({
   command: z.string().optional(),
   encryptedPayload: EncryptedApprovalPayloadSchema.optional(),
   choices: ChoiceListSchema.optional(),
+  questions: z.array(QuestionSchema).max(20).optional(),
   defaultChoice: z.string().optional(),
   allowFreeformReply: z.boolean().optional(),
   expiresAt: z.string().optional(),

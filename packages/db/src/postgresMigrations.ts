@@ -202,6 +202,7 @@ CREATE TABLE IF NOT EXISTS approval_requests (
   command TEXT,
   encrypted_payload_json TEXT,
   choices_json TEXT NOT NULL,
+  questions_json TEXT NOT NULL DEFAULT '[]',
   default_choice TEXT,
   allow_freeform_reply BOOLEAN NOT NULL DEFAULT false,
   expires_at TEXT,
@@ -355,6 +356,12 @@ CREATE TABLE IF NOT EXISTS agent_status_updates (
 
 CREATE INDEX IF NOT EXISTS agent_status_updates_org_thread_created_idx ON agent_status_updates(organization_id, thread_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS agent_status_updates_org_created_idx ON agent_status_updates(organization_id, created_at DESC);
+`
+  },
+  {
+    version: '0002_approval_questions',
+    sql: `
+ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS questions_json TEXT NOT NULL DEFAULT '[]';
 `
   }
 ];

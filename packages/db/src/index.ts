@@ -15,6 +15,7 @@ import {
   type ApprovalRequest,
   type ApprovalVoteRecord,
   type Choice,
+  type Question,
   type CreateAgentStatusUpdate,
   type CreateApprovalRequest,
   type RespondApprovalRequest
@@ -540,6 +541,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
     ensureColumn(this.db, 'organization_invites', 'email_last_error', 'ALTER TABLE organization_invites ADD COLUMN email_last_error TEXT');
     ensureColumn(this.db, 'organization_invite_acceptances', 'requested_team_ids_json', "ALTER TABLE organization_invite_acceptances ADD COLUMN requested_team_ids_json TEXT NOT NULL DEFAULT '[]'");
     ensureColumn(this.db, 'approval_requests', 'encrypted_payload_json', 'ALTER TABLE approval_requests ADD COLUMN encrypted_payload_json TEXT');
+    ensureColumn(this.db, 'approval_requests', 'questions_json', "ALTER TABLE approval_requests ADD COLUMN questions_json TEXT NOT NULL DEFAULT '[]'");
     this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
     this.db.exec(MIGRATION_0003_AGENT_STATUS_UPDATES);
     this.db.exec('DROP INDEX IF EXISTS devices_user_installation_idx');
@@ -1365,9 +1367,9 @@ export class AgentTickStore implements AsyncAgentTickStore {
           `INSERT INTO approval_requests(
             id, organization_id, user_id, requester_name, requester_agent_id, requester_host,
             requester_working_directory, requester_project_name, requester_project_id, request_type,
-            title, body, command, encrypted_payload_json, choices_json, default_choice, allow_freeform_reply, expires_at,
+            title, body, command, encrypted_payload_json, choices_json, questions_json, default_choice, allow_freeform_reply, expires_at,
             risk, metadata_json, status, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           id,
@@ -1385,6 +1387,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
           command,
           parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null,
           JSON.stringify(choices),
+          JSON.stringify(parsed.questions ?? []),
           parsed.defaultChoice ?? null,
           parsed.allowFreeformReply ? 1 : 0,
           parsed.expiresAt ?? null,
@@ -2210,6 +2213,7 @@ function mapApprovalRow(row: ApprovalRow, policyProgress?: ApprovalPolicyProgres
     command: row.command ?? undefined,
     encryptedPayload: parseJSON(row.encrypted_payload_json, undefined),
     choices: parseJSON<Choice[]>(row.choices_json, defaultChoices()),
+    questions: parseJSON<Question[]>(row.questions_json, []),
     defaultChoice: row.default_choice ?? undefined,
     allowFreeformReply: row.allow_freeform_reply === 1,
     expiresAt: row.expires_at ?? undefined,
@@ -2617,6 +2621,7 @@ interface ApprovalRow {
   command: string | null;
   encrypted_payload_json: string | null;
   choices_json: string;
+  questions_json: string;
   default_choice: string | null;
   allow_freeform_reply: number;
   expires_at: string | null;
@@ -2824,6 +2829,7 @@ CREATE TABLE IF NOT EXISTS approval_requests (
   command TEXT,
   encrypted_payload_json TEXT,
   choices_json TEXT NOT NULL,
+  questions_json TEXT NOT NULL DEFAULT '[]',
   default_choice TEXT,
   allow_freeform_reply INTEGER NOT NULL DEFAULT 0,
   expires_at TEXT,

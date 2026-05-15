@@ -11,6 +11,7 @@ import {
   type ApprovalRequest,
   type ApprovalVoteRecord,
   type Choice,
+  type Question,
   type RespondApprovalRequest
 } from '@agent-tick/shared';
 import { PostgresStoreConnection, type PostgresStoreOptions } from './postgres.js';
@@ -186,6 +187,7 @@ interface ApprovalRow {
   command: string | null;
   encrypted_payload_json: string | null;
   choices_json: string;
+  questions_json: string;
   default_choice: string | null;
   allow_freeform_reply: boolean;
   expires_at: string | null;
@@ -991,9 +993,9 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
         `INSERT INTO approval_requests(
           id, organization_id, user_id, requester_name, requester_agent_id, requester_host,
           requester_working_directory, requester_project_name, requester_project_id, request_type,
-          title, body, command, encrypted_payload_json, choices_json, default_choice, allow_freeform_reply, expires_at,
+          title, body, command, encrypted_payload_json, choices_json, questions_json, default_choice, allow_freeform_reply, expires_at,
           risk, metadata_json, status, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
         [
           id,
           organizationId,
@@ -1010,6 +1012,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
           command,
           parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null,
           JSON.stringify(choices),
+          JSON.stringify(parsed.questions ?? []),
           parsed.defaultChoice ?? null,
           Boolean(parsed.allowFreeformReply),
           parsed.expiresAt ?? null,
@@ -1779,6 +1782,7 @@ function mapApprovalRow(row: ApprovalRow, policyProgress?: ApprovalPolicyProgres
     command: row.command ?? undefined,
     encryptedPayload: parseJSON(row.encrypted_payload_json, undefined),
     choices: parseJSON<Choice[]>(row.choices_json, defaultChoices()),
+    questions: parseJSON<Question[]>(row.questions_json, []),
     defaultChoice: row.default_choice ?? undefined,
     allowFreeformReply: Boolean(row.allow_freeform_reply),
     expiresAt: row.expires_at ?? undefined,
