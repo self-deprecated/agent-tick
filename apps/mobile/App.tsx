@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ClerkProvider, useAuth, useNativeAuthEvents, useNativeSession } from "@clerk/expo";
+import { I18nProvider, type TransRenderProps } from "@lingui/react";
 import { tokenCache } from "@clerk/expo/token-cache";
 import { BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import Constants from "expo-constants";
@@ -81,6 +82,16 @@ import {
 } from "./mobileAuth";
 import { mobileEventStreamsAvailable, subscribeToMobileEventStream, type MobileEventStreamSubscription } from "./mobileEvents";
 import {
+  activateMessages,
+  defaultLocale,
+  i18n,
+  localePreferenceStorageKey,
+  resolveLocalePreference,
+  systemLocaleFromIntl,
+  type LocalePreference,
+  type SupportedLocale,
+} from "@agent-tick/i18n";
+import {
   diagnosticEvents,
   diagnosticsEnabled as readDiagnosticsEnabled,
   flushDiagnostics,
@@ -99,6 +110,7 @@ type AccountPendingState =
   | { status: "error"; count: 0 };
 
 const defaultServer = hostedServerURL;
+const LinguiText = ({ children }: TransRenderProps) => <Text>{children}</Text>;
 const approvalCategoryID = "approval-request";
 const approvalChannelID = "approval-requests";
 const agentTickMobileSessionJwtKey = "__agent_tick_mobile_session_jwt";
@@ -140,6 +152,9 @@ type AgentTickAppProps = {
   clerkSignedIn?: boolean;
   clerkDebugState?: Record<string, unknown>;
   onRuntimeAuthConfig?: (serverURL: string, config: RuntimeAuthConfig | null) => void;
+  activeLocale: SupportedLocale;
+  localePreference: LocalePreference;
+  onLocalePreferenceChange: (preference: LocalePreference) => void;
 };
 
 Notifications.setNotificationHandler({
@@ -157,6 +172,26 @@ export default function App() {
     authConfig: RuntimeAuthConfig | null;
     loaded: boolean;
   }>({ serverURL: defaultServer, authConfig: null, loaded: false });
+  const [localeState, setLocaleState] = useState<{
+    loaded: boolean;
+    activeLocale: SupportedLocale;
+    preference: LocalePreference;
+  }>({ loaded: false, activeLocale: defaultLocale, preference: "system" });
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLocale = async () => {
+      const savedPreference = await AsyncStorage.getItem(localePreferenceStorageKey);
+      const preference: LocalePreference = savedPreference === "en" || savedPreference === "da" || savedPreference === "system" ? savedPreference : "system";
+      const activeLocale = resolveLocalePreference(preference, systemLocaleFromIntl());
+      await activateMessages(activeLocale);
+      if (!cancelled) setLocaleState({ loaded: true, activeLocale, preference });
+    };
+    void loadLocale();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,37 +219,58 @@ export default function App() {
     setBootstrap({ serverURL: normalizedServerURL, authConfig, loaded: true });
   }, []);
 
-  if (!bootstrap.loaded) {
+  const handleLocalePreferenceChange = useCallback((preference: LocalePreference) => {
+    const activeLocale = resolveLocalePreference(preference, systemLocaleFromIntl());
+    void AsyncStorage.setItem(localePreferenceStorageKey, preference);
+    void activateMessages(activeLocale).then((activatedLocale) => {
+      setLocaleState({ loaded: true, activeLocale: activatedLocale, preference });
+    });
+  }, []);
+
+  if (!bootstrap.loaded || !localeState.loaded) {
     return <LoadingScreen />;
   }
 
+  const i18nProps = {
+    activeLocale: localeState.activeLocale,
+    localePreference: localeState.preference,
+    onLocalePreferenceChange: handleLocalePreferenceChange,
+  };
+
+  let content;
   if (bootstrap.authConfig?.authProvider === "clerk" && bootstrap.authConfig.clerkPublishableKey) {
-    return (
+    content = (
       <ClerkProvider publishableKey={bootstrap.authConfig.clerkPublishableKey}>
         <ClerkBoundApp
           initialServerURL={bootstrap.serverURL}
           initialAuthConfig={bootstrap.authConfig}
           onRuntimeAuthConfig={handleRuntimeAuthConfig}
+          {...i18nProps}
         />
       </ClerkProvider>
     );
-  }
-
-  if (normalizeServerURL(bootstrap.serverURL) === defaultServer) {
-    return (
+  } else if (normalizeServerURL(bootstrap.serverURL) === defaultServer) {
+    content = (
       <HostedFirstOnboardingScreen
         error={bootstrap.authConfig ? "agenttick.sh did not advertise Clerk sign-in." : "Could not reach agenttick.sh."}
         onServerSelected={handleRuntimeAuthConfig}
       />
     );
+  } else {
+    content = (
+      <AgentTickApp
+        initialServerURL={bootstrap.serverURL}
+        initialAuthConfig={bootstrap.authConfig}
+        onRuntimeAuthConfig={handleRuntimeAuthConfig}
+        {...i18nProps}
+      />
+    );
   }
 
   return (
-    <AgentTickApp
-      initialServerURL={bootstrap.serverURL}
-      initialAuthConfig={bootstrap.authConfig}
-      onRuntimeAuthConfig={handleRuntimeAuthConfig}
-    />
+    <I18nProvider i18n={i18n} defaultComponent={LinguiText}>
+      {content}
+    </I18nProvider>
   );
 }
 
@@ -667,6 +723,9 @@ function AgentTickApp({
   onAddClerkAccount,
   onForgetClerkSession,
   onSelectSavedClerkAccount,
+  activeLocale,
+  localePreference,
+  onLocalePreferenceChange,
 }: AgentTickAppProps & {
   onAddClerkAccount?: () => void;
   onForgetClerkSession?: (options?: { reopenSignIn?: boolean }) => void;
@@ -2060,6 +2119,9 @@ function AgentTickApp({
           e2eeFocusToken={e2eeFocusToken}
           e2eeKey={e2eeKey}
           loading={loading}
+          activeLocale={activeLocale}
+          localePreference={localePreference}
+          onLocalePreferenceChange={onLocalePreferenceChange}
           notificationStatus={notificationStatus}
           notificationsEnabled={notificationsEnabled}
           choiceInteractionMode={choiceInteractionMode}

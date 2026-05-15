@@ -11,9 +11,11 @@
     "test": "node --test src/*.test.mjs"
   },
   "dependencies": {
+    "@agent-tick/i18n": "workspace:*",
     "@agent-tick/sdk": "workspace:*",
     "@agent-tick/shared": "workspace:*",
-    "@clerk/clerk-js": "6.10.0"
+    "@clerk/clerk-js": "6.10.0",
+    "@lingui/core": "6.0.1"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.1.0",

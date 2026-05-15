@@ -30,6 +30,18 @@
 	import { inviteAcceptedMessage } from './inviteStatus';
 	import { shouldContinueInviteAcceptance } from './inviteFlow';
 	import { clerkRedirectTarget, hasClerkRedirectCallback } from './clerkRedirect';
+	import {
+		activateMessages,
+		defaultLocale,
+		i18n,
+		localeName,
+		localePreferenceStorageKey,
+		resolveLocalePreference,
+		supportedLocales,
+		systemLocaleFromIntl,
+		type LocalePreference,
+		type SupportedLocale
+	} from '@agent-tick/i18n';
 
 	const adminTokenStorageKey = 'agent_tick_admin_token';
 	const organizationStorageKey = 'agent_tick_organization_id';
@@ -95,11 +107,30 @@
 	let clerk = $state<ClerkJS | undefined>();
 	let clerkSignedIn = $state(false);
 	let showAdvancedWorkspace = $state(false);
+	let activeLocale = $state<SupportedLocale>(defaultLocale);
+	let localePreference = $state<LocalePreference>('system');
 	let eventSource: EventSource | undefined;
 	let eventStreamOrganizationId = '';
 	let eventStreamRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 	let eventStreamReconnectTimer: ReturnType<typeof setTimeout> | undefined;
 	type CliSetupRequest = { callbackURL: string; state: string; name: string };
+
+	function tr(message: string): string {
+		activeLocale;
+		return i18n._(message);
+	}
+
+	async function loadLocalePreference(): Promise<void> {
+		const savedPreference = localStorage.getItem(localePreferenceStorageKey);
+		localePreference = savedPreference === 'en' || savedPreference === 'da' || savedPreference === 'system' ? savedPreference : 'system';
+		activeLocale = await activateMessages(resolveLocalePreference(localePreference, systemLocaleFromIntl()));
+	}
+
+	async function changeLocalePreference(nextPreference: LocalePreference): Promise<void> {
+		localePreference = nextPreference;
+		localStorage.setItem(localePreferenceStorageKey, nextPreference);
+		activeLocale = await activateMessages(resolveLocalePreference(nextPreference, systemLocaleFromIntl()));
+	}
 
 	function client(options: { includeOrganization?: boolean } = {}): AgentTickClient {
 		return new AgentTickClient({
@@ -114,6 +145,7 @@
 	}
 
 	onMount(() => {
+		void loadLocalePreference();
 		adminToken = localStorage.getItem(adminTokenStorageKey) ?? '';
 		testAuthToken = localStorage.getItem(testAuthTokenStorageKey) ?? '';
 		selectedOrganizationId = localStorage.getItem(organizationStorageKey) ?? '';
@@ -922,10 +954,21 @@
 	<header class="hero">
 		<div>
 			<p class="eyebrow">Agent Tick</p>
-			<h1>Approve agent actions without slowing down</h1>
-			<p class="subtle">Connect your AI agent, sign in on mobile, and approve risky commands from wherever you are.</p>
+			<h1>{tr('Approve agent actions without slowing down')}</h1>
+			<p class="subtle">{tr('Connect your AI agent, sign in on mobile, and approve risky commands from wherever you are.')}</p>
 		</div>
-		<button onclick={load} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+		<div class="header-actions">
+			<label class="language-picker">
+				<span>{tr('Language')}</span>
+				<select bind:value={localePreference} onchange={(event) => void changeLocalePreference(event.currentTarget.value as LocalePreference)}>
+					<option value="system">{tr('System')} ({localeName(activeLocale)})</option>
+					{#each supportedLocales as locale (locale.code)}
+						<option value={locale.code}>{locale.nativeLabel}</option>
+					{/each}
+				</select>
+			</label>
+			<button onclick={load} disabled={loading}>{loading ? tr('Refreshing…') : tr('Refresh')}</button>
+		</div>
 	</header>
 
 	{#if runtimeConfig}
@@ -1544,6 +1587,26 @@
 
 	.grid {
 		align-items: flex-start;
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+
+	.language-picker {
+		display: grid;
+		gap: 4px;
+		color: #64748b;
+		font-size: 0.8rem;
+		font-weight: 700;
+	}
+
+	.language-picker select {
+		min-width: 180px;
 	}
 
 	.stack {

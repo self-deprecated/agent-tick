@@ -23,18 +23,24 @@
     "moduleNameMapper": {
       "^@agent-tick/sdk$": "<rootDir>/../../packages/sdk/src/index.ts",
       "^@agent-tick/shared$": "<rootDir>/../../packages/shared/src/index.ts",
+      "^@agent-tick/i18n$": "<rootDir>/__mocks__/agent-tick-i18n.js",
+      "^@lingui/core$": "<rootDir>/__mocks__/lingui-core.js",
+      "^@lingui/react$": "<rootDir>/__mocks__/lingui-react.js",
       "^expo/src/winter$": "<rootDir>/__mocks__/expo-winter.js",
       "^expo/virtual/streams$": "<rootDir>/__mocks__/expo-winter.js"
     },
     "transformIgnorePatterns": [
-      "/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|react-native-svg|@noble))",
+      "/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|react-native-svg|@noble|@lingui))",
       "/node_modules/react-native-reanimated/plugin/"
     ]
   },
   "dependencies": {
+    "@agent-tick/i18n": "workspace:*",
     "@agent-tick/sdk": "workspace:*",
     "@agent-tick/shared": "workspace:*",
     "@clerk/expo": "3.2.10",
+    "@lingui/core": "6.0.1",
+    "@lingui/react": "6.0.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "54.0.34",
     "expo-auth-session": "7.0.11",

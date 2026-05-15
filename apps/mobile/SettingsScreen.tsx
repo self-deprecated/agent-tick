@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MeResponse } from "@agent-tick/sdk";
+import { i18n, localeName, supportedLocales, type LocalePreference, type SupportedLocale } from "@agent-tick/i18n";
 import type { SavedMobileAccount } from "./mobileAuth";
 import {
   ActivityIndicator,
@@ -56,6 +57,9 @@ export function SettingsScreen({
   e2eeKey = "",
   error,
   loading,
+  activeLocale = "en",
+  localePreference = "system",
+  onLocalePreferenceChange = () => {},
   notificationStatus,
   notificationsEnabled = true,
   choiceInteractionMode = "click-to-submit",
@@ -105,6 +109,9 @@ export function SettingsScreen({
   e2eeKey?: string;
   error: string | null;
   loading: boolean;
+  activeLocale?: SupportedLocale;
+  localePreference?: LocalePreference;
+  onLocalePreferenceChange?: (preference: LocalePreference) => void;
   notificationStatus: NotificationStatus;
   onAvailabilityChange?: (state: AvailabilityState) => void;
   onCheck: () => void;
@@ -169,8 +176,39 @@ export function SettingsScreen({
     onDiagnosticEvent?.("button", button, { settingsView: accountsOpen ? "accounts" : "settings", ...metadata });
   };
 
+  const tr = (message: string) => i18n._(message);
+
   const currentAccountTitle = currentAccountLabel({ authProvider, currentAccountProfile, deviceID, serverURL });
   const currentAccountMeta = currentAccountDetails({ authProvider, currentAccountProfile, selectedOrganizationID, serverURL });
+
+  const languageSection = (
+    <View style={styles.settingsSection}>
+      <Text style={styles.sectionHeading}>{tr("Language")}</Text>
+      <Text style={styles.pairingHint}>
+        {tr("Agent Tick can follow your device language or use a language you choose here.")}
+      </Text>
+      <View style={styles.segmentedControl}>
+        <Pressable
+          onPress={() => { trackButton("language_system", { activeLocale }); onLocalePreferenceChange("system"); }}
+          style={[styles.segmentButton, localePreference === "system" ? styles.segmentButtonActive : null]}
+        >
+          <Text style={[styles.segmentButtonText, localePreference === "system" ? styles.segmentButtonTextActive : null]}>
+            {tr("System")}
+          </Text>
+        </Pressable>
+        {supportedLocales.map((locale) => (
+          <Pressable
+            key={locale.code}
+            onPress={() => { trackButton("language_select", { locale: locale.code }); onLocalePreferenceChange(locale.code); }}
+            style={[styles.segmentButton, localePreference === locale.code ? styles.segmentButtonActive : null]}
+          >
+            <Text style={[styles.segmentButtonText, localePreference === locale.code ? styles.segmentButtonTextActive : null]}>{locale.nativeLabel}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.pairingHint}>{tr("Active")}: {localeName(activeLocale)}</Text>
+    </View>
+  );
 
   const notificationsSection = (
     <View style={styles.settingsSection}>
@@ -347,6 +385,7 @@ export function SettingsScreen({
             </Pressable>
           ) : null}
         </View>
+        {languageSection}
         <View style={styles.settingsSection}>
           <Text style={styles.sectionHeading}>Workspace</Text>
           <Text style={styles.pairingHint}>
@@ -472,6 +511,7 @@ export function SettingsScreen({
       contentContainerStyle={styles.settingsContent}
       style={styles.settingsPane}
     >
+      {languageSection}
       <View style={styles.settingsSection}>
         <Text style={styles.sectionHeading}>Pairing</Text>
         <Text style={styles.pairingHint}>

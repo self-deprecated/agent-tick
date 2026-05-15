@@ -11,9 +11,14 @@
     "test:e2e": "playwright test",
     "test:e2e:flows": "node scripts/run-product-flow-e2e.mjs",
     "dev:server": "corepack pnpm --filter @agent-tick/server dev",
-    "dev:admin": "corepack pnpm --filter agent-tick-admin dev"
+    "dev:admin": "corepack pnpm --filter agent-tick-admin dev",
+    "i18n:extract": "lingui extract",
+    "i18n:compile": "lingui compile --typescript",
+    "i18n:check": "lingui extract --clean && lingui compile --typescript"
   },
   "devDependencies": {
+    "@lingui/babel-plugin-lingui-macro": "6.0.1",
+    "@lingui/cli": "6.0.1",
     "@playwright/test": "1.59.1",
     "@types/node": "24.12.3",
     "typescript": "6.0.3",
