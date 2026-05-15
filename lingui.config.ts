@@ -3,7 +3,7 @@ import { babelExtractor } from "@lingui/cli/api/extractors/babel";
 
 export default defineConfig({
   sourceLocale: "en",
-  locales: ["en", "da"],
+  locales: ["en", "da", "de", "fr", "es", "zh"],
   catalogs: [
     {
       path: "<rootDir>/packages/i18n/src/locales/{locale}/messages",

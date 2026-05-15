@@ -85,6 +85,7 @@ import {
   activateMessages,
   defaultLocale,
   i18n,
+  isSupportedLocale,
   localePreferenceStorageKey,
   resolveLocalePreference,
   systemLocaleFromIntl,
@@ -183,7 +184,7 @@ export default function App() {
     let cancelled = false;
     const loadLocale = async () => {
       const savedPreference = await AsyncStorage.getItem(localePreferenceStorageKey);
-      const preference: LocalePreference = savedPreference === "en" || savedPreference === "da" || savedPreference === "system" ? savedPreference : "system";
+      const preference: LocalePreference = savedPreference === "system" || isSupportedLocale(savedPreference) ? savedPreference : "system";
       const activeLocale = resolveLocalePreference(preference, systemLocaleFromIntl());
       await activateMessages(activeLocale);
       if (!cancelled) setLocaleState({ loaded: true, activeLocale, preference });

@@ -34,6 +34,7 @@
 		activateMessages,
 		defaultLocale,
 		i18n,
+		isSupportedLocale,
 		localeName,
 		localePreferenceStorageKey,
 		translateSource,
@@ -123,7 +124,7 @@
 
 	async function loadLocalePreference(): Promise<void> {
 		const savedPreference = localStorage.getItem(localePreferenceStorageKey);
-		localePreference = savedPreference === 'en' || savedPreference === 'da' || savedPreference === 'system' ? savedPreference : 'system';
+		localePreference = savedPreference === 'system' || isSupportedLocale(savedPreference) ? savedPreference : 'system';
 		activeLocale = await activateMessages(resolveLocalePreference(localePreference, systemLocaleFromIntl()));
 	}
 

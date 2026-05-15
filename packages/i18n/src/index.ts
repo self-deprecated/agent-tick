@@ -8,6 +8,10 @@ export const localePreferenceStorageKey = "agent-tick.locale";
 export const supportedLocales = [
   { code: "en", label: "English", nativeLabel: "English" },
   { code: "da", label: "Danish", nativeLabel: "Dansk" },
+  { code: "de", label: "German", nativeLabel: "Deutsch" },
+  { code: "fr", label: "French", nativeLabel: "Français" },
+  { code: "es", label: "Spanish", nativeLabel: "Español" },
+  { code: "zh", label: "Chinese", nativeLabel: "中文" },
 ] as const;
 
 export type SupportedLocale = (typeof supportedLocales)[number]["code"];

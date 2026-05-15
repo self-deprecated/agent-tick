@@ -154,6 +154,7 @@ export function SettingsScreen({
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const [diagnosticsRevealed, setDiagnosticsRevealed] = useState(diagnosticsEnabled);
   const scrollRef = useRef<ScrollView | null>(null);
   const e2eeSectionY = useRef(0);
@@ -181,30 +182,51 @@ export function SettingsScreen({
   const currentAccountTitle = currentAccountLabel({ authProvider, currentAccountProfile, deviceID, serverURL });
   const currentAccountMeta = currentAccountDetails({ authProvider, currentAccountProfile, selectedOrganizationID, serverURL });
 
+  const selectedLanguageLabel = localePreference === "system"
+    ? `${tr("System")} (${localeName(activeLocale)})`
+    : localeName(localePreference);
+  const languageOptions: Array<{ code: LocalePreference; label: string; diagnostic: string }> = [
+    { code: "system", label: `${tr("System")} (${localeName(activeLocale)})`, diagnostic: "language_system" },
+    ...supportedLocales.map((locale) => ({ code: locale.code, label: locale.nativeLabel, diagnostic: "language_select" })),
+  ];
+
   const languageSection = (
     <View style={styles.settingsSection}>
       <Text style={styles.sectionHeading}>{tr("Language")}</Text>
       <Text style={styles.pairingHint}>
         {tr("Agent Tick can follow your device language or use a language you choose here.")}
       </Text>
-      <View style={styles.segmentedControl}>
+      <View style={styles.dropdown}>
         <Pressable
-          onPress={() => { trackButton("language_system", { activeLocale }); onLocalePreferenceChange("system"); }}
-          style={[styles.segmentButton, localePreference === "system" ? styles.segmentButtonActive : null]}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: languageOpen }}
+          onPress={() => setLanguageOpen((open) => !open)}
+          style={styles.dropdownButton}
         >
-          <Text style={[styles.segmentButtonText, localePreference === "system" ? styles.segmentButtonTextActive : null]}>
-            {tr("System")}
-          </Text>
+          <Text style={styles.dropdownButtonText}>{selectedLanguageLabel}</Text>
+          <Text style={styles.dropdownChevron}>{languageOpen ? "⌃" : "⌄"}</Text>
         </Pressable>
-        {supportedLocales.map((locale) => (
-          <Pressable
-            key={locale.code}
-            onPress={() => { trackButton("language_select", { locale: locale.code }); onLocalePreferenceChange(locale.code); }}
-            style={[styles.segmentButton, localePreference === locale.code ? styles.segmentButtonActive : null]}
-          >
-            <Text style={[styles.segmentButtonText, localePreference === locale.code ? styles.segmentButtonTextActive : null]}>{locale.nativeLabel}</Text>
-          </Pressable>
-        ))}
+        {languageOpen ? (
+          <View style={styles.dropdownMenu}>
+            {languageOptions.map((option) => {
+              const active = localePreference === option.code;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={option.code}
+                  onPress={() => {
+                    trackButton(option.diagnostic, option.code === "system" ? { activeLocale } : { locale: option.code });
+                    onLocalePreferenceChange(option.code);
+                    setLanguageOpen(false);
+                  }}
+                  style={[styles.dropdownItem, active ? styles.dropdownItemActive : null]}
+                >
+                  <Text style={[styles.dropdownItemText, active ? styles.dropdownItemTextActive : null]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
       <Text style={styles.pairingHint}>{tr("Active")}: {localeName(activeLocale)}</Text>
     </View>
@@ -877,6 +899,54 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   segmentButtonTextActive: {
+    color: "#ffffff",
+  },
+  dropdown: {
+    gap: 8,
+  },
+  dropdownButton: {
+    alignItems: "center",
+    borderColor: "#202124",
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 48,
+    paddingHorizontal: 12,
+  },
+  dropdownButtonText: {
+    color: "#202124",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  dropdownChevron: {
+    color: "#202124",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  dropdownMenu: {
+    borderColor: "#ded6c6",
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  dropdownItem: {
+    backgroundColor: "#ffffff",
+    borderBottomColor: "#f1ede4",
+    borderBottomWidth: 1,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  dropdownItemActive: {
+    backgroundColor: "#202124",
+  },
+  dropdownItemText: {
+    color: "#202124",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  dropdownItemTextActive: {
     color: "#ffffff",
   },
   toggleRow: {
