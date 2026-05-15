@@ -170,7 +170,13 @@ MCP-capable agents can launch the local stdio adapter with the same saved Agent 
 agent-tick mcp
 ```
 
-The adapter exposes status, steering, and sanction tools that call the Agent Tick server on the agent's behalf.
+The adapter exposes status, steering, and sanction tools that call the Agent Tick server on the agent's behalf. For MCP clients that declare form elicitation support, such as Codex with `mcp_elicitations = true`, steering and sanction calls can also use local MCP elicitation (`localElicitation: "auto" | "only" | "off"`). Configure Codex with a stdio MCP server entry similar to:
+
+```toml
+[mcp_servers.agent_tick]
+command = "agent-tick"
+args = ["mcp"]
+```
 
 ## Not currently implemented
 

@@ -1191,6 +1191,19 @@ interface McpToolDefinition {
   description: string;
   inputSchema: Record<string, unknown>;
 }
+interface McpRequestContext {
+  clientCapabilities?: Record<string, unknown>;
+  elicit?: (params: McpElicitationParams) => Promise<McpElicitationResult>;
+}
+interface McpElicitationParams {
+  mode?: 'form';
+  message: string;
+  requestedSchema: Record<string, unknown>;
+}
+interface McpElicitationResult {
+  action?: 'accept' | 'decline' | 'cancel';
+  content?: Record<string, unknown>;
+}
 
 export const mcpToolDefinitions: McpToolDefinition[] = [
   {
@@ -1220,7 +1233,8 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
         body: { type: 'string', description: 'Approval context. Do not include secrets.' },
         command: { type: 'string', description: 'Optional command/action being approved.' },
         projectName: { type: 'string', description: 'Optional project display name.' },
-        timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' }
+        timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' },
+        localElicitation: { type: 'string', enum: ['auto', 'off', 'only'], default: 'auto', description: 'Use MCP elicitation locally when the client supports it.' }
       },
       required: ['title'],
       additionalProperties: false
@@ -1250,7 +1264,8 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
           }
         },
         projectName: { type: 'string', description: 'Optional project display name.' },
-        timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' }
+        timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' },
+        localElicitation: { type: 'string', enum: ['auto', 'off', 'only'], default: 'auto', description: 'Use MCP elicitation locally when the client supports it.' }
       },
       required: ['title', 'choices'],
       additionalProperties: false
@@ -1260,22 +1275,59 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
 
 async function runMcpStdioAdapter(options: ClientOptions): Promise<void> {
   const { client, server } = await clientFromOptions(options);
-  await readMcpMessages(process.stdin, async (request) => {
-    if (request.id === undefined) return;
+  const session = new McpStdioSession(process.stdout, client, server);
+  await readMcpMessages(process.stdin, (message) => session.handleMessage(message));
+}
+
+class McpStdioSession {
+  readonly #context: McpRequestContext;
+  readonly #pending = new Map<JsonRpcId, { resolve: (result: McpElicitationResult) => void; reject: (error: Error) => void }>();
+  #nextServerRequestId = 1;
+
+  constructor(readonly output: NodeJS.WritableStream, readonly client: AgentTickClient, readonly server: string) {
+    this.#context = { elicit: (params) => this.#sendElicitation(params) };
+  }
+
+  handleMessage(message: JsonRpcRequest & { result?: unknown; error?: unknown }): void {
+    if (message.method) {
+      if (message.id === undefined) return;
+      void this.#handleClientRequest(message);
+      return;
+    }
+    if (message.id === undefined) return;
+    const pending = this.#pending.get(message.id);
+    if (!pending) return;
+    this.#pending.delete(message.id);
+    if (message.error) pending.reject(new Error(mcpErrorMessage(message.error)));
+    else pending.resolve(isPlainObject(message.result) ? message.result as McpElicitationResult : {});
+  }
+
+  async #handleClientRequest(request: JsonRpcRequest): Promise<void> {
     try {
-      writeMcpMessage(process.stdout, { jsonrpc: '2.0', id: request.id, result: await handleMcpRequest(request, client, server) });
+      const result = await handleMcpRequest(request, this.client, this.server, this.#context);
+      writeMcpMessage(this.output, { jsonrpc: '2.0', id: request.id, result });
     } catch (error) {
-      writeMcpMessage(process.stdout, {
+      writeMcpMessage(this.output, {
         jsonrpc: '2.0',
         id: request.id,
         error: { code: -32000, message: error instanceof Error ? error.message : String(error) }
       });
     }
-  });
+  }
+
+  #sendElicitation(params: McpElicitationParams): Promise<McpElicitationResult> {
+    const id = `agent_tick_elicit_${this.#nextServerRequestId++}`;
+    const result = new Promise<McpElicitationResult>((resolve, reject) => this.#pending.set(id, { resolve, reject }));
+    writeMcpMessage(this.output, { jsonrpc: '2.0', id, method: 'elicitation/create', params });
+    return result;
+  }
 }
 
-export async function handleMcpRequest(request: JsonRpcRequest, client: AgentTickClient, server: string): Promise<unknown> {
+export async function handleMcpRequest(request: JsonRpcRequest, client: AgentTickClient, server: string, context: McpRequestContext = {}): Promise<unknown> {
   if (request.method === 'initialize') {
+    const capabilities = initializeCapabilitiesFromParams(request.params);
+    if (capabilities) context.clientCapabilities = capabilities;
+    else delete context.clientCapabilities;
     return {
       protocolVersion: protocolVersionFromParams(request.params),
       capabilities: { tools: {} },
@@ -1284,7 +1336,7 @@ export async function handleMcpRequest(request: JsonRpcRequest, client: AgentTic
   }
   if (request.method === 'ping') return {};
   if (request.method === 'tools/list') return { tools: mcpToolDefinitions };
-  if (request.method === 'tools/call') return callMcpTool(request.params, client, server);
+  if (request.method === 'tools/call') return callMcpTool(request.params, client, server, context);
   throw new Error(`Unsupported MCP method: ${request.method ?? 'unknown'}`);
 }
 
@@ -1293,12 +1345,22 @@ function protocolVersionFromParams(params: unknown): string {
   return '2024-11-05';
 }
 
-async function callMcpTool(params: unknown, client: AgentTickClient, server: string): Promise<unknown> {
+function initializeCapabilitiesFromParams(params: unknown): Record<string, unknown> | undefined {
+  if (!isPlainObject(params) || !isPlainObject(params.capabilities)) return undefined;
+  return params.capabilities;
+}
+
+function clientSupportsFormElicitation(context: McpRequestContext): boolean {
+  const elicitation = isPlainObject(context.clientCapabilities?.elicitation) ? context.clientCapabilities.elicitation : undefined;
+  return Boolean(elicitation && (!('form' in elicitation) || isPlainObject(elicitation.form)));
+}
+
+async function callMcpTool(params: unknown, client: AgentTickClient, server: string, context: McpRequestContext): Promise<unknown> {
   if (!isPlainObject(params) || typeof params.name !== 'string') throw new Error('tools/call requires a tool name');
   const args = isPlainObject(params.arguments) ? params.arguments : {};
   if (params.name === 'agent_tick_status') return mcpTextResult(await callMcpStatus(args, client));
-  if (params.name === 'agent_tick_sanction') return mcpTextResult(await callMcpSanction(args, client, server));
-  if (params.name === 'agent_tick_steering') return mcpTextResult(await callMcpSteering(args, client, server));
+  if (params.name === 'agent_tick_sanction') return callMcpSanction(args, client, server, context);
+  if (params.name === 'agent_tick_steering') return callMcpSteering(args, client, server, context);
   throw new Error(`Unknown Agent Tick MCP tool: ${params.name}`);
 }
 
@@ -1317,46 +1379,122 @@ async function callMcpStatus(args: Record<string, unknown>, client: AgentTickCli
   return `Sent status update ${update.statusId} for ${update.threadId}: ${update.message}`;
 }
 
-async function callMcpSanction(args: Record<string, unknown>, client: AgentTickClient, server: string): Promise<string> {
+async function callMcpSanction(args: Record<string, unknown>, client: AgentTickClient, server: string, context: McpRequestContext): Promise<unknown> {
+  const title = requiredString(args.title, 'title');
+  const body = optionalString(args.body);
+  const command = optionalString(args.command);
+  const localMode = localElicitationMode(args.localElicitation);
+  const local = await tryMcpSanctionElicitation({ title, mode: localMode, ...(body ? { body } : {}), ...(command ? { command } : {}) }, context);
+  if (local) return mcpTextResult(local.text, local.isError);
+  if (localMode === 'only') return mcpTextResult('Local MCP elicitation is not available or was rejected by the client.', true);
+
   const options: RequestOptions = {
-    title: requiredString(args.title, 'title'),
+    title,
     timeout: optionalString(args.timeout) ?? '30m',
     choice: [],
     silent: true
   };
-  const body = optionalString(args.body);
-  const command = optionalString(args.command);
   const project = optionalString(args.projectName);
   if (body) options.body = body;
   if (command) options.command = command;
   if (project) options.project = project;
   const request = await createAndMaybeWait(client, server, options);
-  return mcpApprovalSummary(request);
+  return mcpTextResult(mcpApprovalSummary(request), exitCodeForRequest(request) !== 0);
 }
 
-async function callMcpSteering(args: Record<string, unknown>, client: AgentTickClient, server: string): Promise<string> {
+async function callMcpSteering(args: Record<string, unknown>, client: AgentTickClient, server: string, context: McpRequestContext): Promise<unknown> {
   const rawChoices = Array.isArray(args.choices) ? args.choices : undefined;
   if (!rawChoices?.length) throw new Error('choices must be a non-empty array');
-  const hookChoices = rawChoices.map((choice, index): ChoiceInput => {
-    if (typeof choice === 'string') return { id: slugifyChoiceId(choice) || `choice_${index + 1}`, label: choice, kind: inferredChoiceKind(choice) };
-    if (!isPlainObject(choice)) throw new Error('each choice must be a string or object');
-    const label = requiredString(choice.label, `choices[${index}].label`);
-    return { id: optionalString(choice.id) ?? (slugifyChoiceId(label) || `choice_${index + 1}`), label, kind: optionalString(choice.kind) ?? inferredChoiceKind(label) };
-  });
+  const hookChoices = mcpChoiceInputs(rawChoices);
   if (!hookChoices.some((choice) => choice.kind === 'deny')) hookChoices.push({ id: 'cancel', label: 'Cancel / do not answer', kind: 'deny' });
+  const title = requiredString(args.title, 'title');
+  const body = optionalString(args.body);
+  const localMode = localElicitationMode(args.localElicitation);
+  const local = await tryMcpSteeringElicitation({ title, choices: hookChoices, mode: localMode, ...(body ? { body } : {}) }, context);
+  if (local) return mcpTextResult(local.text, local.isError);
+  if (localMode === 'only') return mcpTextResult('Local MCP elicitation is not available or was rejected by the client.', true);
+
   const options: RequestOptions = {
-    title: requiredString(args.title, 'title'),
+    title,
     timeout: optionalString(args.timeout) ?? '30m',
     choice: [],
     hookChoices,
     silent: true
   };
-  const body = optionalString(args.body);
   const project = optionalString(args.projectName);
   if (body) options.body = body;
   if (project) options.project = project;
   const request = await createAndMaybeWait(client, server, options);
-  return mcpApprovalSummary(request);
+  return mcpTextResult(mcpApprovalSummary(request), exitCodeForRequest(request) !== 0);
+}
+
+function mcpChoiceInputs(rawChoices: unknown[]): ChoiceInput[] {
+  return rawChoices.map((choice, index): ChoiceInput => {
+    if (typeof choice === 'string') return { id: slugifyChoiceId(choice) || `choice_${index + 1}`, label: choice, kind: inferredChoiceKind(choice) };
+    if (!isPlainObject(choice)) throw new Error('each choice must be a string or object');
+    const label = requiredString(choice.label, `choices[${index}].label`);
+    const kind = optionalString(choice.kind) ?? inferredChoiceKind(label);
+    return { id: optionalString(choice.id) ?? (slugifyChoiceId(label) || `choice_${index + 1}`), label, kind: kind === 'option' ? 'approve' : kind };
+  });
+}
+
+async function tryMcpSanctionElicitation(options: { title: string; body?: string; command?: string; mode: 'auto' | 'off' | 'only' }, context: McpRequestContext): Promise<{ text: string; isError?: boolean } | undefined> {
+  if (options.mode === 'off' || !context.elicit || !clientSupportsFormElicitation(context)) return undefined;
+  try {
+    const lines = [options.title];
+    if (options.body) lines.push('', options.body);
+    if (options.command) lines.push('', `Command/action: ${options.command}`);
+    const result = await context.elicit({
+      mode: 'form',
+      message: lines.join('\n'),
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          choiceId: { type: 'string', title: 'Decision', description: 'Approve or reject this Agent Tick sanction.', enum: ['approve', 'reject'] }
+        },
+        required: ['choiceId']
+      }
+    });
+    return localElicitationChoiceResult(result, new Map([['approve', 'Approve'], ['reject', 'Reject']]));
+  } catch {
+    return undefined;
+  }
+}
+
+async function tryMcpSteeringElicitation(options: { title: string; body?: string; choices: ChoiceInput[]; mode: 'auto' | 'off' | 'only' }, context: McpRequestContext): Promise<{ text: string; isError?: boolean } | undefined> {
+  if (options.mode === 'off' || !context.elicit || !clientSupportsFormElicitation(context)) return undefined;
+  try {
+    const labels = new Map(options.choices.map((choice) => [choice.id, choice.label]));
+    const result = await context.elicit({
+      mode: 'form',
+      message: [options.title, options.body].filter(Boolean).join('\n\n'),
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          choiceId: { type: 'string', title: 'Choice', description: 'Select one Agent Tick steering option.', enum: options.choices.map((choice) => choice.id) }
+        },
+        required: ['choiceId']
+      }
+    });
+    return localElicitationChoiceResult(result, labels);
+  } catch {
+    return undefined;
+  }
+}
+
+function localElicitationChoiceResult(result: McpElicitationResult, labels: Map<string, string>): { text: string; isError?: boolean } {
+  if (result.action === 'decline') return { text: 'Local MCP elicitation was declined.', isError: true };
+  if (result.action === 'cancel') return { text: 'Local MCP elicitation was cancelled.', isError: true };
+  const choiceId = typeof result.content?.choiceId === 'string' ? result.content.choiceId : '';
+  if (result.action !== 'accept' || !choiceId) return { text: 'Local MCP elicitation did not return a choice.', isError: true };
+  const label = labels.get(choiceId) ?? choiceId;
+  const isError = ['reject', 'deny', 'cancel'].includes(choiceId.toLowerCase());
+  return { text: `Local MCP elicitation accepted: ${choiceId} (${label})`, isError };
+}
+
+function localElicitationMode(value: unknown): 'auto' | 'off' | 'only' {
+  if (value === 'off' || value === 'only') return value;
+  return 'auto';
 }
 
 function mcpApprovalSummary(request: ApprovalRequest): string {
@@ -1364,8 +1502,8 @@ function mcpApprovalSummary(request: ApprovalRequest): string {
   return `Approval request ${request.id} is ${request.status}: ${choice}`;
 }
 
-function mcpTextResult(text: string): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
-  return { content: [{ type: 'text', text }] };
+function mcpTextResult(text: string, isError?: boolean): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  return { content: [{ type: 'text', text }], ...(isError ? { isError } : {}) };
 }
 
 function requiredString(value: unknown, name: string): string {
@@ -1385,7 +1523,12 @@ function optionalStringRecord(value: unknown): Record<string, string> | undefine
   return Object.keys(record).length ? record : undefined;
 }
 
-async function readMcpMessages(input: NodeJS.ReadableStream, onMessage: (request: JsonRpcRequest) => Promise<void>): Promise<void> {
+function mcpErrorMessage(error: unknown): string {
+  if (isPlainObject(error) && typeof error.message === 'string') return error.message;
+  return String(error);
+}
+
+async function readMcpMessages(input: NodeJS.ReadableStream, onMessage: (request: JsonRpcRequest) => void): Promise<void> {
   let buffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   for await (const chunk of input) {
     buffer = Buffer.concat([buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);

@@ -92,6 +92,48 @@ describe('MCP stdio adapter', () => {
       content: [{ type: 'text', text: 'Sent status update status_1 for thread_1: Running tests' }]
     });
   });
+
+  it('uses MCP elicitation for steering when the client supports it', async () => {
+    let elicitationParams: unknown;
+    const context = {
+      clientCapabilities: { elicitation: { form: {} } },
+      elicit: async (params: unknown) => {
+        elicitationParams = params;
+        return { action: 'accept' as const, content: { choiceId: 'small' } };
+      }
+    };
+
+    await expect(handleMcpRequest({
+      method: 'tools/call',
+      id: 1,
+      params: {
+        name: 'agent_tick_steering',
+        arguments: { title: 'Pick one', localElicitation: 'only', choices: [{ id: 'small', label: 'Small fix' }, { id: 'cancel', label: 'Cancel', kind: 'deny' }] }
+      }
+    }, {} as never, 'https://tick.example.com', context)).resolves.toEqual({
+      content: [{ type: 'text', text: 'Local MCP elicitation accepted: small (Small fix)' }]
+    });
+    expect(elicitationParams).toMatchObject({
+      message: 'Pick one',
+      requestedSchema: { properties: { choiceId: { enum: ['small', 'cancel'] } } }
+    });
+  });
+
+  it('marks declined local MCP sanctions as tool errors', async () => {
+    const context = {
+      clientCapabilities: { elicitation: { form: {} } },
+      elicit: async () => ({ action: 'decline' as const })
+    };
+
+    await expect(handleMcpRequest({
+      method: 'tools/call',
+      id: 1,
+      params: { name: 'agent_tick_sanction', arguments: { title: 'Approve deploy?', localElicitation: 'only' } }
+    }, {} as never, 'https://tick.example.com', context)).resolves.toEqual({
+      content: [{ type: 'text', text: 'Local MCP elicitation was declined.' }],
+      isError: true
+    });
+  });
 });
 
 describe('Agent Tick mode state', () => {

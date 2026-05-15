@@ -61,6 +61,8 @@ Run the local stdio MCP adapter from an MCP-capable agent config:
 agent-tick mcp
 ```
 
+Codex can use the adapter as a stdio MCP server, and steering/sanction tools support local MCP form elicitation when Codex is configured to allow MCP elicitations.
+
 For Claude Code, the default interactive profile starts hooks in pass-through mode. Route Claude Code steering and permission prompts through Agent Tick when away from the terminal:
 
 ```sh
