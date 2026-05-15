@@ -127,7 +127,7 @@ describe('shared schemas', () => {
     ]);
   });
 
-  it('validates choice flags and tags', () => {
+  it('validates choice flags, tags, and descriptions', () => {
     expect(() =>
       CreateApprovalRequestSchema.parse({
         requester: { name: 'agent' },
@@ -138,6 +138,48 @@ describe('shared schemas', () => {
         ]
       })
     ).toThrow();
+
+    expect(
+      CreateApprovalRequestSchema.parse({
+        requester: { name: 'agent' },
+        title: 'Which rollout?',
+        choices: [
+          { id: 'canary', label: 'Canary', description: 'Low-risk first step' },
+          { id: 'cancel', label: 'Cancel', kind: 'deny' }
+        ]
+      }).choices?.[0]
+    ).toMatchObject({ description: 'Low-risk first step' });
+  });
+
+  it('validates questionnaire questions and option descriptions', () => {
+    const parsed = CreateApprovalRequestSchema.parse({
+      requester: { name: 'agent' },
+      requestType: 'questionnaire',
+      title: 'Pre-flight questions',
+      questions: [
+        {
+          header: 'Scope',
+          question: 'Which services?',
+          multiSelect: true,
+          options: [
+            { label: 'api', description: 'Backend API' },
+            { label: 'worker' }
+          ]
+        }
+      ]
+    });
+
+    expect(parsed.questions).toEqual([
+      {
+        header: 'Scope',
+        question: 'Which services?',
+        multiSelect: true,
+        options: [
+          { label: 'api', description: 'Backend API' },
+          { label: 'worker' }
+        ]
+      }
+    ]);
   });
 
   it('deduplicates duplicate choice ids for display and response safety', () => {

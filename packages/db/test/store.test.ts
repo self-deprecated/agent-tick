@@ -593,6 +593,37 @@ describe('AgentTickStore', () => {
     expect(responded).toMatchObject({ id: request.id, status: 'responded', response: { choiceId: 'approve' } });
   });
 
+  it('persists questionnaire requests and answer responses', () => {
+    store = AgentTickStore.open({ databaseURL: ':memory:' });
+    store.migrate();
+    store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
+
+    const request = store.createApprovalRequest({
+      requester: { name: 'agent', agentId: 'agent_test' },
+      requestType: 'questionnaire',
+      title: 'Pre-flight',
+      questions: [
+        {
+          header: 'Scope',
+          question: 'Which services?',
+          multiSelect: true,
+          options: [
+            { label: 'api', description: 'Backend API' },
+            { label: 'worker' }
+          ]
+        }
+      ]
+    });
+
+    expect(store.getApprovalRequest(request.id)?.questions).toEqual(request.questions);
+    const responded = store.respondToApprovalRequest(request.id, { answers: { 'Which services?': ['api', 'worker'] } });
+    expect(responded).toMatchObject({
+      id: request.id,
+      status: 'responded',
+      response: { answers: { 'Which services?': ['api', 'worker'] } }
+    });
+  });
+
   it('keeps policy-backed approvals pending until quorum is met', () => {
     store = AgentTickStore.open({ databaseURL: ':memory:' });
     store.migrate();
