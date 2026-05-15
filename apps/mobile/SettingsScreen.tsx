@@ -15,6 +15,8 @@ export type ConnectionStatus = "checking" | "connected" | "disconnected";
 export type NotificationStatus = "checking" | "granted" | "denied" | "undetermined";
 export type PushStatus = "idle" | "registered" | "unsupported" | "failed";
 export type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
+export type ChoiceInteractionMode = "click-to-submit" | "select-then-submit";
+export type OptionPlacement = "sticky-bottom" | "inline-after-content";
 
 type OrganizationMembership = {
   organizationId: string;
@@ -56,6 +58,9 @@ export function SettingsScreen({
   loading,
   notificationStatus,
   notificationsEnabled = true,
+  choiceInteractionMode = "click-to-submit",
+  optionPlacement = "inline-after-content",
+  confirmBeforeSubmit = true,
   onAvailabilityChange,
   onCheck,
   onForgetDevice,
@@ -64,6 +69,9 @@ export function SettingsScreen({
   onDiagnosticEvent,
   onSignInAnotherClerkAccount,
   onNotificationsEnabledChange,
+  onChoiceInteractionModeChange,
+  onOptionPlacementChange,
+  onConfirmBeforeSubmitChange,
   onRegisterPush,
   onRequestNotifications,
   onSavedAccountRemove,
@@ -105,7 +113,13 @@ export function SettingsScreen({
   onDiagnosticsEnabledChange?: (enabled: boolean) => void;
   onDiagnosticEvent?: (area: string, message: string, metadata?: Record<string, unknown>) => void;
   notificationsEnabled?: boolean;
+  choiceInteractionMode?: ChoiceInteractionMode;
+  optionPlacement?: OptionPlacement;
+  confirmBeforeSubmit?: boolean;
   onNotificationsEnabledChange?: (enabled: boolean) => void;
+  onChoiceInteractionModeChange?: (mode: ChoiceInteractionMode) => void;
+  onOptionPlacementChange?: (placement: OptionPlacement) => void;
+  onConfirmBeforeSubmitChange?: (enabled: boolean) => void;
   onRegisterPush: () => void;
   onRequestNotifications: () => void;
   onSavedAccountRemove?: (account: SavedMobileAccount) => void;
@@ -402,6 +416,51 @@ export function SettingsScreen({
             style={styles.input}
             value={e2eeKey}
           />
+        </View>
+        <View style={styles.settingsSection}>
+          <Text style={styles.sectionHeading}>Approval display</Text>
+          <Text style={styles.pairingHint}>Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding.</Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Choice behavior</Text>
+            <View style={styles.segmentedControl}>
+              {([
+                ["click-to-submit", "Clickable"],
+                ["select-then-submit", "Select + send"],
+              ] as const).map(([mode, label]) => (
+                <Pressable
+                  key={mode}
+                  onPress={() => { trackButton("approval_choice_mode", { mode }); onChoiceInteractionModeChange?.(mode); }}
+                  style={[styles.segmentButton, choiceInteractionMode === mode ? styles.segmentButtonActive : null]}
+                >
+                  <Text style={[styles.segmentButtonText, choiceInteractionMode === mode ? styles.segmentButtonTextActive : null]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Action placement</Text>
+            <View style={styles.segmentedControl}>
+              {([
+                ["inline-after-content", "After content"],
+                ["sticky-bottom", "Sticky bottom"],
+              ] as const).map(([placement, label]) => (
+                <Pressable
+                  key={placement}
+                  onPress={() => { trackButton("approval_option_placement", { placement }); onOptionPlacementChange?.(placement); }}
+                  style={[styles.segmentButton, optionPlacement === placement ? styles.segmentButtonActive : null]}
+                >
+                  <Text style={[styles.segmentButtonText, optionPlacement === placement ? styles.segmentButtonTextActive : null]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+          <Pressable
+            onPress={() => { trackButton("approval_confirm_before_submit", { enabled: !confirmBeforeSubmit }); onConfirmBeforeSubmitChange?.(!confirmBeforeSubmit); }}
+            style={styles.toggleRow}
+          >
+            <Text style={styles.toggleLabel}>Confirm clickable submissions</Text>
+            <Text style={styles.toggleValue}>{confirmBeforeSubmit ? "On" : "Off"}</Text>
+          </Pressable>
         </View>
         {notificationsSection}
       </ScrollView>
@@ -751,6 +810,53 @@ const styles = StyleSheet.create({
   },
   availabilityButtonTextActive: {
     color: "#ffffff",
+  },
+  segmentedControl: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  segmentButton: {
+    alignItems: "center",
+    borderColor: "#202124",
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  segmentButtonActive: {
+    backgroundColor: "#202124",
+  },
+  segmentButtonText: {
+    color: "#202124",
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  segmentButtonTextActive: {
+    color: "#ffffff",
+  },
+  toggleRow: {
+    alignItems: "center",
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 48,
+    paddingHorizontal: 12,
+  },
+  toggleLabel: {
+    color: "#202124",
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  toggleValue: {
+    color: "#1f6f5b",
+    fontSize: 15,
+    fontWeight: "900",
   },
   organizationList: {
     gap: 8,

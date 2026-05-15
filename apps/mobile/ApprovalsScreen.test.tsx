@@ -53,7 +53,7 @@ function approval(overrides: Partial<ApprovalRequest> = {}) {
   });
 }
 
-function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options: { e2eeKey?: string; onOpenSettings?: () => void; statusUpdates?: any[]; dismissedStatusID?: string | null; onDismissStatus?: (statusID: string) => void } = {}) {
+function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options: { e2eeKey?: string; onOpenSettings?: () => void; statusUpdates?: any[]; dismissedStatusID?: string | null; onDismissStatus?: (statusID: string) => void; choiceInteractionMode?: "click-to-submit" | "select-then-submit"; optionPlacement?: "sticky-bottom" | "inline-after-content"; confirmBeforeSubmit?: boolean } = {}) {
   render(
     <ApprovalsScreen
       e2eeKey={options.e2eeKey}
@@ -63,6 +63,9 @@ function renderApproval(request: ApprovalRequest, onRespond = jest.fn(), options
       onRefresh={jest.fn()}
       onRespond={onRespond}
       onSubmitQuestionnaire={jest.fn()}
+      choiceInteractionMode={options.choiceInteractionMode}
+      optionPlacement={options.optionPlacement}
+      confirmBeforeSubmit={options.confirmBeforeSubmit}
       projectGroups={groupRequestsByProject([request])}
       questionnaireAnswers={{}}
       reply=""
@@ -201,12 +204,21 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
     expect(screen.queryByText("Encrypted request. Add your E2EE key in Settings to decrypt.")).toBeNull();
   });
 
-  it("keeps the fast single-approver approve flow", () => {
-    const onRespond = renderApproval(approval());
+  it("can keep the fast single-approver approve flow when confirmation is off", () => {
+    const onRespond = renderApproval(approval(), jest.fn(), { confirmBeforeSubmit: false });
 
     expect(screen.getByText("Approve")).toBeTruthy();
     fireEvent.press(screen.getByText("Approve"));
     expect(onRespond).toHaveBeenCalledWith(expect.objectContaining({ id: "req_1" }), expect.objectContaining({ id: "approve" }));
+  });
+
+  it("can render choices as select then send rows", () => {
+    const onRespond = renderApproval(approval(), jest.fn(), { choiceInteractionMode: "select-then-submit", confirmBeforeSubmit: false });
+
+    fireEvent.press(screen.getByText("Deny"));
+    expect(onRespond).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByText("Send decision"));
+    expect(onRespond).toHaveBeenCalledWith(expect.objectContaining({ id: "req_1" }), expect.objectContaining({ id: "deny" }));
   });
 
   it("shows quorum context and waiting copy after the current user votes", () => {

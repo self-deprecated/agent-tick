@@ -59,7 +59,7 @@ import {
   type Choice,
 } from "./approvalRequests";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
-import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
+import type { ChoiceInteractionMode, ConnectionStatus, NotificationStatus, OptionPlacement, PushStatus } from "./SettingsScreen";
 import { AgentTickClient, type AgentStatusUpdate, type MeResponse, type OrganizationMembership } from "@agent-tick/sdk";
 import { decryptApprovalPayload } from "@agent-tick/shared";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
@@ -103,6 +103,9 @@ const approvalCategoryID = "approval-request";
 const approvalChannelID = "approval-requests";
 const agentTickMobileSessionJwtKey = "__agent_tick_mobile_session_jwt";
 const mobileInstallationIDStorageKey = "agent-tick.mobileInstallationID";
+const approvalChoiceInteractionModeStorageKey = "agent-tick.approvalChoiceInteractionMode";
+const approvalOptionPlacementStorageKey = "agent-tick.approvalOptionPlacement";
+const approvalConfirmBeforeSubmitStorageKey = "agent-tick.approvalConfirmBeforeSubmit";
 
 function dismissedAgentStatusStorageKey(serverURL: string, organizationID: string): string {
   const orgScope = organizationID.trim() || "default";
@@ -706,6 +709,9 @@ function AgentTickApp({
   const [notificationStatus, setNotificationStatus] =
     useState<NotificationStatus>("checking");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [choiceInteractionMode, setChoiceInteractionMode] = useState<ChoiceInteractionMode>("click-to-submit");
+  const [optionPlacement, setOptionPlacement] = useState<OptionPlacement>("inline-after-content");
+  const [confirmBeforeSubmit, setConfirmBeforeSubmit] = useState(true);
   const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
   const [diagnosticsEventCount, setDiagnosticsEventCount] = useState(0);
@@ -837,6 +843,9 @@ function AgentTickApp({
         const savedServerURL = (await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer;
         const savedAccountJSON = await AsyncStorage.getItem(mobileAccountsStorageKey);
         const savedE2EEKey = await AsyncStorage.getItem("agent-tick.e2eeKey");
+        const savedChoiceInteractionMode = await AsyncStorage.getItem(approvalChoiceInteractionModeStorageKey);
+        const savedOptionPlacement = await AsyncStorage.getItem(approvalOptionPlacementStorageKey);
+        const savedConfirmBeforeSubmit = await AsyncStorage.getItem(approvalConfirmBeforeSubmitStorageKey);
         let parsedAccounts: unknown = [];
         try {
           parsedAccounts = savedAccountJSON ? JSON.parse(savedAccountJSON) : [];
@@ -847,6 +856,15 @@ function AgentTickApp({
           setSavedAccounts(normalizeSavedMobileAccounts(parsedAccounts));
           setE2eeKey(savedE2EEKey ?? "");
           setServerURL(savedServerURL);
+          if (savedChoiceInteractionMode === "click-to-submit" || savedChoiceInteractionMode === "select-then-submit") {
+            setChoiceInteractionMode(savedChoiceInteractionMode);
+          }
+          if (savedOptionPlacement === "sticky-bottom" || savedOptionPlacement === "inline-after-content") {
+            setOptionPlacement(savedOptionPlacement);
+          }
+          if (savedConfirmBeforeSubmit === "true" || savedConfirmBeforeSubmit === "false") {
+            setConfirmBeforeSubmit(savedConfirmBeforeSubmit === "true");
+          }
         }
       } finally {
         if (!cancelled) {
@@ -1914,6 +1932,21 @@ function AgentTickApp({
     setDiagnosticsEventCount(diagnosticEvents().length);
   }, []);
 
+  const updateChoiceInteractionMode = useCallback((mode: ChoiceInteractionMode) => {
+    setChoiceInteractionMode(mode);
+    void AsyncStorage.setItem(approvalChoiceInteractionModeStorageKey, mode);
+  }, []);
+
+  const updateOptionPlacement = useCallback((placement: OptionPlacement) => {
+    setOptionPlacement(placement);
+    void AsyncStorage.setItem(approvalOptionPlacementStorageKey, placement);
+  }, []);
+
+  const updateConfirmBeforeSubmit = useCallback((enabled: boolean) => {
+    setConfirmBeforeSubmit(enabled);
+    void AsyncStorage.setItem(approvalConfirmBeforeSubmitStorageKey, String(enabled));
+  }, []);
+
   const sendDiagnostics = useCallback(async () => {
     try {
       const accepted = await sendDiagnosticSnapshot(sdk, diagnosticsSnapshot({
@@ -2029,6 +2062,9 @@ function AgentTickApp({
           loading={loading}
           notificationStatus={notificationStatus}
           notificationsEnabled={notificationsEnabled}
+          choiceInteractionMode={choiceInteractionMode}
+          optionPlacement={optionPlacement}
+          confirmBeforeSubmit={confirmBeforeSubmit}
           onAvailabilityChange={(state) => void updateAvailability(state as AvailabilityState)}
           onCheck={() => void checkConnection()}
           onDiagnosticsEnabledChange={(enabled) => void toggleDiagnostics(enabled)}
@@ -2037,6 +2073,9 @@ function AgentTickApp({
           onSignInAnotherClerkAccount={onAddClerkAccount}
           onPairDevice={() => void pairDevice()}
           onNotificationsEnabledChange={(enabled) => void toggleNotifications(enabled)}
+          onChoiceInteractionModeChange={updateChoiceInteractionMode}
+          onOptionPlacementChange={updateOptionPlacement}
+          onConfirmBeforeSubmitChange={updateConfirmBeforeSubmit}
           onRegisterPush={() => void registerPushToken()}
           onRequestNotifications={() => void requestNotifications()}
           onSavedAccountRemove={removeSavedAccount}
@@ -2094,6 +2133,9 @@ function AgentTickApp({
           onRefresh={() => void load({ visible: true })}
           onRespond={(request, choice) => void respond(request, choice)}
           onSubmitQuestionnaire={(request) => void submitQuestionnaire(request)}
+          choiceInteractionMode={choiceInteractionMode}
+          optionPlacement={optionPlacement}
+          confirmBeforeSubmit={confirmBeforeSubmit}
           projectGroups={projectGroups}
           e2eeKey={e2eeKey}
           questionnaireAnswers={questionnaireAnswers}
@@ -2564,6 +2606,85 @@ function LatestStatusCard({ statusUpdates, compact = false, dismissedStatusID, o
   );
 }
 
+function ChoiceActions({
+  choices,
+  mode,
+  onSubmit,
+}: {
+  choices: Choice[];
+  mode: ChoiceInteractionMode;
+  onSubmit: (choice: Choice) => void;
+}) {
+  const [selectedChoiceID, setSelectedChoiceID] = useState<string | null>(choices[0]?.id ?? null);
+
+  useEffect(() => {
+    setSelectedChoiceID(choices[0]?.id ?? null);
+  }, [choices.map((choice) => choice.id).join("\u001f")]);
+
+  if (mode === "select-then-submit") {
+    const selectedChoice = choices.find((choice) => choice.id === selectedChoiceID) ?? null;
+    return (
+      <>
+        <View style={styles.questionOptions}>
+          {choices.map((choice, index) => {
+            const active = choice.id === selectedChoiceID;
+            return (
+              <Pressable
+                key={`${choice.id}:${index}`}
+                onPress={() => setSelectedChoiceID(choice.id)}
+                style={[styles.optionButton, active ? styles.optionButtonActive : null]}
+              >
+                <View style={[styles.optionMarker, active ? styles.optionMarkerActive : null]}>
+                  {active ? <View style={styles.optionMarkerDot} /> : null}
+                </View>
+                {choice.flags?.includes("favorite") ? <Text accessibilityLabel="Favorite choice" style={styles.optionFavoriteIcon}>★</Text> : null}
+                <View style={styles.optionLabelStack}>
+                  <Text style={[styles.optionLabel, active ? styles.optionLabelActive : null]}>{choice.label}</Text>
+                  {choice.description ? <Text style={styles.optionDescription}>{choice.description}</Text> : null}
+                  <ChoiceFlagBadges choice={choice} />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          disabled={!selectedChoice}
+          onPress={() => selectedChoice ? onSubmit(selectedChoice) : undefined}
+          style={[styles.choiceButton, styles.submitButton, !selectedChoice ? styles.choiceButtonDisabled : null]}
+        >
+          <Text style={styles.choiceText}>Send decision</Text>
+        </Pressable>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {choices.map((choice, index) => (
+        <Pressable
+          key={`${choice.id}:${index}`}
+          onPress={() => onSubmit(choice)}
+          style={[
+            styles.choiceButton,
+            choice.kind === "approve" ? styles.approveButton : null,
+            choice.kind === "deny" ? styles.denyButton : null,
+            choice.flags?.includes("destructive") || choice.flags?.includes("production") || choice.flags?.includes("security_sensitive") ? styles.flaggedChoiceButton : null,
+          ]}
+        >
+          <View style={styles.choiceContent}>
+            {choice.flags?.includes("favorite") ? <Text accessibilityLabel="Favorite choice" style={styles.choiceFavoriteIcon}>★</Text> : null}
+            <View style={styles.choiceLabelStack}>
+              <Text style={styles.choiceText}>{choice.label}</Text>
+              {choice.description ? <Text style={styles.choiceDescription}>{choice.description}</Text> : null}
+              <ChoiceFlagBadges choice={choice} />
+            </View>
+          </View>
+        </Pressable>
+      ))}
+    </>
+  );
+}
+
 export function ApprovalsScreen({
   e2eeKey,
   error,
@@ -2572,6 +2693,9 @@ export function ApprovalsScreen({
   onRefresh,
   onRespond,
   onSubmitQuestionnaire,
+  choiceInteractionMode = "click-to-submit",
+  optionPlacement = "inline-after-content",
+  confirmBeforeSubmit = true,
   projectGroups,
   questionnaireAnswers,
   reply,
@@ -2594,6 +2718,9 @@ export function ApprovalsScreen({
   onRefresh: () => void;
   onRespond: (request: ApprovalRequest, choice: Choice) => void;
   onSubmitQuestionnaire: (request: ApprovalRequest) => void;
+  choiceInteractionMode?: ChoiceInteractionMode;
+  optionPlacement?: OptionPlacement;
+  confirmBeforeSubmit?: boolean;
   projectGroups: ReturnType<typeof groupRequestsByProject>;
   questionnaireAnswers: Record<string, string[]>;
   reply: string;
@@ -2632,6 +2759,59 @@ export function ApprovalsScreen({
   const encryptedLocked = encrypted && !decrypted;
   const canRespond = !encryptedLocked && (encrypted ? true : canRespondToRequest(selected));
   const dismissChoice = encryptedDismissChoice(selected);
+  const submitChoice = (choice: Choice) => {
+    if (!confirmBeforeSubmit || choiceInteractionMode === "select-then-submit") {
+      onRespond(selected, choice);
+      return;
+    }
+    Alert.alert("Send this decision?", choice.label, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Send decision", onPress: () => onRespond(selected, choice) },
+    ]);
+  };
+  const actionPanel = encryptedLocked ? (
+    <View style={styles.encryptedActions}>
+      <View style={styles.encryptedActionPanel}>
+        <Text style={styles.actionHint}>Decrypt this request before approving or rejecting it.</Text>
+        <Pressable onPress={() => onRespond(selected, dismissChoice)} style={[styles.choiceButton, styles.denyButton]}>
+          <Text style={styles.choiceText}>Dismiss encrypted request</Text>
+        </Pressable>
+        {onOpenSettings ? (
+          <Pressable onPress={onOpenSettings} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonText}>Add E2EE Key in Settings</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  ) : (
+    <View style={styles.actions}>
+      {isQuestionnaireRequest(selected) ? (
+        <Pressable
+          disabled={!questionnaireReady(selected, questionnaireAnswers)}
+          onPress={() => onSubmitQuestionnaire(selected)}
+          style={[
+            styles.choiceButton,
+            styles.submitButton,
+            !questionnaireReady(selected, questionnaireAnswers)
+              ? styles.choiceButtonDisabled
+              : null,
+          ]}
+        >
+          <Text style={styles.choiceText}>Submit Answers</Text>
+        </Pressable>
+      ) : canRespond ? (
+        <ChoiceActions
+          choices={selected.choices ?? []}
+          mode={choiceInteractionMode}
+          onSubmit={submitChoice}
+        />
+      ) : (
+        <Text style={styles.actionHint}>
+          {policyProgressMessage(selected) || "This request is read-only."}
+        </Text>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.approvalsPane}>
@@ -2803,67 +2983,10 @@ export function ApprovalsScreen({
             value={reply}
           />
         ) : null}
+        {optionPlacement === "inline-after-content" ? actionPanel : null}
       </ScrollView>
 
-      {encryptedLocked ? (
-        <View style={styles.encryptedActions}>
-          <View style={styles.encryptedActionPanel}>
-            <Text style={styles.actionHint}>Decrypt this request before approving or rejecting it.</Text>
-            <Pressable onPress={() => onRespond(selected, dismissChoice)} style={[styles.choiceButton, styles.denyButton]}>
-              <Text style={styles.choiceText}>Dismiss encrypted request</Text>
-            </Pressable>
-            {onOpenSettings ? (
-              <Pressable onPress={onOpenSettings} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>Add E2EE Key in Settings</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-      ) : (
-        <View style={styles.actions}>
-        {isQuestionnaireRequest(selected) ? (
-          <Pressable
-            disabled={!questionnaireReady(selected, questionnaireAnswers)}
-            onPress={() => onSubmitQuestionnaire(selected)}
-            style={[
-              styles.choiceButton,
-              styles.submitButton,
-              !questionnaireReady(selected, questionnaireAnswers)
-                ? styles.choiceButtonDisabled
-                : null,
-            ]}
-          >
-            <Text style={styles.choiceText}>Submit Answers</Text>
-          </Pressable>
-        ) : canRespond ? (
-          (selected.choices ?? []).map((choice, index) => (
-            <Pressable
-              key={`${choice.id}:${index}`}
-              onPress={() => onRespond(selected, choice)}
-              style={[
-                styles.choiceButton,
-                choice.kind === "approve" ? styles.approveButton : null,
-                choice.kind === "deny" ? styles.denyButton : null,
-                choice.flags?.includes("destructive") || choice.flags?.includes("production") || choice.flags?.includes("security_sensitive") ? styles.flaggedChoiceButton : null,
-              ]}
-            >
-              <View style={styles.choiceContent}>
-                {choice.flags?.includes("favorite") ? <Text accessibilityLabel="Favorite choice" style={styles.choiceFavoriteIcon}>★</Text> : null}
-                <View style={styles.choiceLabelStack}>
-                  <Text style={styles.choiceText}>{choice.label}</Text>
-                  {choice.description ? <Text style={styles.choiceDescription}>{choice.description}</Text> : null}
-                  <ChoiceFlagBadges choice={choice} />
-                </View>
-              </View>
-            </Pressable>
-          ))
-        ) : (
-          <Text style={styles.actionHint}>
-            {policyProgressMessage(selected) || "This request is read-only."}
-          </Text>
-        )}
-        </View>
-      )}
+      {optionPlacement === "sticky-bottom" ? actionPanel : null}
     </View>
   );
 }
@@ -4035,6 +4158,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     height: 8,
     width: 8,
+  },
+  optionFavoriteIcon: {
+    color: "#fbbc04",
+    fontSize: 20,
+    fontWeight: "900",
   },
   optionLabelStack: {
     flex: 1,
