@@ -1,4 +1,6 @@
 import { i18n, type Messages } from "@lingui/core";
+import { messages as messagesDa } from "./locales/da/messages.js";
+import { messages as messagesEn } from "./locales/en/messages.js";
 
 const defaultLocale = "en";
 const supportedLocaleCodes = new Set(["en", "da"]);
@@ -19,15 +21,11 @@ function activateLocale(locale: SupportedLocale, messages: Messages): void {
 
 export async function loadMessages(locale: SupportedLocale): Promise<Messages> {
   switch (locale) {
-    case "da": {
-      const catalog = await import("./locales/da/messages.js");
-      return catalog.messages;
-    }
+    case "da":
+      return messagesDa;
     case "en":
-    default: {
-      const catalog = await import("./locales/en/messages.js");
-      return catalog.messages;
-    }
+    default:
+      return messagesEn;
   }
 }
 
