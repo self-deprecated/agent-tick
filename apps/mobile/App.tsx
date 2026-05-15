@@ -88,6 +88,7 @@ import {
   localePreferenceStorageKey,
   resolveLocalePreference,
   systemLocaleFromIntl,
+  translateSource,
   type LocalePreference,
   type SupportedLocale,
 } from "@agent-tick/i18n";
@@ -2291,7 +2292,7 @@ function SideMenu({
         <Animated.View style={[styles.sideMenu, { transform: [{ translateX: slideX }] }]}>
           <View style={styles.sideMenuHeader}>
             <View style={styles.sideMenuTitleRow}>
-              <Text style={styles.sideMenuTitle}>Menu</Text>
+              <Text style={styles.sideMenuTitle}>{translateSource("Menu")}</Text>
               <Pressable accessibilityLabel="Close menu" onPress={onClose} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>×</Text>
               </Pressable>
@@ -2299,7 +2300,7 @@ function SideMenu({
           </View>
 
           <View style={styles.accountsSection}>
-            <Text style={styles.menuSectionLabel}>Accounts</Text>
+            <Text style={styles.menuSectionLabel}>{translateSource("Accounts")}</Text>
             <View style={styles.accountsList}>
               <AccountMenuItem
                 active
@@ -2328,19 +2329,19 @@ function SideMenu({
             <SideMenuItem
               active={currentScreen === "approvals"}
               icon="✓"
-              label="Approvals"
+              label={translateSource("Approvals")}
               onPress={() => onNavigate("approvals")}
             />
             <SideMenuItem
               active={currentScreen === "history"}
               icon="🕘"
-              label="History"
+              label={translateSource("History")}
               onPress={() => onNavigate("history")}
             />
             <SideMenuItem
               active={currentScreen === "settings"}
               icon="⚙"
-              label="Settings"
+              label={translateSource("Settings")}
               onPress={() => onNavigate("settings")}
             />
           </View>
@@ -2395,8 +2396,8 @@ function AccountMenuItem({
   onPress: () => void;
   pending?: AccountPendingState;
 }) {
-  const accountLabel = label || (account ? savedAccountMenuLabel(account) : "Account");
-  const pendingLabel = active ? "Current account" : accountPendingLabel(pending);
+  const accountLabel = label || (account ? savedAccountMenuLabel(account) : translateSource("Account"));
+  const pendingLabel = active ? translateSource("Current account") : accountPendingLabel(pending);
   const pendingCount = pending?.status === "ready" ? pending.count : 0;
   const dotColor = account ? accountColor(account) : accountColorForKey(colorKey || accountLabel);
   return (
@@ -2405,7 +2406,7 @@ function AccountMenuItem({
       <View style={styles.accountMenuTextWrap}>
         <View style={styles.accountMenuTitleRow}>
           <Text numberOfLines={1} style={styles.accountMenuName}>{accountLabel}</Text>
-          {active ? <Text style={styles.currentAccountPill}>Current</Text> : null}
+          {active ? <Text style={styles.currentAccountPill}>{translateSource("Current")}</Text> : null}
         </View>
         {meta ? <Text numberOfLines={1} style={styles.accountMenuMeta}>{meta}</Text> : null}
         {pendingLabel ? <Text numberOfLines={1} style={styles.accountMenuStatus}>{pendingLabel}</Text> : null}
@@ -2420,10 +2421,10 @@ function AccountMenuItem({
 }
 
 function accountPendingLabel(pending?: AccountPendingState) {
-  if (!pending || pending.status === "checking") return "Checking pending approvals…";
-  if (pending.status === "needs-sign-in") return "Needs sign-in";
-  if (pending.status === "error") return "Unable to check";
-  if (pending.count === 0) return "No pending approvals";
+  if (!pending || pending.status === "checking") return translateSource("Checking pending approvals…");
+  if (pending.status === "needs-sign-in") return translateSource("Needs sign-in");
+  if (pending.status === "error") return translateSource("Unable to check");
+  if (pending.count === 0) return translateSource("No pending approvals");
   return `${pending.count} pending approval${pending.count === 1 ? "" : "s"}`;
 }
 

@@ -28,10 +28,10 @@ type OrganizationMembership = {
 export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
   const label =
     status === "connected"
-      ? "Connected"
+      ? translateSource("Connected")
       : status === "checking"
-        ? "Checking"
-        : "Disconnected";
+        ? translateSource("Checking")
+        : translateSource("Disconnected");
 
   return (
     <View style={styles.connectionBadge}>
@@ -213,36 +213,36 @@ export function SettingsScreen({
   const notificationsSection = (
     <View style={styles.settingsSection}>
       <Pressable onLongPress={() => setDiagnosticsRevealed(true)}>
-        <Text style={styles.label}>Notifications</Text>
+        <Text style={styles.label}>{tr("Notifications")}</Text>
       </Pressable>
       {shouldRemindNotifications ? (
         <View style={styles.notificationReminder}>
-          <Text style={styles.notificationReminderTitle}>Enable approval alerts</Text>
+          <Text style={styles.notificationReminderTitle}>{tr("Enable approval alerts")}</Text>
           <Text style={styles.notificationReminderText}>
-            Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed.
+            {tr("Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed.")}
           </Text>
           <Pressable onPress={() => { trackButton("enable_notifications_reminder"); onRequestNotifications(); }} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Enable Notifications</Text>
+            <Text style={styles.primaryButtonText}>{tr("Enable Notifications")}</Text>
           </Pressable>
         </View>
       ) : null}
       <Text style={styles.notificationStatus}>
         {!notificationsEnabled
-          ? "Off in Agent Tick"
+          ? tr("Off in Agent Tick")
           : notificationStatus === "granted"
-            ? "On"
+            ? tr("On")
             : notificationStatus === "denied"
-              ? "Off in system settings"
+              ? tr("Off in system settings")
               : notificationStatus === "checking"
-                ? "Checking"
-                : "Not Asked"}
+                ? tr("Checking")
+                : tr("Not Asked")}
       </Text>
       <View style={styles.notificationActions}>
         <Pressable
           onPress={() => { trackButton(notificationsEnabled ? "disable_notifications" : "enable_notifications_toggle"); onNotificationsEnabledChange?.(!notificationsEnabled); }}
           style={styles.secondaryActionButton}
         >
-          <Text style={styles.secondaryActionText}>{notificationsEnabled ? "Turn Off" : "Turn On"}</Text>
+          <Text style={styles.secondaryActionText}>{notificationsEnabled ? tr("Turn Off") : tr("Turn On")}</Text>
         </Pressable>
         <Pressable
           accessibilityState={{ disabled: !notificationsEnabled }}
@@ -250,7 +250,7 @@ export function SettingsScreen({
           onPress={() => { trackButton("enable_notifications"); onRequestNotifications(); }}
           style={[styles.secondaryActionButton, !notificationsEnabled ? styles.secondaryActionButtonDisabled : null]}
         >
-          <Text style={[styles.secondaryActionText, !notificationsEnabled ? styles.secondaryActionTextDisabled : null]}>Enable</Text>
+          <Text style={[styles.secondaryActionText, !notificationsEnabled ? styles.secondaryActionTextDisabled : null]}>{tr("Enable")}</Text>
         </Pressable>
         <Pressable
           accessibilityState={{ disabled: !notificationsEnabled }}
@@ -258,11 +258,11 @@ export function SettingsScreen({
           onPress={() => { trackButton("send_test_notification"); onSendTestNotification(); }}
           style={[styles.secondaryActionButton, !notificationsEnabled ? styles.secondaryActionButtonDisabled : null]}
         >
-          <Text style={[styles.secondaryActionText, !notificationsEnabled ? styles.secondaryActionTextDisabled : null]}>Test</Text>
+          <Text style={[styles.secondaryActionText, !notificationsEnabled ? styles.secondaryActionTextDisabled : null]}>{tr("Test")}</Text>
         </Pressable>
       </View>
       <Text style={styles.notificationStatus}>
-        Push: {pushStatus === "registered" ? "Registered" : pushStatus}
+        {tr("Push:")} {pushStatus === "registered" ? tr("Registered") : pushStatus}
       </Text>
       <Pressable
         accessibilityState={{ disabled: isPushRegistrationDisabled }}
@@ -271,23 +271,23 @@ export function SettingsScreen({
         style={[styles.secondaryActionButton, isPushRegistrationDisabled ? styles.secondaryActionButtonDisabled : null]}
       >
         <Text style={[styles.secondaryActionText, isPushRegistrationDisabled ? styles.secondaryActionTextDisabled : null]}>
-          {isPushRegistered ? "Push Registered" : "Register Push"}
+          {isPushRegistered ? tr("Push Registered") : tr("Register Push")}
         </Text>
       </Pressable>
       {diagnosticsRevealed ? (
         <View style={styles.diagnosticsPanel}>
-          <Text style={styles.sectionHeading}>Diagnostics</Text>
+          <Text style={styles.sectionHeading}>{tr("Diagnostics")}</Text>
           <Text style={styles.pairingHint}>
-            Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets.
+            {tr("Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets.")}
           </Text>
-          <Text style={styles.notificationStatus}>Status: {diagnosticsEnabled ? "Enabled" : "Disabled"}</Text>
-          <Text style={styles.pairingHint}>Buffered events: {diagnosticsEventCount}{diagnosticsLastSentAt ? ` · last sent ${diagnosticsLastSentAt}` : ""}</Text>
+          <Text style={styles.notificationStatus}>{tr("Status:")} {diagnosticsEnabled ? tr("Enabled") : tr("Disabled")}</Text>
+          <Text style={styles.pairingHint}>{tr("Buffered events:")} {diagnosticsEventCount}{diagnosticsLastSentAt ? ` · last sent ${diagnosticsLastSentAt}` : ""}</Text>
           <View style={styles.notificationActions}>
             <Pressable onPress={() => { trackButton("toggle_diagnostics", { nextEnabled: !diagnosticsEnabled }); onDiagnosticsEnabledChange?.(!diagnosticsEnabled); }} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>{diagnosticsEnabled ? "Disable" : "Enable"}</Text>
+              <Text style={styles.secondaryActionText}>{diagnosticsEnabled ? tr("Disable") : tr("Enable")}</Text>
             </Pressable>
             <Pressable onPress={() => { trackButton("send_diagnostic_snapshot"); onSendDiagnosticSnapshot?.(); }} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>Send Snapshot</Text>
+              <Text style={styles.secondaryActionText}>{tr("Send Snapshot")}</Text>
             </Pressable>
           </View>
         </View>
@@ -304,21 +304,21 @@ export function SettingsScreen({
       >
         <View style={styles.settingsSection}>
           <Pressable onPress={() => { trackButton("accounts_back"); setAccountsOpen(false); }} style={styles.backButton}>
-            <Text style={styles.secondaryActionText}>‹ Settings</Text>
+            <Text style={styles.secondaryActionText}>{tr("‹ Settings")}</Text>
           </Pressable>
-          <Text style={styles.sectionHeading}>Accounts</Text>
-          <Text style={styles.pairingHint}>Choose a saved account or add another Agent Tick account on this device.</Text>
+          <Text style={styles.sectionHeading}>{tr("Accounts")}</Text>
+          <Text style={styles.pairingHint}>{tr("Choose a saved account or add another Agent Tick account on this device.")}</Text>
         </View>
         <View style={styles.settingsSection}>
           <View style={styles.organizationList}>
             <View style={[styles.organizationButton, styles.organizationButtonActive]}>
               <Pressable onPress={() => { trackButton("current_account_selected"); setAccountsOpen(false); }} style={styles.accountSelectArea}>
-                <Text style={[styles.label, styles.organizationNameActive]}>Current</Text>
+                <Text style={[styles.label, styles.organizationNameActive]}>{tr("Current")}</Text>
                 <Text style={[styles.organizationName, styles.organizationNameActive]}>{currentAccountTitle}</Text>
                 <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
               </Pressable>
               <Pressable onPress={() => { trackButton(isClerkMode ? "sign_out_current_account" : "forget_current_device"); setAccountsOpen(false); onForgetDevice(); }} style={styles.signOutAccountButton}>
-                <Text style={styles.signOutAccountText}>Sign Out</Text>
+                <Text style={styles.signOutAccountText}>{tr("Sign Out")}</Text>
               </Pressable>
             </View>
             {accounts.filter((account) => !isCurrentSavedAccount(account, { authProvider, currentAccountProfile, deviceID, selectedOrganizationID, serverURL })).map((account) => (
@@ -336,7 +336,7 @@ export function SettingsScreen({
                 </Pressable>
                 {onSavedAccountRemove ? (
                   <Pressable onPress={() => { trackButton("saved_account_remove", { targetAccountID: account.id, targetAuthProvider: account.authProvider, targetUserID: account.userID, targetEmail: account.email, targetSignInMethod: account.signInMethod }); onSavedAccountRemove(account); }} style={styles.removeAccountButton}>
-                    <Text style={styles.removeAccountText}>Sign Out</Text>
+                    <Text style={styles.removeAccountText}>{tr("Sign Out")}</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -344,11 +344,11 @@ export function SettingsScreen({
           </View>
           {isClerkMode && onSignInAnotherClerkAccount ? (
             <Pressable onPress={() => { trackButton("add_another_clerk_account"); onSignInAnotherClerkAccount(); }} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>Add another account</Text>
+              <Text style={styles.primaryButtonText}>{tr("Add another account")}</Text>
             </Pressable>
           ) : onUseHosted ? (
             <Pressable onPress={() => { trackButton("add_hosted_account"); onUseHosted(); }} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>Add agenttick.sh account</Text>
+              <Text style={styles.primaryButtonText}>{tr("Add agenttick.sh account")}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -366,30 +366,30 @@ export function SettingsScreen({
         <View style={styles.settingsSection}>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           <Pressable onPress={() => { trackButton("open_account_switcher"); setAccountsOpen(true); }} style={styles.accountSummaryButton}>
-            <Text style={styles.label}>Current account</Text>
+            <Text style={styles.label}>{tr("Current account")}</Text>
             <Text style={styles.accountSummaryName}>{currentAccountTitle}</Text>
             <Text style={styles.accountSummaryMeta}>{currentAccountMeta}</Text>
-            <Text style={styles.accountSummaryAction}>Switch accounts ›</Text>
+            <Text style={styles.accountSummaryAction}>{tr("Switch accounts ›")}</Text>
           </Pressable>
           <Pressable onPress={() => { trackButton("check_connection"); onCheck(); }} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Check Connection</Text>
+            <Text style={styles.primaryButtonText}>{tr("Check Connection")}</Text>
           </Pressable>
           {!hasMultipleAccounts ? (
             <Pressable onPress={() => { trackButton(isClerkMode ? "sign_out" : "forget_device"); onForgetDevice(); }} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>{isClerkMode ? "Sign Out" : "Forget Device"}</Text>
+              <Text style={styles.secondaryActionText}>{isClerkMode ? tr("Sign Out") : tr("Forget Device")}</Text>
             </Pressable>
           ) : null}
           {!isClerkMode && onUseHosted ? (
             <Pressable onPress={() => { trackButton("use_hosted"); onUseHosted(); }} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>Use agenttick.sh</Text>
+              <Text style={styles.secondaryActionText}>{tr("Use agenttick.sh")}</Text>
             </Pressable>
           ) : null}
         </View>
         {languageSection}
         <View style={styles.settingsSection}>
-          <Text style={styles.sectionHeading}>Workspace</Text>
+          <Text style={styles.sectionHeading}>{tr("Workspace")}</Text>
           <Text style={styles.pairingHint}>
-            Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve.
+            {tr("Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve.")}
           </Text>
           {isClerkMode && organizations.length > 0 ? (
             <View style={styles.organizationList}>
@@ -402,19 +402,19 @@ export function SettingsScreen({
                     style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
                   >
                     <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{membership.name}</Text>
-                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{membership.role ?? "member"}</Text>
+                    <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{membership.role ? translateSource(membership.role) : tr("member")}</Text>
                   </Pressable>
                 );
               })}
             </View>
           ) : isClerkMode ? (
-            <Text style={styles.pairingHint}>No local Agent Tick organizations loaded yet.</Text>
+            <Text style={styles.pairingHint}>{tr("No local Agent Tick organizations loaded yet.")}</Text>
           ) : null}
         </View>
         <View style={styles.settingsSection}>
-          <Text style={styles.sectionHeading}>Availability</Text>
+          <Text style={styles.sectionHeading}>{tr("Availability")}</Text>
           <Text style={styles.pairingHint}>
-            Agent Tick shares coarse last-seen and availability with your team so on-call and recently-active policies can route approvals. Use Do Not Disturb or Off-call when you should not be interrupted.
+            {tr("Agent Tick shares coarse last-seen and availability with your team so on-call and recently-active policies can route approvals. Use Do Not Disturb or Off-call when you should not be interrupted.")}
           </Text>
           <View style={styles.availabilityGrid}>
             {(["available", "busy", "do-not-disturb", "off-call"] as AvailabilityState[]).map((state) => (
@@ -444,8 +444,8 @@ export function SettingsScreen({
           }}
           style={[styles.settingsSection, e2eeFocusToken ? styles.focusedSettingsSection : null]}
         >
-          <Text style={styles.sectionHeading}>End-to-end encryption</Text>
-          <Text style={styles.pairingHint}>Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally.</Text>
+          <Text style={styles.sectionHeading}>{tr("End-to-end encryption")}</Text>
+          <Text style={styles.pairingHint}>{tr("Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally.")}</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
@@ -457,14 +457,14 @@ export function SettingsScreen({
           />
         </View>
         <View style={styles.settingsSection}>
-          <Text style={styles.sectionHeading}>Approval display</Text>
-          <Text style={styles.pairingHint}>Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding.</Text>
+          <Text style={styles.sectionHeading}>{tr("Approval display")}</Text>
+          <Text style={styles.pairingHint}>{tr("Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding.")}</Text>
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Choice behavior</Text>
+            <Text style={styles.label}>{tr("Choice behavior")}</Text>
             <View style={styles.segmentedControl}>
               {([
-                ["click-to-submit", "Clickable"],
-                ["select-then-submit", "Select + send"],
+                ["click-to-submit", tr("Clickable")],
+                ["select-then-submit", tr("Select + send")],
               ] as const).map(([mode, label]) => (
                 <Pressable
                   key={mode}
@@ -477,11 +477,11 @@ export function SettingsScreen({
             </View>
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Action placement</Text>
+            <Text style={styles.label}>{tr("Action placement")}</Text>
             <View style={styles.segmentedControl}>
               {([
-                ["inline-after-content", "After content"],
-                ["sticky-bottom", "Sticky bottom"],
+                ["inline-after-content", tr("After content")],
+                ["sticky-bottom", tr("Sticky bottom")],
               ] as const).map(([placement, label]) => (
                 <Pressable
                   key={placement}
@@ -497,8 +497,8 @@ export function SettingsScreen({
             onPress={() => { trackButton("approval_confirm_before_submit", { enabled: !confirmBeforeSubmit }); onConfirmBeforeSubmitChange?.(!confirmBeforeSubmit); }}
             style={styles.toggleRow}
           >
-            <Text style={styles.toggleLabel}>Confirm clickable submissions</Text>
-            <Text style={styles.toggleValue}>{confirmBeforeSubmit ? "On" : "Off"}</Text>
+            <Text style={styles.toggleLabel}>{tr("Confirm clickable submissions")}</Text>
+            <Text style={styles.toggleValue}>{confirmBeforeSubmit ? tr("On") : "Off"}</Text>
           </Pressable>
         </View>
         {notificationsSection}
@@ -513,24 +513,24 @@ export function SettingsScreen({
     >
       {languageSection}
       <View style={styles.settingsSection}>
-        <Text style={styles.sectionHeading}>Pairing</Text>
+        <Text style={styles.sectionHeading}>{tr("Pairing")}</Text>
         <Text style={styles.pairingHint}>
-          Scan the QR code from <Text style={styles.pairingCode}>agent-tick pair</Text> to connect.
+          {tr("Scan the QR code from")} <Text style={styles.pairingCode}>agent-tick pair</Text> {tr("to connect.")}
         </Text>
         <Pressable onPress={() => { trackButton("scan_pairing_qr"); onScanPairing(); }} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Scan Pairing QR</Text>
+          <Text style={styles.primaryButtonText}>{tr("Scan Pairing QR")}</Text>
         </Pressable>
       </View>
 
       <View style={styles.settingsSection}>
-        <Text style={styles.sectionHeading}>Connection</Text>
+        <Text style={styles.sectionHeading}>{tr("Connection")}</Text>
         <View style={styles.statusRow}>
           <ConnectionBadge status={connectionStatus} />
           {loading ? <ActivityIndicator color="#202124" /> : null}
         </View>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Server URL</Text>
+          <Text style={styles.label}>{tr("Server URL")}</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
@@ -542,11 +542,11 @@ export function SettingsScreen({
           />
         </View>
         <Pressable onPress={() => { trackButton("check_connection_unpaired"); onCheck(); }} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Check Connection</Text>
+          <Text style={styles.primaryButtonText}>{tr("Check Connection")}</Text>
         </Pressable>
         {onUseHosted ? (
           <Pressable onPress={() => { trackButton("use_hosted_unpaired"); onUseHosted(); }} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>Use agenttick.sh</Text>
+            <Text style={styles.secondaryActionText}>{tr("Use agenttick.sh")}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -556,13 +556,13 @@ export function SettingsScreen({
           onPress={() => { trackButton("toggle_advanced", { nextOpen: !advancedOpen }); setAdvancedOpen((v) => !v); }}
           style={styles.advancedToggle}
         >
-          <Text style={styles.sectionHeading}>Advanced</Text>
+          <Text style={styles.sectionHeading}>{tr("Advanced")}</Text>
           <Text style={styles.advancedChevron}>{advancedOpen ? "▲" : "▼"}</Text>
         </Pressable>
         {advancedOpen && (
           <>
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Manual Pairing Code</Text>
+              <Text style={styles.label}>{tr("Manual Pairing Code")}</Text>
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -572,11 +572,11 @@ export function SettingsScreen({
                 value={pairingCode}
               />
               <Pressable onPress={() => { trackButton("pair_manually", { hasPairingCode: Boolean(pairingCode) }); onPairDevice(); }} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>Pair Manually</Text>
+                <Text style={styles.primaryButtonText}>{tr("Pair Manually")}</Text>
               </Pressable>
             </View>
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Manual Bearer Token</Text>
+              <Text style={styles.label}>{tr("Manual Bearer Token")}</Text>
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
