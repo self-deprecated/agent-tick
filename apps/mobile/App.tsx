@@ -2774,14 +2774,17 @@ export function ApprovalsScreen({
                           >
                             {active ? <View style={styles.optionMarkerDot} /> : null}
                           </View>
-                          <Text
-                            style={[
-                              styles.optionLabel,
-                              active ? styles.optionLabelActive : null,
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
+                          <View style={styles.optionLabelStack}>
+                            <Text
+                              style={[
+                                styles.optionLabel,
+                                active ? styles.optionLabelActive : null,
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                            {option.description ? <Text style={styles.optionDescription}>{option.description}</Text> : null}
+                          </View>
                         </Pressable>
                       );
                     })}
@@ -4033,14 +4036,22 @@ const styles = StyleSheet.create({
     height: 8,
     width: 8,
   },
+  optionLabelStack: {
+    flex: 1,
+    gap: 3,
+  },
   optionLabel: {
     color: "#202124",
-    flex: 1,
     fontSize: 16,
     fontWeight: "700",
   },
   optionLabelActive: {
     color: "#184f42",
+  },
+  optionDescription: {
+    color: "#64748b",
+    fontSize: 13,
+    lineHeight: 18,
   },
   reply: {
     backgroundColor: "#ffffff",

@@ -35,6 +35,7 @@ export type Choice = {
 
 export type QuestionOption = {
   label: string;
+  description?: string;
 };
 
 export type Question = {

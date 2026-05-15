@@ -35,6 +35,7 @@ export interface Choice {
 
 export interface QuestionOption {
 	label: string;
+	description?: string;
 }
 
 export interface Question {
