@@ -14,7 +14,9 @@
     "dev:admin": "corepack pnpm --filter agent-tick-admin dev",
     "i18n:extract": "lingui extract",
     "i18n:compile": "lingui compile --typescript",
-    "i18n:check": "lingui extract --clean && lingui compile --typescript"
+    "i18n:audit": "node scripts/audit-i18n.mjs",
+    "i18n:audit:update": "node scripts/audit-i18n.mjs --update",
+    "i18n:check": "lingui extract --clean && lingui compile --typescript && node scripts/audit-i18n.mjs"
   },
   "devDependencies": {
     "@lingui/babel-plugin-lingui-macro": "6.0.1",

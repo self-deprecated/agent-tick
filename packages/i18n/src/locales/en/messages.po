@@ -13,34 +13,1294 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: apps/admin/src/adminI18nMessages.ts:5
+msgid "· · ` : ''} ` : ''} · used ` : ''} ` : ''}"
+msgstr "· · ` : ''} ` : ''} · used ` : ''} ` : ''}"
+
+#: apps/admin/src/adminI18nMessages.ts:6
+msgid "· · ` : 'active'} ` : ''} ` : ''} ` : ''}"
+msgstr "· · ` : 'active'} ` : ''} ` : ''} ` : ''}"
+
+#: apps/admin/src/adminI18nMessages.ts:7
+msgid "· approval ` : ''} ` : ''} ` : ''}"
+msgstr "· approval ` : ''} ` : ''} ` : ''}"
+
+#: apps/mobile/mobileI18nMessages.ts:5
+msgid "· last sent $"
+msgstr "· last sent $"
+
+#: apps/admin/src/adminI18nMessages.ts:8
+msgid "· pending approval ."
+msgstr "· pending approval ."
+
+#: apps/admin/src/adminI18nMessages.ts:9
+msgid "· requested ·"
+msgstr "· requested ·"
+
+#: apps/admin/src/adminI18nMessages.ts:10
+msgid "· requested · invite ` : ''} ` : ''} ·"
+msgstr "· requested · invite ` : ''} ` : ''} ·"
+
+#: apps/mobile/mobileI18nMessages.ts:6
+msgid "· Tap for details"
+msgstr "· Tap for details"
+
+#: apps/mobile/mobileI18nMessages.ts:7
+msgid "‹ Back"
+msgstr "‹ Back"
+
+#: apps/mobile/mobileI18nMessages.ts:8
+msgid "‹ Previous"
+msgstr "‹ Previous"
+
+#: apps/mobile/mobileI18nMessages.ts:9
+msgid "‹ Settings"
+msgstr "‹ Settings"
+
+#: apps/admin/src/adminI18nMessages.ts:11
+msgid "1. Create an agent token"
+msgstr "1. Create an agent token"
+
+#: apps/admin/src/adminI18nMessages.ts:12
+msgid "2. Run the CLI setup command"
+msgstr "2. Run the CLI setup command"
+
 #: apps/admin/src/adminI18nMessages.ts:13
+msgid "3. Install and sign into mobile"
+msgstr "3. Install and sign into mobile"
+
+#: apps/mobile/mobileI18nMessages.ts:10
+msgid "Account switch failed"
+msgstr "Account switch failed"
+
+#: apps/mobile/mobileI18nMessages.ts:11
+msgid "Accounts"
+msgstr "Accounts"
+
+#: apps/mobile/mobileI18nMessages.ts:12
+msgid "Action placement"
+msgstr "Action placement"
+
+#: apps/mobile/mobileI18nMessages.ts:13
 msgid "Active"
 msgstr "Active"
 
-#: apps/admin/src/adminI18nMessages.ts:12
+#: apps/admin/src/adminI18nMessages.ts:14
+msgid "Active local organization"
+msgstr "Active local organization"
+
+#: apps/mobile/mobileI18nMessages.ts:14
+msgid "Add agenttick.sh account"
+msgstr "Add agenttick.sh account"
+
+#: apps/mobile/mobileI18nMessages.ts:15
+msgid "Add another account"
+msgstr "Add another account"
+
+#: apps/mobile/mobileI18nMessages.ts:16
+msgid "Add E2EE Key in Settings"
+msgstr "Add E2EE Key in Settings"
+
+#: apps/admin/src/adminI18nMessages.ts:15
+msgid "Add member"
+msgstr "Add member"
+
+#: apps/admin/src/adminI18nMessages.ts:16
+msgid "Admin token"
+msgstr "Admin token"
+
+#: apps/mobile/mobileI18nMessages.ts:17
+msgid "Advanced"
+msgstr "Advanced"
+
+#: apps/mobile/mobileI18nMessages.ts:18
+msgid "After content"
+msgstr "After content"
+
+#: apps/mobile/mobileI18nMessages.ts:19
+msgid "Agent"
+msgstr "Agent"
+
+#: apps/admin/src/adminI18nMessages.ts:17
+msgid "Agent name"
+msgstr "Agent name"
+
+#: apps/mobile/mobileI18nMessages.ts:20
 msgid "Agent Tick can follow your device language or use a language you choose here."
 msgstr "Agent Tick can follow your device language or use a language you choose here."
 
-#: apps/admin/src/adminI18nMessages.ts:6
-msgid "Approve agent actions without slowing down"
-msgstr "Approve agent actions without slowing down"
+#: apps/admin/src/adminI18nMessages.ts:18
+msgid "Agent Tick marks the CLI connected after the token is used by your agent or a test request."
+msgstr "Agent Tick marks the CLI connected after the token is used by your agent or a test request."
 
-#: apps/admin/src/adminI18nMessages.ts:7
-msgid "Connect your AI agent, sign in on mobile, and approve risky commands from wherever you are."
-msgstr "Connect your AI agent, sign in on mobile, and approve risky commands from wherever you are."
+#: apps/admin/src/adminI18nMessages.ts:19
+msgid "Agent Tick received a request from your token. You can create more tokens later from team settings or self-hosted admin mode."
+msgstr "Agent Tick received a request from your token. You can create more tokens later from team settings or self-hosted admin mode."
 
-#: apps/admin/src/adminI18nMessages.ts:8
+#: apps/mobile/mobileI18nMessages.ts:21
+msgid "Agent Tick shares coarse last-seen and availability with your team so on-call and recently-active policies can route approvals. Use Do Not Disturb or Off-call when you should not be interrupted."
+msgstr "Agent Tick shares coarse last-seen and availability with your team so on-call and recently-active policies can route approvals. Use Do Not Disturb or Off-call when you should not be interrupted."
+
+#: apps/admin/src/adminI18nMessages.ts:20
+msgid "Agent Tick stays focused on setup until your account, CLI, and mobile app are ready. Approval requests are hidden until a real agent can send them to your phone."
+msgstr "Agent Tick stays focused on setup until your account, CLI, and mobile app are ready. Approval requests are hidden until a real agent can send them to your phone."
+
+#: apps/mobile/mobileI18nMessages.ts:22
+msgid "Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed."
+msgstr "Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed."
+
+#: apps/mobile/mobileI18nMessages.ts:23
+msgid "agent-tick pair"
+msgstr "agent-tick pair"
+
+#: apps/admin/src/adminI18nMessages.ts:21
+msgid "agent-tick setup --server --token"
+msgstr "agent-tick setup --server --token"
+
+#: apps/mobile/mobileI18nMessages.ts:24
+msgid "agenttick.sh did not advertise Clerk sign-in."
+msgstr "agenttick.sh did not advertise Clerk sign-in."
+
+#: apps/mobile/mobileI18nMessages.ts:25
+msgid "All ("
+msgstr "All ("
+
+#: apps/admin/src/adminI18nMessages.ts:22
+msgid "and return it to your terminal."
+msgstr "and return it to your terminal."
+
+#: apps/mobile/mobileI18nMessages.ts:26
+msgid "Answer:"
+msgstr "Answer:"
+
+#: apps/admin/src/adminI18nMessages.ts:23
+msgid "Any project"
+msgstr "Any project"
+
+#: apps/admin/src/adminI18nMessages.ts:24
+msgid "Any team"
+msgstr "Any team"
+
+#: apps/mobile/mobileI18nMessages.ts:27
+msgid "Approval display"
+msgstr "Approval display"
+
+#: apps/mobile/mobileI18nMessages.ts:28
+msgid "Approval progress"
+msgstr "Approval progress"
+
+#: apps/admin/src/adminI18nMessages.ts:25
+msgid "Approval requests"
+msgstr "Approval requests"
+
+#: apps/admin/src/adminI18nMessages.ts:26
+msgid "Approval rules"
+msgstr "Approval rules"
+
+#: apps/mobile/mobileI18nMessages.ts:29
+msgid "Approvals"
+msgstr "Approvals"
+
+#: apps/mobile/mobileI18nMessages.ts:30
+msgid "approvals · step"
+msgstr "approvals · step"
+
+#: apps/admin/src/adminI18nMessages.ts:27
+msgid "Approvals are locked until setup is complete"
+msgstr "Approvals are locked until setup is complete"
+
+#: apps/admin/src/adminI18nMessages.ts:28
+msgid "Approvals, rules, and team settings stay hidden until there is something real to configure."
+msgstr "Approvals, rules, and team settings stay hidden until there is something real to configure."
+
+#: apps/admin/src/adminI18nMessages.ts:29
+msgid "Approve"
+msgstr "Approve"
+
+#: apps/admin/src/adminI18nMessages.ts:30
+msgid "Archive"
+msgstr "Archive"
+
+#: apps/admin/src/adminI18nMessages.ts:31
+msgid "Audit events"
+msgstr "Audit events"
+
+#: apps/admin/src/adminI18nMessages.ts:32
+msgid "Authorize CLI setup"
+msgstr "Authorize CLI setup"
+
+#: apps/admin/src/adminI18nMessages.ts:33
+msgid "Authorize this browser tab to create an agent token for"
+msgstr "Authorize this browser tab to create an agent token for"
+
+#: apps/mobile/mobileI18nMessages.ts:31
+msgid "Availability"
+msgstr "Availability"
+
+#: apps/mobile/mobileI18nMessages.ts:32
+msgid "Availability update failed"
+msgstr "Availability update failed"
+
+#: apps/mobile/mobileI18nMessages.ts:33
+msgid "Back"
+msgstr "Back"
+
+#: apps/mobile/mobileI18nMessages.ts:34
+msgid "Back to history"
+msgstr "Back to history"
+
+#: apps/admin/src/adminI18nMessages.ts:34
+msgid "Billing seats:"
+msgstr "Billing seats:"
+
+#: apps/mobile/mobileI18nMessages.ts:35
+msgid "Buffered events:"
+msgstr "Buffered events:"
+
+#: apps/mobile/mobileI18nMessages.ts:36
+msgid "Camera Access"
+msgstr "Camera Access"
+
+#: apps/mobile/mobileI18nMessages.ts:37
+msgid "Cancel"
+msgstr "Cancel"
+
+#: apps/mobile/mobileI18nMessages.ts:38
+msgid "Check Connection"
+msgstr "Check Connection"
+
+#: apps/admin/src/adminI18nMessages.ts:35
+msgid "Check for requests"
+msgstr "Check for requests"
+
+#: apps/mobile/mobileI18nMessages.ts:39
+msgid "Checking"
+msgstr "Checking"
+
+#: apps/mobile/mobileI18nMessages.ts:40
+msgid "Checking…"
+msgstr "Checking…"
+
+#: apps/mobile/mobileI18nMessages.ts:41
+msgid "Choice behavior"
+msgstr "Choice behavior"
+
+#: apps/admin/src/adminI18nMessages.ts:36
+msgid "Choose a clear name, quorum, and optional routing scope."
+msgstr "Choose a clear name, quorum, and optional routing scope."
+
+#: apps/mobile/mobileI18nMessages.ts:42
+msgid "Choose a saved account or add another Agent Tick account on this device."
+msgstr "Choose a saved account or add another Agent Tick account on this device."
+
+#: apps/admin/src/adminI18nMessages.ts:37
+msgid "Choose organization member"
+msgstr "Choose organization member"
+
+#: apps/admin/src/adminI18nMessages.ts:38
+msgid "Clerk account entry"
+msgstr "Clerk account entry"
+
+#: apps/admin/src/adminI18nMessages.ts:39
+msgid "CLI setup complete"
+msgstr "CLI setup complete"
+
+#: apps/admin/src/adminI18nMessages.ts:40
+msgid "CLI sign-in"
+msgstr "CLI sign-in"
+
+#: apps/mobile/mobileI18nMessages.ts:43
+msgid "Clickable"
+msgstr "Clickable"
+
+#: apps/mobile/mobileI18nMessages.ts:44
+msgid "Close menu"
+msgstr "Close menu"
+
+#: apps/mobile/mobileI18nMessages.ts:45
+msgid "Command"
+msgstr "Command"
+
+#: apps/mobile/mobileI18nMessages.ts:46
+msgid "Confirm clickable submissions"
+msgstr "Confirm clickable submissions"
+
+#: apps/admin/src/adminI18nMessages.ts:41
+msgid "Connect your agent"
+msgstr "Connect your agent"
+
+#: apps/mobile/mobileI18nMessages.ts:47
+msgid "Connection"
+msgstr "Connection"
+
+#: apps/mobile/mobileI18nMessages.ts:48
+msgid "Context"
+msgstr "Context"
+
+#: apps/mobile/mobileI18nMessages.ts:49
+msgid "Continue"
+msgstr "Continue"
+
+#: apps/admin/src/adminI18nMessages.ts:42
+msgid "Continue with Apple"
+msgstr "Continue with Apple"
+
+#: apps/admin/src/adminI18nMessages.ts:43
+msgid "Continue with GitHub"
+msgstr "Continue with GitHub"
+
+#: apps/admin/src/adminI18nMessages.ts:44
+msgid "Continue with Google"
+msgstr "Continue with Google"
+
+#: apps/admin/src/adminI18nMessages.ts:45
+msgid "Copy"
+msgstr "Copy"
+
+#: apps/admin/src/adminI18nMessages.ts:46
+msgid "Copy invite"
+msgstr "Copy invite"
+
+#: apps/mobile/mobileI18nMessages.ts:50
+msgid "Could not pair this device"
+msgstr "Could not pair this device"
+
+#: apps/mobile/mobileI18nMessages.ts:51
+msgid "Could not reach agenttick.sh."
+msgstr "Could not reach agenttick.sh."
+
+#: apps/mobile/mobileI18nMessages.ts:52
+msgid "Could not read server auth config"
+msgstr "Could not read server auth config"
+
+#: apps/mobile/mobileI18nMessages.ts:53
+msgid "Could not register push notifications"
+msgstr "Could not register push notifications"
+
+#: apps/mobile/mobileI18nMessages.ts:54
+msgid "Could not send diagnostics"
+msgstr "Could not send diagnostics"
+
+#: apps/mobile/mobileI18nMessages.ts:55
+msgid "Could not send response"
+msgstr "Could not send response"
+
+#: apps/mobile/mobileI18nMessages.ts:56
+msgid "Could not update availability"
+msgstr "Could not update availability"
+
+#: apps/admin/src/adminI18nMessages.ts:47
+msgid "Create a rule"
+msgstr "Create a rule"
+
+#: apps/admin/src/adminI18nMessages.ts:48
+msgid "Create a short-lived code, then enter it in the mobile app Settings screen."
+msgstr "Create a short-lived code, then enter it in the mobile app Settings screen."
+
+#: apps/admin/src/adminI18nMessages.ts:49
+msgid "Create invite"
+msgstr "Create invite"
+
+#: apps/admin/src/adminI18nMessages.ts:50
+msgid "Create local organization"
+msgstr "Create local organization"
+
+#: apps/admin/src/adminI18nMessages.ts:51
+msgid "Create organization"
+msgstr "Create organization"
+
+#: apps/admin/src/adminI18nMessages.ts:52
+msgid "Create pairing code"
+msgstr "Create pairing code"
+
+#: apps/admin/src/adminI18nMessages.ts:53
+msgid "Create policy"
+msgstr "Create policy"
+
+#: apps/admin/src/adminI18nMessages.ts:54
+msgid "Create project"
+msgstr "Create project"
+
+#: apps/admin/src/adminI18nMessages.ts:55
+msgid "Create team"
+msgstr "Create team"
+
+#: apps/admin/src/adminI18nMessages.ts:56
+msgid "Create token"
+msgstr "Create token"
+
+#: apps/admin/src/adminI18nMessages.ts:57
+msgid "Create your account first. Then Agent Tick will guide you through one agent token, one CLI setup command, and the mobile app."
+msgstr "Create your account first. Then Agent Tick will guide you through one agent token, one CLI setup command, and the mobile app."
+
+#: apps/admin/src/adminI18nMessages.ts:58
+msgid "Creating an agent token for"
+msgstr "Creating an agent token for"
+
+#: apps/mobile/mobileI18nMessages.ts:57
+msgid "Current"
+msgstr "Current"
+
+#: apps/mobile/mobileI18nMessages.ts:58
+msgid "Current account"
+msgstr "Current account"
+
+#: apps/mobile/mobileI18nMessages.ts:59
+msgid "Decrypt this request before approving or rejecting it."
+msgstr "Decrypt this request before approving or rejecting it."
+
+#: apps/admin/src/adminI18nMessages.ts:59
+msgid "Decrypt this request in the mobile app before approving or rejecting it."
+msgstr "Decrypt this request in the mobile app before approving or rejecting it."
+
+#: apps/admin/src/adminI18nMessages.ts:60
+msgid "Default policy"
+msgstr "Default policy"
+
+#: apps/mobile/mobileI18nMessages.ts:60
+msgid "Deny"
+msgstr "Deny"
+
+#: apps/mobile/mobileI18nMessages.ts:61
+msgid "Development build required"
+msgstr "Development build required"
+
+#: apps/mobile/mobileI18nMessages.ts:62
+msgid "Diagnostics"
+msgstr "Diagnostics"
+
+#: apps/mobile/mobileI18nMessages.ts:63
+msgid "Diagnostics failed"
+msgstr "Diagnostics failed"
+
+#: apps/mobile/mobileI18nMessages.ts:64
+msgid "Diagnostics sent"
+msgstr "Diagnostics sent"
+
+#: apps/mobile/mobileI18nMessages.ts:65
+msgid "Directory"
+msgstr "Directory"
+
+#: apps/mobile/mobileI18nMessages.ts:66
+msgid "Disable"
+msgstr "Disable"
+
+#: apps/mobile/mobileI18nMessages.ts:67
+msgid "Disabled"
+msgstr "Disabled"
+
+#: apps/mobile/mobileI18nMessages.ts:68
+msgid "Dismiss"
+msgstr "Dismiss"
+
+#: apps/mobile/mobileI18nMessages.ts:69
+msgid "Dismiss encrypted request"
+msgstr "Dismiss encrypted request"
+
+#: apps/mobile/mobileI18nMessages.ts:70
+msgid "Dismiss latest agent status"
+msgstr "Dismiss latest agent status"
+
+#: apps/admin/src/adminI18nMessages.ts:61
+msgid "Email invite"
+msgstr "Email invite"
+
+#: apps/mobile/mobileI18nMessages.ts:71
+msgid "Enable"
+msgstr "Enable"
+
+#: apps/mobile/mobileI18nMessages.ts:72
+msgid "Enable approval alerts"
+msgstr "Enable approval alerts"
+
+#: apps/mobile/mobileI18nMessages.ts:73
+msgid "Enable Camera"
+msgstr "Enable Camera"
+
+#: apps/mobile/mobileI18nMessages.ts:74
+msgid "Enable Notifications"
+msgstr "Enable Notifications"
+
+#: apps/mobile/mobileI18nMessages.ts:75
+msgid "Enable notifications first."
+msgstr "Enable notifications first."
+
+#: apps/mobile/mobileI18nMessages.ts:76
+msgid "Enabled"
+msgstr "Enabled"
+
+#: apps/admin/src/adminI18nMessages.ts:62
+msgid "Encrypted request."
+msgstr "Encrypted request."
+
+#: apps/mobile/mobileI18nMessages.ts:77
+msgid "End-to-end encryption"
+msgstr "End-to-end encryption"
+
+#: apps/mobile/mobileI18nMessages.ts:78
+msgid "Enter the code from agent-tick pair."
+msgstr "Enter the code from agent-tick pair."
+
+#: apps/admin/src/adminI18nMessages.ts:63
+msgid "Everything is unlocked on your server"
+msgstr "Everything is unlocked on your server"
+
+#: apps/admin/src/adminI18nMessages.ts:64
+msgid "example.com domain (optional)"
+msgstr "example.com domain (optional)"
+
+#: apps/mobile/mobileI18nMessages.ts:79
+msgid "Expires"
+msgstr "Expires"
+
+#: apps/admin/src/adminI18nMessages.ts:65
+msgid "Expires at"
+msgstr "Expires at"
+
+#: apps/mobile/mobileI18nMessages.ts:80
+msgid "Favorite choice"
+msgstr "Favorite choice"
+
+#: apps/mobile/mobileI18nMessages.ts:81
+msgid "Forget Device"
+msgstr "Forget Device"
+
+#: apps/mobile/mobileI18nMessages.ts:82
+msgid "History"
+msgstr "History"
+
+#: apps/mobile/mobileI18nMessages.ts:83
+msgid "Host"
+msgstr "Host"
+
+#: apps/admin/src/adminI18nMessages.ts:66
+msgid "I installed the mobile app"
+msgstr "I installed the mobile app"
+
+#: apps/admin/src/adminI18nMessages.ts:67
+msgid "Install Agent Tick mobile and sign in with the same account. This button refreshes setup state, and registers a deterministic device only in test mode."
+msgstr "Install Agent Tick mobile and sign in with the same account. This button refreshes setup state, and registers a deterministic device only in test mode."
+
+#: apps/mobile/mobileI18nMessages.ts:84
+msgid "Invalid QR code"
+msgstr "Invalid QR code"
+
+#: apps/admin/src/adminI18nMessages.ts:68
+msgid "Invite created:"
+msgstr "Invite created:"
+
+#: apps/admin/src/adminI18nMessages.ts:69
+msgid "Invite domain"
+msgstr "Invite domain"
+
+#: apps/admin/src/adminI18nMessages.ts:70
+msgid "Invite email"
+msgstr "Invite email"
+
+#: apps/admin/src/adminI18nMessages.ts:71
+msgid "Invite label"
+msgstr "Invite label"
+
+#: apps/admin/src/adminI18nMessages.ts:72
+msgid "Invite role"
+msgstr "Invite role"
+
+#: apps/admin/src/adminI18nMessages.ts:73
+msgid "Invite team"
+msgstr "Invite team"
+
+#: apps/admin/src/adminI18nMessages.ts:74
+msgid "invited you as"
+msgstr "invited you as"
+
+#: apps/admin/src/adminI18nMessages.ts:75
+msgid "Invites"
+msgstr "Invites"
+
+#: apps/mobile/mobileI18nMessages.ts:85
+msgid "key or passphrase"
+msgstr "key or passphrase"
+
+#: apps/admin/src/adminI18nMessages.ts:76
+msgid "Label (optional)"
+msgstr "Label (optional)"
+
+#: apps/mobile/mobileI18nMessages.ts:86
 msgid "Language"
 msgstr "Language"
 
-#: apps/admin/src/adminI18nMessages.ts:11
+#: apps/mobile/mobileI18nMessages.ts:87
+msgid "Latest agent status"
+msgstr "Latest agent status"
+
+#: apps/mobile/mobileI18nMessages.ts:88
+msgid "Loading Agent Tick…"
+msgstr "Loading Agent Tick…"
+
+#: apps/admin/src/adminI18nMessages.ts:77
+msgid "Loading invite…"
+msgstr "Loading invite…"
+
+#: apps/admin/src/adminI18nMessages.ts:78
+msgid "Loading sign-in configuration…"
+msgstr "Loading sign-in configuration…"
+
+#: apps/mobile/mobileI18nMessages.ts:89
+msgid "Manual Bearer Token"
+msgstr "Manual Bearer Token"
+
+#: apps/mobile/mobileI18nMessages.ts:90
+msgid "Manual Pairing Code"
+msgstr "Manual Pairing Code"
+
+#: apps/admin/src/adminI18nMessages.ts:79
+msgid "Member"
+msgstr "Member"
+
+#: apps/mobile/mobileI18nMessages.ts:91
+msgid "Menu"
+msgstr "Menu"
+
+#: apps/admin/src/adminI18nMessages.ts:80
+msgid "Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs."
+msgstr "Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs."
+
+#: apps/mobile/mobileI18nMessages.ts:92
+msgid "Next ›"
+msgstr "Next ›"
+
+#: apps/mobile/mobileI18nMessages.ts:93
+msgid "Next history item"
+msgstr "Next history item"
+
+#: apps/mobile/mobileI18nMessages.ts:94
+msgid "Next:"
+msgstr "Next:"
+
+#: apps/admin/src/adminI18nMessages.ts:81
+msgid "No active or historical invites yet."
+msgstr "No active or historical invites yet."
+
+#: apps/mobile/mobileI18nMessages.ts:95
+msgid "No approval history yet."
+msgstr "No approval history yet."
+
+#: apps/admin/src/adminI18nMessages.ts:82
+msgid "No approval requests yet."
+msgstr "No approval requests yet."
+
+#: apps/admin/src/adminI18nMessages.ts:83
+msgid "No audit events yet."
+msgstr "No audit events yet."
+
+#: apps/admin/src/adminI18nMessages.ts:84
+msgid "No empty queue, policies, or audit console yet. Complete the current setup step first."
+msgstr "No empty queue, policies, or audit console yet. Complete the current setup step first."
+
+#: apps/mobile/mobileI18nMessages.ts:96
+msgid "No local Agent Tick organizations loaded yet."
+msgstr "No local Agent Tick organizations loaded yet."
+
+#: apps/admin/src/adminI18nMessages.ts:85
+msgid "No local organization memberships loaded yet."
+msgstr "No local organization memberships loaded yet."
+
+#: apps/admin/src/adminI18nMessages.ts:86
+msgid "No pending organization membership requests."
+msgstr "No pending organization membership requests."
+
+#: apps/admin/src/adminI18nMessages.ts:87
+msgid "No policies yet. Create a local approval policy to start modeling quorum and project/team routing."
+msgstr "No policies yet. Create a local approval policy to start modeling quorum and project/team routing."
+
+#: apps/admin/src/adminI18nMessages.ts:88
+msgid "No projects yet. Projects let agent tokens and approvals carry local workspace context."
+msgstr "No projects yet. Projects let agent tokens and approvals carry local workspace context."
+
+#: apps/admin/src/adminI18nMessages.ts:89
+msgid "No team"
+msgstr "No team"
+
+#: apps/admin/src/adminI18nMessages.ts:90
+msgid "No teams yet. Teams will back policy routing and quorum approval rules."
+msgstr "No teams yet. Teams will back policy routing and quorum approval rules."
+
+#: apps/mobile/mobileI18nMessages.ts:97
+msgid "Not Asked"
+msgstr "Not Asked"
+
+#: apps/mobile/mobileI18nMessages.ts:98
+msgid "Notifications"
+msgstr "Notifications"
+
+#: apps/mobile/mobileI18nMessages.ts:99
+msgid "Notifications are off"
+msgstr "Notifications are off"
+
+#: apps/mobile/mobileI18nMessages.ts:100
+msgid "Notifications are working."
+msgstr "Notifications are working."
+
+#: apps/mobile/mobileI18nMessages.ts:101
+msgid "Off"
+msgstr "Off"
+
+#: apps/mobile/mobileI18nMessages.ts:102
+msgid "Off in Agent Tick"
+msgstr "Off in Agent Tick"
+
+#: apps/mobile/mobileI18nMessages.ts:103
+msgid "Off in system settings"
+msgstr "Off in system settings"
+
+#: apps/mobile/mobileI18nMessages.ts:104
+msgid "On"
+msgstr "On"
+
+#: apps/mobile/mobileI18nMessages.ts:105
+msgid "Open $"
+msgstr "Open $"
+
+#: apps/mobile/mobileI18nMessages.ts:106
+msgid "Open history item $"
+msgstr "Open history item $"
+
+#: apps/mobile/mobileI18nMessages.ts:107
+msgid "Open menu"
+msgstr "Open menu"
+
+#: apps/admin/src/adminI18nMessages.ts:91
+msgid "Open the mobile app and add the E2EE key in Settings to decrypt the title, body, and command before responding."
+msgstr "Open the mobile app and add the E2EE key in Settings to decrypt the title, body, and command before responding."
+
+#: apps/mobile/mobileI18nMessages.ts:108
+msgid "Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets."
+msgstr "Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets."
+
+#: apps/admin/src/adminI18nMessages.ts:92
+msgid "Optional for localhost single mode"
+msgstr "Optional for localhost single mode"
+
+#: apps/mobile/mobileI18nMessages.ts:109
+msgid "Optional message"
+msgstr "Optional message"
+
+#: apps/mobile/mobileI18nMessages.ts:110
+msgid "Options:"
+msgstr "Options:"
+
+#: apps/admin/src/adminI18nMessages.ts:93
+msgid "or continue with email"
+msgstr "or continue with email"
+
+#: apps/mobile/mobileI18nMessages.ts:111
+msgid "Org: $"
+msgstr "Org: $"
+
+#: apps/admin/src/adminI18nMessages.ts:94
+msgid "Organization invite"
+msgstr "Organization invite"
+
+#: apps/admin/src/adminI18nMessages.ts:95
+msgid "Organization name"
+msgstr "Organization name"
+
+#: apps/mobile/mobileI18nMessages.ts:112
+msgid "Owner"
+msgstr "Owner"
+
+#: apps/admin/src/adminI18nMessages.ts:96
+msgid "Pair a phone"
+msgstr "Pair a phone"
+
+#: apps/mobile/mobileI18nMessages.ts:113
+msgid "Pair first"
+msgstr "Pair first"
+
+#: apps/mobile/mobileI18nMessages.ts:114
+msgid "Pair Manually"
+msgstr "Pair Manually"
+
+#: apps/mobile/mobileI18nMessages.ts:115
+msgid "Pair this device before registering push notifications."
+msgstr "Pair this device before registering push notifications."
+
+#: apps/mobile/mobileI18nMessages.ts:116
+msgid "Paired"
+msgstr "Paired"
+
+#: apps/mobile/mobileI18nMessages.ts:117
+msgid "Pairing"
+msgstr "Pairing"
+
+#: apps/mobile/mobileI18nMessages.ts:118
+msgid "Pairing code required"
+msgstr "Pairing code required"
+
+#: apps/mobile/mobileI18nMessages.ts:119
+msgid "Pairing failed"
+msgstr "Pairing failed"
+
+#: apps/mobile/mobileI18nMessages.ts:120
+msgid "Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally."
+msgstr "Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally."
+
+#: apps/admin/src/adminI18nMessages.ts:97
+msgid "Pending members"
+msgstr "Pending members"
+
+#: apps/admin/src/adminI18nMessages.ts:98
+msgid "Policy"
+msgstr "Policy"
+
+#: apps/admin/src/adminI18nMessages.ts:99
+msgid "Policy name"
+msgstr "Policy name"
+
+#: apps/mobile/mobileI18nMessages.ts:121
+msgid "Previous history item"
+msgstr "Previous history item"
+
+#: apps/admin/src/adminI18nMessages.ts:100
+msgid "Production deploys"
+msgstr "Production deploys"
+
+#: apps/admin/src/adminI18nMessages.ts:101
+msgid "Project"
+msgstr "Project"
+
+#: apps/admin/src/adminI18nMessages.ts:102
+msgid "Project name"
+msgstr "Project name"
+
+#: apps/admin/src/adminI18nMessages.ts:103
+msgid "Projects"
+msgstr "Projects"
+
+#: apps/mobile/mobileI18nMessages.ts:122
+msgid "Push Registered"
+msgstr "Push Registered"
+
+#: apps/mobile/mobileI18nMessages.ts:123
+msgid "Push registration failed"
+msgstr "Push registration failed"
+
+#: apps/mobile/mobileI18nMessages.ts:124
+msgid "Push:"
+msgstr "Push:"
+
+#: apps/mobile/mobileI18nMessages.ts:125
+msgid "Questions"
+msgstr "Questions"
+
+#: apps/mobile/mobileI18nMessages.ts:126
 msgid "Refresh"
 msgstr "Refresh"
 
-#: apps/admin/src/adminI18nMessages.ts:10
-msgid "Refreshing…"
-msgstr "Refreshing…"
+#: apps/admin/src/adminI18nMessages.ts:104
+msgid "Refresh approvals"
+msgstr "Refresh approvals"
 
-#: apps/admin/src/adminI18nMessages.ts:9
+#: apps/admin/src/adminI18nMessages.ts:105
+msgid "Refresh audit"
+msgstr "Refresh audit"
+
+#: apps/admin/src/adminI18nMessages.ts:106
+msgid "Refresh invites"
+msgstr "Refresh invites"
+
+#: apps/admin/src/adminI18nMessages.ts:107
+msgid "Refresh pending members"
+msgstr "Refresh pending members"
+
+#: apps/admin/src/adminI18nMessages.ts:108
+msgid "Refresh policies"
+msgstr "Refresh policies"
+
+#: apps/admin/src/adminI18nMessages.ts:109
+msgid "Refresh projects"
+msgstr "Refresh projects"
+
+#: apps/admin/src/adminI18nMessages.ts:110
+msgid "Refresh requests"
+msgstr "Refresh requests"
+
+#: apps/admin/src/adminI18nMessages.ts:111
+msgid "Refresh teams"
+msgstr "Refresh teams"
+
+#: apps/mobile/mobileI18nMessages.ts:127
+msgid "Register Push"
+msgstr "Register Push"
+
+#: apps/mobile/mobileI18nMessages.ts:128
+msgid "Registered"
+msgstr "Registered"
+
+#: apps/admin/src/adminI18nMessages.ts:112
+msgid "Reject"
+msgstr "Reject"
+
+#: apps/mobile/mobileI18nMessages.ts:129
+msgid "Remote push needs a real EAS project id. Pairing still works; use local notifications until an EAS development build is configured."
+msgstr "Remote push needs a real EAS project id. Pairing still works; use local notifications until an EAS development build is configured."
+
+#: apps/admin/src/adminI18nMessages.ts:113
+msgid "Remove"
+msgstr "Remove"
+
+#: apps/mobile/mobileI18nMessages.ts:130
+msgid "Request ID"
+msgstr "Request ID"
+
+#: apps/mobile/mobileI18nMessages.ts:131
+msgid "Requested"
+msgstr "Requested"
+
+#: apps/mobile/mobileI18nMessages.ts:132
+msgid "Requester"
+msgstr "Requester"
+
+#: apps/admin/src/adminI18nMessages.ts:114
+msgid "Requests, agent tokens, and devices use this local Agent Tick organization. Clerk organizations are not used for authorization."
+msgstr "Requests, agent tokens, and devices use this local Agent Tick organization. Clerk organizations are not used for authorization."
+
+#: apps/admin/src/adminI18nMessages.ts:115
+msgid "Required approvals"
+msgstr "Required approvals"
+
+#: apps/mobile/mobileI18nMessages.ts:133
+msgid "Responded"
+msgstr "Responded"
+
+#: apps/mobile/mobileI18nMessages.ts:134
+msgid "Response failed"
+msgstr "Response failed"
+
+#: apps/mobile/mobileI18nMessages.ts:135
+msgid "Response message"
+msgstr "Response message"
+
+#: apps/admin/src/adminI18nMessages.ts:116
+msgid "Response:"
+msgstr "Response:"
+
+#: apps/admin/src/adminI18nMessages.ts:117
+msgid "Retry"
+msgstr "Retry"
+
+#: apps/admin/src/adminI18nMessages.ts:118
+msgid "Retry preview"
+msgstr "Retry preview"
+
+#: apps/mobile/mobileI18nMessages.ts:136
+msgid "Retry sign-in"
+msgstr "Retry sign-in"
+
+#: apps/admin/src/adminI18nMessages.ts:119
+msgid "Revoke"
+msgstr "Revoke"
+
+#: apps/admin/src/adminI18nMessages.ts:120
+msgid "Route approvals to the right humans"
+msgstr "Route approvals to the right humans"
+
+#: apps/mobile/mobileI18nMessages.ts:137
+msgid "Routing"
+msgstr "Routing"
+
+#: apps/admin/src/adminI18nMessages.ts:121
+msgid "Save token"
+msgstr "Save token"
+
+#: apps/mobile/mobileI18nMessages.ts:138
+msgid "Scan Pairing QR"
+msgstr "Scan Pairing QR"
+
+#: apps/mobile/mobileI18nMessages.ts:139
+msgid "Scan the QR code from"
+msgstr "Scan the QR code from"
+
+#: apps/admin/src/adminI18nMessages.ts:122
+msgid "Secured by Clerk"
+msgstr "Secured by Clerk"
+
+#: apps/mobile/mobileI18nMessages.ts:140
+msgid "Select + send"
+msgstr "Select + send"
+
+#: apps/mobile/mobileI18nMessages.ts:141
+msgid "Select all that apply"
+msgstr "Select all that apply"
+
+#: apps/mobile/mobileI18nMessages.ts:142
+msgid "Select one"
+msgstr "Select one"
+
+#: apps/admin/src/adminI18nMessages.ts:123
+msgid "Self-hosted admin"
+msgstr "Self-hosted admin"
+
+#: apps/mobile/mobileI18nMessages.ts:143
+msgid "Self-hosted server URL"
+msgstr "Self-hosted server URL"
+
+#: apps/mobile/mobileI18nMessages.ts:144
+msgid "Self-hosting Agent Tick?"
+msgstr "Self-hosting Agent Tick?"
+
+#: apps/mobile/mobileI18nMessages.ts:145
+msgid "Send decision"
+msgstr "Send decision"
+
+#: apps/mobile/mobileI18nMessages.ts:146
+msgid "Send Snapshot"
+msgstr "Send Snapshot"
+
+#: apps/mobile/mobileI18nMessages.ts:147
+msgid "Send this decision?"
+msgstr "Send this decision?"
+
+#: apps/mobile/mobileI18nMessages.ts:148
+msgid "Sent $ diagnostic event$ ."
+msgstr "Sent $ diagnostic event$ ."
+
+#: apps/mobile/mobileI18nMessages.ts:149
+msgid "Server discovery failed"
+msgstr "Server discovery failed"
+
+#: apps/mobile/mobileI18nMessages.ts:150
+msgid "Server saved"
+msgstr "Server saved"
+
+#: apps/mobile/mobileI18nMessages.ts:151
+msgid "Server URL"
+msgstr "Server URL"
+
+#: apps/mobile/mobileI18nMessages.ts:152
+msgid "session:$"
+msgstr "session:$"
+
+#: apps/mobile/mobileI18nMessages.ts:153
+msgid "Settings"
+msgstr "Settings"
+
+#: apps/admin/src/adminI18nMessages.ts:124
+msgid "Setup complete"
+msgstr "Setup complete"
+
+#: apps/admin/src/adminI18nMessages.ts:125
+msgid "Setup complete. Redirecting back to your terminal…"
+msgstr "Setup complete. Redirecting back to your terminal…"
+
+#: apps/admin/src/adminI18nMessages.ts:126
+msgid "Sign in above to finish setting up the Agent Tick CLI. Agent Tick will redirect back to your terminal automatically."
+msgstr "Sign in above to finish setting up the Agent Tick CLI. Agent Tick will redirect back to your terminal automatically."
+
+#: apps/admin/src/adminI18nMessages.ts:127
+msgid "Sign in or create account"
+msgstr "Sign in or create account"
+
+#: apps/admin/src/adminI18nMessages.ts:128
+msgid "Sign in or create an account above to accept this invite. Agent Tick will continue automatically after sign-in."
+msgstr "Sign in or create an account above to accept this invite. Agent Tick will continue automatically after sign-in."
+
+#: apps/mobile/mobileI18nMessages.ts:154
+msgid "Sign in to Agent Tick"
+msgstr "Sign in to Agent Tick"
+
+#: apps/mobile/mobileI18nMessages.ts:155
+msgid "Sign in to agenttick.sh"
+msgstr "Sign in to agenttick.sh"
+
+#: apps/mobile/mobileI18nMessages.ts:156
+msgid "Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server."
+msgstr "Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server."
+
+#: apps/mobile/mobileI18nMessages.ts:157
+msgid "Sign in with Clerk to use this Agent Tick server."
+msgstr "Sign in with Clerk to use this Agent Tick server."
+
+#: apps/admin/src/adminI18nMessages.ts:129
+msgid "Sign out"
+msgstr "Sign out"
+
+#: apps/mobile/mobileI18nMessages.ts:158
+msgid "Sign Out"
+msgstr "Sign Out"
+
+#: apps/mobile/mobileI18nMessages.ts:159
+msgid "signInOrUp"
+msgstr "signInOrUp"
+
+#: apps/admin/src/adminI18nMessages.ts:130
+msgid "Solo workspace"
+msgstr "Solo workspace"
+
+#: apps/admin/src/adminI18nMessages.ts:131
+msgid "Start here"
+msgstr "Start here"
+
+#: apps/admin/src/adminI18nMessages.ts:132
+msgid "Start simple, then scope rules by project or team when your organization grows."
+msgstr "Start simple, then scope rules by project or team when your organization grows."
+
+#: apps/mobile/mobileI18nMessages.ts:160
+msgid "Status:"
+msgstr "Status:"
+
+#: apps/mobile/mobileI18nMessages.ts:161
+msgid "Sticky bottom"
+msgstr "Sticky bottom"
+
+#: apps/admin/src/adminI18nMessages.ts:133
+msgid "Submit answers"
+msgstr "Submit answers"
+
+#: apps/mobile/mobileI18nMessages.ts:162
+msgid "Submit Answers"
+msgstr "Submit Answers"
+
+#: apps/mobile/mobileI18nMessages.ts:163
+msgid "Switch accounts ›"
+msgstr "Switch accounts ›"
+
+#: apps/mobile/mobileI18nMessages.ts:164
+msgid "Switch to $"
+msgstr "Switch to $"
+
+#: apps/mobile/mobileI18nMessages.ts:165
 msgid "System"
 msgstr "System"
+
+#: apps/admin/src/adminI18nMessages.ts:134
+msgid "Team"
+msgstr "Team"
+
+#: apps/mobile/mobileI18nMessages.ts:166
+msgid "Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve."
+msgstr "Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve."
+
+#: apps/admin/src/adminI18nMessages.ts:135
+msgid "Team name"
+msgstr "Team name"
+
+#: apps/admin/src/adminI18nMessages.ts:136
+msgid "Team role"
+msgstr "Team role"
+
+#: apps/admin/src/adminI18nMessages.ts:137
+msgid "teammate@example.com (optional)"
+msgstr "teammate@example.com (optional)"
+
+#: apps/admin/src/adminI18nMessages.ts:138
+msgid "Teams"
+msgstr "Teams"
+
+#: apps/mobile/mobileI18nMessages.ts:167
+msgid "Test"
+msgstr "Test"
+
+#: apps/admin/src/adminI18nMessages.ts:139
+msgid "The mobile app is the primary approval surface. Use the same Clerk account on your phone."
+msgstr "The mobile app is the primary approval surface. Use the same Clerk account on your phone."
+
+#: apps/mobile/mobileI18nMessages.ts:168
+msgid "The mobile app signs in to agenttick.sh by default. Use a custom server only when you self-host Agent Tick."
+msgstr "The mobile app signs in to agenttick.sh by default. Use a custom server only when you self-host Agent Tick."
+
+#: apps/admin/src/adminI18nMessages.ts:140
+msgid "The plaintext token is shown once. Agent Tick stores only a hash. New members remain pending until an admin approves them."
+msgstr "The plaintext token is shown once. Agent Tick stores only a hash. New members remain pending until an admin approves them."
+
+#: apps/admin/src/adminI18nMessages.ts:141
+msgid "This dashboard is focused on your personal approval workflow. Team administration is available when you upgrade or self-host."
+msgstr "This dashboard is focused on your personal approval workflow. Team administration is available when you upgrade or self-host."
+
+#: apps/mobile/mobileI18nMessages.ts:169
+msgid "This device can now receive approval requests."
+msgstr "This device can now receive approval requests."
+
+#: apps/mobile/mobileI18nMessages.ts:170
+msgid "This does not look like an Agent Tick pairing code."
+msgstr "This does not look like an Agent Tick pairing code."
+
+#: apps/mobile/mobileI18nMessages.ts:171
+msgid "This request is read-only."
+msgstr "This request is read-only."
+
+#: apps/mobile/mobileI18nMessages.ts:172
+msgid "to connect."
+msgstr "to connect."
+
+#: apps/mobile/mobileI18nMessages.ts:173
+msgid "Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding."
+msgstr "Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding."
+
+#: apps/mobile/mobileI18nMessages.ts:174
+msgid "Turn Off"
+msgstr "Turn Off"
+
+#: apps/mobile/mobileI18nMessages.ts:175
+msgid "Turn On"
+msgstr "Turn On"
+
+#: apps/mobile/mobileI18nMessages.ts:176
+msgid "Turn on notifications before registering push notifications."
+msgstr "Turn on notifications before registering push notifications."
+
+#: apps/mobile/mobileI18nMessages.ts:177
+msgid "Turn on notifications in Agent Tick first."
+msgstr "Turn on notifications in Agent Tick first."
+
+#: apps/admin/src/adminI18nMessages.ts:142
+msgid "Upgrade for teams"
+msgstr "Upgrade for teams"
+
+#: apps/mobile/mobileI18nMessages.ts:178
+msgid "Use a self-hosted server instead"
+msgstr "Use a self-hosted server instead"
+
+#: apps/mobile/mobileI18nMessages.ts:179
+msgid "Use agenttick.sh"
+msgstr "Use agenttick.sh"
+
+#: apps/admin/src/adminI18nMessages.ts:143
+msgid "Use it with:"
+msgstr "Use it with:"
+
+#: apps/mobile/mobileI18nMessages.ts:180
+msgid "Use Self-hosted Server"
+msgstr "Use Self-hosted Server"
+
+#: apps/admin/src/adminI18nMessages.ts:144
+msgid "Use the admin token to manage local users, teams, policies, devices, and agent tokens."
+msgstr "Use the admin token to manage local users, teams, policies, devices, and agent tokens."
+
+#: apps/mobile/mobileI18nMessages.ts:181
+msgid "Waiting"
+msgstr "Waiting"
+
+#: apps/admin/src/adminI18nMessages.ts:145
+msgid "Waiting for mobile sign-in"
+msgstr "Waiting for mobile sign-in"
+
+#: apps/mobile/mobileI18nMessages.ts:182
+msgid "Workspace"
+msgstr "Workspace"
+
+#: apps/admin/src/adminI18nMessages.ts:146
+msgid "You can now send a real test request from the CLI. Web approvals can be enabled as a secondary surface later."
+msgstr "You can now send a real test request from the CLI. Web approvals can be enabled as a secondary surface later."
+
+#: apps/admin/src/adminI18nMessages.ts:147
+msgid "You're signed in and ready to connect an agent"
+msgstr "You're signed in and ready to connect an agent"
+
+#: apps/admin/src/adminI18nMessages.ts:148
+msgid "Your access will appear in the organization selector after an admin approves this request."
+msgstr "Your access will appear in the organization selector after an admin approves this request."
+
+#: apps/admin/src/adminI18nMessages.ts:149
+msgid "Your organization requests"
+msgstr "Your organization requests"
