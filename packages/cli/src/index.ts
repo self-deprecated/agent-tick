@@ -172,7 +172,6 @@ export function createProgram(): Command {
     .option('--choice <choice>', 'steering choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
     .option('--choice-flag <choice=flag>', 'choice UI flag, repeatable: choiceId=favorite|production|destructive|...', collectOption, [])
     .option('--choice-tag <choice=tag>', 'choice display tag, repeatable: choiceId=tag', collectOption, [])
-    .option('--allow-freeform-reply', 'allow the responder to send a freeform message')
     .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
     .option('--json', 'print machine-readable JSON events')
     .addHelpText('after', steeringHelpText)
@@ -1191,8 +1190,7 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
     ...(encryptedPayload ? { body: 'Open Agent Tick to decrypt this request.' } : options.body ? { body: options.body } : {}),
     ...(encryptedPayload || !options.command ? {} : { command: options.command }),
     ...(encryptedPayload ? { encryptedPayload } : {}),
-    ...(choices.length ? { choices } : {}),
-    ...(options.allowFreeformReply ? { allowFreeformReply: true } : {})
+    ...(choices.length ? { choices } : {})
   });
   const request = created.request;
   if (encryptedPayload && !request.encryptedPayload) {
@@ -1447,7 +1445,6 @@ interface RequestOptions extends ClientOptions {
   choice?: string[];
   choiceFlag?: string[];
   choiceTag?: string[];
-  allowFreeformReply?: boolean;
   hookChoices?: ChoiceInput[];
   timeout?: string;
   json?: boolean;
