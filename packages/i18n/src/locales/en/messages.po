@@ -70,18 +70,22 @@ msgid "3. Install and sign into mobile"
 msgstr "3. Install and sign into mobile"
 
 #: apps/mobile/mobileI18nMessages.ts:10
+msgid "Account"
+msgstr "Account"
+
+#: apps/mobile/mobileI18nMessages.ts:11
 msgid "Account switch failed"
 msgstr "Account switch failed"
 
-#: apps/mobile/mobileI18nMessages.ts:11
+#: apps/mobile/mobileI18nMessages.ts:12
 msgid "Accounts"
 msgstr "Accounts"
 
-#: apps/mobile/mobileI18nMessages.ts:12
+#: apps/mobile/mobileI18nMessages.ts:13
 msgid "Action placement"
 msgstr "Action placement"
 
-#: apps/mobile/mobileI18nMessages.ts:13
+#: apps/mobile/mobileI18nMessages.ts:14
 msgid "Active"
 msgstr "Active"
 
@@ -89,15 +93,15 @@ msgstr "Active"
 msgid "Active local organization"
 msgstr "Active local organization"
 
-#: apps/mobile/mobileI18nMessages.ts:14
+#: apps/mobile/mobileI18nMessages.ts:15
 msgid "Add agenttick.sh account"
 msgstr "Add agenttick.sh account"
 
-#: apps/mobile/mobileI18nMessages.ts:15
+#: apps/mobile/mobileI18nMessages.ts:16
 msgid "Add another account"
 msgstr "Add another account"
 
-#: apps/mobile/mobileI18nMessages.ts:16
+#: apps/mobile/mobileI18nMessages.ts:17
 msgid "Add E2EE Key in Settings"
 msgstr "Add E2EE Key in Settings"
 
@@ -109,15 +113,15 @@ msgstr "Add member"
 msgid "Admin token"
 msgstr "Admin token"
 
-#: apps/mobile/mobileI18nMessages.ts:17
+#: apps/mobile/mobileI18nMessages.ts:18
 msgid "Advanced"
 msgstr "Advanced"
 
-#: apps/mobile/mobileI18nMessages.ts:18
+#: apps/mobile/mobileI18nMessages.ts:19
 msgid "After content"
 msgstr "After content"
 
-#: apps/mobile/mobileI18nMessages.ts:19
+#: apps/mobile/mobileI18nMessages.ts:20
 msgid "Agent"
 msgstr "Agent"
 
@@ -125,7 +129,7 @@ msgstr "Agent"
 msgid "Agent name"
 msgstr "Agent name"
 
-#: apps/mobile/mobileI18nMessages.ts:20
+#: apps/mobile/mobileI18nMessages.ts:21
 msgid "Agent Tick can follow your device language or use a language you choose here."
 msgstr "Agent Tick can follow your device language or use a language you choose here."
 
@@ -137,7 +141,7 @@ msgstr "Agent Tick marks the CLI connected after the token is used by your agent
 msgid "Agent Tick received a request from your token. You can create more tokens later from team settings or self-hosted admin mode."
 msgstr "Agent Tick received a request from your token. You can create more tokens later from team settings or self-hosted admin mode."
 
-#: apps/mobile/mobileI18nMessages.ts:21
+#: apps/mobile/mobileI18nMessages.ts:22
 msgid "Agent Tick shares coarse last-seen and availability with your team so on-call and recently-active policies can route approvals. Use Do Not Disturb or Off-call when you should not be interrupted."
 msgstr "Agent Tick shares coarse last-seen and availability with your team so on-call and recently-active policies can route approvals. Use Do Not Disturb or Off-call when you should not be interrupted."
 
@@ -145,11 +149,11 @@ msgstr "Agent Tick shares coarse last-seen and availability with your team so on
 msgid "Agent Tick stays focused on setup until your account, CLI, and mobile app are ready. Approval requests are hidden until a real agent can send them to your phone."
 msgstr "Agent Tick stays focused on setup until your account, CLI, and mobile app are ready. Approval requests are hidden until a real agent can send them to your phone."
 
-#: apps/mobile/mobileI18nMessages.ts:22
+#: apps/mobile/mobileI18nMessages.ts:23
 msgid "Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed."
 msgstr "Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed."
 
-#: apps/mobile/mobileI18nMessages.ts:23
+#: apps/mobile/mobileI18nMessages.ts:24
 msgid "agent-tick pair"
 msgstr "agent-tick pair"
 
@@ -157,11 +161,11 @@ msgstr "agent-tick pair"
 msgid "agent-tick setup --server --token"
 msgstr "agent-tick setup --server --token"
 
-#: apps/mobile/mobileI18nMessages.ts:24
+#: apps/mobile/mobileI18nMessages.ts:25
 msgid "agenttick.sh did not advertise Clerk sign-in."
 msgstr "agenttick.sh did not advertise Clerk sign-in."
 
-#: apps/mobile/mobileI18nMessages.ts:25
+#: apps/mobile/mobileI18nMessages.ts:26
 msgid "All ("
 msgstr "All ("
 
@@ -169,7 +173,7 @@ msgstr "All ("
 msgid "and return it to your terminal."
 msgstr "and return it to your terminal."
 
-#: apps/mobile/mobileI18nMessages.ts:26
+#: apps/mobile/mobileI18nMessages.ts:27
 msgid "Answer:"
 msgstr "Answer:"
 
@@ -181,11 +185,11 @@ msgstr "Any project"
 msgid "Any team"
 msgstr "Any team"
 
-#: apps/mobile/mobileI18nMessages.ts:27
+#: apps/mobile/mobileI18nMessages.ts:28
 msgid "Approval display"
 msgstr "Approval display"
 
-#: apps/mobile/mobileI18nMessages.ts:28
+#: apps/mobile/mobileI18nMessages.ts:29
 msgid "Approval progress"
 msgstr "Approval progress"
 
@@ -197,11 +201,11 @@ msgstr "Approval requests"
 msgid "Approval rules"
 msgstr "Approval rules"
 
-#: apps/mobile/mobileI18nMessages.ts:29
+#: apps/mobile/mobileI18nMessages.ts:30
 msgid "Approvals"
 msgstr "Approvals"
 
-#: apps/mobile/mobileI18nMessages.ts:30
+#: apps/mobile/mobileI18nMessages.ts:31
 msgid "approvals · step"
 msgstr "approvals · step"
 
@@ -233,19 +237,19 @@ msgstr "Authorize CLI setup"
 msgid "Authorize this browser tab to create an agent token for"
 msgstr "Authorize this browser tab to create an agent token for"
 
-#: apps/mobile/mobileI18nMessages.ts:31
+#: apps/mobile/mobileI18nMessages.ts:32
 msgid "Availability"
 msgstr "Availability"
 
-#: apps/mobile/mobileI18nMessages.ts:32
+#: apps/mobile/mobileI18nMessages.ts:33
 msgid "Availability update failed"
 msgstr "Availability update failed"
 
-#: apps/mobile/mobileI18nMessages.ts:33
+#: apps/mobile/mobileI18nMessages.ts:34
 msgid "Back"
 msgstr "Back"
 
-#: apps/mobile/mobileI18nMessages.ts:34
+#: apps/mobile/mobileI18nMessages.ts:35
 msgid "Back to history"
 msgstr "Back to history"
 
@@ -253,19 +257,19 @@ msgstr "Back to history"
 msgid "Billing seats:"
 msgstr "Billing seats:"
 
-#: apps/mobile/mobileI18nMessages.ts:35
+#: apps/mobile/mobileI18nMessages.ts:36
 msgid "Buffered events:"
 msgstr "Buffered events:"
 
-#: apps/mobile/mobileI18nMessages.ts:36
+#: apps/mobile/mobileI18nMessages.ts:37
 msgid "Camera Access"
 msgstr "Camera Access"
 
-#: apps/mobile/mobileI18nMessages.ts:37
+#: apps/mobile/mobileI18nMessages.ts:38
 msgid "Cancel"
 msgstr "Cancel"
 
-#: apps/mobile/mobileI18nMessages.ts:38
+#: apps/mobile/mobileI18nMessages.ts:39
 msgid "Check Connection"
 msgstr "Check Connection"
 
@@ -273,15 +277,19 @@ msgstr "Check Connection"
 msgid "Check for requests"
 msgstr "Check for requests"
 
-#: apps/mobile/mobileI18nMessages.ts:39
+#: apps/mobile/mobileI18nMessages.ts:40
 msgid "Checking"
 msgstr "Checking"
 
-#: apps/mobile/mobileI18nMessages.ts:40
+#: apps/mobile/mobileI18nMessages.ts:41
+msgid "Checking pending approvals…"
+msgstr "Checking pending approvals…"
+
+#: apps/mobile/mobileI18nMessages.ts:42
 msgid "Checking…"
 msgstr "Checking…"
 
-#: apps/mobile/mobileI18nMessages.ts:41
+#: apps/mobile/mobileI18nMessages.ts:43
 msgid "Choice behavior"
 msgstr "Choice behavior"
 
@@ -289,7 +297,7 @@ msgstr "Choice behavior"
 msgid "Choose a clear name, quorum, and optional routing scope."
 msgstr "Choose a clear name, quorum, and optional routing scope."
 
-#: apps/mobile/mobileI18nMessages.ts:42
+#: apps/mobile/mobileI18nMessages.ts:44
 msgid "Choose a saved account or add another Agent Tick account on this device."
 msgstr "Choose a saved account or add another Agent Tick account on this device."
 
@@ -309,19 +317,19 @@ msgstr "CLI setup complete"
 msgid "CLI sign-in"
 msgstr "CLI sign-in"
 
-#: apps/mobile/mobileI18nMessages.ts:43
+#: apps/mobile/mobileI18nMessages.ts:45
 msgid "Clickable"
 msgstr "Clickable"
 
-#: apps/mobile/mobileI18nMessages.ts:44
+#: apps/mobile/mobileI18nMessages.ts:46
 msgid "Close menu"
 msgstr "Close menu"
 
-#: apps/mobile/mobileI18nMessages.ts:45
+#: apps/mobile/mobileI18nMessages.ts:47
 msgid "Command"
 msgstr "Command"
 
-#: apps/mobile/mobileI18nMessages.ts:46
+#: apps/mobile/mobileI18nMessages.ts:48
 msgid "Confirm clickable submissions"
 msgstr "Confirm clickable submissions"
 
@@ -329,15 +337,19 @@ msgstr "Confirm clickable submissions"
 msgid "Connect your agent"
 msgstr "Connect your agent"
 
-#: apps/mobile/mobileI18nMessages.ts:47
+#: apps/mobile/mobileI18nMessages.ts:49
+msgid "Connected"
+msgstr "Connected"
+
+#: apps/mobile/mobileI18nMessages.ts:50
 msgid "Connection"
 msgstr "Connection"
 
-#: apps/mobile/mobileI18nMessages.ts:48
+#: apps/mobile/mobileI18nMessages.ts:51
 msgid "Context"
 msgstr "Context"
 
-#: apps/mobile/mobileI18nMessages.ts:49
+#: apps/mobile/mobileI18nMessages.ts:52
 msgid "Continue"
 msgstr "Continue"
 
@@ -361,31 +373,31 @@ msgstr "Copy"
 msgid "Copy invite"
 msgstr "Copy invite"
 
-#: apps/mobile/mobileI18nMessages.ts:50
+#: apps/mobile/mobileI18nMessages.ts:53
 msgid "Could not pair this device"
 msgstr "Could not pair this device"
 
-#: apps/mobile/mobileI18nMessages.ts:51
+#: apps/mobile/mobileI18nMessages.ts:54
 msgid "Could not reach agenttick.sh."
 msgstr "Could not reach agenttick.sh."
 
-#: apps/mobile/mobileI18nMessages.ts:52
+#: apps/mobile/mobileI18nMessages.ts:55
 msgid "Could not read server auth config"
 msgstr "Could not read server auth config"
 
-#: apps/mobile/mobileI18nMessages.ts:53
+#: apps/mobile/mobileI18nMessages.ts:56
 msgid "Could not register push notifications"
 msgstr "Could not register push notifications"
 
-#: apps/mobile/mobileI18nMessages.ts:54
+#: apps/mobile/mobileI18nMessages.ts:57
 msgid "Could not send diagnostics"
 msgstr "Could not send diagnostics"
 
-#: apps/mobile/mobileI18nMessages.ts:55
+#: apps/mobile/mobileI18nMessages.ts:58
 msgid "Could not send response"
 msgstr "Could not send response"
 
-#: apps/mobile/mobileI18nMessages.ts:56
+#: apps/mobile/mobileI18nMessages.ts:59
 msgid "Could not update availability"
 msgstr "Could not update availability"
 
@@ -437,15 +449,15 @@ msgstr "Create your account first. Then Agent Tick will guide you through one ag
 msgid "Creating an agent token for"
 msgstr "Creating an agent token for"
 
-#: apps/mobile/mobileI18nMessages.ts:57
+#: apps/mobile/mobileI18nMessages.ts:60
 msgid "Current"
 msgstr "Current"
 
-#: apps/mobile/mobileI18nMessages.ts:58
+#: apps/mobile/mobileI18nMessages.ts:61
 msgid "Current account"
 msgstr "Current account"
 
-#: apps/mobile/mobileI18nMessages.ts:59
+#: apps/mobile/mobileI18nMessages.ts:62
 msgid "Decrypt this request before approving or rejecting it."
 msgstr "Decrypt this request before approving or rejecting it."
 
@@ -457,47 +469,51 @@ msgstr "Decrypt this request in the mobile app before approving or rejecting it.
 msgid "Default policy"
 msgstr "Default policy"
 
-#: apps/mobile/mobileI18nMessages.ts:60
+#: apps/mobile/mobileI18nMessages.ts:63
 msgid "Deny"
 msgstr "Deny"
 
-#: apps/mobile/mobileI18nMessages.ts:61
+#: apps/mobile/mobileI18nMessages.ts:64
 msgid "Development build required"
 msgstr "Development build required"
 
-#: apps/mobile/mobileI18nMessages.ts:62
+#: apps/mobile/mobileI18nMessages.ts:66
 msgid "Diagnostics"
 msgstr "Diagnostics"
 
-#: apps/mobile/mobileI18nMessages.ts:63
+#: apps/mobile/mobileI18nMessages.ts:67
 msgid "Diagnostics failed"
 msgstr "Diagnostics failed"
 
-#: apps/mobile/mobileI18nMessages.ts:64
+#: apps/mobile/mobileI18nMessages.ts:68
 msgid "Diagnostics sent"
 msgstr "Diagnostics sent"
 
-#: apps/mobile/mobileI18nMessages.ts:65
+#: apps/mobile/mobileI18nMessages.ts:69
 msgid "Directory"
 msgstr "Directory"
 
-#: apps/mobile/mobileI18nMessages.ts:66
+#: apps/mobile/mobileI18nMessages.ts:70
 msgid "Disable"
 msgstr "Disable"
 
-#: apps/mobile/mobileI18nMessages.ts:67
+#: apps/mobile/mobileI18nMessages.ts:71
 msgid "Disabled"
 msgstr "Disabled"
 
-#: apps/mobile/mobileI18nMessages.ts:68
+#: apps/mobile/mobileI18nMessages.ts:65
+msgid "Disconnected"
+msgstr "Disconnected"
+
+#: apps/mobile/mobileI18nMessages.ts:72
 msgid "Dismiss"
 msgstr "Dismiss"
 
-#: apps/mobile/mobileI18nMessages.ts:69
+#: apps/mobile/mobileI18nMessages.ts:73
 msgid "Dismiss encrypted request"
 msgstr "Dismiss encrypted request"
 
-#: apps/mobile/mobileI18nMessages.ts:70
+#: apps/mobile/mobileI18nMessages.ts:74
 msgid "Dismiss latest agent status"
 msgstr "Dismiss latest agent status"
 
@@ -505,27 +521,27 @@ msgstr "Dismiss latest agent status"
 msgid "Email invite"
 msgstr "Email invite"
 
-#: apps/mobile/mobileI18nMessages.ts:71
+#: apps/mobile/mobileI18nMessages.ts:75
 msgid "Enable"
 msgstr "Enable"
 
-#: apps/mobile/mobileI18nMessages.ts:72
+#: apps/mobile/mobileI18nMessages.ts:76
 msgid "Enable approval alerts"
 msgstr "Enable approval alerts"
 
-#: apps/mobile/mobileI18nMessages.ts:73
+#: apps/mobile/mobileI18nMessages.ts:77
 msgid "Enable Camera"
 msgstr "Enable Camera"
 
-#: apps/mobile/mobileI18nMessages.ts:74
+#: apps/mobile/mobileI18nMessages.ts:78
 msgid "Enable Notifications"
 msgstr "Enable Notifications"
 
-#: apps/mobile/mobileI18nMessages.ts:75
+#: apps/mobile/mobileI18nMessages.ts:79
 msgid "Enable notifications first."
 msgstr "Enable notifications first."
 
-#: apps/mobile/mobileI18nMessages.ts:76
+#: apps/mobile/mobileI18nMessages.ts:80
 msgid "Enabled"
 msgstr "Enabled"
 
@@ -533,11 +549,11 @@ msgstr "Enabled"
 msgid "Encrypted request."
 msgstr "Encrypted request."
 
-#: apps/mobile/mobileI18nMessages.ts:77
+#: apps/mobile/mobileI18nMessages.ts:81
 msgid "End-to-end encryption"
 msgstr "End-to-end encryption"
 
-#: apps/mobile/mobileI18nMessages.ts:78
+#: apps/mobile/mobileI18nMessages.ts:82
 msgid "Enter the code from agent-tick pair."
 msgstr "Enter the code from agent-tick pair."
 
@@ -549,7 +565,7 @@ msgstr "Everything is unlocked on your server"
 msgid "example.com domain (optional)"
 msgstr "example.com domain (optional)"
 
-#: apps/mobile/mobileI18nMessages.ts:79
+#: apps/mobile/mobileI18nMessages.ts:83
 msgid "Expires"
 msgstr "Expires"
 
@@ -557,19 +573,19 @@ msgstr "Expires"
 msgid "Expires at"
 msgstr "Expires at"
 
-#: apps/mobile/mobileI18nMessages.ts:80
+#: apps/mobile/mobileI18nMessages.ts:84
 msgid "Favorite choice"
 msgstr "Favorite choice"
 
-#: apps/mobile/mobileI18nMessages.ts:81
+#: apps/mobile/mobileI18nMessages.ts:85
 msgid "Forget Device"
 msgstr "Forget Device"
 
-#: apps/mobile/mobileI18nMessages.ts:82
+#: apps/mobile/mobileI18nMessages.ts:86
 msgid "History"
 msgstr "History"
 
-#: apps/mobile/mobileI18nMessages.ts:83
+#: apps/mobile/mobileI18nMessages.ts:87
 msgid "Host"
 msgstr "Host"
 
@@ -581,7 +597,7 @@ msgstr "I installed the mobile app"
 msgid "Install Agent Tick mobile and sign in with the same account. This button refreshes setup state, and registers a deterministic device only in test mode."
 msgstr "Install Agent Tick mobile and sign in with the same account. This button refreshes setup state, and registers a deterministic device only in test mode."
 
-#: apps/mobile/mobileI18nMessages.ts:84
+#: apps/mobile/mobileI18nMessages.ts:88
 msgid "Invalid QR code"
 msgstr "Invalid QR code"
 
@@ -617,7 +633,7 @@ msgstr "invited you as"
 msgid "Invites"
 msgstr "Invites"
 
-#: apps/mobile/mobileI18nMessages.ts:85
+#: apps/mobile/mobileI18nMessages.ts:89
 msgid "key or passphrase"
 msgstr "key or passphrase"
 
@@ -625,15 +641,15 @@ msgstr "key or passphrase"
 msgid "Label (optional)"
 msgstr "Label (optional)"
 
-#: apps/mobile/mobileI18nMessages.ts:86
+#: apps/mobile/mobileI18nMessages.ts:90
 msgid "Language"
 msgstr "Language"
 
-#: apps/mobile/mobileI18nMessages.ts:87
+#: apps/mobile/mobileI18nMessages.ts:91
 msgid "Latest agent status"
 msgstr "Latest agent status"
 
-#: apps/mobile/mobileI18nMessages.ts:88
+#: apps/mobile/mobileI18nMessages.ts:92
 msgid "Loading Agent Tick…"
 msgstr "Loading Agent Tick…"
 
@@ -645,19 +661,23 @@ msgstr "Loading invite…"
 msgid "Loading sign-in configuration…"
 msgstr "Loading sign-in configuration…"
 
-#: apps/mobile/mobileI18nMessages.ts:89
+#: apps/mobile/mobileI18nMessages.ts:93
 msgid "Manual Bearer Token"
 msgstr "Manual Bearer Token"
 
-#: apps/mobile/mobileI18nMessages.ts:90
+#: apps/mobile/mobileI18nMessages.ts:94
 msgid "Manual Pairing Code"
 msgstr "Manual Pairing Code"
+
+#: apps/mobile/mobileI18nMessages.ts:95
+msgid "member"
+msgstr "member"
 
 #: apps/admin/src/adminI18nMessages.ts:79
 msgid "Member"
 msgstr "Member"
 
-#: apps/mobile/mobileI18nMessages.ts:91
+#: apps/mobile/mobileI18nMessages.ts:96
 msgid "Menu"
 msgstr "Menu"
 
@@ -665,15 +685,19 @@ msgstr "Menu"
 msgid "Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs."
 msgstr "Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs."
 
-#: apps/mobile/mobileI18nMessages.ts:92
+#: apps/mobile/mobileI18nMessages.ts:99
+msgid "Needs sign-in"
+msgstr "Needs sign-in"
+
+#: apps/mobile/mobileI18nMessages.ts:97
 msgid "Next ›"
 msgstr "Next ›"
 
-#: apps/mobile/mobileI18nMessages.ts:93
+#: apps/mobile/mobileI18nMessages.ts:98
 msgid "Next history item"
 msgstr "Next history item"
 
-#: apps/mobile/mobileI18nMessages.ts:94
+#: apps/mobile/mobileI18nMessages.ts:100
 msgid "Next:"
 msgstr "Next:"
 
@@ -681,7 +705,7 @@ msgstr "Next:"
 msgid "No active or historical invites yet."
 msgstr "No active or historical invites yet."
 
-#: apps/mobile/mobileI18nMessages.ts:95
+#: apps/mobile/mobileI18nMessages.ts:101
 msgid "No approval history yet."
 msgstr "No approval history yet."
 
@@ -697,13 +721,17 @@ msgstr "No audit events yet."
 msgid "No empty queue, policies, or audit console yet. Complete the current setup step first."
 msgstr "No empty queue, policies, or audit console yet. Complete the current setup step first."
 
-#: apps/mobile/mobileI18nMessages.ts:96
+#: apps/mobile/mobileI18nMessages.ts:103
 msgid "No local Agent Tick organizations loaded yet."
 msgstr "No local Agent Tick organizations loaded yet."
 
 #: apps/admin/src/adminI18nMessages.ts:85
 msgid "No local organization memberships loaded yet."
 msgstr "No local organization memberships loaded yet."
+
+#: apps/mobile/mobileI18nMessages.ts:102
+msgid "No pending approvals"
+msgstr "No pending approvals"
 
 #: apps/admin/src/adminI18nMessages.ts:86
 msgid "No pending organization membership requests."
@@ -725,47 +753,47 @@ msgstr "No team"
 msgid "No teams yet. Teams will back policy routing and quorum approval rules."
 msgstr "No teams yet. Teams will back policy routing and quorum approval rules."
 
-#: apps/mobile/mobileI18nMessages.ts:97
+#: apps/mobile/mobileI18nMessages.ts:104
 msgid "Not Asked"
 msgstr "Not Asked"
 
-#: apps/mobile/mobileI18nMessages.ts:98
+#: apps/mobile/mobileI18nMessages.ts:105
 msgid "Notifications"
 msgstr "Notifications"
 
-#: apps/mobile/mobileI18nMessages.ts:99
+#: apps/mobile/mobileI18nMessages.ts:106
 msgid "Notifications are off"
 msgstr "Notifications are off"
 
-#: apps/mobile/mobileI18nMessages.ts:100
+#: apps/mobile/mobileI18nMessages.ts:107
 msgid "Notifications are working."
 msgstr "Notifications are working."
 
-#: apps/mobile/mobileI18nMessages.ts:101
+#: apps/mobile/mobileI18nMessages.ts:108
 msgid "Off"
 msgstr "Off"
 
-#: apps/mobile/mobileI18nMessages.ts:102
+#: apps/mobile/mobileI18nMessages.ts:109
 msgid "Off in Agent Tick"
 msgstr "Off in Agent Tick"
 
-#: apps/mobile/mobileI18nMessages.ts:103
+#: apps/mobile/mobileI18nMessages.ts:110
 msgid "Off in system settings"
 msgstr "Off in system settings"
 
-#: apps/mobile/mobileI18nMessages.ts:104
+#: apps/mobile/mobileI18nMessages.ts:111
 msgid "On"
 msgstr "On"
 
-#: apps/mobile/mobileI18nMessages.ts:105
+#: apps/mobile/mobileI18nMessages.ts:112
 msgid "Open $"
 msgstr "Open $"
 
-#: apps/mobile/mobileI18nMessages.ts:106
+#: apps/mobile/mobileI18nMessages.ts:113
 msgid "Open history item $"
 msgstr "Open history item $"
 
-#: apps/mobile/mobileI18nMessages.ts:107
+#: apps/mobile/mobileI18nMessages.ts:114
 msgid "Open menu"
 msgstr "Open menu"
 
@@ -773,7 +801,7 @@ msgstr "Open menu"
 msgid "Open the mobile app and add the E2EE key in Settings to decrypt the title, body, and command before responding."
 msgstr "Open the mobile app and add the E2EE key in Settings to decrypt the title, body, and command before responding."
 
-#: apps/mobile/mobileI18nMessages.ts:108
+#: apps/mobile/mobileI18nMessages.ts:115
 msgid "Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets."
 msgstr "Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets."
 
@@ -781,11 +809,11 @@ msgstr "Optional diagnostic logs help debug mobile auth, notification, and conne
 msgid "Optional for localhost single mode"
 msgstr "Optional for localhost single mode"
 
-#: apps/mobile/mobileI18nMessages.ts:109
+#: apps/mobile/mobileI18nMessages.ts:116
 msgid "Optional message"
 msgstr "Optional message"
 
-#: apps/mobile/mobileI18nMessages.ts:110
+#: apps/mobile/mobileI18nMessages.ts:117
 msgid "Options:"
 msgstr "Options:"
 
@@ -793,7 +821,7 @@ msgstr "Options:"
 msgid "or continue with email"
 msgstr "or continue with email"
 
-#: apps/mobile/mobileI18nMessages.ts:111
+#: apps/mobile/mobileI18nMessages.ts:118
 msgid "Org: $"
 msgstr "Org: $"
 
@@ -805,7 +833,7 @@ msgstr "Organization invite"
 msgid "Organization name"
 msgstr "Organization name"
 
-#: apps/mobile/mobileI18nMessages.ts:112
+#: apps/mobile/mobileI18nMessages.ts:119
 msgid "Owner"
 msgstr "Owner"
 
@@ -813,35 +841,35 @@ msgstr "Owner"
 msgid "Pair a phone"
 msgstr "Pair a phone"
 
-#: apps/mobile/mobileI18nMessages.ts:113
+#: apps/mobile/mobileI18nMessages.ts:120
 msgid "Pair first"
 msgstr "Pair first"
 
-#: apps/mobile/mobileI18nMessages.ts:114
+#: apps/mobile/mobileI18nMessages.ts:121
 msgid "Pair Manually"
 msgstr "Pair Manually"
 
-#: apps/mobile/mobileI18nMessages.ts:115
+#: apps/mobile/mobileI18nMessages.ts:122
 msgid "Pair this device before registering push notifications."
 msgstr "Pair this device before registering push notifications."
 
-#: apps/mobile/mobileI18nMessages.ts:116
+#: apps/mobile/mobileI18nMessages.ts:123
 msgid "Paired"
 msgstr "Paired"
 
-#: apps/mobile/mobileI18nMessages.ts:117
+#: apps/mobile/mobileI18nMessages.ts:124
 msgid "Pairing"
 msgstr "Pairing"
 
-#: apps/mobile/mobileI18nMessages.ts:118
+#: apps/mobile/mobileI18nMessages.ts:125
 msgid "Pairing code required"
 msgstr "Pairing code required"
 
-#: apps/mobile/mobileI18nMessages.ts:119
+#: apps/mobile/mobileI18nMessages.ts:126
 msgid "Pairing failed"
 msgstr "Pairing failed"
 
-#: apps/mobile/mobileI18nMessages.ts:120
+#: apps/mobile/mobileI18nMessages.ts:127
 msgid "Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally."
 msgstr "Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally."
 
@@ -857,7 +885,7 @@ msgstr "Policy"
 msgid "Policy name"
 msgstr "Policy name"
 
-#: apps/mobile/mobileI18nMessages.ts:121
+#: apps/mobile/mobileI18nMessages.ts:128
 msgid "Previous history item"
 msgstr "Previous history item"
 
@@ -877,23 +905,23 @@ msgstr "Project name"
 msgid "Projects"
 msgstr "Projects"
 
-#: apps/mobile/mobileI18nMessages.ts:122
+#: apps/mobile/mobileI18nMessages.ts:129
 msgid "Push Registered"
 msgstr "Push Registered"
 
-#: apps/mobile/mobileI18nMessages.ts:123
+#: apps/mobile/mobileI18nMessages.ts:130
 msgid "Push registration failed"
 msgstr "Push registration failed"
 
-#: apps/mobile/mobileI18nMessages.ts:124
+#: apps/mobile/mobileI18nMessages.ts:131
 msgid "Push:"
 msgstr "Push:"
 
-#: apps/mobile/mobileI18nMessages.ts:125
+#: apps/mobile/mobileI18nMessages.ts:132
 msgid "Questions"
 msgstr "Questions"
 
-#: apps/mobile/mobileI18nMessages.ts:126
+#: apps/mobile/mobileI18nMessages.ts:133
 msgid "Refresh"
 msgstr "Refresh"
 
@@ -929,11 +957,11 @@ msgstr "Refresh requests"
 msgid "Refresh teams"
 msgstr "Refresh teams"
 
-#: apps/mobile/mobileI18nMessages.ts:127
+#: apps/mobile/mobileI18nMessages.ts:134
 msgid "Register Push"
 msgstr "Register Push"
 
-#: apps/mobile/mobileI18nMessages.ts:128
+#: apps/mobile/mobileI18nMessages.ts:135
 msgid "Registered"
 msgstr "Registered"
 
@@ -941,7 +969,7 @@ msgstr "Registered"
 msgid "Reject"
 msgstr "Reject"
 
-#: apps/mobile/mobileI18nMessages.ts:129
+#: apps/mobile/mobileI18nMessages.ts:136
 msgid "Remote push needs a real EAS project id. Pairing still works; use local notifications until an EAS development build is configured."
 msgstr "Remote push needs a real EAS project id. Pairing still works; use local notifications until an EAS development build is configured."
 
@@ -949,15 +977,15 @@ msgstr "Remote push needs a real EAS project id. Pairing still works; use local 
 msgid "Remove"
 msgstr "Remove"
 
-#: apps/mobile/mobileI18nMessages.ts:130
+#: apps/mobile/mobileI18nMessages.ts:137
 msgid "Request ID"
 msgstr "Request ID"
 
-#: apps/mobile/mobileI18nMessages.ts:131
+#: apps/mobile/mobileI18nMessages.ts:138
 msgid "Requested"
 msgstr "Requested"
 
-#: apps/mobile/mobileI18nMessages.ts:132
+#: apps/mobile/mobileI18nMessages.ts:139
 msgid "Requester"
 msgstr "Requester"
 
@@ -969,15 +997,15 @@ msgstr "Requests, agent tokens, and devices use this local Agent Tick organizati
 msgid "Required approvals"
 msgstr "Required approvals"
 
-#: apps/mobile/mobileI18nMessages.ts:133
+#: apps/mobile/mobileI18nMessages.ts:140
 msgid "Responded"
 msgstr "Responded"
 
-#: apps/mobile/mobileI18nMessages.ts:134
+#: apps/mobile/mobileI18nMessages.ts:141
 msgid "Response failed"
 msgstr "Response failed"
 
-#: apps/mobile/mobileI18nMessages.ts:135
+#: apps/mobile/mobileI18nMessages.ts:142
 msgid "Response message"
 msgstr "Response message"
 
@@ -993,7 +1021,7 @@ msgstr "Retry"
 msgid "Retry preview"
 msgstr "Retry preview"
 
-#: apps/mobile/mobileI18nMessages.ts:136
+#: apps/mobile/mobileI18nMessages.ts:143
 msgid "Retry sign-in"
 msgstr "Retry sign-in"
 
@@ -1005,7 +1033,7 @@ msgstr "Revoke"
 msgid "Route approvals to the right humans"
 msgstr "Route approvals to the right humans"
 
-#: apps/mobile/mobileI18nMessages.ts:137
+#: apps/mobile/mobileI18nMessages.ts:144
 msgid "Routing"
 msgstr "Routing"
 
@@ -1013,11 +1041,11 @@ msgstr "Routing"
 msgid "Save token"
 msgstr "Save token"
 
-#: apps/mobile/mobileI18nMessages.ts:138
+#: apps/mobile/mobileI18nMessages.ts:145
 msgid "Scan Pairing QR"
 msgstr "Scan Pairing QR"
 
-#: apps/mobile/mobileI18nMessages.ts:139
+#: apps/mobile/mobileI18nMessages.ts:146
 msgid "Scan the QR code from"
 msgstr "Scan the QR code from"
 
@@ -1025,15 +1053,15 @@ msgstr "Scan the QR code from"
 msgid "Secured by Clerk"
 msgstr "Secured by Clerk"
 
-#: apps/mobile/mobileI18nMessages.ts:140
+#: apps/mobile/mobileI18nMessages.ts:147
 msgid "Select + send"
 msgstr "Select + send"
 
-#: apps/mobile/mobileI18nMessages.ts:141
+#: apps/mobile/mobileI18nMessages.ts:148
 msgid "Select all that apply"
 msgstr "Select all that apply"
 
-#: apps/mobile/mobileI18nMessages.ts:142
+#: apps/mobile/mobileI18nMessages.ts:149
 msgid "Select one"
 msgstr "Select one"
 
@@ -1041,47 +1069,47 @@ msgstr "Select one"
 msgid "Self-hosted admin"
 msgstr "Self-hosted admin"
 
-#: apps/mobile/mobileI18nMessages.ts:143
+#: apps/mobile/mobileI18nMessages.ts:150
 msgid "Self-hosted server URL"
 msgstr "Self-hosted server URL"
 
-#: apps/mobile/mobileI18nMessages.ts:144
+#: apps/mobile/mobileI18nMessages.ts:151
 msgid "Self-hosting Agent Tick?"
 msgstr "Self-hosting Agent Tick?"
 
-#: apps/mobile/mobileI18nMessages.ts:145
+#: apps/mobile/mobileI18nMessages.ts:152
 msgid "Send decision"
 msgstr "Send decision"
 
-#: apps/mobile/mobileI18nMessages.ts:146
+#: apps/mobile/mobileI18nMessages.ts:153
 msgid "Send Snapshot"
 msgstr "Send Snapshot"
 
-#: apps/mobile/mobileI18nMessages.ts:147
+#: apps/mobile/mobileI18nMessages.ts:154
 msgid "Send this decision?"
 msgstr "Send this decision?"
 
-#: apps/mobile/mobileI18nMessages.ts:148
+#: apps/mobile/mobileI18nMessages.ts:155
 msgid "Sent $ diagnostic event$ ."
 msgstr "Sent $ diagnostic event$ ."
 
-#: apps/mobile/mobileI18nMessages.ts:149
+#: apps/mobile/mobileI18nMessages.ts:156
 msgid "Server discovery failed"
 msgstr "Server discovery failed"
 
-#: apps/mobile/mobileI18nMessages.ts:150
+#: apps/mobile/mobileI18nMessages.ts:157
 msgid "Server saved"
 msgstr "Server saved"
 
-#: apps/mobile/mobileI18nMessages.ts:151
+#: apps/mobile/mobileI18nMessages.ts:158
 msgid "Server URL"
 msgstr "Server URL"
 
-#: apps/mobile/mobileI18nMessages.ts:152
+#: apps/mobile/mobileI18nMessages.ts:159
 msgid "session:$"
 msgstr "session:$"
 
-#: apps/mobile/mobileI18nMessages.ts:153
+#: apps/mobile/mobileI18nMessages.ts:160
 msgid "Settings"
 msgstr "Settings"
 
@@ -1105,19 +1133,19 @@ msgstr "Sign in or create account"
 msgid "Sign in or create an account above to accept this invite. Agent Tick will continue automatically after sign-in."
 msgstr "Sign in or create an account above to accept this invite. Agent Tick will continue automatically after sign-in."
 
-#: apps/mobile/mobileI18nMessages.ts:154
+#: apps/mobile/mobileI18nMessages.ts:161
 msgid "Sign in to Agent Tick"
 msgstr "Sign in to Agent Tick"
 
-#: apps/mobile/mobileI18nMessages.ts:155
+#: apps/mobile/mobileI18nMessages.ts:162
 msgid "Sign in to agenttick.sh"
 msgstr "Sign in to agenttick.sh"
 
-#: apps/mobile/mobileI18nMessages.ts:156
+#: apps/mobile/mobileI18nMessages.ts:163
 msgid "Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server."
 msgstr "Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server."
 
-#: apps/mobile/mobileI18nMessages.ts:157
+#: apps/mobile/mobileI18nMessages.ts:164
 msgid "Sign in with Clerk to use this Agent Tick server."
 msgstr "Sign in with Clerk to use this Agent Tick server."
 
@@ -1125,11 +1153,11 @@ msgstr "Sign in with Clerk to use this Agent Tick server."
 msgid "Sign out"
 msgstr "Sign out"
 
-#: apps/mobile/mobileI18nMessages.ts:158
+#: apps/mobile/mobileI18nMessages.ts:165
 msgid "Sign Out"
 msgstr "Sign Out"
 
-#: apps/mobile/mobileI18nMessages.ts:159
+#: apps/mobile/mobileI18nMessages.ts:166
 msgid "signInOrUp"
 msgstr "signInOrUp"
 
@@ -1145,11 +1173,11 @@ msgstr "Start here"
 msgid "Start simple, then scope rules by project or team when your organization grows."
 msgstr "Start simple, then scope rules by project or team when your organization grows."
 
-#: apps/mobile/mobileI18nMessages.ts:160
+#: apps/mobile/mobileI18nMessages.ts:167
 msgid "Status:"
 msgstr "Status:"
 
-#: apps/mobile/mobileI18nMessages.ts:161
+#: apps/mobile/mobileI18nMessages.ts:168
 msgid "Sticky bottom"
 msgstr "Sticky bottom"
 
@@ -1157,19 +1185,19 @@ msgstr "Sticky bottom"
 msgid "Submit answers"
 msgstr "Submit answers"
 
-#: apps/mobile/mobileI18nMessages.ts:162
+#: apps/mobile/mobileI18nMessages.ts:169
 msgid "Submit Answers"
 msgstr "Submit Answers"
 
-#: apps/mobile/mobileI18nMessages.ts:163
+#: apps/mobile/mobileI18nMessages.ts:170
 msgid "Switch accounts ›"
 msgstr "Switch accounts ›"
 
-#: apps/mobile/mobileI18nMessages.ts:164
+#: apps/mobile/mobileI18nMessages.ts:171
 msgid "Switch to $"
 msgstr "Switch to $"
 
-#: apps/mobile/mobileI18nMessages.ts:165
+#: apps/mobile/mobileI18nMessages.ts:172
 msgid "System"
 msgstr "System"
 
@@ -1177,7 +1205,7 @@ msgstr "System"
 msgid "Team"
 msgstr "Team"
 
-#: apps/mobile/mobileI18nMessages.ts:166
+#: apps/mobile/mobileI18nMessages.ts:173
 msgid "Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve."
 msgstr "Team and organization access is managed on the Agent Tick dashboard. This phone will only receive requests where your account or team is eligible to approve."
 
@@ -1197,7 +1225,7 @@ msgstr "teammate@example.com (optional)"
 msgid "Teams"
 msgstr "Teams"
 
-#: apps/mobile/mobileI18nMessages.ts:167
+#: apps/mobile/mobileI18nMessages.ts:174
 msgid "Test"
 msgstr "Test"
 
@@ -1205,7 +1233,7 @@ msgstr "Test"
 msgid "The mobile app is the primary approval surface. Use the same Clerk account on your phone."
 msgstr "The mobile app is the primary approval surface. Use the same Clerk account on your phone."
 
-#: apps/mobile/mobileI18nMessages.ts:168
+#: apps/mobile/mobileI18nMessages.ts:175
 msgid "The mobile app signs in to agenttick.sh by default. Use a custom server only when you self-host Agent Tick."
 msgstr "The mobile app signs in to agenttick.sh by default. Use a custom server only when you self-host Agent Tick."
 
@@ -1217,51 +1245,55 @@ msgstr "The plaintext token is shown once. Agent Tick stores only a hash. New me
 msgid "This dashboard is focused on your personal approval workflow. Team administration is available when you upgrade or self-host."
 msgstr "This dashboard is focused on your personal approval workflow. Team administration is available when you upgrade or self-host."
 
-#: apps/mobile/mobileI18nMessages.ts:169
+#: apps/mobile/mobileI18nMessages.ts:176
 msgid "This device can now receive approval requests."
 msgstr "This device can now receive approval requests."
 
-#: apps/mobile/mobileI18nMessages.ts:170
+#: apps/mobile/mobileI18nMessages.ts:177
 msgid "This does not look like an Agent Tick pairing code."
 msgstr "This does not look like an Agent Tick pairing code."
 
-#: apps/mobile/mobileI18nMessages.ts:171
+#: apps/mobile/mobileI18nMessages.ts:178
 msgid "This request is read-only."
 msgstr "This request is read-only."
 
-#: apps/mobile/mobileI18nMessages.ts:172
+#: apps/mobile/mobileI18nMessages.ts:179
 msgid "to connect."
 msgstr "to connect."
 
-#: apps/mobile/mobileI18nMessages.ts:173
+#: apps/mobile/mobileI18nMessages.ts:180
 msgid "Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding."
 msgstr "Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding."
 
-#: apps/mobile/mobileI18nMessages.ts:174
+#: apps/mobile/mobileI18nMessages.ts:181
 msgid "Turn Off"
 msgstr "Turn Off"
 
-#: apps/mobile/mobileI18nMessages.ts:175
+#: apps/mobile/mobileI18nMessages.ts:182
 msgid "Turn On"
 msgstr "Turn On"
 
-#: apps/mobile/mobileI18nMessages.ts:176
+#: apps/mobile/mobileI18nMessages.ts:183
 msgid "Turn on notifications before registering push notifications."
 msgstr "Turn on notifications before registering push notifications."
 
-#: apps/mobile/mobileI18nMessages.ts:177
+#: apps/mobile/mobileI18nMessages.ts:184
 msgid "Turn on notifications in Agent Tick first."
 msgstr "Turn on notifications in Agent Tick first."
+
+#: apps/mobile/mobileI18nMessages.ts:185
+msgid "Unable to check"
+msgstr "Unable to check"
 
 #: apps/admin/src/adminI18nMessages.ts:142
 msgid "Upgrade for teams"
 msgstr "Upgrade for teams"
 
-#: apps/mobile/mobileI18nMessages.ts:178
+#: apps/mobile/mobileI18nMessages.ts:186
 msgid "Use a self-hosted server instead"
 msgstr "Use a self-hosted server instead"
 
-#: apps/mobile/mobileI18nMessages.ts:179
+#: apps/mobile/mobileI18nMessages.ts:187
 msgid "Use agenttick.sh"
 msgstr "Use agenttick.sh"
 
@@ -1269,7 +1301,7 @@ msgstr "Use agenttick.sh"
 msgid "Use it with:"
 msgstr "Use it with:"
 
-#: apps/mobile/mobileI18nMessages.ts:180
+#: apps/mobile/mobileI18nMessages.ts:188
 msgid "Use Self-hosted Server"
 msgstr "Use Self-hosted Server"
 
@@ -1277,7 +1309,7 @@ msgstr "Use Self-hosted Server"
 msgid "Use the admin token to manage local users, teams, policies, devices, and agent tokens."
 msgstr "Use the admin token to manage local users, teams, policies, devices, and agent tokens."
 
-#: apps/mobile/mobileI18nMessages.ts:181
+#: apps/mobile/mobileI18nMessages.ts:189
 msgid "Waiting"
 msgstr "Waiting"
 
@@ -1285,7 +1317,7 @@ msgstr "Waiting"
 msgid "Waiting for mobile sign-in"
 msgstr "Waiting for mobile sign-in"
 
-#: apps/mobile/mobileI18nMessages.ts:182
+#: apps/mobile/mobileI18nMessages.ts:190
 msgid "Workspace"
 msgstr "Workspace"
 
