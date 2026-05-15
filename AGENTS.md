@@ -60,6 +60,7 @@ Current implemented CLI commands only:
 - `agent-tick install`
 - `agent-tick setup`
 - `agent-tick mode`
+- `agent-tick mcp`
 - `agent-tick sanction`
 - `agent-tick steering`
 - `agent-tick abandon`
@@ -72,7 +73,7 @@ corepack pnpm --filter @self-deprecated/agent-tick build
 node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
 ```
 
-Do not document or call missing commands such as `agent-tick mcp`, `agent-tick adapter`, or `agent-tick steer` as current functionality.
+Do not document or call missing commands such as `agent-tick adapter` or `agent-tick steer` as current functionality.
 
 ## Auth and product model
 

@@ -144,6 +144,7 @@ Implemented today:
 - `agent-tick install`
 - `agent-tick setup`
 - `agent-tick mode`
+- `agent-tick mcp`
 - `agent-tick sanction`
 - `agent-tick steering`
 - `agent-tick abandon`
@@ -154,7 +155,6 @@ Implemented today:
 
 Not currently implemented:
 
-- MCP server command
 - JSON stdin adapter command
 - Slack/Teams/SMTP-specific notification providers
 

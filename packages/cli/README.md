@@ -55,6 +55,12 @@ Send a status update without requesting approval:
 agent-tick status --state working "Checking test failures"
 ```
 
+Run the local stdio MCP adapter from an MCP-capable agent config:
+
+```sh
+agent-tick mcp
+```
+
 For Claude Code, the default interactive profile starts hooks in pass-through mode. Route Claude Code steering and permission prompts through Agent Tick when away from the terminal:
 
 ```sh

@@ -94,6 +94,15 @@ export function createProgram(): Command {
       process.stdout.write(`Agent Tick mode: ${saved}\n`);
     });
 
+  program
+    .command('mcp')
+    .description('Run the local stdio MCP adapter')
+    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
+    .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
+    .action(async (options: ClientOptions) => {
+      await runMcpStdioAdapter(options);
+    });
+
   const hook = program.command('hook', { hidden: true }).description('Internal hook entrypoints used by agent integrations');
 
   hook
@@ -380,7 +389,7 @@ function rootHelpFooter(context?: AddHelpTextContext): string {
 }
 
 function orderedVisibleCommands(cmd: Command): Command[] {
-  const priority = ['status', 'steering', 'sanction', 'login', 'setup', 'install', 'mode', 'abandon'];
+  const priority = ['status', 'steering', 'sanction', 'mcp', 'login', 'setup', 'install', 'mode', 'abandon'];
   return [...cmd.commands]
     .filter((subcommand) => subcommand.name() !== 'hook')
     .sort((left, right) => {
@@ -407,7 +416,7 @@ const sanctionHelpText = `\n${heading('Examples')}\n  ${command('agent-tick sanc
 
 const abandonHelpText = `\n${heading('Example')}\n  ${command('agent-tick abandon apr_123')}\n`;
 
-type UsageCommand = 'status' | 'steering' | 'sanction' | 'setup' | 'login' | 'install' | 'mode' | 'abandon' | 'unknown';
+type UsageCommand = 'status' | 'steering' | 'sanction' | 'setup' | 'login' | 'install' | 'mode' | 'mcp' | 'abandon' | 'unknown';
 
 class CliUsageError extends Error {
   constructor(public usageCommand: UsageCommand, message: string) {
@@ -1170,6 +1179,243 @@ const riskyCommandPatterns = [
   /\b\.env\b/i
 ];
 
+type JsonRpcId = string | number | null;
+interface JsonRpcRequest {
+  jsonrpc?: string;
+  id?: JsonRpcId;
+  method?: string;
+  params?: unknown;
+}
+interface McpToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export const mcpToolDefinitions: McpToolDefinition[] = [
+  {
+    name: 'agent_tick_status',
+    description: 'Send a non-blocking Agent Tick progress update for the current agent thread.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Short status message. Do not include secrets.' },
+        state: { type: 'string', enum: ['working', 'blocked', 'done'], default: 'working' },
+        nextStep: { type: 'string', description: 'Optional next step.' },
+        threadId: { type: 'string', description: 'Optional stable thread/chat identifier.' },
+        projectName: { type: 'string', description: 'Optional project display name.' },
+        metadata: { type: 'object', additionalProperties: { type: 'string' } }
+      },
+      required: ['message'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'agent_tick_sanction',
+    description: 'Create a sanction/approval request and wait for the human response by default.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Approval title. Do not include secrets.' },
+        body: { type: 'string', description: 'Approval context. Do not include secrets.' },
+        command: { type: 'string', description: 'Optional command/action being approved.' },
+        projectName: { type: 'string', description: 'Optional project display name.' },
+        timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' }
+      },
+      required: ['title'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'agent_tick_steering',
+    description: 'Ask a structured steering question and wait for a human choice.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Steering question title. Do not include secrets.' },
+        body: { type: 'string', description: 'Optional context. Do not include secrets.' },
+        choices: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            anyOf: [
+              { type: 'string' },
+              {
+                type: 'object',
+                properties: { id: { type: 'string' }, label: { type: 'string' }, kind: { type: 'string', enum: ['approve', 'deny'] } },
+                required: ['label'],
+                additionalProperties: false
+              }
+            ]
+          }
+        },
+        projectName: { type: 'string', description: 'Optional project display name.' },
+        timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' }
+      },
+      required: ['title', 'choices'],
+      additionalProperties: false
+    }
+  }
+];
+
+async function runMcpStdioAdapter(options: ClientOptions): Promise<void> {
+  const { client, server } = await clientFromOptions(options);
+  await readMcpMessages(process.stdin, async (request) => {
+    if (request.id === undefined) return;
+    try {
+      writeMcpMessage(process.stdout, { jsonrpc: '2.0', id: request.id, result: await handleMcpRequest(request, client, server) });
+    } catch (error) {
+      writeMcpMessage(process.stdout, {
+        jsonrpc: '2.0',
+        id: request.id,
+        error: { code: -32000, message: error instanceof Error ? error.message : String(error) }
+      });
+    }
+  });
+}
+
+export async function handleMcpRequest(request: JsonRpcRequest, client: AgentTickClient, server: string): Promise<unknown> {
+  if (request.method === 'initialize') {
+    return {
+      protocolVersion: protocolVersionFromParams(request.params),
+      capabilities: { tools: {} },
+      serverInfo: { name: 'agent-tick', version: CLI_VERSION }
+    };
+  }
+  if (request.method === 'ping') return {};
+  if (request.method === 'tools/list') return { tools: mcpToolDefinitions };
+  if (request.method === 'tools/call') return callMcpTool(request.params, client, server);
+  throw new Error(`Unsupported MCP method: ${request.method ?? 'unknown'}`);
+}
+
+function protocolVersionFromParams(params: unknown): string {
+  if (isPlainObject(params) && typeof params.protocolVersion === 'string') return params.protocolVersion;
+  return '2024-11-05';
+}
+
+async function callMcpTool(params: unknown, client: AgentTickClient, server: string): Promise<unknown> {
+  if (!isPlainObject(params) || typeof params.name !== 'string') throw new Error('tools/call requires a tool name');
+  const args = isPlainObject(params.arguments) ? params.arguments : {};
+  if (params.name === 'agent_tick_status') return mcpTextResult(await callMcpStatus(args, client));
+  if (params.name === 'agent_tick_sanction') return mcpTextResult(await callMcpSanction(args, client, server));
+  if (params.name === 'agent_tick_steering') return mcpTextResult(await callMcpSteering(args, client, server));
+  throw new Error(`Unknown Agent Tick MCP tool: ${params.name}`);
+}
+
+async function callMcpStatus(args: Record<string, unknown>, client: AgentTickClient): Promise<string> {
+  const message = requiredString(args.message, 'message');
+  const update = await client.createStatusUpdate({
+    threadId: optionalString(args.threadId) ?? process.env.AGENT_TICK_THREAD_ID ?? defaultThreadId(),
+    message,
+    state: optionalString(args.state) ?? 'working',
+    nextStep: optionalString(args.nextStep),
+    host: os.hostname() || undefined,
+    workingDirectory: process.cwd(),
+    projectName: optionalString(args.projectName) ?? path.basename(process.cwd()),
+    metadata: optionalStringRecord(args.metadata)
+  });
+  return `Sent status update ${update.statusId} for ${update.threadId}: ${update.message}`;
+}
+
+async function callMcpSanction(args: Record<string, unknown>, client: AgentTickClient, server: string): Promise<string> {
+  const options: RequestOptions = {
+    title: requiredString(args.title, 'title'),
+    timeout: optionalString(args.timeout) ?? '30m',
+    choice: [],
+    silent: true
+  };
+  const body = optionalString(args.body);
+  const command = optionalString(args.command);
+  const project = optionalString(args.projectName);
+  if (body) options.body = body;
+  if (command) options.command = command;
+  if (project) options.project = project;
+  const request = await createAndMaybeWait(client, server, options);
+  return mcpApprovalSummary(request);
+}
+
+async function callMcpSteering(args: Record<string, unknown>, client: AgentTickClient, server: string): Promise<string> {
+  const rawChoices = Array.isArray(args.choices) ? args.choices : undefined;
+  if (!rawChoices?.length) throw new Error('choices must be a non-empty array');
+  const hookChoices = rawChoices.map((choice, index): ChoiceInput => {
+    if (typeof choice === 'string') return { id: slugifyChoiceId(choice) || `choice_${index + 1}`, label: choice, kind: inferredChoiceKind(choice) };
+    if (!isPlainObject(choice)) throw new Error('each choice must be a string or object');
+    const label = requiredString(choice.label, `choices[${index}].label`);
+    return { id: optionalString(choice.id) ?? (slugifyChoiceId(label) || `choice_${index + 1}`), label, kind: optionalString(choice.kind) ?? inferredChoiceKind(label) };
+  });
+  if (!hookChoices.some((choice) => choice.kind === 'deny')) hookChoices.push({ id: 'cancel', label: 'Cancel / do not answer', kind: 'deny' });
+  const options: RequestOptions = {
+    title: requiredString(args.title, 'title'),
+    timeout: optionalString(args.timeout) ?? '30m',
+    choice: [],
+    hookChoices,
+    silent: true
+  };
+  const body = optionalString(args.body);
+  const project = optionalString(args.projectName);
+  if (body) options.body = body;
+  if (project) options.project = project;
+  const request = await createAndMaybeWait(client, server, options);
+  return mcpApprovalSummary(request);
+}
+
+function mcpApprovalSummary(request: ApprovalRequest): string {
+  const choice = request.response?.choiceId ?? request.response?.message ?? request.status;
+  return `Approval request ${request.id} is ${request.status}: ${choice}`;
+}
+
+function mcpTextResult(text: string): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+  return { content: [{ type: 'text', text }] };
+}
+
+function requiredString(value: unknown, name: string): string {
+  const text = optionalString(value);
+  if (!text) throw new Error(`${name} is required`);
+  return text;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function optionalStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const record: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) if (typeof entry === 'string') record[key] = entry;
+  return Object.keys(record).length ? record : undefined;
+}
+
+async function readMcpMessages(input: NodeJS.ReadableStream, onMessage: (request: JsonRpcRequest) => Promise<void>): Promise<void> {
+  let buffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+  for await (const chunk of input) {
+    buffer = Buffer.concat([buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+    while (true) {
+      const parsed = tryReadMcpFrame(buffer);
+      if (!parsed) break;
+      buffer = parsed.rest;
+      await onMessage(JSON.parse(parsed.body) as JsonRpcRequest);
+    }
+  }
+}
+
+function tryReadMcpFrame(buffer: Buffer): { body: string; rest: Buffer } | undefined {
+  const headerEnd = buffer.indexOf('\r\n\r\n');
+  if (headerEnd === -1) return undefined;
+  const header = buffer.subarray(0, headerEnd).toString('utf8');
+  const contentLengthMatch = /^content-length:\s*(\d+)$/im.exec(header);
+  if (!contentLengthMatch) throw new Error('MCP frame missing Content-Length header');
+  const contentLength = Number(contentLengthMatch[1]);
+  const bodyStart = headerEnd + 4;
+  const bodyEnd = bodyStart + contentLength;
+  if (buffer.length < bodyEnd) return undefined;
+  return { body: buffer.subarray(bodyStart, bodyEnd).toString('utf8'), rest: buffer.subarray(bodyEnd) };
+}
+
+function writeMcpMessage(output: NodeJS.WritableStream, message: unknown): void {
+  const body = JSON.stringify(message);
+  output.write(`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`);
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -1458,7 +1704,7 @@ function isDirectExecution(): boolean {
 
 function commandFromArgv(argv: string[]): UsageCommand {
   const commandName = argv.slice(2).find((arg) => !arg.startsWith('-'));
-  if (commandName === 'status' || commandName === 'steering' || commandName === 'sanction' || commandName === 'setup' || commandName === 'login' || commandName === 'install' || commandName === 'mode' || commandName === 'abandon') return commandName;
+  if (commandName === 'status' || commandName === 'steering' || commandName === 'sanction' || commandName === 'setup' || commandName === 'login' || commandName === 'install' || commandName === 'mode' || commandName === 'mcp' || commandName === 'abandon') return commandName;
   return 'unknown';
 }
 
@@ -1469,6 +1715,7 @@ function usageHint(name: UsageCommand): string {
   if (name === 'setup') return `${setupHelpText}\nRun ${command('agent-tick setup --help')} for all options.\n`;
   if (name === 'login') return `${loginHelpText}\nRun ${command('agent-tick login --help')} for all options.\n`;
   if (name === 'install') return `${installHelpText}\nRun ${command('agent-tick install --help')} for all options.\n`;
+  if (name === 'mcp') return `\nRun ${command('agent-tick mcp --help')} for all options.\n`;
   if (name === 'abandon') return `${abandonHelpText}\nRun ${command('agent-tick abandon --help')} for all options.\n`;
   return `\n${topLevelHelpText()}Run ${command('agent-tick --help')} for all options.\n`;
 }

@@ -164,9 +164,17 @@ Use `agent-tick status` to publish AFK progress updates without blocking for app
 agent-tick status --state working --next "Run tests" "Finished edits; validating now"
 ```
 
+MCP-capable agents can launch the local stdio adapter with the same saved Agent Tick setup/token used by the rest of the CLI:
+
+```sh
+agent-tick mcp
+```
+
+The adapter exposes status, steering, and sanction tools that call the Agent Tick server on the agent's behalf.
+
 ## Not currently implemented
 
-The previous Go-era/prototype integration docs mentioned additional surfaces such as MCP, JSON stdin adapters, constrained steering, Slack/Teams/SMTP notification sinks, and provider-specific webhook fanout. Those are not part of the current TypeScript CLI/server implementation.
+The previous Go-era/prototype integration docs mentioned additional surfaces such as JSON stdin adapters, constrained steering, Slack/Teams/SMTP notification sinks, and provider-specific webhook fanout. Those are not part of the current TypeScript CLI/server implementation.
 
 If those capabilities become product-relevant again, add them intentionally with implementation, tests, and documentation in the same change.
 

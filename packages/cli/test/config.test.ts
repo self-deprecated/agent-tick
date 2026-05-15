@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, loadAgentTickMode, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs } from '../src/index.js';
+import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, handleMcpRequest, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -61,6 +61,36 @@ describe('install instructions', () => {
     expect(block).toContain('agent-tick steering --title');
     expect(block).toContain('agent-tick status --state working');
     expect(block).toContain('Do not include secrets');
+  });
+});
+
+describe('MCP stdio adapter', () => {
+  it('advertises Agent Tick MCP tools', async () => {
+    expect(mcpToolDefinitions.map((tool) => tool.name)).toEqual(['agent_tick_status', 'agent_tick_sanction', 'agent_tick_steering']);
+
+    await expect(handleMcpRequest({ method: 'tools/list', id: 1 }, {} as never, 'https://tick.example.com')).resolves.toEqual({ tools: mcpToolDefinitions });
+  });
+
+  it('returns MCP initialize server capabilities', async () => {
+    await expect(handleMcpRequest({ method: 'initialize', id: 1, params: { protocolVersion: '2024-11-05' } }, {} as never, 'https://tick.example.com')).resolves.toMatchObject({
+      protocolVersion: '2024-11-05',
+      capabilities: { tools: {} },
+      serverInfo: { name: 'agent-tick' }
+    });
+  });
+
+  it('maps the status MCP tool to a status update', async () => {
+    const client = {
+      createStatusUpdate: async (input: unknown) => ({ statusId: 'status_1', threadId: 'thread_1', message: (input as { message: string }).message })
+    };
+
+    await expect(handleMcpRequest({
+      method: 'tools/call',
+      id: 1,
+      params: { name: 'agent_tick_status', arguments: { message: 'Running tests', threadId: 'thread_1' } }
+    }, client as never, 'https://tick.example.com')).resolves.toEqual({
+      content: [{ type: 'text', text: 'Sent status update status_1 for thread_1: Running tests' }]
+    });
   });
 });
 
