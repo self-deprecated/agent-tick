@@ -2848,6 +2848,7 @@ export function ApprovalsScreen({
                 {choice.flags?.includes("favorite") ? <Text accessibilityLabel="Favorite choice" style={styles.choiceFavoriteIcon}>★</Text> : null}
                 <View style={styles.choiceLabelStack}>
                   <Text style={styles.choiceText}>{choice.label}</Text>
+                  {choice.description ? <Text style={styles.choiceDescription}>{choice.description}</Text> : null}
                   <ChoiceFlagBadges choice={choice} />
                 </View>
               </View>
@@ -4120,6 +4121,13 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 17,
     fontWeight: "900",
+    textAlign: "center",
+  },
+  choiceDescription: {
+    color: "rgba(255, 255, 255, 0.82)",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
     textAlign: "center",
   },
   choiceBadgeRow: {

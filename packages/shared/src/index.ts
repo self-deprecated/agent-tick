@@ -398,6 +398,7 @@ export type ChoiceFlag = z.infer<typeof ChoiceFlagSchema>;
 export const ChoiceSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
+  description: z.string().max(2_000).optional(),
   kind: z.string().default('approve'),
   flags: z.array(ChoiceFlagSchema).max(8).optional(),
   tags: z.array(z.string().min(1).max(40)).max(8).optional()

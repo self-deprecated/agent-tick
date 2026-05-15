@@ -27,6 +27,7 @@ export type ChoiceFlag =
 export interface Choice {
 	id: string;
 	label: string;
+	description?: string;
 	kind: string;
 	flags?: ChoiceFlag[];
 	tags?: string[];

@@ -27,6 +27,7 @@ export type ChoiceFlag =
 export type Choice = {
   id: string;
   label: string;
+  description?: string;
   kind: "approve" | "deny" | "custom" | string;
   flags?: ChoiceFlag[];
   tags?: string[];

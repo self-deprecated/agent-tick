@@ -1411,8 +1411,12 @@
 								</div>
 							{:else}
 								<div class="actions">
-									<button class="approve" onclick={() => respond(approval, 'approve')}>Approve</button>
-									<button class="reject" onclick={() => respond(approval, 'reject')}>Reject</button>
+									{#each approval.choices as choice (choice.id)}
+										<button class:approve={choice.kind === 'approve'} class:reject={choice.kind === 'deny'} onclick={() => respond(approval, choice.id)}>
+											<span>{choice.label}</span>
+											{#if choice.description}<small>{choice.description}</small>{/if}
+										</button>
+									{/each}
 								</div>
 							{/if}
 						{/if}
@@ -1648,6 +1652,20 @@
 		display: flex;
 		gap: 8px;
 		align-items: flex-start;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+	}
+
+	.actions button {
+		display: grid;
+		gap: 3px;
+		max-width: 220px;
+		text-align: left;
+	}
+
+	.actions small {
+		font-weight: 500;
+		opacity: 0.82;
 	}
 
 	.encrypted-notice,
