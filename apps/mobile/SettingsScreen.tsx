@@ -670,12 +670,14 @@ function hostLabel(serverURL: string) {
 
 function availabilityLabel(state: AvailabilityState) {
   switch (state) {
+    case "available":
+      return translateSource("Available");
+    case "busy":
+      return translateSource("Busy");
     case "do-not-disturb":
-      return "Do Not Disturb";
+      return translateSource("Do Not Disturb");
     case "off-call":
-      return "Off-call";
-    default:
-      return state.charAt(0).toUpperCase() + state.slice(1);
+      return translateSource("Off-call");
   }
 }
 

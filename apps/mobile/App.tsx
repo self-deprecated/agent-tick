@@ -2715,7 +2715,7 @@ function ChoiceActions({
           onPress={() => selectedChoice ? onSubmit(selectedChoice) : undefined}
           style={[styles.choiceButton, styles.submitButton, !selectedChoice ? styles.choiceButtonDisabled : null]}
         >
-          <Text style={styles.choiceText}>Send decision</Text>
+          <Text style={styles.choiceText}>{translateSource("Send decision")}</Text>
         </Pressable>
       </>
     );
@@ -2807,10 +2807,10 @@ export function ApprovalsScreen({
     return (
       <View style={styles.waitingPane}>
         {loading ? <ActivityIndicator color="#202124" /> : null}
-        <Text style={styles.waitingTitle}>Waiting</Text>
+        <Text style={styles.waitingTitle}>{translateSource("Waiting")}</Text>
         <LatestStatusCard statusUpdates={statusUpdates} compact dismissedStatusID={dismissedStatusID} onDismiss={onDismissStatus} />
         <Pressable onPress={onRefresh} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>Refresh</Text>
+          <Text style={styles.secondaryButtonText}>{translateSource("Refresh")}</Text>
         </Pressable>
       </View>
     );
@@ -2827,21 +2827,21 @@ export function ApprovalsScreen({
       onRespond(selected, choice);
       return;
     }
-    Alert.alert("Send this decision?", choice.label, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Send decision", onPress: () => onRespond(selected, choice) },
+    Alert.alert(translateSource("Send this decision?"), choice.label, [
+      { text: translateSource("Cancel"), style: "cancel" },
+      { text: translateSource("Send decision"), onPress: () => onRespond(selected, choice) },
     ]);
   };
   const actionPanel = encryptedLocked ? (
     <View style={styles.encryptedActions}>
       <View style={styles.encryptedActionPanel}>
-        <Text style={styles.actionHint}>Decrypt this request before approving or rejecting it.</Text>
+        <Text style={styles.actionHint}>{translateSource("Decrypt this request before approving or rejecting it.")}</Text>
         <Pressable onPress={() => onRespond(selected, dismissChoice)} style={[styles.choiceButton, styles.denyButton]}>
-          <Text style={styles.choiceText}>Dismiss encrypted request</Text>
+          <Text style={styles.choiceText}>{translateSource("Dismiss encrypted request")}</Text>
         </Pressable>
         {onOpenSettings ? (
           <Pressable onPress={onOpenSettings} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Add E2EE Key in Settings</Text>
+            <Text style={styles.secondaryButtonText}>{translateSource("Add E2EE Key in Settings")}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -3098,13 +3098,13 @@ function RequestContextPanel({ request }: { request: ApprovalRequest }) {
   const policy = requestPolicySummary(request);
   return (
     <View style={styles.contextSummaryPanel}>
-      <Text style={styles.contextSummaryTitle}>Routing</Text>
-      <ContextRow label="Agent" value={requestAgentLabel(request)} />
-      <ContextRow label="Requester" value={requestRequesterLabel(request)} />
-      <ContextRow label="Project" value={requestProjectLabel(request)} />
-      {owner ? <ContextRow label="Owner" value={owner} /> : null}
-      {team ? <ContextRow label="Team" value={team} /> : null}
-      {policy ? <ContextRow label="Policy" value={policy} /> : null}
+      <Text style={styles.contextSummaryTitle}>{translateSource("Routing")}</Text>
+      <ContextRow label={translateSource("Agent")} value={requestAgentLabel(request)} />
+      <ContextRow label={translateSource("Requester")} value={requestRequesterLabel(request)} />
+      <ContextRow label={translateSource("Project")} value={requestProjectLabel(request)} />
+      {owner ? <ContextRow label={translateSource("Owner")} value={owner} /> : null}
+      {team ? <ContextRow label={translateSource("Team")} value={team} /> : null}
+      {policy ? <ContextRow label={translateSource("Policy")} value={policy} /> : null}
     </View>
   );
 }
@@ -3118,7 +3118,7 @@ function PolicyProgressPanel({ request }: { request: ApprovalRequest }) {
   }
   return (
     <View style={styles.policyPanel}>
-      <Text style={styles.policyTitle}>Approval progress</Text>
+      <Text style={styles.policyTitle}>{translateSource("Approval progress")}</Text>
       {message ? <Text style={styles.policyMessage}>{message}</Text> : null}
       {progress ? (
         <Text style={styles.policyMeta}>
@@ -3182,15 +3182,15 @@ export function HistoryScreen({
   return (
     <View style={styles.historyPane}>
       <View style={styles.historyHeader}>
-        <Text style={styles.sectionHeading}>History</Text>
+        <Text style={styles.sectionHeading}>{translateSource("History")}</Text>
         <Pressable onPress={onRefresh} style={styles.smallButton}>
-          <Text style={styles.smallButtonText}>{loading ? "..." : "Refresh"}</Text>
+          <Text style={styles.smallButtonText}>{loading ? "..." : translateSource("Refresh")}</Text>
         </Pressable>
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <ScrollView contentContainerStyle={styles.historyList}>
         {history.length === 0 ? (
-          <Text style={styles.emptyText}>No approval history yet.</Text>
+          <Text style={styles.emptyText}>{translateSource("No approval history yet.")}</Text>
         ) : (
           history.map((request) => (
             <Pressable
@@ -3207,10 +3207,10 @@ export function HistoryScreen({
                 <Text
                   style={[
                     styles.historyStatus,
-                    requestStatusLabel(request) === "approve"
+                    requestStatusLabel(request) === translateSource("Approved")
                       ? styles.historyStatusApprove
                       : null,
-                    requestStatusLabel(request) === "deny"
+                    requestStatusLabel(request) === translateSource("Denied")
                       ? styles.historyStatusDeny
                       : null,
                   ]}
@@ -3219,7 +3219,7 @@ export function HistoryScreen({
                 </Text>
               </View>
               <Text numberOfLines={1} style={styles.historyMeta}>
-                {historyKindLabel(request)} · {request.requester.host || request.requester.name || "Agent"} · Tap for details
+                {historyKindLabel(request)} · {request.requester.host || request.requester.name || translateSource("Agent")} · {translateSource("Tap for details")}
               </Text>
               {request.command ? (
                 <View style={styles.historyCommandPanel}>
@@ -3273,29 +3273,29 @@ function HistoryDetailScreen({
   return (
     <View style={styles.historyPane}>
       <View style={styles.historyHeader}>
-        <Pressable accessibilityLabel="Back to history" onPress={onBack} style={styles.smallButton}>
-          <Text style={styles.smallButtonText}>Back</Text>
+        <Pressable accessibilityLabel={translateSource("Back to history")} onPress={onBack} style={styles.smallButton}>
+          <Text style={styles.smallButtonText}>{translateSource("Back")}</Text>
         </Pressable>
         <Text style={styles.historyStatus}>{requestStatusLabel(request)}</Text>
       </View>
       <View style={styles.historyDetailNav}>
         <Pressable
-          accessibilityLabel="Previous history item"
+          accessibilityLabel={translateSource("Previous history item")}
           accessibilityRole="button"
           disabled={!onPrevious}
           onPress={onPrevious}
           style={[styles.historyNavButton, !onPrevious ? styles.historyNavButtonDisabled : null]}
         >
-          <Text style={[styles.historyNavButtonText, !onPrevious ? styles.historyNavButtonTextDisabled : null]}>‹ Previous</Text>
+          <Text style={[styles.historyNavButtonText, !onPrevious ? styles.historyNavButtonTextDisabled : null]}>{translateSource("‹ Previous")}</Text>
         </Pressable>
         <Pressable
-          accessibilityLabel="Next history item"
+          accessibilityLabel={translateSource("Next history item")}
           accessibilityRole="button"
           disabled={!onNext}
           onPress={onNext}
           style={[styles.historyNavButton, !onNext ? styles.historyNavButtonDisabled : null]}
         >
-          <Text style={[styles.historyNavButtonText, !onNext ? styles.historyNavButtonTextDisabled : null]}>Next ›</Text>
+          <Text style={[styles.historyNavButtonText, !onNext ? styles.historyNavButtonTextDisabled : null]}>{translateSource("Next ›")}</Text>
         </Pressable>
       </View>
       <ScrollView contentContainerStyle={styles.historyDetailContent}>
@@ -3313,18 +3313,18 @@ function HistoryDetailScreen({
         <PolicyProgressPanel request={request} />
         {request.questions && request.questions.length > 0 ? (
           <View style={styles.questionnairePanel}>
-            <Text style={styles.contextSummaryTitle}>Questions</Text>
+            <Text style={styles.contextSummaryTitle}>{translateSource("Questions")}</Text>
             {request.questions.map((question) => (
               <View key={question.question} style={styles.questionCard}>
                 <Text style={styles.questionHeader}>{question.header}</Text>
                 <Text selectable style={styles.questionText}>{question.question}</Text>
                 {(responseAnswers?.[question.question] ?? []).length ? (
                   <Text selectable style={styles.historyAnswerText}>
-                    Answer: {(responseAnswers?.[question.question] ?? []).join(", ")}
+                    {translateSource("Answer:")} {(responseAnswers?.[question.question] ?? []).join(", ")}
                   </Text>
                 ) : null}
                 <Text style={styles.questionHint}>
-                  Options: {question.options.map((option) => option.label).join(", ")}
+                  {translateSource("Options:")} {question.options.map((option) => option.label).join(", ")}
                 </Text>
               </View>
             ))}
@@ -3332,13 +3332,13 @@ function HistoryDetailScreen({
         ) : null}
         {request.response?.message ? (
           <View style={styles.contextPanel}>
-            <Text style={styles.contextTitle}>Response message</Text>
+            <Text style={styles.contextTitle}>{translateSource("Response message")}</Text>
             <Text selectable style={styles.contextText}>{request.response.message}</Text>
           </View>
         ) : null}
         {request.metadata?.context ? (
           <View style={styles.contextPanel}>
-            <Text style={styles.contextTitle}>{request.metadata.contextFile || "Context"}</Text>
+            <Text style={styles.contextTitle}>{request.metadata.contextFile || translateSource("Context")}</Text>
             <Text selectable style={styles.contextText}>{request.metadata.context}</Text>
           </View>
         ) : null}
@@ -3356,9 +3356,9 @@ function HistoryDetailScreen({
 }
 
 function historyKindLabel(request: ApprovalRequest) {
-  if (isQuestionnaireRequest(request)) return "Question";
-  if (request.requestType === "steer") return "Steering";
-  return "Approval request";
+  if (isQuestionnaireRequest(request)) return translateSource("Question");
+  if (request.requestType === "steer") return translateSource("Steering");
+  return translateSource("Approval request");
 }
 
 function ScannerScreen({

@@ -1,3 +1,5 @@
+import { translateSource } from "@agent-tick/i18n";
+
 export type Requester = {
   name: string;
   agentId: string;
@@ -241,16 +243,32 @@ export function questionnaireReady(
 }
 
 export function requestStatusLabel(request: ApprovalRequest) {
-  if (request.response?.choiceId) {
-    return request.response.choiceId;
+  const status = request.response?.choiceId
+    ?? (isQuestionnaireRequest(request) && request.response?.answers ? "answered" : undefined)
+    ?? (request.policyProgress?.state && request.policyProgress.state !== "pending" ? request.policyProgress.state : undefined)
+    ?? request.status;
+  return translateStatus(status);
+}
+
+function translateStatus(status: string) {
+  switch (status) {
+    case "pending":
+      return translateSource("Pending");
+    case "abandoned":
+      return translateSource("Abandoned");
+    case "expired":
+      return translateSource("Expired");
+    case "approved":
+    case "approve":
+      return translateSource("Approved");
+    case "denied":
+    case "deny":
+      return translateSource("Denied");
+    case "answered":
+      return translateSource("Answered");
+    default:
+      return status;
   }
-  if (isQuestionnaireRequest(request) && request.response?.answers) {
-    return "answered";
-  }
-  if (request.policyProgress?.state && request.policyProgress.state !== "pending") {
-    return request.policyProgress.state;
-  }
-  return request.status;
 }
 
 export type ProjectGroup = {
@@ -343,15 +361,15 @@ export function requestResponsibilityLabel(request: ApprovalRequest) {
     return "";
   }
   if (progress.currentUserHasVoted) {
-    return "Waiting for others";
+    return translateSource("Waiting for others");
   }
   if (progress.currentUserEligible === false) {
-    return "Read-only";
+    return translateSource("Read-only");
   }
   if (progress.currentUserEligible === true) {
-    return "Your approval is needed";
+    return translateSource("Your approval is needed");
   }
-  return "Pending";
+  return translateSource("Pending");
 }
 
 export function isEncryptedApprovalRequest(request: ApprovalRequest) {
@@ -383,7 +401,7 @@ export function requestCommandDetails(request: ApprovalRequest) {
   const rows: Array<{ label: string; value: string }> = [];
   if (request.command?.trim()) rows.push({ label: "Command", value: request.command.trim() });
   const project = requestProjectLabel(request);
-  if (project) rows.push({ label: "Project", value: project });
+  if (project) rows.push({ label: translateSource("Project"), value: project });
   if (request.requester.workingDirectory?.trim()) rows.push({ label: "Directory", value: request.requester.workingDirectory.trim() });
   if (request.requester.host?.trim()) rows.push({ label: "Host", value: request.requester.host.trim() });
   if (request.createdAt) rows.push({ label: "Requested", value: request.createdAt });

@@ -69,6 +69,10 @@ msgstr "2. Run the CLI setup command"
 msgid "3. Install and sign into mobile"
 msgstr "3. Install and sign into mobile"
 
+#: apps/mobile/mobileI18nMessages.ts:190
+msgid "Abandoned"
+msgstr "Abandoned"
+
 #: apps/mobile/mobileI18nMessages.ts:10
 msgid "Account"
 msgstr "Account"
@@ -177,6 +181,10 @@ msgstr "and return it to your terminal."
 msgid "Answer:"
 msgstr "Answer:"
 
+#: apps/mobile/mobileI18nMessages.ts:191
+msgid "Answered"
+msgstr "Answered"
+
 #: apps/admin/src/adminI18nMessages.ts:23
 msgid "Any project"
 msgstr "Any project"
@@ -221,6 +229,10 @@ msgstr "Approvals, rules, and team settings stay hidden until there is something
 msgid "Approve"
 msgstr "Approve"
 
+#: apps/mobile/mobileI18nMessages.ts:192
+msgid "Approved"
+msgstr "Approved"
+
 #: apps/admin/src/adminI18nMessages.ts:30
 msgid "Archive"
 msgstr "Archive"
@@ -245,6 +257,10 @@ msgstr "Availability"
 msgid "Availability update failed"
 msgstr "Availability update failed"
 
+#: apps/mobile/mobileI18nMessages.ts:193
+msgid "Available"
+msgstr "Available"
+
 #: apps/mobile/mobileI18nMessages.ts:34
 msgid "Back"
 msgstr "Back"
@@ -260,6 +276,10 @@ msgstr "Billing seats:"
 #: apps/mobile/mobileI18nMessages.ts:36
 msgid "Buffered events:"
 msgstr "Buffered events:"
+
+#: apps/mobile/mobileI18nMessages.ts:194
+msgid "Busy"
+msgstr "Busy"
 
 #: apps/mobile/mobileI18nMessages.ts:37
 msgid "Camera Access"
@@ -469,6 +489,10 @@ msgstr "Decrypt this request in the mobile app before approving or rejecting it.
 msgid "Default policy"
 msgstr "Default policy"
 
+#: apps/mobile/mobileI18nMessages.ts:195
+msgid "Denied"
+msgstr "Denied"
+
 #: apps/mobile/mobileI18nMessages.ts:63
 msgid "Deny"
 msgstr "Deny"
@@ -517,6 +541,10 @@ msgstr "Dismiss encrypted request"
 msgid "Dismiss latest agent status"
 msgstr "Dismiss latest agent status"
 
+#: apps/mobile/mobileI18nMessages.ts:196
+msgid "Do Not Disturb"
+msgstr "Do Not Disturb"
+
 #: apps/admin/src/adminI18nMessages.ts:61
 msgid "Email invite"
 msgstr "Email invite"
@@ -564,6 +592,10 @@ msgstr "Everything is unlocked on your server"
 #: apps/admin/src/adminI18nMessages.ts:64
 msgid "example.com domain (optional)"
 msgstr "example.com domain (optional)"
+
+#: apps/mobile/mobileI18nMessages.ts:197
+msgid "Expired"
+msgstr "Expired"
 
 #: apps/mobile/mobileI18nMessages.ts:83
 msgid "Expires"
@@ -781,6 +813,10 @@ msgstr "Off in Agent Tick"
 msgid "Off in system settings"
 msgstr "Off in system settings"
 
+#: apps/mobile/mobileI18nMessages.ts:198
+msgid "Off-call"
+msgstr "Off-call"
+
 #: apps/mobile/mobileI18nMessages.ts:111
 msgid "On"
 msgstr "On"
@@ -873,6 +909,10 @@ msgstr "Pairing failed"
 msgid "Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally."
 msgstr "Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally."
 
+#: apps/mobile/mobileI18nMessages.ts:199
+msgid "Pending"
+msgstr "Pending"
+
 #: apps/admin/src/adminI18nMessages.ts:97
 msgid "Pending members"
 msgstr "Pending members"
@@ -917,9 +957,17 @@ msgstr "Push registration failed"
 msgid "Push:"
 msgstr "Push:"
 
+#: apps/mobile/mobileI18nMessages.ts:200
+msgid "Question"
+msgstr "Question"
+
 #: apps/mobile/mobileI18nMessages.ts:132
 msgid "Questions"
 msgstr "Questions"
+
+#: apps/mobile/mobileI18nMessages.ts:201
+msgid "Read-only"
+msgstr "Read-only"
 
 #: apps/mobile/mobileI18nMessages.ts:133
 msgid "Refresh"
@@ -1177,6 +1225,10 @@ msgstr "Start simple, then scope rules by project or team when your organization
 msgid "Status:"
 msgstr "Status:"
 
+#: apps/mobile/mobileI18nMessages.ts:202
+msgid "Steering"
+msgstr "Steering"
+
 #: apps/mobile/mobileI18nMessages.ts:168
 msgid "Sticky bottom"
 msgstr "Sticky bottom"
@@ -1200,6 +1252,10 @@ msgstr "Switch to $"
 #: apps/mobile/mobileI18nMessages.ts:172
 msgid "System"
 msgstr "System"
+
+#: apps/mobile/mobileI18nMessages.ts:203
+msgid "Tap for details"
+msgstr "Tap for details"
 
 #: apps/admin/src/adminI18nMessages.ts:134
 msgid "Team"
@@ -1317,7 +1373,11 @@ msgstr "Waiting"
 msgid "Waiting for mobile sign-in"
 msgstr "Waiting for mobile sign-in"
 
-#: apps/mobile/mobileI18nMessages.ts:190
+#: apps/mobile/mobileI18nMessages.ts:204
+msgid "Waiting for others"
+msgstr "Waiting for others"
+
+#: apps/mobile/mobileI18nMessages.ts:206
 msgid "Workspace"
 msgstr "Workspace"
 
@@ -1332,6 +1392,10 @@ msgstr "You're signed in and ready to connect an agent"
 #: apps/admin/src/adminI18nMessages.ts:148
 msgid "Your access will appear in the organization selector after an admin approves this request."
 msgstr "Your access will appear in the organization selector after an admin approves this request."
+
+#: apps/mobile/mobileI18nMessages.ts:205
+msgid "Your approval is needed"
+msgstr "Your approval is needed"
 
 #: apps/admin/src/adminI18nMessages.ts:149
 msgid "Your organization requests"
