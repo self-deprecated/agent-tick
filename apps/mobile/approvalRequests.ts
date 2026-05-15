@@ -493,31 +493,14 @@ export function isSteerRequest(request: ApprovalRequest) {
   return request.requestType === "steer";
 }
 
-export function supportsNotificationActions(request: ApprovalRequest) {
-  return (
-    canRespondToRequest(request) &&
-    request.requestType === "approval" &&
-    (request.choices ?? []).some((choice) => choice.id === "approve") &&
-    (request.choices ?? []).some((choice) => choice.id === "deny")
-  );
+export function supportsNotificationActions(_request: ApprovalRequest) {
+  return false;
 }
 
-export function shouldScheduleLocalNotifications(pushStatus: string, notificationsEnabled = true) {
-  return notificationsEnabled && pushStatus !== "registered";
+export function shouldScheduleLocalNotifications(_pushStatus: string, _notificationsEnabled = true) {
+  return false;
 }
 
-export function notificationBody(request: ApprovalRequest) {
-  const responsibility = requestResponsibilityLabel(request);
-  const prefix = responsibility ? `${responsibility}: ` : "";
-  if (request.command) {
-    const host = request.requester.host || request.requester.name || "Agent";
-    return `${prefix}${host}: ${request.command}`;
-  }
-  if (isQuestionnaireRequest(request) && request.questions?.length) {
-    return `${prefix}${request.questions[0]?.question || request.body || "Questions waiting"}`;
-  }
-  if (isSteerRequest(request)) {
-    return `${prefix}${request.body || "Steering requested"}`;
-  }
-  return `${prefix}${request.body || "Approval requested"}`;
+export function notificationBody(_request: ApprovalRequest) {
+  return "Agent Tick needs your attention.";
 }

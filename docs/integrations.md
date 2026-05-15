@@ -1,8 +1,8 @@
 # Integrations
 
-Agent Tick currently supports the TypeScript CLI commands `install`, `setup`, `mode`, `sanction`, `steering`, `abandon`, and `status`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
+Agent Tick currently supports the TypeScript CLI command concepts `install`, `setup`, `mode`, `sanction`, `steering`, `abandon`, and `status-update`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
 
-For product-vs-self-hosting setup flows, see [Using Agent Tick](./using-agent-tick.md). The public product site is <https://agenttick.sh>.
+For product-vs-self-hosting setup flows, see [Using Agent Tick](./using-agent-tick.md). Public surfaces are the marketing site at <https://agenttick.sh>, hosted app at <https://app.agenttick.sh>, hosted API at <https://api.agenttick.sh>, and docs at <https://docs.agenttick.sh>.
 
 ## CLI setup
 
@@ -24,12 +24,12 @@ agent-tick install
 For CI, headless hosts, or single-mode self-hosting, create an agent token in the dashboard and save it manually:
 
 ```sh
-agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick setup --server https://api.agenttick.sh --token agent_...
 ```
 
-For lower-level browser setup without agent instruction installation, run `agent-tick login` (or `agent-tick setup --login --server https://agenttick.sh`).
+For lower-level browser setup without agent instruction installation, run `agent-tick login` (or `agent-tick setup --login --server https://api.agenttick.sh`).
 
-## Claude Code AFK/pass-through mode
+## Claude Code Verified Hook and MCP support
 
 `agent-tick install --target claude` installs Claude Code hooks that are inactive by default. The installer can write hooks globally for all Claude Code projects or locally for the current project:
 
@@ -121,7 +121,7 @@ Use it from a workflow:
 
 The action waits for the final decision and exposes `request-id`, `status`, and `choice-id` outputs. A fuller workflow example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml).
 
-### CLI status, steering, and sanctions
+### CLI Status Updates, Steering, and Sanctions
 
 Use `agent-tick sanction` to ask for approval before sensitive work. Add `--choice-flag approve=...` when the approve action needs mobile-visible warnings such as `production`, `destructive`, or `security_sensitive`:
 
@@ -158,10 +158,10 @@ agent-tick steering \
 
 Supported choice flags are `favorite`, `safest`, `fastest`, `thorough`, `reversible`, `experimental`, `blocked`, `needs_context`, `destructive`, `external_effect`, `security_sensitive`, `costly`, `production`, `time_sensitive`, and `audit_relevant`.
 
-Use `agent-tick status` to publish AFK progress updates without blocking for approval. Set `AGENT_TICK_THREAD_ID` from an agent integration when a chat/thread id is available; otherwise the CLI scopes updates to the current host and working directory.
+Use `agent-tick status-update` to publish AFK progress updates without blocking for approval. Set `AGENT_TICK_THREAD_ID` from an agent integration when a chat/thread id is available; otherwise the CLI scopes updates to the current host and working directory.
 
 ```sh
-agent-tick status --state working --next "Run tests" "Finished edits; validating now"
+agent-tick status-update --state working --next "Run tests" "Finished edits; validating now"
 ```
 
 MCP-capable agents can launch the local stdio adapter with the same saved Agent Tick setup/token used by the rest of the CLI:
@@ -170,7 +170,7 @@ MCP-capable agents can launch the local stdio adapter with the same saved Agent 
 agent-tick mcp
 ```
 
-The adapter exposes status, steering, and sanction tools that call the Agent Tick server on the agent's behalf. For MCP clients that declare form elicitation support, such as Codex with `mcp_elicitations = true`, steering and sanction calls can also use local MCP elicitation (`localElicitation: "auto" | "only" | "off"`). Configure Codex with a stdio MCP server entry similar to:
+The first-party local stdio MCP Adapter exposes `agent_tick_status_update`, `agent_tick_steering`, and `agent_tick_sanction`. It uses the same saved Agent Tick config/token as the CLI and fails with setup instructions when no config exists. For MCP clients that declare form elicitation support, such as Codex with `mcp_elicitations = true`, Mirrored Prompt is the default: the local MCP dialog and remote Agent Tick request race, the first response wins, and the losing surface is abandoned. Configure Codex with a stdio MCP server entry similar to:
 
 ```toml
 [mcp_servers.agent_tick]
@@ -180,7 +180,7 @@ startup_timeout_sec = 10
 tool_timeout_sec = 1800
 default_tools_approval_mode = "approve"
 
-[mcp_servers.agent_tick.tools.agent_tick_status]
+[mcp_servers.agent_tick.tools.agent_tick_status_update]
 approval_mode = "approve"
 
 [mcp_servers.agent_tick.tools.agent_tick_steering]
@@ -202,7 +202,7 @@ approval_policy = { granular = {
 }}
 ```
 
-`localElicitation: "auto"` is the default and recommended mode. It shows both the local Codex dialog and a remote Agent Tick mobile/web request; the first answer wins, and Agent Tick best-effort abandons the remote request if the local answer wins. Use `localElicitation: "only"` only when testing the local Codex dialog. Use `localElicitation: "off"` only when testing a remote Agent Tick mobile/web request and push notification.
+`localElicitation: "auto"` is the default and recommended mode. Steering choices must include an explicit caller-provided decline/deny option; deny options are mutually exclusive with normal choices. Sanctions never execute commands through MCP; they return an approval result. CLI fallback remains available for agents without MCP, but is less capable than the adapter because it cannot use Mirrored Prompt.
 
 ## Not currently implemented
 

@@ -44,6 +44,25 @@ jobs:
       - name: Pack smoke test
         run: pnpm --filter @self-deprecated/agent-tick pack --pack-destination "$RUNNER_TEMP"
 
+      - name: Agent Tick release sanction
+        if: ${{ (github.event.inputs.dry-run || 'false') != 'true' }}
+        env:
+          AGENT_TICK_SERVER: ${{ secrets.AGENT_TICK_SERVER }}
+          AGENT_TICK_TOKEN: ${{ secrets.AGENT_TICK_RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          changelog="https://github.com/${REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          node packages/cli/dist/index.js sanction \
+            --title "Publish Agent Tick CLI ${RELEASE_TAG}?" \
+            --body "Repository: ${REPOSITORY}\nTarget: npm @self-deprecated/agent-tick\nChangelog: ${changelog}\nCommit: ${COMMIT_SHA}" \
+            --command "pnpm --filter @self-deprecated/agent-tick publish" \
+            --choice-flag approve=production \
+            --choice-flag approve=audit_relevant \
+            --timeout 30m
+
       - name: Publish CLI to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,6 +1,6 @@
 # Using Agent Tick
 
-Agent Tick's default path is the hosted product at <https://agenttick.sh>. Self-hosting is available for teams that need it, but it is documented separately in [SELFHOSTING.md](../SELFHOSTING.md).
+Agent Tick's default path is the hosted product at <https://app.agenttick.sh>. Self-hosting is available for teams that need it, but it is documented separately in [SELFHOSTING.md](../SELFHOSTING.md). Public documentation lives at <https://docs.agenttick.sh>.
 
 ## Hosted product quickstart
 
@@ -8,12 +8,12 @@ For the smoothest Claude Code setup, paste this prompt into your coding agent ch
 
 ```text
 Fetch and follow the Agent Tick setup skill from:
-https://raw.githubusercontent.com/self-deprecated/agent-tick/main/skills/agent-tick/SKILL.md
+https://agenttick.sh/skill
 
-Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, enable status, steering, and sanctions by default unless I explicitly opt out, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result. If Agent Tick is not installed yet, use the skill's first-time setup instructions. Do not frame questions around a specific UI surface; say Agent Tick or remote approval instead.
+Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, enable status updates, steering, and sanctions by default unless I explicitly opt out, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result. If Agent Tick is not installed yet, use the skill's first-time setup instructions. Do not frame questions around a specific UI surface; say Agent Tick or remote approval instead.
 ```
 
-The linked skill-led flow works even when the target machine does not have this repo cloned. It is recommended because it can inspect your local setup, explain conflicts, and choose the right AFK/pass-through behavior before writing hook settings while keeping status, steering, and sanctions enabled by default.
+The linked prompt-based skill flow works even when the target machine does not have this repo cloned. It is recommended because it can inspect your local setup, recommend local or global scope, run a dry run, explain conflicts and planned changes, ask for confirmation, install, and verify while keeping status updates, steering, and sanctions enabled by default unless you opt out.
 
 For direct CLI setup, run the installer on the machine where your AI coding agents run:
 
@@ -23,10 +23,10 @@ npx @self-deprecated/agent-tick install
 
 The installer:
 
-1. Opens <https://agenttick.sh> in your browser.
+1. Opens <https://app.agenttick.sh> in your browser.
 2. Lets you sign in and authorize CLI setup.
 3. Saves an Agent Tick `agent_...` token in `~/.config/agent-tick/config.json`.
-4. Detects local agent configs and installs verified hook integrations. Claude Code and Pi hooks are enabled today; Codex, Gemini, Cursor, OpenCode, and generic `AGENTS.md` targets are visible as disabled scaffolds until verified.
+4. Detects local agent configs and installs supported integrations. Claude Code is supported as Verified Hook + MCP, Codex via MCP Adapter, and Pi as a Native Extension. Gemini, Cursor, OpenCode, and generic `AGENTS.md` targets are visible as disabled scaffolds until verified.
 
 Global install alternative:
 
@@ -35,7 +35,7 @@ npm install -g @self-deprecated/agent-tick
 agent-tick install
 ```
 
-## Status, steering, and sanctions
+## Status Updates, Steering, and Sanctions
 
 Ask for a sanction and wait for approval before sensitive work:
 
@@ -74,7 +74,7 @@ agent-tick abandon req_...
 Send a lightweight progress update without asking for approval:
 
 ```sh
-agent-tick status --state working --next "Run typecheck" "Finished edits; validating now"
+agent-tick status-update --state working --next "Run typecheck" "Finished edits; validating now"
 ```
 
 Use `--thread` or `AGENT_TICK_THREAD_ID` when an integration can provide a chat/thread id. Otherwise the CLI defaults to the current machine and working directory so the mobile app can show the latest update for that local repo context.
@@ -85,7 +85,7 @@ Use `--thread` or `AGENT_TICK_THREAD_ID` when an integration can provide a chat/
 agent-tick install --target claude --target codex
 agent-tick install --all
 agent-tick install --dry-run
-agent-tick install --server https://tick.example.com
+agent-tick install --server https://app.agenttick.sh
 agent-tick install --target claude --claude-scope local
 agent-tick install --target claude --claude-scope global
 agent-tick install --target claude --claude-sandbox allow
@@ -95,9 +95,9 @@ agent-tick install --no-login --target agents-md
 
 Supported install targets:
 
-- `claude` — enabled. Adds mode-aware hooks globally in `~/.claude/settings.json` or locally in `.claude/settings.local.json` for `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions, plus `Bash(agent-tick:*)` so Agent Tick can run without recursive permission prompts. Hooks start in pass-through mode; use `agent-tick mode afk` to route prompts through Agent Tick and `agent-tick mode pass-through` to restore Claude Code's native prompts.
-- `pi` — enabled. Installs the repo-maintained `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`, a Pi `tool_call` extension for risky bash commands.
-- `codex` — scaffold only until its hook/config path is verified.
+- `claude` — supported as Verified Hook + MCP. Hooks can route `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions, plus `Bash(agent-tick:*)` so Agent Tick can run without recursive permission prompts. Hooks start in pass-through mode; use `agent-tick mode afk` to route prompts through Agent Tick and `agent-tick mode pass-through` to restore Claude Code's native prompts.
+- `codex` — supported via MCP Adapter through `agent-tick mcp`.
+- `pi` — supported as a Native Extension. Installs the repo-maintained `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`, a Pi `tool_call` extension for risky bash commands.
 - `gemini` — scaffold only until its hook/config path is verified.
 - `cursor` — scaffold only until its hook/config path is verified.
 - `opencode` — scaffold only until its hook/config path is verified.
@@ -108,7 +108,7 @@ Supported install targets:
 If browser login is not possible, create an agent token in the dashboard and configure the CLI manually:
 
 ```sh
-agent-tick setup --server https://agenttick.sh --token agent_...
+agent-tick setup --server https://api.agenttick.sh --token agent_...
 ```
 
 For CI, pass `AGENT_TICK_SERVER` and `AGENT_TICK_TOKEN` as secrets instead of committing tokens.
@@ -148,7 +148,7 @@ Implemented today:
 - `agent-tick sanction`
 - `agent-tick steering`
 - `agent-tick abandon`
-- `agent-tick status`
+- `agent-tick status-update`
 - dashboard approvals
 - GitHub Actions composite action
 - optional outbound approval notification webhook
@@ -165,7 +165,7 @@ startup_timeout_sec = 10
 tool_timeout_sec = 1800
 default_tools_approval_mode = "approve"
 
-[mcp_servers.agent_tick.tools.agent_tick_status]
+[mcp_servers.agent_tick.tools.agent_tick_status_update]
 approval_mode = "approve"
 
 [mcp_servers.agent_tick.tools.agent_tick_steering]

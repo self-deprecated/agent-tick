@@ -100,7 +100,12 @@ export function createProgram(): Command {
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
     .action(async (options: ClientOptions) => {
-      await runMcpStdioAdapter(options);
+      try {
+        await runMcpStdioAdapter(options);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`${message}\nRun \`agent-tick setup --login\` or \`agent-tick install\` before starting the MCP adapter.`);
+      }
     });
 
   const hook = program.command('hook', { hidden: true }).description('Internal hook entrypoints used by agent integrations');
@@ -199,22 +204,33 @@ export function createProgram(): Command {
     });
 
   program
-    .command('status')
+    .command('status', { hidden: true })
+    .description('Removed; use status-update')
+    .allowUnknownOption(true)
+    .allowExcessArguments(true)
+    .action(() => {
+      throw cliUsageError('status-update', 'status has been renamed to status-update');
+    });
+
+  program
+    .command('status-update')
     .description('Send a small progress update to Agent Tick')
-    .argument('[message...]', 'status message')
+    .argument('[message...]', 'status update message')
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
     .option('--thread <id>', 'thread/chat identifier [env: AGENT_TICK_THREAD_ID]')
-    .option('--state <state>', 'status state: working, blocked, done', 'working')
+    .option('--state <state>', 'status update state: working, waiting, blocked, done, failed', 'working')
     .option('--next <text>', 'what the agent expects to do next')
     .option('--project <name>', 'project/repository display name')
+    .option('--importance <level>', 'future notification importance hint: low, normal, high, urgent', 'normal')
+    .option('--notify', 'future push-notification hint for attention-worthy updates')
     .option('--metadata <key=value>', 'metadata key/value, repeatable', collectOption, [])
     .option('--json', 'print machine-readable JSON')
-    .addHelpText('after', statusHelpText)
+    .addHelpText('after', statusUpdateHelpText)
     .action(async (messageParts: string[], options: StatusOptions) => {
       const { client } = await clientFromOptions(options);
       const message = messageParts.join(' ').trim();
-      if (!message) throw cliUsageError('status', 'status requires a message');
+      if (!message) throw cliUsageError('status-update', 'status-update requires a message');
       const update = await client.createStatusUpdate({
         threadId: options.thread ?? process.env.AGENT_TICK_THREAD_ID ?? defaultThreadId(),
         message,
@@ -223,9 +239,9 @@ export function createProgram(): Command {
         host: os.hostname() || undefined,
         workingDirectory: process.cwd(),
         projectName: options.project ?? path.basename(process.cwd()),
-        metadata: parseMetadata(options.metadata)
+        metadata: statusUpdateMetadata(options)
       });
-      if (options.json) process.stdout.write(`${JSON.stringify({ event: 'status', status: update })}\n`);
+      if (options.json) process.stdout.write(`${JSON.stringify({ event: 'status_update', statusUpdate: update })}\n`);
       else process.stdout.write(`sent status update for ${update.threadId}: ${update.message}\n`);
     });
 
@@ -381,7 +397,7 @@ function success(value: string): string { return color('32', value); }
 
 function topLevelHelpText(context?: AddHelpTextContext): string {
   if (context?.command.parent) return '';
-  return `${heading('Agent Tick — status, steering, and sanctions for AI agents')}\n\n${heading('Most used')}\n  ${command('agent-tick status "Running tests now"')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick sanction --title "Deploy to production?"')}\n  ${command('agent-tick sanction -- npm install')}\n\n${heading('First-time setup')}\n  ${command('agent-tick login')}\n  ${command('agent-tick setup --login')}\n  ${command('agent-tick install --target claude')}\n\n`;
+  return `${heading('Agent Tick — Status Updates, Steering, and Sanctions for AI agents')}\n\n${heading('Most used')}\n  ${command('agent-tick status-update "Running tests now"')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick sanction --title "Deploy to production?"')}\n  ${command('agent-tick sanction -- npm install')}\n\n${heading('First-time setup')}\n  ${command('agent-tick login')}\n  ${command('agent-tick setup --login')}\n  ${command('agent-tick install --target claude')}\n\n`;
 }
 
 function rootHelpFooter(context?: AddHelpTextContext): string {
@@ -389,9 +405,9 @@ function rootHelpFooter(context?: AddHelpTextContext): string {
 }
 
 function orderedVisibleCommands(cmd: Command): Command[] {
-  const priority = ['status', 'steering', 'sanction', 'mcp', 'login', 'setup', 'install', 'mode', 'abandon'];
+  const priority = ['status-update', 'steering', 'sanction', 'mcp', 'login', 'setup', 'install', 'mode', 'abandon'];
   return [...cmd.commands]
-    .filter((subcommand) => subcommand.name() !== 'hook')
+    .filter((subcommand) => subcommand.name() !== 'hook' && subcommand.name() !== 'status')
     .sort((left, right) => {
       const leftIndex = priority.indexOf(left.name());
       const rightIndex = priority.indexOf(right.name());
@@ -408,7 +424,7 @@ const setupHelpText = `\n${heading('Recommended hosted setup')}\n  ${command('ag
 
 const installHelpText = `\n${heading('Examples')}\n  ${command('agent-tick install --target claude')}\n  ${command('agent-tick install --target claude --claude-scope local')}\n  ${command('agent-tick install --target claude --claude-sandbox allow')}\n`;
 
-const statusHelpText = `\n${heading('Examples')}\n  ${command('agent-tick status "Finished edits; running tests now"')}\n  ${command('agent-tick status --state blocked "Need staging access"')}\n  ${command('agent-tick status --state done "Implemented and validated"')}\n`;
+const statusUpdateHelpText = `\n${heading('Examples')}\n  ${command('agent-tick status-update "Finished edits; running tests now"')}\n  ${command('agent-tick status-update --state waiting "Waiting for CI"')}\n  ${command('agent-tick status-update --state blocked --notify --importance high "Need staging access"')}\n  ${command('agent-tick status-update --state done "Implemented and validated"')}\n\n${muted('Recommended states: working, waiting, blocked, done, failed. Use --notify and --importance as explicit hooks for future push behavior; they are recorded as metadata today.')}\n`;
 
 const steeringHelpText = `\n${heading('Examples')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick steering --title "Proceed?" --choice yes="Yes" --choice no:deny="No"')}\n  ${command('agent-tick steering --title "Which fix?" --choice small="Small fix" --choice rewrite="Rewrite" --choice-flag small=favorite')}\n\n${muted('Choices may be plain labels, id=Label, or id:kind=Label. If no deny choice is provided, Agent Tick adds a Cancel choice. Use --choice-flag choiceId=favorite and --choice-tag choiceId=tag for mobile-visible annotations.')}\n`;
 
@@ -416,7 +432,7 @@ const sanctionHelpText = `\n${heading('Examples')}\n  ${command('agent-tick sanc
 
 const abandonHelpText = `\n${heading('Example')}\n  ${command('agent-tick abandon apr_123')}\n`;
 
-type UsageCommand = 'status' | 'steering' | 'sanction' | 'setup' | 'login' | 'install' | 'mode' | 'mcp' | 'abandon' | 'unknown';
+type UsageCommand = 'status-update' | 'steering' | 'sanction' | 'setup' | 'login' | 'install' | 'mode' | 'mcp' | 'abandon' | 'unknown';
 
 class CliUsageError extends Error {
   constructor(public usageCommand: UsageCommand, message: string) {
@@ -778,7 +794,7 @@ function installPlanForTarget(target: InstallTarget, claudeConfig?: ClaudeInstal
       target,
       status: 'disabled',
       reason: 'automatic Codex config writing is not enabled yet; configure `agent-tick mcp` manually and allow MCP elicitations',
-      description: 'configure Codex MCP tools for status, steering, and sanctions',
+      description: 'configure Codex MCP tools for status updates, steering, and sanctions',
       apply: async () => undefined
     };
   }
@@ -948,8 +964,8 @@ function packagedAssetPath(relativePath: string): string {
 }
 
 export function agentInstructionBlock(target: string = 'agent'): string {
-  const title = target === 'pi' ? '---\nname: agent-tick\ndescription: Use Agent Tick for sanctions, steering, and status updates.\n---\n\n# Agent Tick human loop' : '# Agent Tick human loop';
-  return `${title}\n\nThis machine is connected to Agent Tick. Use the product language directly: status, steering, and sanctions.\n\nFor sanctions before risky, destructive, expensive, production, data-accessing, or dependency-installing actions:\n\n\`\`\`sh\nagent-tick sanction --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nFor a command that should run only after sanction approval:\n\n\`\`\`sh\nagent-tick sanction -- <command and args>\n\`\`\`\n\nFor structured choices that steer the work:\n\n\`\`\`sh\nagent-tick steering --title "Which approach?" --choice option_a="Option A" --choice cancel:deny="Cancel"\n\`\`\`\n\nFor non-blocking progress updates:\n\n\`\`\`sh\nagent-tick status --state working "Finished edits; validating now"\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in titles, bodies, commands, or status messages.\n`;
+  const title = target === 'pi' ? '---\nname: agent-tick\ndescription: Use Agent Tick for status updates, steering, and sanctions.\n---\n\n# Agent Tick human loop' : '# Agent Tick human loop';
+  return `${title}\n\nThis machine is connected to Agent Tick. Use the product language directly: status updates, steering, and sanctions.\n\nFor sanctions before risky, destructive, expensive, production, data-accessing, or dependency-installing actions:\n\n\`\`\`sh\nagent-tick sanction --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nFor a command that should run only after sanction approval:\n\n\`\`\`sh\nagent-tick sanction -- <command and args>\n\`\`\`\n\nFor structured choices that steer the work:\n\n\`\`\`sh\nagent-tick steering --title "Which approach?" --choice option_a="Option A" --choice cancel:deny="Cancel"\n\`\`\`\n\nFor non-blocking progress updates:\n\n\`\`\`sh\nagent-tick status-update --state working "Finished edits; validating now"\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in titles, bodies, commands, or status update messages.\n`;
 }
 
 async function appendInstallBlock(filePath: string, block: string): Promise<void> {
@@ -1216,16 +1232,18 @@ interface McpElicitationResult {
 
 export const mcpToolDefinitions: McpToolDefinition[] = [
   {
-    name: 'agent_tick_status',
-    description: 'Send a non-blocking Agent Tick progress update for the current agent thread.',
+    name: 'agent_tick_status_update',
+    description: 'Send a non-blocking Agent Tick status update for the current agent thread.',
     inputSchema: {
       type: 'object',
       properties: {
-        message: { type: 'string', description: 'Short status message. Do not include secrets.' },
-        state: { type: 'string', enum: ['working', 'blocked', 'done'], default: 'working' },
+        message: { type: 'string', description: 'Short status update message. Do not include secrets.' },
+        state: { type: 'string', enum: ['working', 'waiting', 'blocked', 'done', 'failed'], default: 'working' },
         nextStep: { type: 'string', description: 'Optional next step.' },
         threadId: { type: 'string', description: 'Optional stable thread/chat identifier.' },
         projectName: { type: 'string', description: 'Optional project display name.' },
+        importance: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], default: 'normal', description: 'Future notification importance hint; recorded as metadata today.' },
+        notify: { type: 'boolean', description: 'Future push-notification hint; recorded as metadata today.' },
         metadata: { type: 'object', additionalProperties: { type: 'string' } }
       },
       required: ['message'],
@@ -1373,13 +1391,13 @@ function mcpLocalElicitationAvailable(context: McpRequestContext): boolean {
 async function callMcpTool(params: unknown, client: AgentTickClient, server: string, context: McpRequestContext): Promise<unknown> {
   if (!isPlainObject(params) || typeof params.name !== 'string') throw new Error('tools/call requires a tool name');
   const args = isPlainObject(params.arguments) ? params.arguments : {};
-  if (params.name === 'agent_tick_status') return mcpTextResult(await callMcpStatus(args, client));
+  if (params.name === 'agent_tick_status_update') return mcpTextResult(await callMcpStatusUpdate(args, client));
   if (params.name === 'agent_tick_sanction') return callMcpSanction(args, client, server, context);
   if (params.name === 'agent_tick_steering') return callMcpSteering(args, client, server, context);
   throw new Error(`Unknown Agent Tick MCP tool: ${params.name}`);
 }
 
-async function callMcpStatus(args: Record<string, unknown>, client: AgentTickClient): Promise<string> {
+async function callMcpStatusUpdate(args: Record<string, unknown>, client: AgentTickClient): Promise<string> {
   const message = requiredString(args.message, 'message');
   const update = await client.createStatusUpdate({
     threadId: optionalString(args.threadId) ?? process.env.AGENT_TICK_THREAD_ID ?? defaultThreadId(),
@@ -1389,7 +1407,11 @@ async function callMcpStatus(args: Record<string, unknown>, client: AgentTickCli
     host: os.hostname() || undefined,
     workingDirectory: process.cwd(),
     projectName: optionalString(args.projectName) ?? path.basename(process.cwd()),
-    metadata: optionalStringRecord(args.metadata)
+    metadata: statusUpdateMetadata({
+      metadata: metadataEntriesFromRecord(optionalStringRecord(args.metadata)),
+      importance: optionalString(args.importance),
+      notify: args.notify === true
+    })
   });
   return `Sent status update ${update.statusId} for ${update.threadId}: ${update.message}`;
 }
@@ -1432,7 +1454,7 @@ async function callMcpSteering(args: Record<string, unknown>, client: AgentTickC
   const rawChoices = Array.isArray(args.choices) ? args.choices : undefined;
   if (!rawChoices?.length) throw new Error('choices must be a non-empty array');
   const hookChoices = mcpChoiceInputs(rawChoices);
-  if (!hookChoices.some((choice) => choice.kind === 'deny')) hookChoices.push({ id: 'cancel', label: 'Cancel / do not answer', kind: 'deny' });
+  if (!hookChoices.some((choice) => choice.kind === 'deny')) throw new Error('agent_tick_steering requires an explicit deny/decline choice');
   const title = requiredString(args.title, 'title');
   const body = optionalString(args.body);
   const localMode = localElicitationMode(args.localElicitation);
@@ -1754,7 +1776,7 @@ function defaultThreadId(): string {
   return `${os.hostname() || 'local'}:${process.cwd()}`;
 }
 
-function parseMetadata(values: string[] | undefined): Record<string, string> | undefined {
+function parseMetadata(values: string[] | undefined): Record<string, string> {
   const metadata: Record<string, string> = {};
   for (const value of values ?? []) {
     const separator = value.indexOf('=');
@@ -1764,6 +1786,18 @@ function parseMetadata(values: string[] | undefined): Record<string, string> | u
     if (!key) throw new Error(`invalid metadata: ${value}. Metadata key cannot be empty.`);
     metadata[key] = entry;
   }
+  return metadata;
+}
+
+function metadataEntriesFromRecord(record: Record<string, string> | undefined): string[] | undefined {
+  return record ? Object.entries(record).map(([key, value]) => `${key}=${value}`) : undefined;
+}
+
+function statusUpdateMetadata(options: { metadata?: string[] | undefined; importance?: string | undefined; notify?: boolean | undefined }): Record<string, string> | undefined {
+  const metadata = parseMetadata(options.metadata);
+  const importance = options.importance?.trim();
+  if (importance && importance !== 'normal') metadata.agentTickImportance = importance;
+  if (options.notify) metadata.agentTickNotify = 'true';
   return Object.keys(metadata).length ? metadata : undefined;
 }
 
@@ -1906,6 +1940,8 @@ interface StatusOptions extends ClientOptions {
   state?: string;
   next?: string;
   project?: string;
+  importance?: string;
+  notify?: boolean;
   metadata?: string[];
   json?: boolean;
 }
@@ -1944,12 +1980,12 @@ function isDirectExecution(): boolean {
 
 function commandFromArgv(argv: string[]): UsageCommand {
   const commandName = argv.slice(2).find((arg) => !arg.startsWith('-'));
-  if (commandName === 'status' || commandName === 'steering' || commandName === 'sanction' || commandName === 'setup' || commandName === 'login' || commandName === 'install' || commandName === 'mode' || commandName === 'mcp' || commandName === 'abandon') return commandName;
+  if (commandName === 'status-update' || commandName === 'steering' || commandName === 'sanction' || commandName === 'setup' || commandName === 'login' || commandName === 'install' || commandName === 'mode' || commandName === 'mcp' || commandName === 'abandon') return commandName;
   return 'unknown';
 }
 
 function usageHint(name: UsageCommand): string {
-  if (name === 'status') return `${statusHelpText}\nRun ${command('agent-tick status --help')} for all options.\n`;
+  if (name === 'status-update') return `${statusUpdateHelpText}\nRun ${command('agent-tick status-update --help')} for all options.\n`;
   if (name === 'steering') return `${steeringHelpText}\nRun ${command('agent-tick steering --help')} for all options.\n`;
   if (name === 'sanction') return `${sanctionHelpText}\nRun ${command('agent-tick sanction --help')} for all options.\n`;
   if (name === 'setup') return `${setupHelpText}\nRun ${command('agent-tick setup --help')} for all options.\n`;

@@ -16,6 +16,7 @@ export interface RetentionCleanupTimer {
 export function retentionPolicyFromConfig(config: ServerConfig): RetentionPolicy {
   return {
     ...(config.approvalRetentionDays !== undefined ? { approvalRequestsDays: config.approvalRetentionDays } : {}),
+    ...(config.statusUpdateRetentionDays !== undefined ? { statusUpdatesDays: config.statusUpdateRetentionDays } : {}),
     ...(config.auditRetentionDays !== undefined ? { auditEventsDays: config.auditRetentionDays } : {}),
     ...(config.unregisteredDeviceRetentionDays !== undefined ? { unregisteredDevicesDays: config.unregisteredDeviceRetentionDays } : {}),
     ...(config.expiredInviteRetentionDays !== undefined ? { expiredInvitesDays: config.expiredInviteRetentionDays } : {})
@@ -56,6 +57,6 @@ export function startRetentionCleanupTimer(options: { store: AgentTickStore; con
 function emptyRetentionCleanupResult(): RetentionCleanupRunResult {
   return {
     secrets: { eventTickets: 0, pairingCodes: 0, approvalWaiterTokens: 0 },
-    retention: { approvalRequests: 0, auditEvents: 0, devices: 0, organizationInviteTeams: 0, organizationInvites: 0 }
+    retention: { approvalRequests: 0, statusUpdates: 0, auditEvents: 0, devices: 0, organizationInviteTeams: 0, organizationInvites: 0 }
   };
 }

@@ -25,7 +25,7 @@ export interface ApprovalNotifierOptions {
 }
 
 export function createApprovalNotifier({ store, config, fetch: fetchImpl }: ApprovalNotifierOptions): ApprovalNotifier {
-  const notifiers = [createExpoPushNotifier({ store, ...(fetchImpl ? { fetch: fetchImpl } : {}) })];
+  const notifiers = config.mode === 'clerk' ? [createExpoPushNotifier({ store, ...(fetchImpl ? { fetch: fetchImpl } : {}) })] : [];
   if (config.approvalNotificationWebhookURL) {
     notifiers.push(
       createWebhookApprovalNotifier({
@@ -64,8 +64,8 @@ export function createExpoPushNotifier({ store, fetch: fetchImpl = globalThis.fe
         body: JSON.stringify(
           targets.map((to) => ({
             to,
-            title: request.encryptedPayload ? 'Encrypted approval request' : request.title,
-            body: request.encryptedPayload ? 'Open Agent Tick to decrypt and review.' : request.body ?? request.command ?? 'Approval requested',
+            title: 'Agent Tick',
+            body: 'Agent Tick needs your attention.',
             data: { requestId: request.id, organizationId: request.organizationId, type: 'approval_request', encrypted: Boolean(request.encryptedPayload) }
           }))
         )

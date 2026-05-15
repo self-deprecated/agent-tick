@@ -519,7 +519,7 @@
 		createdInvite = undefined;
 		try {
 			createdInvite = await client().createOrganizationInvite({
-				role: newInviteRole as 'owner' | 'admin' | 'approver' | 'member' | 'viewer',
+				role: newInviteRole as 'admin' | 'member',
 				...(newInviteTeamId ? { teamIds: [newInviteTeamId] } : {}),
 				...(newInviteEmail.trim() ? { email: newInviteEmail.trim() } : {}),
 				...(newInviteDomain.trim() ? { domain: newInviteDomain.trim() } : {}),
@@ -1038,7 +1038,7 @@
 			{/if}
 			{#if invitePreview}
 				<p><strong>{invitePreview.organizationName}</strong> invited you as <strong>{invitePreview.role}</strong>.</p>
-				<p class="subtle">{invitePreview.approvalRequired ? 'An organization admin must approve your request before you get access.' : 'This invite grants access after acceptance.'}{invitePreview.expiresAt ? ` Expires ${new Date(invitePreview.expiresAt).toLocaleString()}.` : ''}</p>
+				<p class="subtle">{invitePreview.approvalRequired ? 'This legacy invite requires admin approval.' : 'This invite grants active membership after acceptance.'}{invitePreview.expiresAt ? ` Expires ${new Date(invitePreview.expiresAt).toLocaleString()}.` : ''}</p>
 			{/if}
 			{#if inviteAccepted}
 				<p class="success">{inviteAcceptedMessage(inviteAccepted.status)}</p>
@@ -1155,10 +1155,8 @@
 					<input bind:value={newInviteDomain} aria-label="Invite domain" placeholder="example.com domain (optional)" />
 					<input bind:value={newInviteLabel} aria-label="Invite label" placeholder="Label (optional)" />
 					<select bind:value={newInviteRole} aria-label="Invite role">
-						<option value="member">member</option>
-						<option value="approver">approver</option>
-						<option value="admin">admin</option>
-						<option value="viewer">viewer</option>
+						<option value="member">Member</option>
+						<option value="admin">Admin</option>
 					</select>
 					<select bind:value={newInviteTeamId} aria-label="Invite team">
 						<option value="">No team</option>
@@ -1175,7 +1173,7 @@
 					<p><strong>Invite created:</strong> {createdInvite.label ?? createdInvite.email ?? createdInvite.domain ?? createdInvite.role}</p>
 					<code>{createdInvite.url ?? createdInvite.token}</code>
 					<button onclick={copyInvite}>Copy invite</button>
-					<p class="subtle">The plaintext token is shown once. Agent Tick stores only a hash. New members remain pending until an admin approves them.</p>
+					<p class="subtle">The plaintext token is shown once. Agent Tick stores only a hash. Launch invites grant active Admin or Member membership when accepted.</p>
 				</div>
 			{/if}
 			{#if organizationInvites.length === 0}
@@ -1186,7 +1184,7 @@
 						<li class="item-card" class:is-muted={Boolean(invite.revokedAt)}>
 							<div>
 								<strong>{invite.label ?? invite.email ?? invite.domain ?? invite.inviteId}</strong>
-								<p class="subtle">{invite.inviteId} · {invite.role} · {invite.approvalRequired ? 'approval required' : 'auto-approved'}{invite.teamIds?.length ? ` · teams ${invite.teamIds.map(teamLabel).join(', ')}` : ''}{invite.domain ? ` · domain ${invite.domain}` : ''} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
+								<p class="subtle">{invite.inviteId} · {invite.role} · {invite.approvalRequired ? 'legacy approval required' : 'active on accept'}{invite.teamIds?.length ? ` · teams ${invite.teamIds.map(teamLabel).join(', ')}` : ''}{invite.domain ? ` · domain ${invite.domain}` : ''} · used {invite.usedCount}{invite.maxUses ? `/${invite.maxUses}` : ''}{invite.revokedAt ? ` · revoked ${new Date(invite.revokedAt).toLocaleString()}` : ''}</p>
 								{#if invite.email}<p>{invite.email}</p>{/if}
 							</div>
 							<div class="actions">
@@ -1200,7 +1198,7 @@
 		</section>
 		<section class="card stack">
 			<div class="section-heading">
-				<h2>Pending members</h2>
+				<h2>Legacy pending members</h2>
 				<button onclick={refreshMembershipRequests}>Refresh pending members</button>
 			</div>
 			{#if membershipRequests.length === 0}

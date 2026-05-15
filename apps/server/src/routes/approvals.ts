@@ -5,6 +5,7 @@ import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import type { ApprovalNotifier } from '../services/notifications.js';
 import { authenticateRequest, requireAuth, requireHuman } from '../auth/context.js';
+import { requireHostedPersonalResponse, requireHostedPersonalRouting } from '../services/personalEntitlements.js';
 
 export interface ApprovalRoutesOptions {
   config: ServerConfig;
@@ -20,6 +21,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
 
   app.post('/v1/approval-requests', async (request) => {
     const auth = await requireAuth(request, config, store);
+    await requireHostedPersonalRouting(config, store, auth);
     const input = CreateApprovalRequestSchema.parse(request.body);
     const approval = await store.createApprovalRequest({
       ...input,
@@ -54,6 +56,7 @@ export async function registerApprovalRoutes(app: FastifyInstance, { config, sto
 
   app.post('/v1/approval-requests/:id/responses', async (request, reply) => {
     const auth = await requireHuman(request, config, store);
+    await requireHostedPersonalResponse(config, store, auth);
     const { id } = request.params as { id: string };
     const input = RespondApprovalRequestSchema.parse(request.body);
     const approval = await store.respondToApprovalRequestForOrganization(id, auth.organizationId, input, auth.userId ?? 'usr_default');

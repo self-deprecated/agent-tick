@@ -142,15 +142,9 @@ function requireOrganizationAdmin(auth: AuthContext): void {
   throw error;
 }
 
-function assertCanCreateInvite(auth: AuthContext, role: string, approvalRequired: boolean): void {
-  if ((role === 'admin' || role === 'owner') && auth.role !== 'owner') {
-    const error = new Error('Only organization owners can create admin invites') as Error & { statusCode: number; code: string };
-    error.statusCode = 403;
-    error.code = 'forbidden';
-    throw error;
-  }
-  if (!approvalRequired && auth.role !== 'owner') {
-    const error = new Error('Only organization owners can create auto-approved invites') as Error & { statusCode: number; code: string };
+function assertCanCreateInvite(_auth: AuthContext, role: string, _approvalRequired: boolean): void {
+  if (role === 'owner') {
+    const error = new Error('Owner transfer is support-assisted at launch; invites may grant Admin or Member only') as Error & { statusCode: number; code: string };
     error.statusCode = 403;
     error.code = 'forbidden';
     throw error;

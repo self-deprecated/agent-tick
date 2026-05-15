@@ -2,7 +2,7 @@
 
 ## Project snapshot
 
-Agent Tick is a fresh TypeScript-first human-approval service for AI agents.
+Agent Tick is a fresh TypeScript-first least-permission approval layer for coding agents: Status Updates, Steering, and Sanctions.
 
 - `apps/server` — Fastify API server, static dashboard host, Docker runtime entrypoint.
 - `apps/admin` — Svelte 5 + Vite dashboard.
@@ -14,7 +14,7 @@ Agent Tick is a fresh TypeScript-first human-approval service for AI agents.
 
 The old Go server/CLI and prototype compatibility paths are not active product surfaces. Do not add Go-era compatibility unless explicitly requested.
 
-Public product site: <https://agenttick.sh>. Self-hosting docs live in `SELFHOSTING.md`.
+Public surfaces: marketing at <https://agenttick.sh>, hosted app at <https://app.agenttick.sh>, API at <https://api.agenttick.sh>, and docs at <https://docs.agenttick.sh>. Self-hosting docs live in `SELFHOSTING.md`.
 
 ## Source-control workflow
 
@@ -55,7 +55,7 @@ docker build -f apps/server/Dockerfile -t agent-tick:dev .
 
 ## CLI surface
 
-Current implemented CLI commands only:
+Current launch CLI command concepts only:
 
 - `agent-tick install`
 - `agent-tick setup`
@@ -64,7 +64,7 @@ Current implemented CLI commands only:
 - `agent-tick sanction`
 - `agent-tick steering`
 - `agent-tick abandon`
-- `agent-tick status`
+- `agent-tick status-update`
 
 The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. When bumping `packages/cli/package.json`, also bump `CLI_VERSION` in `packages/cli/src/index.ts` and the `agent-tick-cli.version` in `flake.nix` in the same change, then run `nix build .#agent-tick-cli --no-link --print-build-logs` so stale `pnpmDeps.hash` values are caught before committing. For local repo development without a global install, use the workspace package name:
 
@@ -73,7 +73,7 @@ corepack pnpm --filter @self-deprecated/agent-tick build
 node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
 ```
 
-Do not document or call missing commands such as `agent-tick adapter` or `agent-tick steer` as current functionality.
+Do not document or call missing commands such as `agent-tick adapter` or `agent-tick steer` as current functionality. The progress-update command/API concept is `status-update`, not `status`.
 
 ## Auth and product model
 
@@ -96,13 +96,13 @@ Do not document or call missing commands such as `agent-tick adapter` or `agent-
 
 Keep the first-time user flow simple:
 
-- README should point users to either hosted product usage (`https://agenttick.sh`) or self-hosting.
+- README should point users to either hosted product usage (`https://app.agenttick.sh`) or self-hosting.
 - Self-hosting details belong in `SELFHOSTING.md`.
 - Product-vs-self-hosted usage flow belongs in `docs/using-agent-tick.md`.
 - Integration details belong in `docs/integrations.md`.
 - Development workflow belongs in `DEVELOPMENT.md`.
 
-When docs mention install commands, remember that public npm/`npx agent-tick` install is deferred until the CLI package is intentionally published.
+When docs mention install commands, use the prompt-based setup skill at `https://agenttick.sh/skill` as the primary setup path and `npx @self-deprecated/agent-tick install` as the manual command. Do not show `curl | sh` in public launch docs.
 
 ## Testing and validation
 

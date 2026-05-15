@@ -184,7 +184,7 @@ export interface AgentTokenRecord {
 	revokedAt?: string;
 }
 
-export type OrganizationRole = 'owner' | 'admin' | 'approver' | 'viewer' | string;
+export type OrganizationRole = 'owner' | 'admin' | 'member' | string;
 
 export interface OrganizationRecord {
 	organizationId: string;

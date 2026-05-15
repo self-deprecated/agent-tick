@@ -363,5 +363,21 @@ CREATE INDEX IF NOT EXISTS agent_status_updates_org_created_idx ON agent_status_
     sql: `
 ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS questions_json TEXT NOT NULL DEFAULT '[]';
 `
+  },
+  {
+    version: '0003_personal_entitlements',
+    sql: `
+CREATE TABLE IF NOT EXISTS personal_entitlements (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  trial_started_at TEXT NOT NULL,
+  app_unlocked_at TEXT,
+  included_hosted_activated_at TEXT,
+  hosted_subscription_ends_at TEXT,
+  hosted_subscription_canceled_at TEXT,
+  hosted_data_deleted_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`
   }
 ];

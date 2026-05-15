@@ -1,6 +1,8 @@
 # Self-Hosting Agent Tick
 
-Use this guide when you want to run Agent Tick yourself. If you want the managed product instead, start at <https://agenttick.sh>.
+Use this guide when you want to run Agent Tick yourself. If you want the managed product instead, start at <https://app.agenttick.sh>.
+
+Agent Tick is source-available under BSL 1.1. Internal commercial self-hosting is allowed, including use by a business on its own infrastructure. Offering Agent Tick as a hosted or managed service to third parties is prohibited. The BSL change date is 2028-05-31.
 
 Agent Tick can run either as the published Docker image or as the Nix flake package/NixOS module. The server runs the TypeScript API server, serves the built Svelte dashboard, and stores durable data in either local SQLite or PostgreSQL.
 
@@ -42,7 +44,9 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 # AGENT_TICK_RATE_LIMIT_BACKEND=redis
 
 # Optional retention cleanup windows. Omit to retain operational history indefinitely.
+# Set approval/status update days to 0 to turn Activity History content retention off.
 # AGENT_TICK_APPROVAL_RETENTION_DAYS=180
+# AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS=180
 # AGENT_TICK_AUDIT_RETENTION_DAYS=365
 # AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
 # AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS=90
@@ -65,7 +69,7 @@ npm install -g @self-deprecated/agent-tick
 agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
-The public product site is <https://agenttick.sh>, but self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
+The public product surfaces are <https://agenttick.sh> for marketing, <https://app.agenttick.sh> for the hosted app, <https://api.agenttick.sh> for the hosted API, and <https://docs.agenttick.sh> for documentation. Self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
 
 ## PostgreSQL and Redis production mode
 
@@ -166,7 +170,7 @@ This repository exposes a flake package and NixOS module:
             mode = "single";
             host = "127.0.0.1";
             port = 8787;
-            publicUrl = "https://agenttick.sh";
+            publicUrl = "https://tick.example.com";
 
             # Optional Redis coordination for multi-process deployments.
             # redisUrl = "redis://127.0.0.1:6379";
@@ -205,7 +209,7 @@ nix run .
 
 SQLite data is in the `agent_tick_data` Docker volume for Docker deployments, or `/var/lib/agent-tick/agent-tick.db` by default for the NixOS module. Back up the database regularly. It contains users, Clerk identity mappings, organizations, agent token hashes, approval history, device registrations, and audit events.
 
-By default, operational history is retained indefinitely except short-lived event tickets, approval waiter tokens, and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired approvals, audit events, unregistered devices, and expired/revoked invites that have no acceptance history.
+By default, self-hosted operational history is retained indefinitely except short-lived event tickets, approval waiter tokens, and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired approvals, Status Updates, audit events, unregistered devices, and expired/revoked invites that have no acceptance history. Set approval/status update retention days to `0` to turn Activity History content retention off while keeping minimal operational metadata where the service requires it.
 
 Do not store or back up Clerk session tokens; Agent Tick only verifies them at request time.
 

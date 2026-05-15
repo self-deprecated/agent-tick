@@ -55,18 +55,18 @@ describe('browser setup', () => {
 });
 
 describe('install instructions', () => {
-  it('documents sanction, steering, and status commands', () => {
+  it('documents status update, steering, and sanction commands', () => {
     const block = agentInstructionBlock('claude');
     expect(block).toContain('agent-tick sanction -- <command and args>');
     expect(block).toContain('agent-tick steering --title');
-    expect(block).toContain('agent-tick status --state working');
+    expect(block).toContain('agent-tick status-update --state working');
     expect(block).toContain('Do not include secrets');
   });
 });
 
 describe('MCP stdio adapter', () => {
   it('advertises Agent Tick MCP tools', async () => {
-    expect(mcpToolDefinitions.map((tool) => tool.name)).toEqual(['agent_tick_status', 'agent_tick_sanction', 'agent_tick_steering']);
+    expect(mcpToolDefinitions.map((tool) => tool.name)).toEqual(['agent_tick_status_update', 'agent_tick_sanction', 'agent_tick_steering']);
 
     await expect(handleMcpRequest({ method: 'tools/list', id: 1 }, {} as never, 'https://tick.example.com')).resolves.toEqual({ tools: mcpToolDefinitions });
   });
@@ -89,18 +89,23 @@ describe('MCP stdio adapter', () => {
     });
   });
 
-  it('maps the status MCP tool to a status update', async () => {
+  it('maps the status update MCP tool to a status update', async () => {
+    let capturedInput: unknown;
     const client = {
-      createStatusUpdate: async (input: unknown) => ({ statusId: 'status_1', threadId: 'thread_1', message: (input as { message: string }).message })
+      createStatusUpdate: async (input: unknown) => {
+        capturedInput = input;
+        return { statusId: 'status_1', threadId: 'thread_1', message: (input as { message: string }).message };
+      }
     };
 
     await expect(handleMcpRequest({
       method: 'tools/call',
       id: 1,
-      params: { name: 'agent_tick_status', arguments: { message: 'Running tests', threadId: 'thread_1' } }
+      params: { name: 'agent_tick_status_update', arguments: { message: 'Running tests', threadId: 'thread_1', notify: true, importance: 'high' } }
     }, client as never, 'https://tick.example.com')).resolves.toEqual({
       content: [{ type: 'text', text: 'Sent status update status_1 for thread_1: Running tests' }]
     });
+    expect(capturedInput).toMatchObject({ metadata: { agentTickNotify: 'true', agentTickImportance: 'high' } });
   });
 
   it('uses MCP elicitation for steering when the client supports it', async () => {

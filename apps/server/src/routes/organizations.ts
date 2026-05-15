@@ -28,4 +28,15 @@ export async function registerOrganizationRoutes(app: FastifyInstance, { config,
     if (!membership) return reply.status(403).send({ error: { code: 'forbidden', message: 'User is not a member of this organization', requestId: request.id } });
     return await store.listOrganizationMembers(id);
   });
+
+  app.delete('/v1/organizations/:id', async (request, reply) => {
+    const auth = await requirePrivilegedHuman(request, config, store);
+    const { id } = request.params as { id: string };
+    const membership = await store.organizationMembershipForUser(auth.userId ?? 'usr_default', id);
+    if (!membership) return reply.status(403).send({ error: { code: 'forbidden', message: 'User is not a member of this organization', requestId: request.id } });
+    if (membership.role !== 'owner') return reply.status(403).send({ error: { code: 'forbidden', message: 'Organization owner role required', requestId: request.id } });
+    const result = await store.deleteOrganizationData(id);
+    if (!result.deleted) return reply.status(404).send({ error: { code: 'not_found', message: 'Organization not found', requestId: request.id } });
+    return result;
+  });
 }

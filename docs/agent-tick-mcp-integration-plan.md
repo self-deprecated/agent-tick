@@ -184,18 +184,20 @@ Do not accept freeform resolution messages or arbitrary resolution metadata. Sto
 
 ## MCP tools
 
-### `agent_tick_status`
+### `agent_tick_status_update`
 
 Non-blocking progress update.
 
 Input schema:
 
 ```ts
-type AgentTickStatusInput = {
+type AgentTickStatusUpdateInput = {
   message: string;
-  state?: "working" | "blocked" | "done";
+  state?: "working" | "waiting" | "blocked" | "done" | "failed";
   nextStep?: string;
   project?: string;
+  importance?: "low" | "normal" | "high" | "urgent";
+  notify?: boolean;
   metadata?: Record<string, string>;
 };
 ```
@@ -203,7 +205,7 @@ type AgentTickStatusInput = {
 Output schema:
 
 ```ts
-type AgentTickStatusOutput = {
+type AgentTickStatusUpdateOutput = {
   statusId: string;
   threadId: string;
   state: string;
@@ -213,7 +215,8 @@ type AgentTickStatusOutput = {
 Behavior:
 
 - Define an MCP `outputSchema` and return both `structuredContent` and concise text content.
-- Keep metadata behavior in sync with `agent-tick status --metadata`: arbitrary string key/value pairs with validation, best-effort redaction, and length limits.
+- Keep metadata behavior in sync with `agent-tick status-update --metadata`: arbitrary string key/value pairs with validation, best-effort redaction, and length limits.
+- Preserve `importance` and `notify` as explicit hooks for future push behavior.
 - Resolve Agent Tick config using the same order as the CLI.
 - Call `createStatusUpdate`.
 - Use `AGENT_TICK_THREAD_ID` if set, otherwise derive a stable thread id from host + working directory.
@@ -242,7 +245,7 @@ type AgentTickSteeringInput = {
   }>;
   allowMultiple?: boolean;
   timeoutMs?: number;
-  localElicitation?: "auto" | "off" | "only";
+  localElicitation?: "auto" | "off";
 };
 ```
 
@@ -330,7 +333,7 @@ type AgentTickSanctionInput = {
   risk?: "low" | "medium" | "high";
   choiceFlags?: Record<string, string[]>;
   timeoutMs?: number;
-  localElicitation?: "auto" | "off" | "only";
+  localElicitation?: "auto" | "off";
 };
 ```
 
@@ -457,7 +460,7 @@ Claude-specific integration choices:
 
 Agent instructions should tell Claude:
 
-- Use `agent_tick_status` for progress updates.
+- Use `agent_tick_status_update` for progress updates.
 - Use `agent_tick_steering` when a decision blocks progress.
 - Use `agent_tick_sanction` before risky/destructive/production actions when native permission routing is not already handling the prompt.
 - If a sanction is denied, cancelled, or times out, stop.
@@ -476,7 +479,7 @@ startup_timeout_sec = 10
 tool_timeout_sec = 1800
 default_tools_approval_mode = "approve"
 
-[mcp_servers.agent_tick.tools.agent_tick_status]
+[mcp_servers.agent_tick.tools.agent_tick_status_update]
 approval_mode = "approve"
 
 [mcp_servers.agent_tick.tools.agent_tick_steering]
@@ -500,7 +503,7 @@ approval_policy = { granular = {
 
 The installer should not silently weaken unrelated approval categories. For the default mirrored MCP profile, require `mcp_elicitations = true`; if it is false, refuse/default-block mirrored setup unless the user chooses a remote-only profile or explicitly changes the setting.
 
-Agent instructions should tell Codex to use Agent Tick MCP tools for status, steering, and sanctions. Codex does not currently provide a general hook that intercepts and answers all internal ask-user prompts in the same way Claude Code can for `AskUserQuestion`, so MCP steering is model/tool initiated.
+Agent instructions should tell Codex to use Agent Tick MCP tools for status updates, steering, and sanctions. Codex is supported via MCP Adapter; CLI fallback is less capable because it cannot use Mirrored Prompt. Codex does not currently provide a general hook that intercepts and answers all internal ask-user prompts in the same way Claude Code can for `AskUserQuestion`, so MCP steering is model/tool initiated.
 
 ## Implementation slices
 
@@ -514,15 +517,15 @@ Agent instructions should tell Codex to use Agent Tick MCP tools for status, ste
 
 - Add dependency and command entrypoint.
 - Start a stdio MCP server using the official MCP TypeScript SDK.
-- Resolve config, verify startup through the agent self endpoint, and expose a simple `agent_tick_status` tool.
+- Resolve config, verify startup through the agent self endpoint, and expose a simple `agent_tick_status_update` tool.
 - Add unit tests for CLI command registration and schema validation.
 - Manually smoke-test with one MCP client if practical.
 
-### Slice 2 — status tool
+### Slice 2 — status update tool
 
 - Implement config resolution.
-- Call existing Agent Tick status API.
-- Return structured status result.
+- Call existing Agent Tick status update API.
+- Return structured status update result.
 - Add tests for success, missing config, and redaction.
 
 ### Slice 3 — remote-only steering and sanction tools

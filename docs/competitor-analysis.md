@@ -15,7 +15,7 @@ The competitive market is already crowded in four overlapping buckets:
 3. **Workflow automation platforms with approval steps**: Zapier Human in the Loop, n8n HITL for AI tool calls, Relay.app, OKrunit/Zapier/Make-style approval gateways, EnforcedFlow.
 4. **Framework/runtime primitives**: LangGraph/LangChain interrupts, Cloudflare Agents `waitForApproval`, FastMCP Approval provider, PromptRails approvals, useworkflow hooks.
 
-The setup pattern worth copying most aggressively is **zero- or near-zero-code onboarding**: Preloop's `curl ... | sh` plus `preloop agents discover` that rewrites Claude Code/Cursor/Codex/Gemini/OpenCode configs; MCP servers that can be added with one `npx` command; Zapier/n8n nodes that non-developers can wire visually; and hosted products that create a secure review link without requiring reviewers to create accounts.
+The setup pattern worth copying most aggressively is **zero- or near-zero-code onboarding**: one-command installers plus agent discovery flows that rewrite Claude Code/Cursor/Codex/Gemini/OpenCode configs; MCP servers that can be added with one `npx` command; Zapier/n8n nodes that non-developers can wire visually; and hosted products that create a secure review link without requiring reviewers to create accounts.
 
 
 ## Feature checkbox matrix: source, self-hosting, app, least privilege

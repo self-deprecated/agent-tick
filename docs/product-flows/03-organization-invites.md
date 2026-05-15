@@ -17,7 +17,7 @@ Expected visible:
 
 - organization name
 - requested role
-- whether admin approval is required
+- whether the invite is a legacy approval-required invite or a launch active-on-accept invite
 - expiration if relevant
 - Clerk sign-in/create-account surface
 
@@ -42,7 +42,7 @@ Database expectation:
 - team membership exists if invite assigned teams
 - invite usage count updated
 
-### Pending admin approval
+### Legacy pending admin approval
 
 Expected visible:
 
@@ -74,6 +74,6 @@ Assertions:
 
 - invite preview is safe and does not leak private fields
 - signed-out invite flow routes through auth
-- accepting an invite creates active membership or pending request as configured
+- launch Owner/Admin invites create active Admin or Member membership immediately; legacy approval-required invites may create a pending request
 - pending requests are visible to admins and not active for the requester
 - revoked/expired/domain-restricted invites show the correct UI and DB state

@@ -92,7 +92,7 @@ export const MobileDiagnosticsResponseSchema = z.object({
 export type MobileDiagnosticsResponse = z.infer<typeof MobileDiagnosticsResponseSchema>;
 
 
-export const OrganizationRoleSchema = z.enum(['owner', 'admin', 'approver', 'member', 'viewer']);
+export const OrganizationRoleSchema = z.enum(['owner', 'admin', 'member']);
 export type OrganizationRole = z.infer<typeof OrganizationRoleSchema>;
 
 export const OrganizationRecordSchema = z.object({
@@ -161,7 +161,7 @@ export type OrganizationInviteEmailResult = z.infer<typeof OrganizationInviteEma
 export const CreateOrganizationInviteSchema = z.object({
   label: z.string().optional(),
   role: OrganizationRoleSchema.default('member'),
-  approvalRequired: z.boolean().default(true),
+  approvalRequired: z.boolean().default(false),
   teamIds: z.array(z.string()).optional(),
   email: z.string().email().optional(),
   domain: z.string().min(1).optional(),
@@ -173,7 +173,7 @@ export type CreateOrganizationInvite = z.input<typeof CreateOrganizationInviteSc
 export const InvitePreviewSchema = z.object({
   organizationName: z.string(),
   role: OrganizationRoleSchema.or(z.string()),
-  approvalRequired: z.boolean().default(true),
+  approvalRequired: z.boolean().default(false),
   expiresAt: z.string().optional()
 });
 export type InvitePreview = z.infer<typeof InvitePreviewSchema>;
@@ -334,7 +334,7 @@ export const AuditEventRecordSchema = z.object({
 });
 export type AuditEventRecord = z.infer<typeof AuditEventRecordSchema>;
 
-export const AgentStatusStateSchema = z.enum(['working', 'blocked', 'done']).or(z.string().min(1).max(40));
+export const AgentStatusStateSchema = z.enum(['working', 'waiting', 'blocked', 'done', 'failed']).or(z.string().min(1).max(40));
 export type AgentStatusState = z.infer<typeof AgentStatusStateSchema>;
 
 export const AgentStatusUpdateSchema = z.object({

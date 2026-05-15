@@ -1,128 +1,105 @@
 ---
 name: agent-tick
-description: Send status updates, ask steering questions, request sanctions, or configure Claude Code AFK/pass-through routing through the Agent Tick CLI. Use when an agent is about to run a potentially risky command, make a destructive or expensive change, access sensitive data, install dependencies, modify infrastructure, perform a long-running operation, provide mobile-visible status while working away from the user, or when the user explicitly asks to gate work or send updates through Agent Tick. This skill covers the current TypeScript CLI commands: `agent-tick install`, `agent-tick setup`, `agent-tick mode`, `agent-tick sanction`, `agent-tick steering`, `agent-tick abandon`, and `agent-tick status`.
+description: Set up Agent Tick or use its CLI/MCP surface for status updates, steering, and sanctions. Use when a user asks to install/configure Agent Tick; when an agent should send mobile-visible progress updates; when bounded user steering is needed; or before risky, destructive, expensive, production, dependency, data-accessing, or infrastructure actions.
 ---
 
 # Agent Tick
 
-Agent Tick is a CLI-based human loop for status, steering, and sanctions. Sanctions and steering block until the user responds; status is non-blocking.
+Agent Tick is a least-permission approval layer for coding agents: status updates, steering, and sanctions. It routes bounded decisions and progress updates; it does not run remote shell commands.
 
-## First Check
+## Public Setup Flow
 
-Before using Agent Tick, check whether the CLI exists:
+Default to the hosted quick start unless the user explicitly asks for self-hosting or provides a self-hosted URL/token. The primary setup path is this prompt-based skill, fetched from:
 
-```sh
-command -v agent-tick
+```text
+https://agenttick.sh/skill
 ```
 
-If it is missing, tell the user to install or build the `agent-tick` CLI for this project and stop. Do not bypass approval just because the CLI is unavailable.
-
-For an interactive machine in hosted/Clerk mode, prefer the installer when setting up a new machine or coding agent:
+Use the published npm CLI. If `agent-tick` is missing, prefer `npx` for first run:
 
 ```sh
+npx @self-deprecated/agent-tick install
+```
+
+Global npm install is secondary:
+
+```sh
+npm install -g @self-deprecated/agent-tick
 agent-tick install
 ```
 
-For Claude Code setup, guide the user interactively before installing:
+Do not use or recommend pipe-to-shell installers.
 
-1. Ask whether they run mostly interactive local sessions, headless loops, or mixed usage.
-2. Do **not** ask which capabilities to enable by default. Agent Tick should encourage the full setup: status updates, steering (`AskUserQuestion`), and sanctions (Claude Code `PermissionRequest`) are all enabled unless the user explicitly asks to opt out of one.
-3. For interactive sessions, recommend installing hooks in **pass-through mode** and toggling **AFK mode** only when away.
-4. For headless loops, recommend AFK behavior for status, steering, and sanctions.
-5. Explain that sanctions route Claude Code's own permission prompts only; Agent Tick does not manage risky-command patterns for Claude Code setup yet.
-6. Avoid phrasing setup questions around a specific UI surface. Say "through Agent Tick" or "remotely" instead.
-7. Ask whether Claude Code hooks should be installed **globally** (`~/.claude/settings.json`, all projects on this machine) or **locally** (`.claude/settings.local.json`, current project only). Default to global if the user is unsure, but explain both choices.
-8. Inspect existing Claude settings before changing them: `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` if present. Look for existing hooks, permission rules that might conflict with `Bash(agent-tick:*)`, and whether `sandbox.enabled` is true in any scope.
-9. If Claude sandboxing is enabled, offer to add Agent Tick sandbox allowances. Explain that Agent Tick needs network access to the configured server, write access to `~/.config/agent-tick`, and an `agent-tick` sandbox exclusion so hooks can run correctly. Do not disable sandboxing.
-10. Run a dry run first and summarize exactly what will change. For interactive local sessions, use defaults:
+## Setup Checklist
 
-```sh
-agent-tick install --target claude --claude-scope global --claude-sandbox auto --dry-run
-```
+When setting up Agent Tick, do all of this in order:
 
-For headless loops, prefer explicit routing flags:
+1. Detect intent: hosted quick start by default; self-hosted only if the user asks for it or provides a self-hosted server/token.
+2. Inspect current agent configs before changing them. For Claude Code, inspect `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` when present. Look for existing hooks, permission rules, sandbox settings, and any rule that could block `agent-tick` itself.
+3. Enable status updates, steering, and sanctions by default. Mention each capability and allow explicit opt-out.
+4. For Claude Code, ask whether to install locally or globally. Recommend local when working in one repository or when project-specific settings already exist; recommend global for a personal machine with many projects; if unsure, recommend local first for safer blast radius.
+5. Use plain routing language. Say “route prompts through Agent Tick” or “ask on Agent Tick”; avoid requiring the user to understand AFK/pass-through jargon.
+6. Run a dry run first.
+7. Explain exactly which files/settings will change and why.
+8. Ask for confirmation before writing files.
+9. Run the same install command without `--dry-run` after confirmation.
+10. Verify the result with `agent-tick --help`, `agent-tick mode` when Claude Code hooks were installed, and a safe first proof request.
 
-```sh
-agent-tick install --target claude \
-  --claude-profile headless \
-  --claude-steering always \
-  --claude-sanctions always \
-  --claude-initial-mode afk \
-  --claude-scope global \
-  --claude-sandbox auto \
-  --dry-run
-```
-
-11. After user confirmation, run the install with the same options minus `--dry-run`, then verify the settings:
+Suggested hosted Claude Code dry run:
 
 ```sh
-agent-tick mode
+npx @self-deprecated/agent-tick install --target claude --claude-scope local --claude-sandbox auto --dry-run
 ```
 
-Tell the user to restart Claude Code after hook changes. The mode commands are:
+If the user chose global scope, use `--claude-scope global` instead. For direct CLI setup without installing agent integrations:
 
 ```sh
-agent-tick mode afk
-agent-tick mode pass-through
+npx @self-deprecated/agent-tick setup --login --server https://app.agenttick.sh
 ```
 
-For setup only, without installing agent instructions, use browser setup:
+For self-hosted/manual setup, use the user's server URL and token exactly once:
 
 ```sh
-agent-tick setup --login --server https://agenttick.sh
+npx @self-deprecated/agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
-The CLI opens Agent Tick in the browser, the user signs in, authorizes CLI setup, and Agent Tick returns a newly-created `agent_...` token to the CLI over a localhost callback. The CLI saves it to `~/.config/agent-tick/config.json` by default.
+Do not print, log, summarize, or expose token values after setup.
 
-If the user gives a setup command from Agent Tick, run it exactly once. For CI, headless hosts, single-mode self-hosting, or manual setup, the server may be the hosted product at `https://agenttick.sh` or the user's self-hosted URL:
+## First Proof Request
+
+After installation, make the first proof request a safe Steering test:
 
 ```sh
-agent-tick setup --server https://agenttick.sh --token agent_...
+agent-tick steering \
+  --title "Agent Tick setup test" \
+  --body "Choose whether setup is working." \
+  --choice works="It works" \
+  --choice stop:deny="Stop testing"
 ```
 
-Do not print, log, summarize, or expose the token value after setup.
-
-## Sanctions
-
-Use `agent-tick sanction` when asking for approval of a risky or sensitive action:
+Optional follow-up demos:
 
 ```sh
-agent-tick sanction \
-  --title "Proceed with deployment?" \
-  --body "Deploy commit abc123 to production." \
-  --command "deploy production"
+agent-tick status-update --state working "Agent Tick setup test status update"
+agent-tick sanction --title "Agent Tick setup test sanction" --body "No command will be run; this only tests approval routing."
 ```
 
-For shell commands, pass the command after `--`. Agent Tick requests sanction approval and only runs the command after approval:
+## Status Updates
+
+Use `agent-tick status-update` for non-blocking progress updates. Recommended states are `working`, `waiting`, `blocked`, `done`, and `failed`. Use `--notify` and `--importance` only when the update deserves future push-notification treatment.
 
 ```sh
-agent-tick sanction -- npm install
+agent-tick status-update --state working --next "Run typecheck" "Finished edits; validating now"
+agent-tick status-update --state waiting "Waiting for CI"
+agent-tick status-update --state blocked --notify --importance high --next "Wait for user decision" "Need clarification before changing the API shape"
+agent-tick status-update --state done "Implementation complete; tests passed"
 ```
 
-For commands with flags, pipes, redirection, shell expansion, or multiple steps, wrap the command in a shell:
-
-```sh
-agent-tick sanction -- sh -c 'npm install && npm test'
-```
-
-Use a custom title/body when the risk is not obvious:
-
-```sh
-agent-tick sanction \
-  --title "Modify production database?" \
-  --body "Run the migration against the production database." \
-  --choice-flag approve=production \
-  --choice-flag approve=destructive \
-  -- ./migrate-prod.sh
-```
-
-Use `--choice-flag approve=...` on sanctions when the approve action should carry mobile-visible warnings such as `production`, `destructive`, `external_effect`, or `security_sensitive`.
-
-If denied, stop the gated action and report that the user denied it.
+If an integration has a stable chat/thread id, pass it with `--thread` or set `AGENT_TICK_THREAD_ID`. Otherwise the CLI scopes the thread to the current host and working directory. Do not include secrets or sensitive logs.
 
 ## Steering
 
-Use `agent-tick steering` for real multiple-choice questions that steer the work. Repeat `--choice`. Use `id=Label` or `id:kind=Label`; custom choices must include at least one `kind` of `deny`. The mobile app highlights deny choices in red, and selecting one makes the CLI exit non-zero. If `kind` is omitted, it defaults to `approve` except deny-style ids such as `cancel`, `deny`, `reject`, and `no`, which default to `deny`.
+Use `agent-tick steering` for bounded choices that steer the work. Repeat `--choice`. Use `id=Label` or `id:kind=Label`; include a `deny` choice when the user should be able to stop or decline.
 
 ```sh
 agent-tick steering \
@@ -131,48 +108,45 @@ agent-tick steering \
   --choice canary="Canary rollout" \
   --choice blue_green="Blue/green rollout" \
   --choice cancel:deny="Do not deploy" \
-  --choice-flag canary=favorite \
-  --choice-flag canary=reversible
+  --choice-flag canary=favorite
 ```
-
-When you have a preferred steering answer, mark exactly that choice with `--choice-flag choiceId=favorite`; the mobile app shows a yellow star. Other supported flags: `safest`, `fastest`, `thorough`, `reversible`, `experimental`, `blocked`, `needs_context`, `destructive`, `external_effect`, `security_sensitive`, `costly`, `production`, `time_sensitive`, and `audit_relevant`. Use `--choice-tag choiceId=tag` for short custom labels. Do not use flags to smuggle secrets or long context.
 
 Treat denial or any selected `deny` choice as a hard stop unless the user gives a new instruction.
 
-## AFK Status Updates
+## Sanctions
 
-Use `agent-tick status` to send lightweight progress updates that do not ask for approval and do not block. This is useful during AFK/long-running work so the user can see that the agent is still working from the mobile app.
-
-Send concise updates at meaningful milestones, not after every small action:
+Use `agent-tick sanction` before one risky or sensitive action. Sanctions should describe the exact action and risk.
 
 ```sh
-agent-tick status --state working --next "Run typecheck" "Finished edits; validating now"
+agent-tick sanction \
+  --title "Proceed with deployment?" \
+  --body "Deploy commit abc123 to production." \
+  --command "deploy production"
 ```
 
-Use `--state done` at the end of a long task, or `--state blocked` when waiting on user input:
+To run a command only after approval:
 
 ```sh
-agent-tick status --state done "Implementation complete; tests passed"
-agent-tick status --state blocked --next "Wait for user decision" "Need clarification before changing the API shape"
+agent-tick sanction -- npm install
 ```
 
-If an integration has a stable chat/thread id, pass it with `--thread` or set `AGENT_TICK_THREAD_ID`. Otherwise the CLI scopes the thread to the current host and working directory.
+For flags, pipes, redirection, shell expansion, or multiple steps, wrap the command in a shell:
 
 ```sh
-agent-tick status \
-  --thread "$AGENT_TICK_THREAD_ID" \
-  --state working \
-  --next "Fix failing test" \
-  "Server route is implemented; checking failures"
+agent-tick sanction -- sh -c 'npm install && npm test'
 ```
 
-The status message is visible to humans. Do not include secrets or sensitive logs.
+If denied, timed out, or the CLI exits non-zero, stop the gated action and report the outcome.
 
 ## MCP
 
-Use `agent-tick mcp` as the local stdio MCP adapter for MCP-capable agents. The adapter exposes `agent_tick_status`, `agent_tick_steering`, and `agent_tick_sanction`.
+Use `agent-tick mcp` as the local stdio MCP adapter. The launch tool names are:
 
-For Codex, the MCP server config should pre-approve Agent Tick tools so Agent Tick can ask the human without an extra local tool approval:
+- `agent_tick_status_update`
+- `agent_tick_steering`
+- `agent_tick_sanction`
+
+For Codex, pre-approve Agent Tick MCP tools so Agent Tick can ask the human without an extra local tool approval:
 
 ```toml
 [mcp_servers.agent_tick]
@@ -182,7 +156,7 @@ startup_timeout_sec = 10
 tool_timeout_sec = 1800
 default_tools_approval_mode = "approve"
 
-[mcp_servers.agent_tick.tools.agent_tick_status]
+[mcp_servers.agent_tick.tools.agent_tick_status_update]
 approval_mode = "approve"
 
 [mcp_servers.agent_tick.tools.agent_tick_steering]
@@ -194,55 +168,18 @@ approval_mode = "approve"
 
 Codex local elicitation prompts require Codex policy to allow MCP elicitations. If granular approval policy is configured, `mcp_elicitations` must be `true`.
 
-For MCP steering and sanctions:
-
-- Use `localElicitation: "auto"` by default. It shows both the local MCP client dialog and a remote Agent Tick mobile/web request. The first answer wins; if local wins, Agent Tick best-effort abandons the remote request.
-- Use `localElicitation: "only"` only when testing or requiring only the local MCP client dialog. This does not send a phone push.
-- Use `localElicitation: "off"` only when testing or requiring only a remote Agent Tick mobile/web request.
-
 ## JSON Output
 
-Use `--json` when another script needs machine-readable events from `sanction`, `steering`, `abandon`, or `status`:
+Use `--json` when another script needs machine-readable events from `sanction`, `steering`, `abandon`, or `status-update`:
 
 ```sh
-agent-tick sanction \
-  --json \
-  --title "Proceed with deployment?" \
-  --body "Deploy commit abc123 to production."
-```
-
-The current CLI does not support JSON stdin adapter, constrained steering, context-file, project-routing, requester override, freeform text replies, or custom Claude Code command-risk policies. Do not use undocumented commands or flags.
-
-## Timeouts
-
-The CLI waits up to 30 minutes by default. For slower decisions, set a longer timeout:
-
-```sh
-agent-tick sanction --timeout 30m -- ./long-running-operation
-```
-
-Use `--timeout 0` on `sanction` or `steering` to create a request without waiting.
-
-Do not retry repeatedly after timeouts unless the user asks. Repeated retries can spam the user's approval channel.
-
-For status updates, `--json` returns the accepted status update:
-
-```sh
-agent-tick status --json --state working "Running server tests"
-```
-
-## Abandoning A Request
-
-Use `agent-tick abandon` to cancel a pending request by ID:
-
-```sh
-agent-tick abandon req_...
+agent-tick status-update --json --state working "Running server tests"
 ```
 
 ## Safety Rules
 
 - Do not use Agent Tick to approve its own setup command.
-- Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in sanction titles, steering bodies, status messages, or command summaries.
+- Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in sanction titles, steering bodies, status update messages, commands, or metadata.
 - Do not continue a gated action after denial, timeout, CLI failure, or a non-zero `agent-tick` exit.
 - Do not replace Agent Tick with a normal prompt when the user asked for Agent Tick approval.
-- Use one approval for one meaningful action. Batch only when the full batch is clearly described.
+- Use one sanction for one meaningful action. Batch only when the full batch is clearly described.

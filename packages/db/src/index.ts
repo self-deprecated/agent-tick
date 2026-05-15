@@ -81,6 +81,27 @@ export interface CreateAgentStatusInput extends CreateAgentStatusUpdate {
   userId?: string;
 }
 
+export interface PersonalEntitlementRecord {
+  userId: string;
+  trialStartedAt: string;
+  appUnlockedAt: string | undefined;
+  includedHostedActivatedAt: string | undefined;
+  hostedSubscriptionEndsAt: string | undefined;
+  hostedSubscriptionCanceledAt: string | undefined;
+  hostedDataDeletedAt: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdatePersonalEntitlementInput {
+  userId: string;
+  appUnlockedAt?: string | null;
+  includedHostedActivatedAt?: string | null;
+  hostedSubscriptionEndsAt?: string | null;
+  hostedSubscriptionCanceledAt?: string | null;
+  hostedDataDeletedAt?: string | null;
+}
+
 export interface ClerkIdentityProfile {
   issuer: string;
   subject: string;
@@ -397,6 +418,7 @@ export interface CleanupExpiredSecretsResult {
 
 export interface RetentionPolicy {
   approvalRequestsDays?: number;
+  statusUpdatesDays?: number;
   auditEventsDays?: number;
   unregisteredDevicesDays?: number;
   expiredInvitesDays?: number;
@@ -404,10 +426,18 @@ export interface RetentionPolicy {
 
 export interface CleanupRetentionResult {
   approvalRequests: number;
+  statusUpdates: number;
   auditEvents: number;
   devices: number;
   organizationInviteTeams: number;
   organizationInvites: number;
+}
+
+export interface DeleteOrganizationDataResult {
+  organizationId: string;
+  agentTokensRevoked: number;
+  devicesUnregistered: number;
+  deleted: boolean;
 }
 
 export type Awaitable<T> = T | Promise<T>;
@@ -428,6 +458,7 @@ export interface AsyncAgentTickStore {
   organizationMembershipForUser(userId: string, organizationId: string): Awaitable<HumanIdentityResult | null>;
   organizationMembershipForUserAnyStatus(userId: string, organizationId: string): Awaitable<OrganizationMembershipRecord | null>;
   createOrganizationForUser(userId: string, name: string, now?: string): Awaitable<OrganizationMembershipRecord>;
+  deleteOrganizationData(organizationId: string, now?: string): Awaitable<DeleteOrganizationDataResult>;
   listOrganizationInvites(organizationId: string): Awaitable<OrganizationInviteRecord[]>;
   createOrganizationInvite(input: CreateOrganizationInviteInput, now?: string): Awaitable<OrganizationInviteRecord>;
   getOrganizationInvite(inviteId: string): Awaitable<OrganizationInviteRecord | null>;
@@ -459,8 +490,13 @@ export interface AsyncAgentTickStore {
   policyBelongsToOrganization(policyId: string, organizationId: string): Awaitable<boolean>;
   createAgentToken(input: CreateAgentTokenInput, now?: string): Awaitable<AgentCredential>;
   listAgentTokens(organizationId?: string): Awaitable<AgentTokenRecord[]>;
+  updateAgentTokenName(agentId: string, organizationId: string, name: string, now?: string): Awaitable<AgentTokenRecord | null>;
   revokeAgentToken(agentId: string, organizationId?: string, now?: string): Awaitable<AgentTokenRecord | null>;
   verifyAgentToken(token: string, now?: string): Awaitable<AgentTokenAuth | null>;
+  getOrStartPersonalEntitlement(userId: string, now?: string): Awaitable<PersonalEntitlementRecord>;
+  updatePersonalEntitlement(input: UpdatePersonalEntitlementInput, now?: string): Awaitable<PersonalEntitlementRecord>;
+  revokeAgentTokensForOwner(userId: string, now?: string): Awaitable<number>;
+  deleteHostedPersonalData(userId: string, organizationId: string, now?: string): Awaitable<void>;
   createApprovalRequest(input: CreateApprovalInput, now?: string): Awaitable<ApprovalRequest>;
   listApprovalRequests(organizationId?: string, currentUserId?: string, now?: string): Awaitable<ApprovalRequest[]>;
   getApprovalRequest(id: string, currentUserId?: string, now?: string): Awaitable<ApprovalRequest | null>;
@@ -479,6 +515,7 @@ export interface AsyncAgentTickStore {
   listPushDevicesForApprovalRecipients(requestId: string): Awaitable<DeviceRecord[]>;
   listPushDevicesForUsers(userIds: string[]): Awaitable<DeviceRecord[]>;
   getDeviceForUser(deviceId: string, userId: string): Awaitable<DeviceRecord | null>;
+  updateDeviceName(deviceId: string, userId: string, name: string, now?: string): Awaitable<DeviceRecord | null>;
   updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now?: string): Awaitable<DeviceRecord | null>;
   unregisterDevice(deviceId: string, userId: string, now?: string): Awaitable<DeviceRecord | null>;
   createEventTicket(input: EventTicketInput, now?: string): Awaitable<EventTicketRecord>;
@@ -544,6 +581,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
     ensureColumn(this.db, 'approval_requests', 'questions_json', "ALTER TABLE approval_requests ADD COLUMN questions_json TEXT NOT NULL DEFAULT '[]'");
     this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
     this.db.exec(MIGRATION_0003_AGENT_STATUS_UPDATES);
+    this.db.exec(MIGRATION_0004_PERSONAL_ENTITLEMENTS);
     this.db.exec('DROP INDEX IF EXISTS devices_user_installation_idx');
     this.db.exec('DROP INDEX IF EXISTS devices_user_org_installation_idx');
     this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS devices_user_installation_idx ON devices(user_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL');
@@ -582,6 +620,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
   cleanupRetention(policy: RetentionPolicy = {}, now = new Date().toISOString()): CleanupRetentionResult {
     const tx = this.db.transaction(() => {
       let approvalRequests = 0;
+      let statusUpdates = 0;
       let auditEvents = 0;
       let devices = 0;
       let organizationInviteTeams = 0;
@@ -594,6 +633,10 @@ export class AgentTickStore implements AsyncAgentTickStore {
             "DELETE FROM approval_requests WHERE (status != 'pending' AND COALESCE(responded_at, created_at) <= ?) OR (status = 'pending' AND created_at <= ? AND expires_at IS NOT NULL AND expires_at <= ?)"
           )
           .run(cutoff, cutoff, now).changes;
+      }
+
+      if (policy.statusUpdatesDays !== undefined) {
+        statusUpdates = this.db.prepare('DELETE FROM agent_status_updates WHERE created_at <= ?').run(retentionCutoff(now, policy.statusUpdatesDays)).changes;
       }
 
       if (policy.auditEventsDays !== undefined) {
@@ -618,7 +661,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
         organizationInvites = this.db.prepare(`DELETE FROM organization_invites WHERE invite_id IN (${eligibleInvites})`).run(cutoff, cutoff).changes;
       }
 
-      return { approvalRequests, auditEvents, devices, organizationInviteTeams, organizationInvites };
+      return { approvalRequests, statusUpdates, auditEvents, devices, organizationInviteTeams, organizationInvites };
     });
     return tx();
   }
@@ -771,6 +814,38 @@ export class AgentTickStore implements AsyncAgentTickStore {
       createdAt: now,
       updatedAt: now
     };
+  }
+
+  deleteOrganizationData(organizationId: string, now = new Date().toISOString()): DeleteOrganizationDataResult {
+    const tx = this.db.transaction(() => {
+      const memberIds = (this.db.prepare('SELECT user_id FROM organization_memberships WHERE organization_id = ?').all(organizationId) as { user_id: string }[]).map((row) => row.user_id);
+      const agentTokensRevoked = this.db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE organization_id = ? AND revoked_at IS NULL').run(now, organizationId).changes;
+      const devicesUnregistered = memberIds.length
+        ? this.db.prepare(`UPDATE devices SET unregistered_at = ?, expo_push_token = NULL WHERE unregistered_at IS NULL AND user_id IN (${memberIds.map(() => '?').join(',')})`).run(now, ...memberIds).changes
+        : 0;
+      this.db.prepare('DELETE FROM approval_votes WHERE request_id IN (SELECT id FROM approval_requests WHERE organization_id = ?)').run(organizationId);
+      this.db.prepare('DELETE FROM approval_recipients WHERE organization_id = ? OR request_id IN (SELECT id FROM approval_requests WHERE organization_id = ?)').run(organizationId, organizationId);
+      this.db.prepare('DELETE FROM approval_waiter_tokens WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM approval_requests WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM agent_status_updates WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM audit_events WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM event_tickets WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM pairing_codes WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM user_availability WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM mobile_diagnostics WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM organization_invite_acceptances WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM organization_invite_teams WHERE invite_id IN (SELECT invite_id FROM organization_invites WHERE organization_id = ?)').run(organizationId);
+      this.db.prepare('DELETE FROM organization_invites WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM team_memberships WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM policies WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM teams WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM projects WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM agent_tokens WHERE organization_id = ?').run(organizationId);
+      this.db.prepare('DELETE FROM organization_memberships WHERE organization_id = ?').run(organizationId);
+      const organizations = this.db.prepare('DELETE FROM organizations WHERE id = ?').run(organizationId).changes;
+      return { organizationId, agentTokensRevoked, devicesUnregistered, deleted: organizations > 0 };
+    });
+    return tx();
   }
 
   listOrganizationInvites(organizationId: string): OrganizationInviteRecord[] {
@@ -1314,6 +1389,15 @@ export class AgentTickStore implements AsyncAgentTickStore {
     return rows.map(mapAgentTokenRow);
   }
 
+  updateAgentTokenName(agentId: string, organizationId: string, name: string, now = new Date().toISOString()): AgentTokenRecord | null {
+    const cleanName = name.trim();
+    if (!cleanName) throw httpError(400, 'bad_request', 'Agent connection name is required');
+    this.db.prepare('UPDATE agent_tokens SET name = ? WHERE agent_id = ? AND organization_id = ?').run(cleanName, agentId, organizationId);
+    const token = this.listAgentTokens(organizationId).find((candidate) => candidate.agentId === agentId) ?? null;
+    if (token) this.writeAuditEvent(organizationId, token.ownerUserId ?? agentId, 'agent_token.updated', agentId, { name: cleanName }, now);
+    return token;
+  }
+
   revokeAgentToken(agentId: string, organizationId = DEFAULT_ORGANIZATION_ID, now = new Date().toISOString()): AgentTokenRecord | null {
     const row = this.db
       .prepare('SELECT * FROM agent_tokens WHERE agent_id = ? AND organization_id = ?')
@@ -1346,6 +1430,51 @@ export class AgentTickStore implements AsyncAgentTickStore {
       teamId: row.team_id ?? undefined,
       defaultApprovalPolicy: row.default_approval_policy ?? undefined
     };
+  }
+
+  getOrStartPersonalEntitlement(userId: string, now = new Date().toISOString()): PersonalEntitlementRecord {
+    const existing = this.db.prepare('SELECT * FROM personal_entitlements WHERE user_id = ?').get(userId) as PersonalEntitlementRow | undefined;
+    if (existing) return mapPersonalEntitlementRow(existing);
+    this.db.prepare('INSERT INTO personal_entitlements(user_id, trial_started_at, created_at, updated_at) VALUES (?, ?, ?, ?)').run(userId, now, now, now);
+    return this.getOrStartPersonalEntitlement(userId, now);
+  }
+
+  updatePersonalEntitlement(input: UpdatePersonalEntitlementInput, now = new Date().toISOString()): PersonalEntitlementRecord {
+    this.getOrStartPersonalEntitlement(input.userId, now);
+    const current = this.db.prepare('SELECT * FROM personal_entitlements WHERE user_id = ?').get(input.userId) as PersonalEntitlementRow;
+    this.db.prepare(`
+      UPDATE personal_entitlements SET
+        app_unlocked_at = ?,
+        included_hosted_activated_at = ?,
+        hosted_subscription_ends_at = ?,
+        hosted_subscription_canceled_at = ?,
+        hosted_data_deleted_at = ?,
+        updated_at = ?
+      WHERE user_id = ?
+    `).run(
+      input.appUnlockedAt === undefined ? current.app_unlocked_at : input.appUnlockedAt,
+      input.includedHostedActivatedAt === undefined ? current.included_hosted_activated_at : input.includedHostedActivatedAt,
+      input.hostedSubscriptionEndsAt === undefined ? current.hosted_subscription_ends_at : input.hostedSubscriptionEndsAt,
+      input.hostedSubscriptionCanceledAt === undefined ? current.hosted_subscription_canceled_at : input.hostedSubscriptionCanceledAt,
+      input.hostedDataDeletedAt === undefined ? current.hosted_data_deleted_at : input.hostedDataDeletedAt,
+      now,
+      input.userId
+    );
+    return this.getOrStartPersonalEntitlement(input.userId, now);
+  }
+
+  revokeAgentTokensForOwner(userId: string, now = new Date().toISOString()): number {
+    return this.db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE owner_user_id = ? AND revoked_at IS NULL').run(now, userId).changes;
+  }
+
+  deleteHostedPersonalData(userId: string, organizationId: string, now = new Date().toISOString()): void {
+    this.db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE owner_user_id = ? AND revoked_at IS NULL').run(now, userId);
+    this.db.prepare('UPDATE devices SET unregistered_at = ?, expo_push_token = NULL WHERE user_id = ? AND unregistered_at IS NULL').run(now, userId);
+    this.db.prepare('DELETE FROM approval_votes WHERE approver_user_id = ?').run(userId);
+    this.db.prepare('DELETE FROM approval_recipients WHERE user_id = ?').run(userId);
+    this.db.prepare('DELETE FROM agent_status_updates WHERE organization_id = ?').run(organizationId);
+    this.db.prepare('DELETE FROM approval_requests WHERE organization_id = ? AND user_id = ?').run(organizationId, userId);
+    this.updatePersonalEntitlement({ userId, hostedDataDeletedAt: now }, now);
   }
 
   createApprovalRequest(input: CreateApprovalInput, now = new Date().toISOString()): ApprovalRequest {
@@ -1553,15 +1682,23 @@ export class AgentTickStore implements AsyncAgentTickStore {
     if (input.policy?.team_id) {
       const rows = this.db
         .prepare(`
-          SELECT tm.user_id, tm.role, om.role AS organization_role
+          SELECT tm.user_id, tm.role, om.role AS organization_role, COALESCE(ua.state, 'available') AS availability
           FROM team_memberships tm
           JOIN organization_memberships om ON om.organization_id = tm.organization_id AND om.user_id = tm.user_id AND om.status = 'active'
+          LEFT JOIN user_availability ua ON ua.organization_id = tm.organization_id AND ua.user_id = tm.user_id
           WHERE tm.organization_id = ? AND tm.team_id = ?
           ORDER BY tm.created_at ASC
         `)
-        .all(input.organizationId, input.policy.team_id) as Array<{ user_id: string; role: string; organization_role: string }>;
-      for (const row of rows) {
-        if (approvalTeamRoleCanRespond(row.role) && approvalOrganizationRoleCanRespond(row.organization_role)) recipients.set(row.user_id, 'policy_team');
+        .all(input.organizationId, input.policy.team_id) as Array<{ user_id: string; role: string; organization_role: string; availability: string }>;
+      const eligible = rows.filter((row) => approvalTeamRoleCanRespond(row.role) && approvalOrganizationRoleCanRespond(row.organization_role));
+      for (const row of eligible) {
+        if (row.availability === 'available') recipients.set(row.user_id, 'policy_team');
+      }
+      if (!recipients.size) {
+        for (const row of eligible) recipients.set(row.user_id, 'unrouted_unavailable');
+        for (const member of this.listOrganizationMembers(input.organizationId)) {
+          if (member.role === 'owner' || member.role === 'admin') recipients.set(member.userId, 'unrouted_admin');
+        }
       }
     } else {
       const members = this.listOrganizationMembers(input.organizationId);
@@ -1794,6 +1931,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
         FROM approval_recipients r
         JOIN devices d ON d.user_id = r.user_id
         WHERE r.request_id = ?
+          AND r.source NOT LIKE 'unrouted_%'
           AND d.expo_push_token IS NOT NULL
           AND d.unregistered_at IS NULL
         ORDER BY d.updated_at DESC
@@ -1814,6 +1952,18 @@ export class AgentTickStore implements AsyncAgentTickStore {
   getDeviceForUser(deviceId: string, userId: string): DeviceRecord | null {
     const row = this.db.prepare('SELECT * FROM devices WHERE device_id = ? AND user_id = ?').get(deviceId, userId) as DeviceRow | undefined;
     return row ? mapDeviceRow(row) : null;
+  }
+
+  updateDeviceName(deviceId: string, userId: string, name: string, now = new Date().toISOString()): DeviceRecord | null {
+    const cleanName = name.trim();
+    if (!cleanName) throw httpError(400, 'bad_request', 'Device name is required');
+    this.db.prepare('UPDATE devices SET name = ?, updated_at = ? WHERE device_id = ? AND user_id = ? AND unregistered_at IS NULL').run(cleanName, now, deviceId, userId);
+    const device = this.getDeviceForUser(deviceId, userId);
+    if (device) {
+      const membership = this.defaultMembershipForUser(userId);
+      this.writeAuditEvent(membership.organizationId, userId, 'device.updated', deviceId, { name: cleanName }, now);
+    }
+    return device;
   }
 
   updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now = new Date().toISOString()): DeviceRecord | null {
@@ -2123,6 +2273,20 @@ function mapAgentTokenRow(row: AgentTokenRow): AgentTokenRecord {
     lastRequestAt: row.last_request_at ?? undefined,
     createdAt: row.created_at,
     revokedAt: row.revoked_at ?? undefined
+  };
+}
+
+function mapPersonalEntitlementRow(row: PersonalEntitlementRow): PersonalEntitlementRecord {
+  return {
+    userId: row.user_id,
+    trialStartedAt: row.trial_started_at,
+    appUnlockedAt: row.app_unlocked_at ?? undefined,
+    includedHostedActivatedAt: row.included_hosted_activated_at ?? undefined,
+    hostedSubscriptionEndsAt: row.hosted_subscription_ends_at ?? undefined,
+    hostedSubscriptionCanceledAt: row.hosted_subscription_canceled_at ?? undefined,
+    hostedDataDeletedAt: row.hosted_data_deleted_at ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -2534,6 +2698,18 @@ interface AgentTokenRow {
   last_request_at: string | null;
   created_at: string;
   revoked_at: string | null;
+}
+
+interface PersonalEntitlementRow {
+  user_id: string;
+  trial_started_at: string;
+  app_unlocked_at: string | null;
+  included_hosted_activated_at: string | null;
+  hosted_subscription_ends_at: string | null;
+  hosted_subscription_canceled_at: string | null;
+  hosted_data_deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface PairingCodeRow {
@@ -2985,4 +3161,18 @@ CREATE TABLE IF NOT EXISTS agent_status_updates (
 
 CREATE INDEX IF NOT EXISTS agent_status_updates_org_thread_created_idx ON agent_status_updates(organization_id, thread_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS agent_status_updates_org_created_idx ON agent_status_updates(organization_id, created_at DESC);
+`;
+
+const MIGRATION_0004_PERSONAL_ENTITLEMENTS = `
+CREATE TABLE IF NOT EXISTS personal_entitlements (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  trial_started_at TEXT NOT NULL,
+  app_unlocked_at TEXT,
+  included_hosted_activated_at TEXT,
+  hosted_subscription_ends_at TEXT,
+  hosted_subscription_canceled_at TEXT,
+  hosted_data_deleted_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;

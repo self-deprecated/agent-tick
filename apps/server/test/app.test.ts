@@ -73,6 +73,7 @@ describe('server skeleton', () => {
       AGENT_TICK_MAX_ACTIVE_MEMBERS: '10',
       AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL: 'https://hooks.example.com/approvals',
       AGENT_TICK_APPROVAL_RETENTION_DAYS: '90',
+      AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS: '90',
       AGENT_TICK_AUDIT_RETENTION_DAYS: '365',
       AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS: '30',
       AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS: '14',
@@ -85,6 +86,7 @@ describe('server skeleton', () => {
     expect(config.maxActiveMembers).toBe(10);
     expect(config.approvalNotificationWebhookURL).toBe('https://hooks.example.com/approvals');
     expect(config.approvalRetentionDays).toBe(90);
+    expect(config.statusUpdateRetentionDays).toBe(90);
     expect(config.auditRetentionDays).toBe(365);
     expect(config.unregisteredDeviceRetentionDays).toBe(30);
     expect(config.expiredInviteRetentionDays).toBe(14);
@@ -447,7 +449,7 @@ describe('server skeleton', () => {
       method: 'POST',
       url: '/v1/organization-invites',
       headers: { 'x-agent-tick-organization-id': organizationId },
-      payload: { label: 'Bob', role: 'admin', teamIds: [team.json().teamId], email: 'bob@example.com' }
+      payload: { label: 'Bob', role: 'admin', approvalRequired: true, teamIds: [team.json().teamId], email: 'bob@example.com' }
     });
     const bob = db.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
     const pairing = db.createPairingToken(bob.userId, bob.organizationId);
@@ -594,7 +596,7 @@ describe('server skeleton', () => {
       method: 'POST',
       url: '/v1/organization-invites',
       headers: { 'x-agent-tick-organization-id': organizationId },
-      payload: { label: 'Bob', role: 'member' }
+      payload: { label: 'Bob', role: 'member', approvalRequired: true }
     });
     const bob = db.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob' });
     const pairing = db.createPairingToken(bob.userId, bob.organizationId);

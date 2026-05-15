@@ -33,7 +33,7 @@ Expected visible:
 - first team creation
 - invite teammate card
 - active/invited/pending teammate status
-- simple role labels: owner, admin, approver, viewer
+- simple organization role labels: Owner, Admin, Member; Approval Access is assigned separately through teams/projects/flows
 
 Expected hidden or de-emphasized:
 

@@ -1,0 +1,27 @@
+# Security
+
+Agent Tick is a least-permission approval layer, not a remote shell.
+
+## Bounded Input
+
+Agent Tick returns only responses defined by the original request: a Status Update is one-way, Steering chooses from bounded options, and a Sanction approves or denies one specific action.
+
+## Local Execution
+
+Approved actions execute in the user's local agent environment. The hosted service, dashboard, and Native App cannot invent or execute arbitrary commands.
+
+## Push Notifications
+
+Hosted push notifications are minimal by default and do not include request title/body/command by default. Full details open inside the Native App. Push notification approve/deny actions are disabled at launch.
+
+## Encryption
+
+Encrypted Approval Content is supported where available, but end-to-end encryption is not required for hosted launch. Do not send secrets in request titles, bodies, commands, choices, metadata, logs, or notifications.
+
+## Retention
+
+Hosted personal activity history follows the hosted personal lifecycle and grace period. Self-hosted deployments configure their own retention windows.
+
+## Diagnostics and Analytics
+
+Diagnostics should exclude approval content. Product analytics are minimal onboarding/paywall/usage-shape events and should exclude approval content. Marketing analytics are privacy-friendly aggregate analytics without ad tracking pixels.

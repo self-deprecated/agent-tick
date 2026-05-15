@@ -33,6 +33,7 @@ import type {
   DeviceCredential,
   DeviceRecord,
   DeviceRegistrationInput,
+  DeleteOrganizationDataResult,
   DeviceTokenAuth,
   EventTicketAuth,
   EventTicketInput,
@@ -60,7 +61,9 @@ import type {
   UpdatePolicyInput,
   UpsertTeamMemberInput,
   UserProfileRecord,
-  AvailabilityRecord
+  AvailabilityRecord,
+  PersonalEntitlementRecord,
+  UpdatePersonalEntitlementInput
 } from './index.js';
 
 const DEFAULT_USER_ID = 'usr_default';
@@ -169,6 +172,18 @@ interface AgentTokenRow {
   last_request_at: string | null;
   created_at: string;
   revoked_at: string | null;
+}
+
+interface PersonalEntitlementRow {
+  user_id: string;
+  trial_started_at: string;
+  app_unlocked_at: string | null;
+  included_hosted_activated_at: string | null;
+  hosted_subscription_ends_at: string | null;
+  hosted_subscription_canceled_at: string | null;
+  hosted_data_deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface ApprovalRow {
@@ -331,6 +346,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
   async cleanupRetention(policy: RetentionPolicy = {}, now = new Date().toISOString()): Promise<CleanupRetentionResult> {
     return this.transaction(async (query) => {
       let approvalRequests = 0;
+      let statusUpdates = 0;
       let auditEvents = 0;
       let devices = 0;
       let organizationInviteTeams = 0;
@@ -343,6 +359,11 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
           [cutoff, cutoff, now]
         );
         approvalRequests = result.rowCount ?? 0;
+      }
+
+      if (policy.statusUpdatesDays !== undefined) {
+        const result = await query('DELETE FROM agent_status_updates WHERE created_at <= $1', [retentionCutoff(now, policy.statusUpdatesDays)]);
+        statusUpdates = result.rowCount ?? 0;
       }
 
       if (policy.auditEventsDays !== undefined) {
@@ -369,7 +390,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
         organizationInvites = invites.rowCount ?? 0;
       }
 
-      return { approvalRequests, auditEvents, devices, organizationInviteTeams, organizationInvites };
+      return { approvalRequests, statusUpdates, auditEvents, devices, organizationInviteTeams, organizationInvites };
     });
   }
 
@@ -510,6 +531,38 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
     const membership = await this.organizationMembershipForUser(userId, organizationId);
     if (!membership) throw new Error(`organization ${organizationId} was not created`);
     return { organizationId, name: cleanName, userId, role: membership.role, status: 'active', createdAt: now, updatedAt: now };
+  }
+
+  async deleteOrganizationData(organizationId: string, now = new Date().toISOString()): Promise<DeleteOrganizationDataResult> {
+    return this.transaction(async (query) => {
+      const memberRows = await query<{ user_id: string }>('SELECT user_id FROM organization_memberships WHERE organization_id = $1', [organizationId]);
+      const memberIds = memberRows.rows.map((row) => row.user_id);
+      const agentTokens = await query('UPDATE agent_tokens SET revoked_at = $1 WHERE organization_id = $2 AND revoked_at IS NULL', [now, organizationId]);
+      const devices = memberIds.length
+        ? await query('UPDATE devices SET unregistered_at = $1, expo_push_token = NULL WHERE unregistered_at IS NULL AND user_id = ANY($2::text[])', [now, memberIds])
+        : { rowCount: 0 };
+      await query('DELETE FROM approval_votes WHERE request_id IN (SELECT id FROM approval_requests WHERE organization_id = $1)', [organizationId]);
+      await query('DELETE FROM approval_recipients WHERE organization_id = $1 OR request_id IN (SELECT id FROM approval_requests WHERE organization_id = $1)', [organizationId]);
+      await query('DELETE FROM approval_waiter_tokens WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM approval_requests WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM agent_status_updates WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM audit_events WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM event_tickets WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM pairing_codes WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM user_availability WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM mobile_diagnostics WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM organization_invite_acceptances WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM organization_invite_teams WHERE invite_id IN (SELECT invite_id FROM organization_invites WHERE organization_id = $1)', [organizationId]);
+      await query('DELETE FROM organization_invites WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM team_memberships WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM policies WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM teams WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM projects WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM agent_tokens WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM organization_memberships WHERE organization_id = $1', [organizationId]);
+      const organizations = await query('DELETE FROM organizations WHERE id = $1', [organizationId]);
+      return { organizationId, agentTokensRevoked: agentTokens.rowCount ?? 0, devicesUnregistered: devices.rowCount ?? 0, deleted: (organizations.rowCount ?? 0) > 0 };
+    });
   }
 
   async acceptInvite(token: string, userId: string, now = new Date().toISOString(), limits: MembershipActivationLimits = {}): Promise<AcceptInviteResult | null> {
@@ -946,6 +999,15 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
     return rows.map(mapAgentTokenRow);
   }
 
+  async updateAgentTokenName(agentId: string, organizationId: string, name: string, now = new Date().toISOString()): Promise<AgentTokenRecord | null> {
+    const cleanName = name.trim();
+    if (!cleanName) throw httpError(400, 'bad_request', 'Agent connection name is required');
+    await this.pool.query('UPDATE agent_tokens SET name = $1 WHERE agent_id = $2 AND organization_id = $3', [cleanName, agentId, organizationId]);
+    const token = (await this.listAgentTokens(organizationId)).find((candidate) => candidate.agentId === agentId) ?? null;
+    if (token) await this.writeAuditEvent(organizationId, token.ownerUserId ?? agentId, 'agent_token.updated', agentId, { name: cleanName }, now);
+    return token;
+  }
+
   async revokeAgentToken(agentId: string, organizationId = DEFAULT_ORGANIZATION_ID, now = new Date().toISOString()): Promise<AgentTokenRecord | null> {
     const row = await this.one<AgentTokenRow>('SELECT * FROM agent_tokens WHERE agent_id = $1 AND organization_id = $2', [agentId, organizationId]);
     if (!row) return null;
@@ -973,6 +1035,54 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
       teamId: row.team_id ?? undefined,
       defaultApprovalPolicy: row.default_approval_policy ?? undefined
     };
+  }
+
+  async getOrStartPersonalEntitlement(userId: string, now = new Date().toISOString()): Promise<PersonalEntitlementRecord> {
+    const existing = await this.one<PersonalEntitlementRow>('SELECT * FROM personal_entitlements WHERE user_id = $1', [userId]);
+    if (existing) return mapPersonalEntitlementRow(existing);
+    await this.pool.query('INSERT INTO personal_entitlements(user_id, trial_started_at, created_at, updated_at) VALUES ($1, $2, $3, $4)', [userId, now, now, now]);
+    return this.getOrStartPersonalEntitlement(userId, now);
+  }
+
+  async updatePersonalEntitlement(input: UpdatePersonalEntitlementInput, now = new Date().toISOString()): Promise<PersonalEntitlementRecord> {
+    await this.getOrStartPersonalEntitlement(input.userId, now);
+    const current = await this.one<PersonalEntitlementRow>('SELECT * FROM personal_entitlements WHERE user_id = $1', [input.userId]);
+    await this.pool.query(`
+      UPDATE personal_entitlements SET
+        app_unlocked_at = $1,
+        included_hosted_activated_at = $2,
+        hosted_subscription_ends_at = $3,
+        hosted_subscription_canceled_at = $4,
+        hosted_data_deleted_at = $5,
+        updated_at = $6
+      WHERE user_id = $7
+    `, [
+      input.appUnlockedAt === undefined ? current?.app_unlocked_at ?? null : input.appUnlockedAt,
+      input.includedHostedActivatedAt === undefined ? current?.included_hosted_activated_at ?? null : input.includedHostedActivatedAt,
+      input.hostedSubscriptionEndsAt === undefined ? current?.hosted_subscription_ends_at ?? null : input.hostedSubscriptionEndsAt,
+      input.hostedSubscriptionCanceledAt === undefined ? current?.hosted_subscription_canceled_at ?? null : input.hostedSubscriptionCanceledAt,
+      input.hostedDataDeletedAt === undefined ? current?.hosted_data_deleted_at ?? null : input.hostedDataDeletedAt,
+      now,
+      input.userId
+    ]);
+    return this.getOrStartPersonalEntitlement(input.userId, now);
+  }
+
+  async revokeAgentTokensForOwner(userId: string, now = new Date().toISOString()): Promise<number> {
+    const result = await this.pool.query('UPDATE agent_tokens SET revoked_at = $1 WHERE owner_user_id = $2 AND revoked_at IS NULL', [now, userId]);
+    return result.rowCount ?? 0;
+  }
+
+  async deleteHostedPersonalData(userId: string, organizationId: string, now = new Date().toISOString()): Promise<void> {
+    await this.transaction(async (query) => {
+      await query('UPDATE agent_tokens SET revoked_at = $1 WHERE owner_user_id = $2 AND revoked_at IS NULL', [now, userId]);
+      await query('UPDATE devices SET unregistered_at = $1, expo_push_token = NULL WHERE user_id = $2 AND unregistered_at IS NULL', [now, userId]);
+      await query('DELETE FROM approval_votes WHERE approver_user_id = $1', [userId]);
+      await query('DELETE FROM approval_recipients WHERE user_id = $1', [userId]);
+      await query('DELETE FROM agent_status_updates WHERE organization_id = $1', [organizationId]);
+      await query('DELETE FROM approval_requests WHERE organization_id = $1 AND user_id = $2', [organizationId, userId]);
+    });
+    await this.updatePersonalEntitlement({ userId, hostedDataDeletedAt: now }, now);
   }
 
   async createApprovalRequest(input: CreateApprovalInput, now = new Date().toISOString()): Promise<ApprovalRequest> {
@@ -1178,6 +1288,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
         FROM approval_recipients r
         JOIN devices d ON d.user_id = r.user_id
         WHERE r.request_id = $1
+          AND r.source NOT LIKE 'unrouted_%'
           AND d.expo_push_token IS NOT NULL
           AND d.unregistered_at IS NULL
         ORDER BY d.updated_at DESC
@@ -1197,6 +1308,18 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
   async getDeviceForUser(deviceId: string, userId: string): Promise<DeviceRecord | null> {
     const row = await this.one<DeviceRow>('SELECT * FROM devices WHERE device_id = $1 AND user_id = $2', [deviceId, userId]);
     return row ? mapDeviceRow(row) : null;
+  }
+
+  async updateDeviceName(deviceId: string, userId: string, name: string, now = new Date().toISOString()): Promise<DeviceRecord | null> {
+    const cleanName = name.trim();
+    if (!cleanName) throw httpError(400, 'bad_request', 'Device name is required');
+    await this.pool.query('UPDATE devices SET name = $1, updated_at = $2 WHERE device_id = $3 AND user_id = $4 AND unregistered_at IS NULL', [cleanName, now, deviceId, userId]);
+    const device = await this.getDeviceForUser(deviceId, userId);
+    if (device) {
+      const membership = await this.defaultMembershipForUser(userId);
+      await this.writeAuditEvent(membership.organizationId, userId, 'device.updated', deviceId, { name: cleanName }, now);
+    }
+    return device;
   }
 
   async updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now = new Date().toISOString()): Promise<DeviceRecord | null> {
@@ -1505,18 +1628,26 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
     const recipients = new Map<string, string>();
     if (input.requesterUserId) recipients.set(input.requesterUserId, 'requester');
     if (input.policy?.team_id) {
-      const rows = await this.many<{ user_id: string; role: string; organization_role: string }>(
+      const rows = await this.many<{ user_id: string; role: string; organization_role: string; availability: string }>(
         `
-          SELECT tm.user_id, tm.role, om.role AS organization_role
+          SELECT tm.user_id, tm.role, om.role AS organization_role, COALESCE(ua.state, 'available') AS availability
           FROM team_memberships tm
           JOIN organization_memberships om ON om.organization_id = tm.organization_id AND om.user_id = tm.user_id AND om.status = 'active'
+          LEFT JOIN user_availability ua ON ua.organization_id = tm.organization_id AND ua.user_id = tm.user_id
           WHERE tm.organization_id = $1 AND tm.team_id = $2
           ORDER BY tm.created_at ASC
         `,
         [input.organizationId, input.policy.team_id]
       );
-      for (const row of rows) {
-        if (approvalTeamRoleCanRespond(row.role) && approvalOrganizationRoleCanRespond(row.organization_role)) recipients.set(row.user_id, 'policy_team');
+      const eligible = rows.filter((row) => approvalTeamRoleCanRespond(row.role) && approvalOrganizationRoleCanRespond(row.organization_role));
+      for (const row of eligible) {
+        if (row.availability === 'available') recipients.set(row.user_id, 'policy_team');
+      }
+      if (!recipients.size) {
+        for (const row of eligible) recipients.set(row.user_id, 'unrouted_unavailable');
+        for (const member of await this.listOrganizationMembers(input.organizationId)) {
+          if (member.role === 'owner' || member.role === 'admin') recipients.set(member.userId, 'unrouted_admin');
+        }
       }
     } else {
       const members = await this.listOrganizationMembers(input.organizationId);
@@ -1829,6 +1960,20 @@ function mapDeviceRow(row: DeviceRow): DeviceRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     unregisteredAt: row.unregistered_at ?? undefined
+  };
+}
+
+function mapPersonalEntitlementRow(row: PersonalEntitlementRow): PersonalEntitlementRecord {
+  return {
+    userId: row.user_id,
+    trialStartedAt: row.trial_started_at,
+    appUnlockedAt: row.app_unlocked_at ?? undefined,
+    includedHostedActivatedAt: row.included_hosted_activated_at ?? undefined,
+    hostedSubscriptionEndsAt: row.hosted_subscription_ends_at ?? undefined,
+    hostedSubscriptionCanceledAt: row.hosted_subscription_canceled_at ?? undefined,
+    hostedDataDeletedAt: row.hosted_data_deleted_at ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 

@@ -82,6 +82,13 @@ export function SettingsScreen({
   onSavedAccountSelect,
   onSendDiagnosticSnapshot,
   onSendTestNotification,
+  nativeAppEntitlement,
+  trialRemainingLabel = "",
+  hostedPersonalActive = false,
+  onPurchaseLifetimeUnlock,
+  onRestorePurchases,
+  onSubscribeHostedPersonal,
+  onManageSubscription,
   onScanPairing,
   onUseHosted,
   pairingCode,
@@ -133,6 +140,13 @@ export function SettingsScreen({
   onSavedAccountSelect?: (account: SavedMobileAccount) => void;
   onSendDiagnosticSnapshot?: () => void;
   onSendTestNotification: () => void;
+  nativeAppEntitlement?: { trialActive: boolean; lifetimeUnlocked: boolean; readOnly: boolean; hostedSubscriptionActive: boolean; includedHostedActive: boolean };
+  trialRemainingLabel?: string;
+  hostedPersonalActive?: boolean;
+  onPurchaseLifetimeUnlock?: () => void;
+  onRestorePurchases?: () => void;
+  onSubscribeHostedPersonal?: (period: "monthly" | "yearly") => void;
+  onManageSubscription?: () => void;
   onScanPairing: () => void;
   onSignInAnotherClerkAccount?: () => void;
   onUseHosted?: () => void;
@@ -189,6 +203,43 @@ export function SettingsScreen({
     { code: "system", label: `${tr("System")} (${localeName(activeLocale)})`, diagnostic: "language_system" },
     ...supportedLocales.map((locale) => ({ code: locale.code, label: locale.nativeLabel, diagnostic: "language_select" })),
   ];
+
+  const monetizationSection = nativeAppEntitlement ? (
+    <View style={styles.settingsSection}>
+      <Text style={styles.sectionHeading}>{tr("Trial and purchases")}</Text>
+      <Text style={styles.pairingHint}>{trialRemainingLabel || tr("Trial status unavailable")}</Text>
+      {nativeAppEntitlement.readOnly ? (
+        <Text style={styles.errorText}>{tr("Your server is yours. The first-party app is paid after trial.")}</Text>
+      ) : null}
+      <View style={styles.purchaseCard}>
+        <Text style={styles.organizationName}>{tr("Lifetime app unlock")}</Text>
+        <Text style={styles.organizationMeta}>{tr("Use the Agent Tick app with self-hosted servers forever.")}</Text>
+        <Text style={styles.priceText}>$19.99</Text>
+        <Pressable disabled={nativeAppEntitlement.lifetimeUnlocked} onPress={() => onPurchaseLifetimeUnlock?.()} style={[styles.primaryButton, nativeAppEntitlement.lifetimeUnlocked ? styles.disabledButton : null]}>
+          <Text style={styles.primaryButtonText}>{nativeAppEntitlement.lifetimeUnlocked ? tr("Purchased") : tr("Buy lifetime unlock")}</Text>
+        </Pressable>
+      </View>
+      <View style={styles.purchaseCard}>
+        <Text style={styles.organizationName}>{tr("Hosted personal service")}</Text>
+        <Text style={styles.organizationMeta}>{tr("Let us run the approval routing, push, updates, and uptime for you.")}</Text>
+        <Text style={styles.pairingHint}>{hostedPersonalActive ? tr("Hosted personal service is active.") : tr("The included hosted month starts when hosted personal service is first activated after purchase.")}</Text>
+        <View style={styles.notificationActions}>
+          <Pressable onPress={() => onSubscribeHostedPersonal?.("monthly")} style={styles.secondaryActionButton}>
+            <Text style={styles.secondaryActionText}>$5/month</Text>
+          </Pressable>
+          <Pressable onPress={() => onSubscribeHostedPersonal?.("yearly")} style={styles.secondaryActionButton}>
+            <Text style={styles.secondaryActionText}>$50/year</Text>
+          </Pressable>
+        </View>
+        <Pressable onPress={() => onManageSubscription?.()} style={styles.secondaryActionButton}>
+          <Text style={styles.secondaryActionText}>{tr("Manage subscription")}</Text>
+        </Pressable>
+      </View>
+      <Pressable onPress={() => onRestorePurchases?.()} style={styles.secondaryActionButton}>
+        <Text style={styles.secondaryActionText}>{tr("Restore purchases")}</Text>
+      </Pressable>
+    </View>
+  ) : null;
 
   const languageSection = (
     <View style={styles.settingsSection}>
@@ -407,6 +458,7 @@ export function SettingsScreen({
             </Pressable>
           ) : null}
         </View>
+        {monetizationSection}
         {languageSection}
         <View style={styles.settingsSection}>
           <Text style={styles.sectionHeading}>{tr("Workspace")}</Text>
@@ -533,6 +585,7 @@ export function SettingsScreen({
       contentContainerStyle={styles.settingsContent}
       style={styles.settingsPane}
     >
+      {monetizationSection}
       {languageSection}
       <View style={styles.settingsSection}>
         <Text style={styles.sectionHeading}>{tr("Pairing")}</Text>
@@ -772,6 +825,21 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#ffffff",
     fontSize: 16,
+    fontWeight: "900",
+  },
+  disabledButton: {
+    opacity: 0.55,
+  },
+  purchaseCard: {
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 12,
+  },
+  priceText: {
+    color: "#202124",
+    fontSize: 18,
     fontWeight: "900",
   },
   deviceStatus: {

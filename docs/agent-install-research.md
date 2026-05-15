@@ -4,11 +4,7 @@ This document records what is known versus scaffolded for `agent-tick install`.
 
 ## Preloop pattern
 
-Preloop's public docs and site describe a one-command installer:
-
-```sh
-curl -fsSL https://preloop.ai/install/cli | sh
-```
+Preloop's public docs and site describe a one-command installer. This research note intentionally does not repeat pipe-to-shell install snippets in launch docs.
 
 The documented behavior is not just adding instructions. Preloop discovers local agent/client configs for Claude Code, Codex CLI, Gemini CLI, Hermes, OpenClaw, OpenCode, and other MCP-compatible runtimes. On supported managed paths, discovery can import configured tools/model metadata and reconfigure the local runtime to use the Preloop model gateway and MCP tool firewall.
 

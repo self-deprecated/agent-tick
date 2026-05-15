@@ -24,10 +24,13 @@ import {
   type TurboModule,
 } from "react-native";
 import {
+  hostedPersonalActive,
+  nativeAppEntitlement,
   notificationDecision,
   notificationFallbackState,
   notificationRequestID,
   parsePairingPayload,
+  trialRemainingLabel,
   type PairingPayload,
   type Screen,
 } from "./AppLogic";
@@ -39,7 +42,6 @@ import {
   isQuestionnaireRequest,
   normalizeApproval,
   normalizeApprovals,
-  notificationBody,
   policyProgressMessage,
   questionnaireReady,
   requestCommandDetails,
@@ -53,7 +55,6 @@ import {
   requestStatusLabel,
   requestTargetTeamLabel,
   requestVoteHistory,
-  supportsNotificationActions,
   updateQuestionnaireAnswers,
   shouldScheduleLocalNotifications,
   type ApprovalRequest,
@@ -120,6 +121,10 @@ const mobileInstallationIDStorageKey = "agent-tick.mobileInstallationID";
 const approvalChoiceInteractionModeStorageKey = "agent-tick.approvalChoiceInteractionMode";
 const approvalOptionPlacementStorageKey = "agent-tick.approvalOptionPlacement";
 const approvalConfirmBeforeSubmitStorageKey = "agent-tick.approvalConfirmBeforeSubmit";
+const nativeAppFirstOpenedAtStorageKey = "agent-tick.nativeApp.firstOpenedAt";
+const nativeAppLifetimeUnlockedStorageKey = "agent-tick.nativeApp.lifetimeUnlocked";
+const hostedPersonalSubscriptionActiveStorageKey = "agent-tick.hostedPersonal.subscriptionActive";
+const includedHostedActivatedAtStorageKey = "agent-tick.hostedPersonal.includedActivatedAt";
 
 function dismissedAgentStatusStorageKey(serverURL: string, organizationID: string): string {
   const orgScope = organizationID.trim() || "default";
@@ -773,6 +778,10 @@ function AgentTickApp({
   const [choiceInteractionMode, setChoiceInteractionMode] = useState<ChoiceInteractionMode>("click-to-submit");
   const [optionPlacement, setOptionPlacement] = useState<OptionPlacement>("inline-after-content");
   const [confirmBeforeSubmit, setConfirmBeforeSubmit] = useState(true);
+  const [nativeFirstOpenedAt, setNativeFirstOpenedAt] = useState<string | null>(null);
+  const [nativeLifetimeUnlocked, setNativeLifetimeUnlocked] = useState(false);
+  const [hostedSubscriptionActive, setHostedSubscriptionActive] = useState(false);
+  const [includedHostedActivatedAt, setIncludedHostedActivatedAt] = useState<string | null>(null);
   const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
   const [diagnosticsEventCount, setDiagnosticsEventCount] = useState(0);
@@ -818,6 +827,16 @@ function AgentTickApp({
     () => visibleRequests.find((request) => request.id === selectedID) ?? visibleRequests[0],
     [selectedID, visibleRequests],
   );
+  const nativeEntitlement = nativeAppEntitlement({
+    now: new Date(),
+    firstOpenedAt: nativeFirstOpenedAt,
+    lifetimeUnlocked: nativeLifetimeUnlocked,
+    hostedSubscriptionActive,
+    includedHostedActivatedAt,
+  });
+  const isHostedAccount = normalizeServerURL(serverURL) === normalizeServerURL(hostedServerURL);
+  const appResponsesReadOnly = nativeEntitlement.readOnly;
+  const hostedReadOnly = isHostedAccount && !hostedPersonalActive(nativeEntitlement);
 
   useEffect(() => {
     setReply("");
@@ -907,6 +926,14 @@ function AgentTickApp({
         const savedChoiceInteractionMode = await AsyncStorage.getItem(approvalChoiceInteractionModeStorageKey);
         const savedOptionPlacement = await AsyncStorage.getItem(approvalOptionPlacementStorageKey);
         const savedConfirmBeforeSubmit = await AsyncStorage.getItem(approvalConfirmBeforeSubmitStorageKey);
+        let firstOpenedAt = await AsyncStorage.getItem(nativeAppFirstOpenedAtStorageKey);
+        if (!firstOpenedAt) {
+          firstOpenedAt = new Date().toISOString();
+          await AsyncStorage.setItem(nativeAppFirstOpenedAtStorageKey, firstOpenedAt);
+        }
+        const savedLifetimeUnlocked = await AsyncStorage.getItem(nativeAppLifetimeUnlockedStorageKey);
+        const savedHostedSubscriptionActive = await AsyncStorage.getItem(hostedPersonalSubscriptionActiveStorageKey);
+        const savedIncludedHostedActivatedAt = await AsyncStorage.getItem(includedHostedActivatedAtStorageKey);
         let parsedAccounts: unknown = [];
         try {
           parsedAccounts = savedAccountJSON ? JSON.parse(savedAccountJSON) : [];
@@ -926,6 +953,10 @@ function AgentTickApp({
           if (savedConfirmBeforeSubmit === "true" || savedConfirmBeforeSubmit === "false") {
             setConfirmBeforeSubmit(savedConfirmBeforeSubmit === "true");
           }
+          setNativeFirstOpenedAt(firstOpenedAt);
+          setNativeLifetimeUnlocked(savedLifetimeUnlocked === "true");
+          setHostedSubscriptionActive(savedHostedSubscriptionActive === "true");
+          setIncludedHostedActivatedAt(savedIncludedHostedActivatedAt || null);
         }
       } finally {
         if (!cancelled) {
@@ -992,18 +1023,7 @@ function AgentTickApp({
         sound: "default",
       }).catch(() => undefined);
     }
-    void Notifications.setNotificationCategoryAsync(approvalCategoryID, [
-      {
-        identifier: "approve",
-        buttonTitle: "Approve",
-        options: { opensAppToForeground: false },
-      },
-      {
-        identifier: "deny",
-        buttonTitle: "Deny",
-        options: { opensAppToForeground: false, isDestructive: true },
-      },
-    ]).catch(() => undefined);
+    void Notifications.setNotificationCategoryAsync(approvalCategoryID, []).catch(() => undefined);
   }, []);
 
   const loadRef = useRef<((options?: { visible?: boolean }) => Promise<void>) | null>(null);
@@ -1538,6 +1558,10 @@ function AgentTickApp({
     request: ApprovalRequest,
     payload: { choiceId?: string; message?: string; answers?: Record<string, string[]>; encryptedPayloadAcknowledged?: boolean },
   ) => {
+    if (appResponsesReadOnly || hostedReadOnly) {
+      Alert.alert("Read-only", appResponsesReadOnly ? "Your trial ended. Buy Lifetime app unlock to respond." : "Renew Hosted personal service to respond on hosted personal requests.");
+      return;
+    }
     interruptRealtime();
     try {
       const updated = normalizeApproval(await sdk.respondToApproval(request.id, payload));
@@ -1565,37 +1589,11 @@ function AgentTickApp({
   const submitQuestionnaire = async (request: ApprovalRequest) =>
     submitResponse(request, { answers: questionnaireAnswers, ...(request.encryptedPayload ? { encryptedPayloadAcknowledged: true } : {}) });
 
-  const respondByID = useCallback(
-    async (requestID: string, choiceID: string) => {
-      interruptRealtime();
-      try {
-        const updated = normalizeApproval(await sdk.respondToApproval(requestID, { choiceId: choiceID }));
-        applyResponseResult(requestID, updated);
-        void load({ visible: false });
-      } catch (err) {
-        if (apiStatus(err) === 409) {
-          void load({ visible: false });
-          return;
-        }
-        recordDiagnostic("warn", "notifications", "action_response_failed", { message: err instanceof Error ? err.message : String(err), status: apiStatus(err) });
-        setDiagnosticsEventCount(diagnosticEvents().length);
-        setNotificationTargetID(requestID);
-        setSelectedID(requestID);
-        setScreen("approvals");
-      }
-    },
-    [applyResponseResult, interruptRealtime, load, sdk],
-  );
-
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const decision = notificationDecision(response);
         if (!decision) {
-          return;
-        }
-        if (decision.kind === "respond") {
-          void respondByID(decision.requestID, decision.choiceID);
           return;
         }
         const fallback = notificationFallbackState(decision.requestID);
@@ -1622,7 +1620,7 @@ function AgentTickApp({
       .catch(() => undefined);
 
     return () => subscription.remove();
-  }, [interruptRealtime, respondByID]);
+  }, [interruptRealtime]);
 
   const checkConnection = async () => {
     interruptRealtime();
@@ -1711,6 +1709,30 @@ function AgentTickApp({
       },
       trigger: null,
     });
+  };
+
+  const purchaseLifetimeUnlock = async () => {
+    setNativeLifetimeUnlocked(true);
+    await AsyncStorage.setItem(nativeAppLifetimeUnlockedStorageKey, "true");
+    if (isHostedAccount) await activateIncludedHostedMonthIfEligible();
+    Alert.alert("Lifetime app unlock", "Purchase recorded. Store purchase plumbing will restore this entitlement on this platform.");
+  };
+
+  const restorePurchases = async () => {
+    const restored = await AsyncStorage.getItem(nativeAppLifetimeUnlockedStorageKey);
+    setNativeLifetimeUnlocked(restored === "true");
+    Alert.alert("Restore purchases", restored === "true" ? "Lifetime app unlock restored." : "No local purchase was found for this platform.");
+  };
+
+  const subscribeHostedPersonal = async (period: "monthly" | "yearly") => {
+    setHostedSubscriptionActive(true);
+    await AsyncStorage.setItem(hostedPersonalSubscriptionActiveStorageKey, "true");
+    Alert.alert("Hosted personal service", period === "yearly" ? "$50/year subscription selected." : "$5/month subscription selected.");
+  };
+
+  const manageSubscription = () => {
+    const label = Platform.OS === "ios" ? "Apple subscriptions" : Platform.OS === "android" ? "Google Play subscriptions" : "your app store subscriptions";
+    Alert.alert("Manage subscription", `Manage or cancel Hosted personal service from ${label}.`);
   };
 
   const pairDevice = async () => {
@@ -1930,7 +1952,15 @@ function AgentTickApp({
     if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.(options);
   }, [bestEffortUnregisterDevice, clearStoredSessionForServer, onForgetClerkSession, runtimeAuthConfig?.authProvider]);
 
+  const activateIncludedHostedMonthIfEligible = useCallback(async () => {
+    if (!nativeLifetimeUnlocked || includedHostedActivatedAt) return;
+    const activatedAt = new Date().toISOString();
+    setIncludedHostedActivatedAt(activatedAt);
+    await AsyncStorage.setItem(includedHostedActivatedAtStorageKey, activatedAt);
+  }, [includedHostedActivatedAt, nativeLifetimeUnlocked]);
+
   const useHostedSignIn = useCallback(async () => {
+    await activateIncludedHostedMonthIfEligible();
     if (deviceID) {
       void bestEffortUnregisterDevice();
     }
@@ -1948,7 +1978,7 @@ function AgentTickApp({
     setConnectionStatus("checking");
     const config = await fetchRuntimeAuthConfigIfAvailable(defaultServer);
     onRuntimeAuthConfig?.(defaultServer, config);
-  }, [bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, onRuntimeAuthConfig]);
+  }, [activateIncludedHostedMonthIfEligible, bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, onRuntimeAuthConfig]);
 
   const selectOrganization = useCallback((organizationID: string) => {
     if (organizationID === selectedOrganizationID) return;
@@ -2146,6 +2176,13 @@ function AgentTickApp({
           onSavedAccountSelect={switchSavedAccount}
           onSendDiagnosticSnapshot={() => void sendDiagnostics()}
           onSendTestNotification={() => void sendTestNotification()}
+          nativeAppEntitlement={nativeEntitlement}
+          trialRemainingLabel={trialRemainingLabel(nativeEntitlement.trialRemainingMs)}
+          hostedPersonalActive={hostedPersonalActive(nativeEntitlement)}
+          onPurchaseLifetimeUnlock={() => void purchaseLifetimeUnlock()}
+          onRestorePurchases={() => void restorePurchases()}
+          onSubscribeHostedPersonal={(period) => void subscribeHostedPersonal(period)}
+          onManageSubscription={manageSubscription}
           onScanPairing={() => {
             pairingInFlight.current = false;
             setScannerLocked(false);
@@ -2197,6 +2234,8 @@ function AgentTickApp({
           onRefresh={() => void load({ visible: true })}
           onRespond={(request, choice) => void respond(request, choice)}
           onSubmitQuestionnaire={(request) => void submitQuestionnaire(request)}
+          readOnly={appResponsesReadOnly || hostedReadOnly}
+          readOnlyReason={appResponsesReadOnly ? "Your trial ended. Viewing, settings, purchase, and restore stay available; responses require Lifetime app unlock." : hostedReadOnly ? "Hosted personal service is inactive. Renew to respond on hosted personal requests." : undefined}
           choiceInteractionMode={choiceInteractionMode}
           optionPlacement={optionPlacement}
           confirmBeforeSubmit={confirmBeforeSubmit}
@@ -2619,9 +2658,9 @@ async function notifyForNewRequests(
     try {
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: request.command ? "Run Command?" : request.title,
-          body: notificationBody(request),
-          categoryIdentifier: supportsNotificationActions(request) ? approvalCategoryID : undefined,
+          title: "Agent Tick",
+          body: "Agent Tick needs your attention.",
+          categoryIdentifier: undefined,
           data: { approvalRequestID: request.id },
           sound: true,
         },
@@ -2766,6 +2805,8 @@ export function ApprovalsScreen({
   requests,
   selectedProjectID,
   statusUpdates,
+  readOnly = false,
+  readOnlyReason,
   dismissedStatusID,
   onDismissStatus,
   setProjectID,
@@ -2791,6 +2832,8 @@ export function ApprovalsScreen({
   requests: ApprovalRequest[];
   selectedProjectID: string | null;
   statusUpdates: AgentStatusUpdate[];
+  readOnly?: boolean;
+  readOnlyReason?: string;
   dismissedStatusID?: string | null;
   onDismissStatus?: (statusID: string) => void;
   setProjectID: (projectID: string | null) => void;
@@ -2821,7 +2864,7 @@ export function ApprovalsScreen({
   const encrypted = isEncryptedApprovalRequest(selected);
   const decrypted = useMemo(() => decryptedApprovalPlaintext(selected, e2eeKey), [e2eeKey, selected.id, selected.encryptedPayload]);
   const encryptedLocked = encrypted && !decrypted;
-  const canRespond = !encryptedLocked && (encrypted ? true : canRespondToRequest(selected));
+  const canRespond = !readOnly && !encryptedLocked && (encrypted ? true : canRespondToRequest(selected));
   const dismissChoice = encryptedDismissChoice(selected);
   const submitChoice = (choice: Choice) => {
     if (!confirmBeforeSubmit || choiceInteractionMode === "select-then-submit") {
@@ -2849,7 +2892,11 @@ export function ApprovalsScreen({
     </View>
   ) : (
     <View style={styles.actions}>
-      {isQuestionnaireRequest(selected) ? (
+      {readOnly ? (
+        <View style={styles.readOnlyPanel}>
+          <Text style={styles.actionHint}>{readOnlyReason || "This app is read-only. Viewing, purchase, restore, and settings remain available."}</Text>
+        </View>
+      ) : isQuestionnaireRequest(selected) ? (
         <Pressable
           disabled={!questionnaireReady(selected, questionnaireAnswers)}
           onPress={() => onSubmitQuestionnaire(selected)}
@@ -4297,6 +4344,13 @@ const styles = StyleSheet.create({
   },
   encryptedActionPanel: {
     gap: 8,
+  },
+  readOnlyPanel: {
+    backgroundColor: "#fff6d8",
+    borderColor: "#e5c66a",
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 12,
   },
   actionHint: {
     color: "#5f5a4f",

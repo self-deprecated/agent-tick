@@ -3,6 +3,7 @@
     "name": "Agent Tick",
     "slug": "agenttick",
     "version": "0.1.0",
+    "description": "Phone approvals for coding agents.",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "scheme": "agenttick",
@@ -18,12 +19,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ai.selfdeprecated.agenttick",
+      "appStoreUrl": "https://apps.apple.com/app/agent-tick",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "ai.selfdeprecated.agenttick",
+      "playStoreUrl": "https://play.google.com/store/apps/details?id=ai.selfdeprecated.agenttick",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"

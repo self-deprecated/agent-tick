@@ -19,10 +19,13 @@ import {
   shouldScheduleLocalNotifications,
 } from "./approvalRequests";
 import {
+  hostedPersonalActive,
+  nativeAppEntitlement,
   notificationDecision,
   notificationFallbackState,
   notificationRequestID,
   parsePairingPayload,
+  trialRemainingLabel,
 } from "./AppLogic";
 
 function notificationResponse(actionIdentifier: string, approvalRequestID?: unknown) {
@@ -37,6 +40,49 @@ function notificationResponse(actionIdentifier: string, approvalRequestID?: unkn
     },
   };
 }
+
+describe("native app entitlement", () => {
+  it("starts a seven-day local trial without sign-in", () => {
+    const state = nativeAppEntitlement({ now: new Date("2026-05-01T00:00:00.000Z") });
+    expect(state.trialActive).toBe(true);
+    expect(state.readOnly).toBe(false);
+    expect(state.trialEndsAt).toBe("2026-05-08T00:00:00.000Z");
+    expect(trialRemainingLabel(state.trialRemainingMs)).toBe("7 days left in trial");
+  });
+
+  it("makes the app read-only after trial without lifetime unlock", () => {
+    const state = nativeAppEntitlement({
+      now: new Date("2026-05-09T00:00:00.000Z"),
+      firstOpenedAt: "2026-05-01T00:00:00.000Z",
+    });
+    expect(state.trialActive).toBe(false);
+    expect(state.readOnly).toBe(true);
+  });
+
+  it("keeps self-host app use unlocked after lifetime purchase", () => {
+    const state = nativeAppEntitlement({
+      now: new Date("2026-05-09T00:00:00.000Z"),
+      firstOpenedAt: "2026-05-01T00:00:00.000Z",
+      lifetimeUnlocked: true,
+    });
+    expect(state.readOnly).toBe(false);
+  });
+
+  it("does not consume the included hosted month during the initial trial", () => {
+    const trial = nativeAppEntitlement({ now: new Date("2026-05-02T00:00:00.000Z"), firstOpenedAt: "2026-05-01T00:00:00.000Z" });
+    expect(hostedPersonalActive(trial)).toBe(true);
+    expect(trial.includedHostedActive).toBe(false);
+
+    const includedMonth = nativeAppEntitlement({
+      now: new Date("2026-05-20T00:00:00.000Z"),
+      firstOpenedAt: "2026-05-01T00:00:00.000Z",
+      lifetimeUnlocked: true,
+      includedHostedActivatedAt: "2026-05-15T00:00:00.000Z",
+    });
+    expect(hostedPersonalActive(includedMonth)).toBe(true);
+    expect(includedMonth.includedHostedActive).toBe(true);
+  });
+});
 
 describe("parsePairingPayload", () => {
   it("parses Agent Tick QR JSON payloads", () => {
@@ -83,19 +129,14 @@ describe("parsePairingPayload", () => {
 });
 
 describe("notificationDecision", () => {
-  it("maps approve actions to approval responses", () => {
+  it("opens the approval for notification action payloads without responding", () => {
     expect(notificationDecision(notificationResponse("approve", "req_123"))).toEqual({
-      kind: "respond",
+      kind: "open",
       requestID: "req_123",
-      choiceID: "approve",
     });
-  });
-
-  it("maps deny actions to approval responses", () => {
     expect(notificationDecision(notificationResponse("deny", "req_123"))).toEqual({
-      kind: "respond",
+      kind: "open",
       requestID: "req_123",
-      choiceID: "deny",
     });
   });
 
@@ -398,7 +439,7 @@ describe("request normalization and notification helpers", () => {
     expect(supportsNotificationActions(steer)).toBe(false);
   });
 
-  it("only enables notification actions for approve/deny approval requests", () => {
+  it("disables notification actions for launch", () => {
     expect(
       supportsNotificationActions({
         id: "req_approve",
@@ -413,13 +454,13 @@ describe("request normalization and notification helpers", () => {
         status: "pending",
         createdAt: "2026-04-19T12:00:00Z",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("skips local notifications when remote push is registered or notifications are off", () => {
+  it("does not schedule local notification copies at launch", () => {
     expect(shouldScheduleLocalNotifications("registered")).toBe(false);
-    expect(shouldScheduleLocalNotifications("idle")).toBe(true);
-    expect(shouldScheduleLocalNotifications("failed")).toBe(true);
+    expect(shouldScheduleLocalNotifications("idle")).toBe(false);
+    expect(shouldScheduleLocalNotifications("failed")).toBe(false);
     expect(shouldScheduleLocalNotifications("idle", false)).toBe(false);
   });
 });

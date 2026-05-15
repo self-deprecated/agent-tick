@@ -431,6 +431,16 @@ describe('AgentTickStore', () => {
     store.migrate();
     store.ensureSingleTenantDefaults('2026-05-08T00:00:00.000Z');
 
+    const credential = store.createAgentToken({ name: 'Cleanup agent' }, '2026-03-01T00:00:00.000Z');
+    store.createAgentStatusUpdate(
+      { organizationId: DEFAULT_ORGANIZATION_ID, agentId: credential.agentId, agentName: credential.name, threadId: 'cleanup', message: 'Old status', state: 'done' },
+      '2026-03-01T00:00:00.000Z'
+    );
+    const freshStatus = store.createAgentStatusUpdate(
+      { organizationId: DEFAULT_ORGANIZATION_ID, agentId: credential.agentId, agentName: credential.name, threadId: 'cleanup', message: 'Fresh status', state: 'working' },
+      '2026-05-07T00:00:00.000Z'
+    );
+
     const completed = store.createApprovalRequest({ requester: { name: 'agent' }, title: 'Old completed?' }, '2026-03-01T00:00:00.000Z');
     store.respondToApprovalRequest(completed.id, { choiceId: 'approve' }, 'usr_default', '2026-03-02T00:00:00.000Z');
     const expiredPending = store.createApprovalRequest(
@@ -460,11 +470,11 @@ describe('AgentTickStore', () => {
     );
 
     const result = store.cleanupRetention(
-      { approvalRequestsDays: 30, auditEventsDays: 30, unregisteredDevicesDays: 30, expiredInvitesDays: 30 },
+      { approvalRequestsDays: 30, statusUpdatesDays: 30, auditEventsDays: 30, unregisteredDevicesDays: 30, expiredInvitesDays: 30 },
       '2026-05-08T00:00:00.000Z'
     );
 
-    expect(result).toMatchObject({ approvalRequests: 2, devices: 1, organizationInviteTeams: 1, organizationInvites: 1 });
+    expect(result).toMatchObject({ approvalRequests: 2, statusUpdates: 1, devices: 1, organizationInviteTeams: 1, organizationInvites: 1 });
     expect(result.auditEvents).toBeGreaterThan(0);
     expect(store.getApprovalRequest(completed.id)).toBeNull();
     expect(store.getApprovalRequest(expiredPending.id)).toBeNull();
@@ -473,6 +483,7 @@ describe('AgentTickStore', () => {
     expect(store.getDeviceForUser(activeDevice.deviceId, 'usr_default')).toMatchObject({ deviceId: activeDevice.deviceId });
     expect(store.getOrganizationInvite(expiredInvite.inviteId)).toBeNull();
     expect(store.getOrganizationInvite(recentInvite.inviteId)).toMatchObject({ inviteId: recentInvite.inviteId });
+    expect(store.listLatestAgentStatusUpdates(DEFAULT_ORGANIZATION_ID).map((status) => status.statusId)).toEqual([freshStatus.statusId]);
     expect(store.listAuditEvents(DEFAULT_ORGANIZATION_ID).every((event) => event.createdAt > '2026-04-08T00:00:00.000Z')).toBe(true);
   });
 

@@ -3,6 +3,7 @@ import { CreateAgentStatusUpdateSchema } from '@agent-tick/shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireAuth, requireHuman } from '../auth/context.js';
+import { requireHostedPersonalRouting } from '../services/personalEntitlements.js';
 
 export interface StatusRoutesOptions {
   config: ServerConfig;
@@ -18,6 +19,7 @@ export async function registerStatusRoutes(app: FastifyInstance, { config, store
 
   app.post('/v1/status-updates', async (request) => {
     const auth = await requireAuth(request, config, store);
+    await requireHostedPersonalRouting(config, store, auth);
     const input = CreateAgentStatusUpdateSchema.parse(request.body);
     return await store.createAgentStatusUpdate({
       ...input,
