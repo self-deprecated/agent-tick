@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, handleMcpRequest, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs } from '../src/index.js';
+import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, handleMcpRequest, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -79,6 +79,16 @@ describe('MCP stdio adapter', () => {
     });
   });
 
+  it('reads Codex JSON-lines MCP messages', () => {
+    const line = '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"elicitation":{"form":{}}}}}\n';
+
+    expect(tryReadMcpMessage(Buffer.from(line))).toMatchObject({
+      body: line.trim(),
+      rest: Buffer.alloc(0),
+      transport: 'jsonl'
+    });
+  });
+
   it('maps the status MCP tool to a status update', async () => {
     const client = {
       createStatusUpdate: async (input: unknown) => ({ statusId: 'status_1', threadId: 'thread_1', message: (input as { message: string }).message })
@@ -117,6 +127,39 @@ describe('MCP stdio adapter', () => {
       message: 'Pick one',
       requestedSchema: { properties: { choiceId: { enum: ['small', 'cancel'] } } }
     });
+  });
+
+  it('races local and remote MCP steering in auto mode', async () => {
+    let createdTitle = '';
+    let abandonedId = '';
+    const client = {
+      createApprovalRequest: async (input: { title: string }) => {
+        createdTitle = input.title;
+        return { request: { id: 'req_1', title: input.title, status: 'pending' } };
+      },
+      waitForApproval: async () => new Promise(() => undefined),
+      abandonApproval: async (id: string) => {
+        abandonedId = id;
+        return { id, status: 'abandoned' };
+      }
+    };
+    const context = {
+      clientCapabilities: { elicitation: { form: {} } },
+      elicit: async () => ({ action: 'accept' as const, content: { choiceId: 'small' } })
+    };
+
+    await expect(handleMcpRequest({
+      method: 'tools/call',
+      id: 1,
+      params: {
+        name: 'agent_tick_steering',
+        arguments: { title: 'Pick one', localElicitation: 'auto', choices: [{ id: 'small', label: 'Small fix' }, { id: 'cancel', label: 'Cancel', kind: 'deny' }] }
+      }
+    }, client as never, 'https://tick.example.com', context)).resolves.toEqual({
+      content: [{ type: 'text', text: 'Local MCP elicitation accepted: small (Small fix)' }]
+    });
+    expect(createdTitle).toBe('Pick one');
+    expect(abandonedId).toBe('req_1');
   });
 
   it('marks declined local MCP sanctions as tool errors', async () => {

@@ -153,6 +153,30 @@ Implemented today:
 - GitHub Actions composite action
 - optional outbound approval notification webhook
 
+## Codex MCP notes
+
+Codex should launch Agent Tick through the local stdio MCP adapter:
+
+```toml
+[mcp_servers.agent_tick]
+command = "agent-tick"
+args = ["mcp"]
+startup_timeout_sec = 10
+tool_timeout_sec = 1800
+default_tools_approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_status]
+approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_steering]
+approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_sanction]
+approval_mode = "approve"
+```
+
+For local Codex elicitation prompts, Codex must allow MCP elicitations. With granular policy, set `mcp_elicitations = true`. `localElicitation: "auto"` is the default and recommended mode: it shows both the local Codex dialog and a remote Agent Tick mobile/web request, with the first answer winning. Use `localElicitation: "off"` only when testing phone/mobile routing by itself.
+
 Not currently implemented:
 
 - JSON stdin adapter command

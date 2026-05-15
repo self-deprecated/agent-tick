@@ -63,6 +63,28 @@ agent-tick mcp
 
 Codex can use the adapter as a stdio MCP server, and steering/sanction tools support local MCP form elicitation when Codex is configured to allow MCP elicitations.
 
+For Codex, configure the MCP server and pre-approve the Agent Tick tools so Agent Tick can ask the human without an extra local tool approval:
+
+```toml
+[mcp_servers.agent_tick]
+command = "agent-tick"
+args = ["mcp"]
+startup_timeout_sec = 10
+tool_timeout_sec = 1800
+default_tools_approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_status]
+approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_steering]
+approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_sanction]
+approval_mode = "approve"
+```
+
+Codex local elicitation also requires an approval policy that allows MCP elicitations. `localElicitation: "auto"` is the default and recommended mode: it shows both the local Codex dialog and a remote Agent Tick mobile/web request, with the first answer winning. Use `localElicitation: "only"` only when testing the local Codex dialog, and `localElicitation: "off"` only when testing remote Agent Tick mobile/web approval.
+
 For Claude Code, the default interactive profile starts hooks in pass-through mode. Route Claude Code steering and permission prompts through Agent Tick when away from the terminal:
 
 ```sh

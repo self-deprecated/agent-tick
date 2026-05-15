@@ -176,7 +176,33 @@ The adapter exposes status, steering, and sanction tools that call the Agent Tic
 [mcp_servers.agent_tick]
 command = "agent-tick"
 args = ["mcp"]
+startup_timeout_sec = 10
+tool_timeout_sec = 1800
+default_tools_approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_status]
+approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_steering]
+approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_sanction]
+approval_mode = "approve"
 ```
+
+If Codex uses granular approval policy, enable MCP elicitations:
+
+```toml
+approval_policy = { granular = {
+  sandbox_approval = true,
+  rules = true,
+  mcp_elicitations = true,
+  request_permissions = true,
+  skill_approval = true
+}}
+```
+
+`localElicitation: "auto"` is the default and recommended mode. It shows both the local Codex dialog and a remote Agent Tick mobile/web request; the first answer wins, and Agent Tick best-effort abandons the remote request if the local answer wins. Use `localElicitation: "only"` only when testing the local Codex dialog. Use `localElicitation: "off"` only when testing a remote Agent Tick mobile/web request and push notification.
 
 ## Not currently implemented
 

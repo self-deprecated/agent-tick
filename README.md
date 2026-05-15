@@ -82,7 +82,8 @@ agent-tick status --state working --next "Run the build" "Tests are passing; che
 2. Detects local agent configs and installs verified hook integrations:
    - Claude Code: adds mode-aware hooks globally in `~/.claude/settings.json` or locally in `.claude/settings.local.json` for `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions; starts in pass-through mode and adds `Bash(agent-tick:*)` so the Agent Tick CLI itself is never permission-gated.
    - Pi: installs the repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`; it gates risky bash commands through Agent Tick and always allows Agent Tick commands.
-   - Codex, Gemini, Cursor, OpenCode, generic `AGENTS.md`: detected and shown as disabled scaffolds until their hook/config behavior is verified.
+   - Codex: MCP adapter support is available through `agent-tick mcp`; automatic `install --target codex` config writing is still being verified.
+   - Gemini, Cursor, OpenCode, generic `AGENTS.md`: detected and shown as disabled scaffolds until their hook/config behavior is verified.
 
 Useful installer options:
 

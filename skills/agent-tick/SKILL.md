@@ -168,6 +168,38 @@ agent-tick status \
 
 The status message is visible to humans. Do not include secrets or sensitive logs.
 
+## MCP
+
+Use `agent-tick mcp` as the local stdio MCP adapter for MCP-capable agents. The adapter exposes `agent_tick_status`, `agent_tick_steering`, and `agent_tick_sanction`.
+
+For Codex, the MCP server config should pre-approve Agent Tick tools so Agent Tick can ask the human without an extra local tool approval:
+
+```toml
+[mcp_servers.agent_tick]
+command = "agent-tick"
+args = ["mcp"]
+startup_timeout_sec = 10
+tool_timeout_sec = 1800
+default_tools_approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_status]
+approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_steering]
+approval_mode = "approve"
+
+[mcp_servers.agent_tick.tools.agent_tick_sanction]
+approval_mode = "approve"
+```
+
+Codex local elicitation prompts require Codex policy to allow MCP elicitations. If granular approval policy is configured, `mcp_elicitations` must be `true`.
+
+For MCP steering and sanctions:
+
+- Use `localElicitation: "auto"` by default. It shows both the local MCP client dialog and a remote Agent Tick mobile/web request. The first answer wins; if local wins, Agent Tick best-effort abandons the remote request.
+- Use `localElicitation: "only"` only when testing or requiring only the local MCP client dialog. This does not send a phone push.
+- Use `localElicitation: "off"` only when testing or requiring only a remote Agent Tick mobile/web request.
+
 ## JSON Output
 
 Use `--json` when another script needs machine-readable events from `sanction`, `steering`, `abandon`, or `status`:
@@ -179,7 +211,7 @@ agent-tick sanction \
   --body "Deploy commit abc123 to production."
 ```
 
-The current CLI does not support JSON stdin adapter, MCP, constrained steering, context-file, project-routing, requester override, freeform text replies, or custom Claude Code command-risk policies. Do not use undocumented commands or flags.
+The current CLI does not support JSON stdin adapter, constrained steering, context-file, project-routing, requester override, freeform text replies, or custom Claude Code command-risk policies. Do not use undocumented commands or flags.
 
 ## Timeouts
 

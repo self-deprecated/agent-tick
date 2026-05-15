@@ -10,7 +10,7 @@ import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, type AddHelpTextContext } from 'commander';
-import { AgentTickClient, type ApprovalRequest } from '@agent-tick/sdk';
+import { AgentTickClient, type ApprovalRequest, type CreateApprovalResponse } from '@agent-tick/sdk';
 import { ChoiceFlagSchema, EncryptedApprovalPayloadSchema, createEncryptedApprovalPayload, generateApprovalEncryptionKey, type ChoiceFlag, type EncryptedApprovalPayload } from '@agent-tick/shared';
 import { resolveServerAndToken, saveClientConfig } from './config.js';
 
@@ -773,6 +773,15 @@ function installPlanForTarget(target: InstallTarget, claudeConfig?: ClaudeInstal
       apply: () => installPackagedPiExtension(extensionPath)
     };
   }
+  if (target === 'codex') {
+    return {
+      target,
+      status: 'disabled',
+      reason: 'automatic Codex config writing is not enabled yet; configure `agent-tick mcp` manually and allow MCP elicitations',
+      description: 'configure Codex MCP tools for status, steering, and sanctions',
+      apply: async () => undefined
+    };
+  }
   return {
     target,
     status: 'disabled',
@@ -1276,19 +1285,21 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
 async function runMcpStdioAdapter(options: ClientOptions): Promise<void> {
   const { client, server } = await clientFromOptions(options);
   const session = new McpStdioSession(process.stdout, client, server);
-  await readMcpMessages(process.stdin, (message) => session.handleMessage(message));
+  await readMcpMessages(process.stdin, (message, transport) => session.handleMessage(message, transport));
 }
 
 class McpStdioSession {
   readonly #context: McpRequestContext;
   readonly #pending = new Map<JsonRpcId, { resolve: (result: McpElicitationResult) => void; reject: (error: Error) => void }>();
   #nextServerRequestId = 1;
+  #transport: McpMessageTransport = 'framed';
 
   constructor(readonly output: NodeJS.WritableStream, readonly client: AgentTickClient, readonly server: string) {
     this.#context = { elicit: (params) => this.#sendElicitation(params) };
   }
 
-  handleMessage(message: JsonRpcRequest & { result?: unknown; error?: unknown }): void {
+  handleMessage(message: JsonRpcRequest & { result?: unknown; error?: unknown }, transport: McpMessageTransport = 'framed'): void {
+    this.#transport = transport;
     if (message.method) {
       if (message.id === undefined) return;
       void this.#handleClientRequest(message);
@@ -1305,20 +1316,20 @@ class McpStdioSession {
   async #handleClientRequest(request: JsonRpcRequest): Promise<void> {
     try {
       const result = await handleMcpRequest(request, this.client, this.server, this.#context);
-      writeMcpMessage(this.output, { jsonrpc: '2.0', id: request.id, result });
+      writeMcpMessage(this.output, { jsonrpc: '2.0', id: request.id, result }, this.#transport);
     } catch (error) {
       writeMcpMessage(this.output, {
         jsonrpc: '2.0',
         id: request.id,
         error: { code: -32000, message: error instanceof Error ? error.message : String(error) }
-      });
+      }, this.#transport);
     }
   }
 
   #sendElicitation(params: McpElicitationParams): Promise<McpElicitationResult> {
     const id = `agent_tick_elicit_${this.#nextServerRequestId++}`;
     const result = new Promise<McpElicitationResult>((resolve, reject) => this.#pending.set(id, { resolve, reject }));
-    writeMcpMessage(this.output, { jsonrpc: '2.0', id, method: 'elicitation/create', params });
+    writeMcpMessage(this.output, { jsonrpc: '2.0', id, method: 'elicitation/create', params }, this.#transport);
     return result;
   }
 }
@@ -1355,6 +1366,10 @@ function clientSupportsFormElicitation(context: McpRequestContext): boolean {
   return Boolean(elicitation && (!('form' in elicitation) || isPlainObject(elicitation.form)));
 }
 
+function mcpLocalElicitationAvailable(context: McpRequestContext): boolean {
+  return Boolean(context.elicit && clientSupportsFormElicitation(context));
+}
+
 async function callMcpTool(params: unknown, client: AgentTickClient, server: string, context: McpRequestContext): Promise<unknown> {
   if (!isPlainObject(params) || typeof params.name !== 'string') throw new Error('tools/call requires a tool name');
   const args = isPlainObject(params.arguments) ? params.arguments : {};
@@ -1384,10 +1399,6 @@ async function callMcpSanction(args: Record<string, unknown>, client: AgentTickC
   const body = optionalString(args.body);
   const command = optionalString(args.command);
   const localMode = localElicitationMode(args.localElicitation);
-  const local = await tryMcpSanctionElicitation({ title, mode: localMode, ...(body ? { body } : {}), ...(command ? { command } : {}) }, context);
-  if (local) return mcpTextResult(local.text, local.isError);
-  if (localMode === 'only') return mcpTextResult('Local MCP elicitation is not available or was rejected by the client.', true);
-
   const options: RequestOptions = {
     title,
     timeout: optionalString(args.timeout) ?? '30m',
@@ -1398,6 +1409,21 @@ async function callMcpSanction(args: Record<string, unknown>, client: AgentTickC
   if (body) options.body = body;
   if (command) options.command = command;
   if (project) options.project = project;
+
+  if (localMode === 'auto' && mcpLocalElicitationAvailable(context)) {
+    const result = await raceMcpLocalAndRemote(
+      () => tryMcpSanctionElicitation({ title, mode: localMode, ...(body ? { body } : {}), ...(command ? { command } : {}) }, context),
+      client,
+      server,
+      options
+    );
+    return mcpTextResult(result.text, result.isError);
+  }
+
+  const local = await tryMcpSanctionElicitation({ title, mode: localMode, ...(body ? { body } : {}), ...(command ? { command } : {}) }, context);
+  if (local) return mcpTextResult(local.text, local.isError);
+  if (localMode === 'only') return mcpTextResult('Local MCP elicitation is not available or was rejected by the client.', true);
+
   const request = await createAndMaybeWait(client, server, options);
   return mcpTextResult(mcpApprovalSummary(request), exitCodeForRequest(request) !== 0);
 }
@@ -1410,10 +1436,6 @@ async function callMcpSteering(args: Record<string, unknown>, client: AgentTickC
   const title = requiredString(args.title, 'title');
   const body = optionalString(args.body);
   const localMode = localElicitationMode(args.localElicitation);
-  const local = await tryMcpSteeringElicitation({ title, choices: hookChoices, mode: localMode, ...(body ? { body } : {}) }, context);
-  if (local) return mcpTextResult(local.text, local.isError);
-  if (localMode === 'only') return mcpTextResult('Local MCP elicitation is not available or was rejected by the client.', true);
-
   const options: RequestOptions = {
     title,
     timeout: optionalString(args.timeout) ?? '30m',
@@ -1424,8 +1446,51 @@ async function callMcpSteering(args: Record<string, unknown>, client: AgentTickC
   const project = optionalString(args.projectName);
   if (body) options.body = body;
   if (project) options.project = project;
+
+  if (localMode === 'auto' && mcpLocalElicitationAvailable(context)) {
+    const result = await raceMcpLocalAndRemote(
+      () => tryMcpSteeringElicitation({ title, choices: hookChoices, mode: localMode, ...(body ? { body } : {}) }, context),
+      client,
+      server,
+      options
+    );
+    return mcpTextResult(result.text, result.isError);
+  }
+
+  const local = await tryMcpSteeringElicitation({ title, choices: hookChoices, mode: localMode, ...(body ? { body } : {}) }, context);
+  if (local) return mcpTextResult(local.text, local.isError);
+  if (localMode === 'only') return mcpTextResult('Local MCP elicitation is not available or was rejected by the client.', true);
+
   const request = await createAndMaybeWait(client, server, options);
   return mcpTextResult(mcpApprovalSummary(request), exitCodeForRequest(request) !== 0);
+}
+
+async function raceMcpLocalAndRemote(
+  localRequest: () => Promise<{ text: string; isError?: boolean } | undefined>,
+  client: AgentTickClient,
+  server: string,
+  options: RequestOptions
+): Promise<{ text: string; isError?: boolean }> {
+  const created = await createApprovalRequestFromOptions(client, options);
+  const remotePromise = waitForCreatedApproval(client, server, created, options)
+    .then((request) => ({ source: 'remote' as const, request }))
+    .catch((error: unknown) => ({ source: 'remote_error' as const, error }));
+  const localPromise = localRequest()
+    .then((local) => ({ source: 'local' as const, local }))
+    .catch(() => ({ source: 'local' as const, local: undefined }));
+
+  const winner = await Promise.race([remotePromise, localPromise]);
+  if (winner.source === 'remote') return { text: mcpApprovalSummary(winner.request), isError: exitCodeForRequest(winner.request) !== 0 };
+  if (winner.source === 'remote_error') throw winner.error instanceof Error ? winner.error : new Error(String(winner.error));
+  if (!winner.local) {
+    const result = await remotePromise;
+    if (result.source === 'remote_error') throw result.error instanceof Error ? result.error : new Error(String(result.error));
+    const request = result.request;
+    return { text: mcpApprovalSummary(request), isError: exitCodeForRequest(request) !== 0 };
+  }
+
+  await client.abandonApproval(created.request.id).catch(() => undefined);
+  return winner.local;
 }
 
 function mcpChoiceInputs(rawChoices: unknown[]): ChoiceInput[] {
@@ -1528,17 +1593,27 @@ function mcpErrorMessage(error: unknown): string {
   return String(error);
 }
 
-async function readMcpMessages(input: NodeJS.ReadableStream, onMessage: (request: JsonRpcRequest) => void): Promise<void> {
+type McpMessageTransport = 'framed' | 'jsonl';
+
+async function readMcpMessages(input: NodeJS.ReadableStream, onMessage: (request: JsonRpcRequest, transport: McpMessageTransport) => void): Promise<void> {
   let buffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   for await (const chunk of input) {
     buffer = Buffer.concat([buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
     while (true) {
-      const parsed = tryReadMcpFrame(buffer);
+      const parsed = tryReadMcpMessage(buffer);
       if (!parsed) break;
       buffer = parsed.rest;
-      await onMessage(JSON.parse(parsed.body) as JsonRpcRequest);
+      await onMessage(JSON.parse(parsed.body) as JsonRpcRequest, parsed.transport);
     }
   }
+}
+
+export function tryReadMcpMessage(buffer: Buffer): { body: string; rest: Buffer; transport: McpMessageTransport } | undefined {
+  const framed = tryReadMcpFrame(buffer);
+  if (framed) return { ...framed, transport: 'framed' };
+  const jsonl = tryReadMcpJsonLine(buffer);
+  if (jsonl) return { ...jsonl, transport: 'jsonl' };
+  return undefined;
 }
 
 function tryReadMcpFrame(buffer: Buffer): { body: string; rest: Buffer } | undefined {
@@ -1554,8 +1629,21 @@ function tryReadMcpFrame(buffer: Buffer): { body: string; rest: Buffer } | undef
   return { body: buffer.subarray(bodyStart, bodyEnd).toString('utf8'), rest: buffer.subarray(bodyEnd) };
 }
 
-function writeMcpMessage(output: NodeJS.WritableStream, message: unknown): void {
+function tryReadMcpJsonLine(buffer: Buffer): { body: string; rest: Buffer } | undefined {
+  const newline = buffer.indexOf('\n');
+  if (newline === -1) return undefined;
+  const line = buffer.subarray(0, newline).toString('utf8').trim();
+  if (!line) return { body: '{}', rest: buffer.subarray(newline + 1) };
+  if (!line.startsWith('{')) return undefined;
+  return { body: line, rest: buffer.subarray(newline + 1) };
+}
+
+function writeMcpMessage(output: NodeJS.WritableStream, message: unknown, transport: McpMessageTransport = 'framed'): void {
   const body = JSON.stringify(message);
+  if (transport === 'jsonl') {
+    output.write(`${body}\n`);
+    return;
+  }
   output.write(`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`);
 }
 
@@ -1566,6 +1654,11 @@ async function readStdin(): Promise<string> {
 }
 
 async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
+  const created = await createApprovalRequestFromOptions(client, options);
+  return waitForCreatedApproval(client, server, created, options);
+}
+
+async function createApprovalRequestFromOptions(client: AgentTickClient, options: RequestOptions): Promise<CreateApprovalResponse> {
   const choices = options.hookChoices ?? parseRequestChoices(options);
   const encryptedPayload = await encryptedPayloadFromOptions(options);
   const created = await client.createApprovalRequest({
@@ -1586,7 +1679,11 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
     await client.abandonApproval(request.id).catch(() => undefined);
     throw new Error('Server did not preserve encryptedPayload. Upgrade/restart the Agent Tick server before using --encrypt. The placeholder request was abandoned.');
   }
+  return created;
+}
 
+async function waitForCreatedApproval(client: AgentTickClient, server: string, created: CreateApprovalResponse, options: RequestOptions): Promise<ApprovalRequest> {
+  const request = created.request;
   if (!options.silent) {
     if (options.json) {
       process.stdout.write(`${JSON.stringify({ event: 'created', request, waiter: created.waiter })}\n`);
