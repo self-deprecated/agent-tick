@@ -38,6 +38,7 @@
 	let { config: initialConfig }: { config: AdminConfig } = $props();
 	let runtimeConfig = $state<AuthConfig | undefined>();
 	let approvals = $state<ApprovalRequest[]>([]);
+	let questionnaireAnswers = $state<Record<string, Record<string, string[]>>>({});
 	let agentTokens = $state<AgentTokenRecord[]>([]);
 	let auditEvents = $state<AuditEventRecord[]>([]);
 	let billingStatus = $state<BillingStatus | undefined>();
@@ -798,6 +799,35 @@
 		}
 	}
 
+	function requestAnswers(approvalId: string): Record<string, string[]> {
+		return questionnaireAnswers[approvalId] ?? {};
+	}
+
+	function questionnaireReady(approval: ApprovalRequest): boolean {
+		const answers = requestAnswers(approval.id);
+		return (approval.questions ?? []).every((question) => {
+			const selected = answers[question.question] ?? [];
+			return question.multiSelect ? selected.length > 0 : selected.length === 1;
+		});
+	}
+
+	function setQuestionnaireAnswer(approvalId: string, questionText: string, optionLabel: string, multiSelect: boolean): void {
+		const requestAnswers = questionnaireAnswers[approvalId] ?? {};
+		const current = requestAnswers[questionText] ?? [];
+		const next = multiSelect
+			? current.includes(optionLabel)
+				? current.filter((answer) => answer !== optionLabel)
+				: [...current, optionLabel]
+			: [optionLabel];
+		questionnaireAnswers = {
+			...questionnaireAnswers,
+			[approvalId]: {
+				...requestAnswers,
+				[questionText]: next
+			}
+		};
+	}
+
 	async function respond(approval: ApprovalRequest, choiceId: string): Promise<void> {
 		error = '';
 		if (approval.encryptedPayload) {
@@ -806,6 +836,16 @@
 		}
 		try {
 			await client().respondToApproval(approval.id, { choiceId });
+			await Promise.all([refreshApprovals(), refreshAuditEvents()]);
+		} catch (err) {
+			error = messageForError(err);
+		}
+	}
+
+	async function respondQuestionnaire(approval: ApprovalRequest): Promise<void> {
+		error = '';
+		try {
+			await client().respondToApproval(approval.id, { answers: requestAnswers(approval.id) });
 			await Promise.all([refreshApprovals(), refreshAuditEvents()]);
 		} catch (err) {
 			error = messageForError(err);
@@ -1409,6 +1449,28 @@
 								<div class="actions encrypted-actions">
 									<p class="subtle">Decrypt this request in the mobile app before approving or rejecting it.</p>
 								</div>
+							{:else if approval.requestType === 'questionnaire' && approval.questions?.length}
+								<div class="questionnaire-actions">
+									{#each approval.questions as question (question.question)}
+										<fieldset>
+											<legend>{question.header || question.question}</legend>
+											{#if question.header}<p>{question.question}</p>{/if}
+											{#each question.options as option (option.label)}
+												<label>
+													<input
+														type={question.multiSelect ? 'checkbox' : 'radio'}
+														name={`${approval.id}:${question.question}`}
+														checked={(requestAnswers(approval.id)[question.question] ?? []).includes(option.label)}
+														onchange={() => setQuestionnaireAnswer(approval.id, question.question, option.label, question.multiSelect)}
+													/>
+													<span>{option.label}</span>
+													{#if option.description}<small>{option.description}</small>{/if}
+												</label>
+											{/each}
+										</fieldset>
+									{/each}
+									<button class="approve" disabled={!questionnaireReady(approval)} onclick={() => respondQuestionnaire(approval)}>Submit answers</button>
+								</div>
 							{:else}
 								<div class="actions">
 									{#each approval.choices as choice (choice.id)}
@@ -1675,6 +1737,32 @@
 		background: #fffbeb;
 		color: #92400e;
 		padding: 12px;
+	}
+
+	.questionnaire-actions {
+		display: grid;
+		gap: 12px;
+		min-width: 260px;
+	}
+
+	.questionnaire-actions fieldset {
+		border: 1px solid #bfdbfe;
+		border-radius: 12px;
+		display: grid;
+		gap: 8px;
+		margin: 0;
+		padding: 12px;
+	}
+
+	.questionnaire-actions label {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 4px 8px;
+	}
+
+	.questionnaire-actions label small {
+		grid-column: 2;
+		color: #64748b;
 	}
 
 	.member-list {
