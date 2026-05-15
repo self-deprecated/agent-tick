@@ -43,7 +43,7 @@ corepack pnpm test
 corepack pnpm build
 ```
 
-Follow `docs/dependency-policy.md` for npm dependency changes. Pin npm package versions exactly, commit `pnpm-lock.yaml` with dependency changes, use frozen lockfile installs for CI/release/Docker/reproducibility checks, and keep the `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml` minimal and explicit.
+Follow `docs/dependency-policy.md` for npm dependency changes. Pin npm package versions exactly, commit `pnpm-lock.yaml` with dependency changes, use frozen lockfile installs for CI/release/Docker/reproducibility checks, and keep the `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml` minimal and explicit. Before finishing any dependency or version-bump task, audit whether `flake.nix` contains a related `fetchPnpmDeps` derivation and validate/update its hash in the same change.
 
 Docker is the official server distribution path:
 
@@ -65,7 +65,7 @@ Current implemented CLI commands only:
 - `agent-tick abandon`
 - `agent-tick status`
 
-The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. When bumping `packages/cli/package.json`, also bump `CLI_VERSION` in `packages/cli/src/index.ts` and the `agent-tick-cli.version` in `flake.nix` in the same change. For local repo development without a global install, use the workspace package name:
+The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. When bumping `packages/cli/package.json`, also bump `CLI_VERSION` in `packages/cli/src/index.ts` and the `agent-tick-cli.version` in `flake.nix` in the same change, then run `nix build .#agent-tick-cli --no-link --print-build-logs` so stale `pnpmDeps.hash` values are caught before committing. For local repo development without a global install, use the workspace package name:
 
 ```sh
 corepack pnpm --filter @self-deprecated/agent-tick build
@@ -136,6 +136,12 @@ Mobile Jest gotcha: pass `--runInBand` directly as shown above. Avoid `corepack 
 Admin/Svelte changes: load the Svelte skills if available, and run `corepack pnpm --filter agent-tick-admin check`.
 
 Docker/runtime changes: validate at least `docker compose config`; for Dockerfile/runtime changes, build the image and smoke-test `/healthz` when practical.
+
+Final dependency/Nix audit before finishing:
+
+1. Run `jj diff --summary --no-pager` and look for `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, version files, or `flake.nix` changes.
+2. If dependencies or package versions changed, verify every affected `fetchPnpmDeps` hash in `flake.nix` by running the narrowest relevant Nix build, for example `nix build .#agent-tick-cli --no-link --print-build-logs` for CLI changes.
+3. If Nix reports a fixed-output hash mismatch, replace the stale hash with the reported `got:` hash and rerun the same Nix build successfully before committing.
 
 ## Commit guidance
 
