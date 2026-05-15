@@ -353,7 +353,7 @@ function defaultAgentName(): string {
   return `Agent on ${os.hostname() || 'local machine'}`;
 }
 
-const CLI_VERSION = '0.1.4';
+const CLI_VERSION = '0.1.5';
 
 function supportsColor(stream: NodeJS.WriteStream = process.stdout): boolean {
   return stream.isTTY === true && !process.env.NO_COLOR;
