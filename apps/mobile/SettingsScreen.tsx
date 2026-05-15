@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MeResponse } from "@agent-tick/sdk";
-import { i18n, localeName, supportedLocales, type LocalePreference, type SupportedLocale } from "@agent-tick/i18n";
+import { localeName, supportedLocales, translateSource, type LocalePreference, type SupportedLocale } from "@agent-tick/i18n";
 import type { SavedMobileAccount } from "./mobileAuth";
 import {
   ActivityIndicator,
@@ -176,7 +176,7 @@ export function SettingsScreen({
     onDiagnosticEvent?.("button", button, { settingsView: accountsOpen ? "accounts" : "settings", ...metadata });
   };
 
-  const tr = (message: string) => i18n._(message);
+  const tr = translateSource;
 
   const currentAccountTitle = currentAccountLabel({ authProvider, currentAccountProfile, deviceID, serverURL });
   const currentAccountMeta = currentAccountDetails({ authProvider, currentAccountProfile, selectedOrganizationID, serverURL });

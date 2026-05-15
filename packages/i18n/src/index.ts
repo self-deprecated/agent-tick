@@ -1,5 +1,6 @@
 import { i18n } from "@lingui/core";
 import type { Messages } from "@lingui/core";
+import { generateMessageId } from "@lingui/message-utils/generateMessageId";
 
 export const defaultLocale = "en";
 export const localePreferenceStorageKey = "agent-tick.locale";
@@ -44,6 +45,10 @@ export function systemLocaleFromIntl(): string | null {
 
 export function activateLocale(locale: SupportedLocale, messages: Messages): void {
   i18n.loadAndActivate({ locale, messages });
+}
+
+export function translateSource(message: string): string {
+  return i18n._(generateMessageId(message));
 }
 
 export { i18n };

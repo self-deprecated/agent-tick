@@ -17,6 +17,7 @@ const normalizeLocale = (value) => value === "da" ? "da" : "en";
 const resolveLocalePreference = (preference, systemLocale) => preference === "system" ? normalizeLocale(systemLocale) : normalizeLocale(preference);
 const systemLocaleFromIntl = () => "en";
 const localeName = (locale) => supportedLocales.find((candidate) => candidate.code === locale)?.nativeLabel ?? locale;
+const translateSource = (message) => message;
 const activateMessages = async (locale) => {
   const resolved = normalizeLocale(locale);
   i18n.locale = resolved;
@@ -37,4 +38,5 @@ module.exports = {
   resolveLocalePreference,
   supportedLocales,
   systemLocaleFromIntl,
+  translateSource,
 };

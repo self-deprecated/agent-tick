@@ -260,6 +260,9 @@ importers:
       '@lingui/core':
         specifier: 6.0.1
         version: 6.0.1
+      '@lingui/message-utils':
+        specifier: 6.0.1
+        version: 6.0.1
     devDependencies:
       typescript:
         specifier: 6.0.3

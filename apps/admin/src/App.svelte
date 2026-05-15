@@ -36,6 +36,7 @@
 		i18n,
 		localeName,
 		localePreferenceStorageKey,
+		translateSource,
 		resolveLocalePreference,
 		supportedLocales,
 		systemLocaleFromIntl,
@@ -117,7 +118,7 @@
 
 	function tr(message: string): string {
 		activeLocale;
-		return i18n._(message);
+		return translateSource(message);
 	}
 
 	async function loadLocalePreference(): Promise<void> {
