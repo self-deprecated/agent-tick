@@ -17,13 +17,13 @@ There are two different servers in this design:
 - **Agent Tick product server** — the existing Agent Tick HTTP API and dashboard/mobile backend, for example `https://agenttick.sh` or a self-hosted server.
 - **Agent Tick MCP server** — a local or remote MCP adapter that the agent connects to. It exposes MCP tools and calls the Agent Tick product server internally.
 
-For the first implementation, the MCP server should be a local stdio process started by the agent:
+For the first implementation, the MCP server is a local stdio process started by the agent:
 
 ```sh
 agent-tick mcp
 ```
 
-Later, Agent Tick can add a streamable HTTP MCP mode, but stdio is simpler, safer, and works with both Claude Code and Codex local workflows.
+The stdio adapter reads the same Agent Tick config as the rest of the CLI. A human signs in through the existing Agent Tick setup/login flow, which provisions a scoped `agent_...` token; the MCP adapter uses that token when calling the Agent Tick product server. Streamable HTTP MCP is out of the MVP and can be revisited later if Agent Tick needs a remotely hosted MCP endpoint.
 
 ## High-level architecture
 
@@ -33,6 +33,7 @@ Claude Code / Codex / other MCP-capable agent
   │ MCP stdio, later streamable HTTP
   ▼
 agent-tick mcp
+(local stdio adapter using saved agent token)
   │
   │ Agent Tick SDK / HTTP API
   ▼
@@ -105,10 +106,9 @@ MCP form schemas are intentionally restricted to flat objects with primitive pro
 
 - string enum for single-select steering;
 - array enum for multi-select steering;
-- string enum for approve/deny sanctions;
-- optional string fields for non-secret comments.
+- string enum for approve/deny sanctions.
 
-Do not use form-mode elicitation for secrets. If future Agent Tick flows need sensitive data, use Agent Tick web/mobile or MCP URL-mode elicitation, not form fields.
+Do not use form-mode elicitation for secrets or human-written comments. Agentic decisions return structured choices only; do not return freeform text from MCP steering or sanctions.
 
 ### Claude Code behavior
 
@@ -148,16 +148,21 @@ Codex also has MCP tool approval settings on configured MCP servers. The Agent T
 
 ## Product behavior
 
+### CLI/MCP parity principle
+
+MCP tools should stay in sync with existing CLI behavior where practical. Reuse CLI config resolution, status metadata semantics, redaction, timeout/deadline handling, request creation, result mapping, and validation unless there is an explicit security or protocol reason to differ. One deliberate difference: MCP sanctions never execute commands; they only return structured approval results for the agent/client to act on.
+
 The desired behavior is the same across clients:
 
 1. The agent calls an Agent Tick MCP tool.
 2. The tool creates an Agent Tick request or status update against the product server.
 3. For steering/sanctions, the tool can also show a local MCP elicitation dialog.
 4. The tool races local MCP response vs remote Agent Tick mobile/web response.
-5. The first terminal response wins.
-6. If local wins, abandon the pending Agent Tick request.
-7. If remote wins, return the remote decision to the agent.
-8. If denied, cancelled, or timed out, the tool returns a structured negative result and the agent must stop or ask for further instruction.
+5. The first terminal response wins, including local decline/cancel/timeout.
+6. If local wins, abandon the pending Agent Tick request with non-secret reason/source and structured local outcome metadata when available.
+7. If remote wins, best-effort cancel the local elicitation and return the remote structured decision to the agent.
+8. If remote creation fails but local elicitation succeeds, return the local result with a non-secret warning.
+9. If denied, cancelled, or timed out, the tool returns a structured negative result and the agent must stop or ask for further instruction. MCP/CLI timeouts are request deadlines: set `expiresAt` and abandon the pending request when the timeout is reached.
 
 ## MCP tools
 
@@ -179,6 +184,7 @@ type AgentTickStatusInput = {
 
 Behavior:
 
+- Keep metadata behavior in sync with `agent-tick status --metadata`: arbitrary string key/value pairs with validation, best-effort redaction, and length limits.
 - Resolve Agent Tick config using the same order as the CLI.
 - Call `createStatusUpdate`.
 - Use `AGENT_TICK_THREAD_ID` if set, otherwise derive a stable thread id from host + working directory.
@@ -201,11 +207,11 @@ type AgentTickSteeringInput = {
     id: string;
     label: string;
     description?: string;
+    kind?: "option" | "deny";
     flags?: string[];
     tags?: string[];
   }>;
   allowMultiple?: boolean;
-  allowFreeform?: boolean;
   timeoutMs?: number;
   localElicitation?: "auto" | "off" | "only";
 };
@@ -218,8 +224,8 @@ type AgentTickSteeringOutput = {
   status: "answered" | "denied" | "cancelled" | "timed_out" | "failed";
   selectedChoiceIds?: string[];
   selectedLabels?: string[];
-  message?: string;
   source?: "agent_tick" | "local_elicitation";
+  warning?: string;
   requestId?: string;
 };
 ```
@@ -227,14 +233,14 @@ type AgentTickSteeringOutput = {
 Behavior:
 
 1. Validate choice ids are unique and short enough for Agent Tick.
-2. Create Agent Tick request with `requestType: "steer"` semantics using the existing approval request API.
-3. If local elicitation is enabled and the MCP client supports it, send a form elicitation:
+2. Validate at least one caller-provided choice has `kind: "deny"`.
+3. Create Agent Tick request with `requestType: "steer"` semantics using the existing approval request API.
+4. If local elicitation is enabled and the MCP client supports it, send a form elicitation:
    - single-select: string enum / `oneOf`;
-   - multi-select: array enum / `items.anyOf`;
-   - freeform: optional `message` string field.
-4. Race local elicitation and Agent Tick wait.
-5. Map result to `AgentTickSteeringOutput`.
-6. Abandon pending remote request when local wins.
+   - multi-select: array enum / `items.anyOf`.
+5. Race local elicitation and Agent Tick wait.
+6. Map result to `AgentTickSteeringOutput`; silently ignore any remote response messages.
+7. Abandon pending remote request when local wins or when the MCP tool reaches its timeout.
 
 Single-select local schema:
 
@@ -250,10 +256,6 @@ Single-select local schema:
         { "const": "option_a", "title": "Option A" },
         { "const": "option_b", "title": "Option B" }
       ]
-    },
-    "message": {
-      "type": "string",
-      "title": "Optional comment"
     }
   },
   "required": ["choice"]
@@ -276,10 +278,6 @@ Multi-select local schema:
           { "const": "option_b", "title": "Option B" }
         ]
       }
-    },
-    "message": {
-      "type": "string",
-      "title": "Optional comment"
     }
   },
   "required": ["choices"]
@@ -311,20 +309,21 @@ type AgentTickSanctionOutput = {
   approved: boolean;
   status: "approved" | "denied" | "cancelled" | "timed_out" | "failed";
   choiceId?: "approve" | "deny" | string;
-  message?: string;
   source?: "agent_tick" | "local_elicitation";
+  warning?: string;
   requestId?: string;
 };
 ```
 
 Behavior:
 
-1. Create Agent Tick approval request.
+1. Create Agent Tick request with `requestType: "sanction"` and fixed approve/deny choices.
 2. If local elicitation is enabled, ask for approve/deny locally.
 3. Race local and remote responses.
-4. Return `approved: true` only for explicit approve.
-5. Abandon pending remote request when local wins.
-6. Agents must treat all non-approved outputs as stop conditions.
+4. Silently ignore any remote response messages.
+5. Return `approved: true` only for explicit approve.
+6. Abandon pending remote request when local wins or when the MCP tool reaches its timeout.
+7. Agents must treat all non-approved outputs as stop conditions.
 
 Local sanction schema:
 
@@ -339,10 +338,6 @@ Local sanction schema:
         { "const": "approve", "title": "Approve" },
         { "const": "deny", "title": "Deny" }
       ]
-    },
-    "comment": {
-      "type": "string",
-      "title": "Optional comment"
     }
   },
   "required": ["decision"]
@@ -361,12 +356,13 @@ Initial options:
 
 ```sh
 agent-tick mcp \
-  --transport stdio \
+  --server https://agenttick.sh \
+  --token agent_... \
   --local-elicitation auto \
   --timeout 30m
 ```
 
-`stdio` should be the only supported transport in the first slice. Reserve but do not document HTTP mode until implemented.
+All options are optional when normal Agent Tick config is present. `--server`/`--token` mirror existing CLI overrides and are not written by default installers. `stdio` is the only supported MVP transport; do not implement or document HTTP MCP mode in the first slice.
 
 Suggested files:
 
@@ -381,7 +377,7 @@ packages/cli/src/mcp/resultMapping.ts
 packages/cli/src/mcp/redaction.ts
 ```
 
-Use `@modelcontextprotocol/sdk` if it can be pinned and packaged cleanly. If adding the dependency, follow `docs/dependency-policy.md`, update the lockfile, and validate/update any affected Nix `fetchPnpmDeps` hashes.
+Use the official MCP TypeScript SDK if it can be pinned and packaged cleanly. If adding the dependency, follow `docs/dependency-policy.md`, update the lockfile, and validate/update any affected Nix `fetchPnpmDeps` hashes.
 
 ## Configuration resolution
 
@@ -391,16 +387,13 @@ Use `@modelcontextprotocol/sdk` if it can be pinned and packaged cleanly. If add
 2. `AGENT_TICK_CONFIG`.
 3. `~/.config/agent-tick/config.json`.
 
-If config is missing:
-
-- `agent_tick_status` should return an error telling the user to run `agent-tick install` or `agent-tick setup`.
-- `agent_tick_steering` and `agent_tick_sanction` may still use `localElicitation: "only"` if requested, but default behavior should fail with setup guidance because Agent Tick remote routing is the product promise.
+If config is missing or invalid, `agent-tick mcp` should fail at startup with setup guidance. Do not start a partially configured MCP server. Add a side-effect-free agent self endpoint (for example `GET /v1/agent/me`) so startup can verify the configured `agent_...` token without creating status updates or approval requests.
 
 ## Claude Code installation
 
-Add a Claude MCP install path alongside the existing hook install.
+Add a Claude MCP install path alongside the existing hook install. Hooks remain the default Claude integration; MCP is an explicit offered choice with clear explanation of hooks vs model-callable MCP tools.
 
-Local/user MCP configuration can be created with Claude’s CLI:
+Default Claude MCP install should create a tokenless project `.mcp.json` so the repository records that Agent Tick MCP is available without committing credentials. Local/user MCP configuration can also be created with Claude’s CLI:
 
 ```sh
 claude mcp add --transport stdio agent_tick -- agent-tick mcp
@@ -435,7 +428,7 @@ Agent instructions should tell Claude:
 
 ## Codex installation
 
-Add a Codex MCP install path.
+Add a Codex MCP install path. Codex MCP is the default recommended Codex integration path.
 
 Recommended `~/.codex/config.toml` or project `.codex/config.toml` snippet:
 
@@ -469,17 +462,23 @@ approval_policy = { granular = {
 }}
 ```
 
-The installer should not silently weaken unrelated approval categories. If `mcp_elicitations = false`, warn and ask before changing it.
+The installer should not silently weaken unrelated approval categories. For the default mirrored MCP profile, require `mcp_elicitations = true`; if it is false, refuse/default-block mirrored setup unless the user chooses a remote-only profile or explicitly changes the setting.
 
 Agent instructions should tell Codex to use Agent Tick MCP tools for status, steering, and sanctions. Codex does not currently provide a general hook that intercepts and answers all internal ask-user prompts in the same way Claude Code can for `AskUserQuestion`, so MCP steering is model/tool initiated.
 
 ## Implementation slices
 
+### Slice 0 — agent self endpoint
+
+- Add a side-effect-free agent-token endpoint such as `GET /v1/agent/me`.
+- Return non-secret agent/org/project/team metadata: agent id/name, organization id, scopes, project id, team id, default approval policy, auth source, and server time.
+- Use it for `agent-tick mcp` startup verification.
+
 ### Slice 1 — MCP server skeleton
 
 - Add dependency and command entrypoint.
-- Start a stdio MCP server.
-- Expose a simple `agent_tick_status` tool.
+- Start a stdio MCP server using the official MCP TypeScript SDK.
+- Resolve config, verify startup through the agent self endpoint, and expose a simple `agent_tick_status` tool.
 - Add unit tests for CLI command registration and schema validation.
 - Manually smoke-test with one MCP client if practical.
 
@@ -492,17 +491,21 @@ Agent instructions should tell Codex to use Agent Tick MCP tools for status, ste
 
 ### Slice 3 — remote-only steering and sanction tools
 
-- Implement `agent_tick_steering` and `agent_tick_sanction` using existing Agent Tick HTTP API.
+- Implement `agent_tick_steering` and `agent_tick_sanction` using the Agent Tick HTTP API.
+- Use `requestType: "steer"` for all steering, including multi-select/questionnaire-style collection.
+- Use `requestType: "sanction"` for sanctions, and update the existing CLI sanction path to do the same.
 - No local MCP elicitation yet.
-- Wait for Agent Tick response and return structured outputs.
+- Wait for Agent Tick response with a reusable long-wait loop, set request deadlines from timeouts, abandon on timeout, and return structured outputs.
 - Add tests for response mapping, timeout, deny, cancel, and API failures.
 
 ### Slice 4 — local MCP elicitation
 
 - Add helper to build MCP form schemas from Agent Tick choices.
 - Add `localElicitation` modes: `auto`, `off`, `only`.
-- Race local elicitation vs Agent Tick wait.
-- Abandon remote request if local wins.
+- Use the server-level `--local-elicitation` value as the default only; per-call values may override it.
+- Race local elicitation vs Agent Tick wait concurrently.
+- Abandon remote request if local wins, including decline/cancel/timeout; if local wins before remote creation completes, create-then-abandon when possible.
+- Best-effort cancel local elicitation if remote wins.
 - Add tests for schema building and result mapping.
 
 ### Slice 5 — Codex installer
@@ -517,14 +520,14 @@ Agent instructions should tell Codex to use Agent Tick MCP tools for status, ste
 
 - Add an MCP option to Claude install.
 - Keep existing Claude hook installation as-is initially.
-- Add or update `.mcp.json` / user MCP config depending on chosen scope.
+- Add or update tokenless project `.mcp.json` by default; support other scopes only when explicitly selected.
 - Add dry-run output explaining hooks vs MCP tools.
 
 ### Slice 7 — documentation
 
 - Update `docs/integrations.md` with MCP support.
 - Add usage examples for Claude and Codex.
-- Document that MCP form elicitation must not carry secrets.
+- Document that MCP form elicitation must not carry secrets or human-written comments/freeform instructions.
 - Document how to disable local elicitation and rely only on Agent Tick mobile/web.
 
 ## Security and disclosure rules
@@ -536,15 +539,24 @@ Agent instructions should tell Codex to use Agent Tick MCP tools for status, ste
 - Use URL-mode or Agent Tick web/mobile for any future sensitive data collection.
 - Avoid recursive prompts by approving only the Agent Tick MCP tools themselves, not broad user actions.
 
-## Open questions
+## Resolved decisions
 
-1. Should local MCP elicitation default to `auto` or `off` for AFK/headless profiles?
-   - Recommended: interactive profiles use `auto`; headless profiles use `off`.
-2. Should `agent_tick_sanction` be model-callable only, or should hooks call it too?
-   - Recommended: keep provider-native hooks for automatic permission prompts; use MCP sanctions for explicit model-requested gates.
-3. Should MCP tools be named with or without `agent_tick_` prefix?
-   - Recommended: use prefix to avoid collisions and make instructions clear.
-4. Should the first implementation support HTTP MCP transport?
-   - Recommended: no. Start with stdio; add HTTP only after the stdio path is stable.
-5. Should the MCP server be split into a separate package?
-   - Recommended: keep it in the CLI package first so it shares config, versioning, and distribution.
+- MCP MVP uses local stdio only. HTTP MCP is not part of the first implementation.
+- The MCP adapter lives in the existing CLI package and is started with `agent-tick mcp`.
+- Use the official MCP TypeScript SDK.
+- Tool names keep the `agent_tick_` prefix.
+- Claude hooks remain native/default; Claude MCP is an explicit install option.
+- Codex MCP is the default recommended Codex integration.
+- Agent Tick MCP tools should be pre-approved/allowed by installers, without broadening other client permissions.
+- MCP outputs use MCP `structuredContent` plus concise text summaries.
+- Expected domain/API failures return structured failed outputs; reserve MCP tool errors for malformed inputs, protocol failures, or unexpected crashes.
+- Agentic decisions return structured choices only; no comments/freeform text are returned to agents.
+- Steering requires a non-empty structured choice set. Choices expose the existing `kind` field and must include a caller-provided deny choice. In multi-select steering, deny choices are mutually exclusive with normal choices.
+- Sanctions are fixed approve/deny gates in MVP, and MCP sanctions never execute commands.
+- `agent_tick_sanction` remains model-callable MCP surface only; provider-native hooks keep their existing implementation paths.
+- `agent-tick mcp` fails at startup when config is missing or invalid.
+- `agent-tick mcp --timeout` is a default that per-call `timeoutMs` may override.
+- CLI and MCP should stay in sync where practical, including status metadata behavior, config resolution, redaction, and timeout/deadline semantics.
+- MCP and CLI sanction/steering timeouts are request deadlines: set `expiresAt` and abandon on timeout.
+- Installers should install MCP usage instructions.
+- Claude and Codex MCP installs default to tokenless project config; users may explicitly use `--server`/`--token` at their own risk.
