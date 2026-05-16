@@ -22,6 +22,10 @@ Encrypted Approval Content is supported where available, but end-to-end encrypti
 
 Hosted personal activity history follows the hosted personal lifecycle and grace period. Self-hosted deployments configure their own retention windows.
 
+## Scoped Guest Approval Links
+
+Scoped guest approval links are a researched future option, not a launch feature. If implemented, they must be short-lived, one-request, explicitly enabled, audited, and separate from organization membership. See [Scoped guest approval links research](./scoped-guest-approval-links.md).
+
 ## Diagnostics and Analytics
 
 Diagnostics should exclude approval content. Hosted-product analytics use Plausible for minimal onboarding/paywall/setup events and should exclude approval content, commands, request bodies, choices, secrets, tokens, and raw user-entered content. Marketing analytics are privacy-friendly aggregate Plausible page analytics without ad tracking pixels.
