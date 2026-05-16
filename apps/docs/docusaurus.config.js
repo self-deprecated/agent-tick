@@ -26,6 +26,7 @@ const config = {
             'quick-start.md',
             'cli.md',
             'integrations.md',
+            'workflow-no-code-connector-strategy.md',
             'self-hosting.md',
             'mobile-app.md',
             'security.md',

@@ -5,7 +5,12 @@ const sidebars = {
     'index',
     'quick-start',
     'cli',
-    'integrations',
+    {
+      type: 'category',
+      label: 'Integrations',
+      link: { type: 'doc', id: 'integrations' },
+      items: ['workflow-no-code-connector-strategy']
+    },
     'self-hosting',
     'mobile-app',
     {
