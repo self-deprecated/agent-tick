@@ -33,7 +33,7 @@ This creates a reusable connector contract for other workflow tools.
 
 ### Vertical templates in parallel
 
-Connectors need concrete scenarios, not only generic fields. The first templates should model:
+Connectors need concrete scenarios, not only generic fields. See [Approval templates](./approval-templates.md) for the docs-first reusable request shapes. The first templates should model:
 
 | Scenario | Decision type | Required fields | Useful flags |
 | --- | --- | --- | --- |

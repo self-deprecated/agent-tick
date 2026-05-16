@@ -29,6 +29,7 @@ const config = {
             'cursor-gemini-opencode-support.md',
             'workflow-no-code-connector-strategy.md',
             'n8n-community-node-plan.md',
+            'approval-templates.md',
             'self-hosting.md',
             'mobile-app.md',
             'security.md',
