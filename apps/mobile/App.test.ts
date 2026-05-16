@@ -19,6 +19,7 @@ import {
   shouldScheduleLocalNotifications,
 } from "./approvalRequests";
 import {
+  entitlementStatusCopy,
   hostedPersonalActive,
   nativeAppEntitlement,
   notificationDecision,
@@ -66,6 +67,32 @@ describe("native app entitlement", () => {
       lifetimeUnlocked: true,
     });
     expect(state.readOnly).toBe(false);
+  });
+
+  it("provides clear entitlement status and paywall copy", () => {
+    const trial = nativeAppEntitlement({ now: new Date("2026-05-02T00:00:00.000Z"), firstOpenedAt: "2026-05-01T00:00:00.000Z" });
+    expect(entitlementStatusCopy(trial)).toMatchObject({
+      title: "Trial active",
+      summary: "6 days left in trial",
+      paywall: "Buy Lifetime app unlock before Trial ends to keep responding from this app.",
+    });
+
+    const readOnly = nativeAppEntitlement({ now: new Date("2026-05-09T00:00:00.000Z"), firstOpenedAt: "2026-05-01T00:00:00.000Z" });
+    expect(entitlementStatusCopy(readOnly)).toMatchObject({
+      title: "Read-only after Trial",
+      appAccess: "Responses are disabled until Lifetime app unlock is purchased or restored.",
+    });
+
+    const subscribed = nativeAppEntitlement({
+      now: new Date("2026-05-20T00:00:00.000Z"),
+      firstOpenedAt: "2026-05-01T00:00:00.000Z",
+      lifetimeUnlocked: true,
+      hostedSubscriptionActive: true,
+    });
+    expect(entitlementStatusCopy(subscribed)).toMatchObject({
+      title: "Hosted personal active",
+      hostedAccess: "agenttick.sh routing, push, updates, and uptime are covered by your hosted subscription.",
+    });
   });
 
   it("does not consume the included hosted month during the initial trial", () => {
@@ -518,6 +545,6 @@ describe("questionnaire helpers", () => {
         ...questionnaireRequest,
         response: { answers: { "Which environment?": ["prod"] } },
       }),
-    ).toBe("answered");
+    ).toBe("Answered");
   });
 });

@@ -62,6 +62,61 @@ export function hostedPersonalActive(state: NativeAppEntitlementState): boolean 
   return state.trialActive || state.includedHostedActive || state.hostedSubscriptionActive;
 }
 
+export type EntitlementStatusCopy = {
+  title: string;
+  summary: string;
+  appAccess: string;
+  hostedAccess: string;
+  paywall: string;
+};
+
+export function entitlementStatusCopy(state: Pick<NativeAppEntitlementState, "trialActive" | "lifetimeUnlocked" | "readOnly" | "hostedSubscriptionActive" | "includedHostedActive" | "trialRemainingMs">): EntitlementStatusCopy {
+  const remaining = trialRemainingLabel(state.trialRemainingMs);
+  if (state.hostedSubscriptionActive) {
+    return {
+      title: "Hosted personal active",
+      summary: "Your Lifetime app unlock and hosted personal service are active.",
+      appAccess: "You can respond to approvals from hosted or self-hosted Agent Tick servers.",
+      hostedAccess: "agenttick.sh routing, push, updates, and uptime are covered by your hosted subscription.",
+      paywall: "Manage or cancel the hosted subscription from the app store when needed.",
+    };
+  }
+  if (state.includedHostedActive) {
+    return {
+      title: "Included hosted month active",
+      summary: "Your Lifetime app unlock is active, and the included hosted month is running.",
+      appAccess: "Self-hosted Agent Tick access stays unlocked forever on this app-store account.",
+      hostedAccess: "agenttick.sh remains available until the included hosted month ends.",
+      paywall: "Subscribe monthly or yearly to keep hosted personal service active after the included month.",
+    };
+  }
+  if (state.lifetimeUnlocked) {
+    return {
+      title: "Lifetime unlock active",
+      summary: "Self-hosted Agent Tick use is unlocked forever on this app-store account.",
+      appAccess: "You can keep using the app with self-hosted servers without another app purchase.",
+      hostedAccess: "Hosted personal service is optional for agenttick.sh routing, push, updates, and uptime.",
+      paywall: "Activate the included hosted month or subscribe when you want first-party hosted service.",
+    };
+  }
+  if (state.trialActive) {
+    return {
+      title: "Trial active",
+      summary: remaining,
+      appAccess: "Trial includes hosted and self-hosted app use.",
+      hostedAccess: "The included hosted month does not start during Trial.",
+      paywall: "Buy Lifetime app unlock before Trial ends to keep responding from this app.",
+    };
+  }
+  return {
+    title: "Read-only after Trial",
+    summary: "Trial ended. Viewing, settings, purchase, and restore stay available.",
+    appAccess: "Responses are disabled until Lifetime app unlock is purchased or restored.",
+    hostedAccess: "Hosted personal service also requires an active Trial, included hosted month, or subscription.",
+    paywall: "Buy Lifetime app unlock to respond again and use self-hosted Agent Tick forever.",
+  };
+}
+
 export type PairingPayload = {
   serverURL?: string;
   pairingCode?: string;

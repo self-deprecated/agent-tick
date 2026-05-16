@@ -323,8 +323,8 @@ describe("ApprovalsScreen policy-aware approval UI", () => {
 
     render(<HistoryScreen error={null} history={[approved, denied]} loading={false} onRefresh={jest.fn()} />);
 
-    expect(screen.getByText("approve")).toBeTruthy();
-    expect(screen.getByText("deny")).toBeTruthy();
+    expect(screen.getByText("Approved")).toBeTruthy();
+    expect(screen.getByText("Denied")).toBeTruthy();
     expect(screen.getByText("Step 1: usr_a approved via device")).toBeTruthy();
     expect(screen.getByText("Step 1: usr_c denied via device")).toBeTruthy();
   });

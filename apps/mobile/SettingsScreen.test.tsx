@@ -186,6 +186,27 @@ describe("SettingsScreen — paired state", () => {
     expect(onDiagnosticsEnabledChange).toHaveBeenCalledWith(true);
   });
 
+  it("shows clear entitlement status and paywall messaging", () => {
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: false,
+          lifetimeUnlocked: false,
+          readOnly: true,
+          hostedSubscriptionActive: false,
+          includedHostedActive: false,
+          trialRemainingMs: 0,
+        }}
+        trialRemainingLabel="Trial ended"
+      />,
+    );
+    expect(screen.getByText("Entitlement status")).toBeTruthy();
+    expect(screen.getByText("Read-only after Trial")).toBeTruthy();
+    expect(screen.getByText("Responses are disabled until Lifetime app unlock is purchased or restored.")).toBeTruthy();
+    expect(screen.getByText("Buy Lifetime app unlock to respond again and use self-hosted Agent Tick forever.")).toBeTruthy();
+  });
+
   it("offers coarse availability controls with privacy copy", () => {
     const onAvailabilityChange = jest.fn();
     render(<SettingsScreen {...pairedProps} availability="available" onAvailabilityChange={onAvailabilityChange} />);

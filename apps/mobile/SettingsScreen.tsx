@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MeResponse } from "@agent-tick/sdk";
 import { localeName, supportedLocales, translateSource, type LocalePreference, type SupportedLocale } from "@agent-tick/i18n";
+import { entitlementStatusCopy } from "./AppLogic";
 import type { SavedMobileAccount } from "./mobileAuth";
 import {
   ActivityIndicator,
@@ -140,7 +141,7 @@ export function SettingsScreen({
   onSavedAccountSelect?: (account: SavedMobileAccount) => void;
   onSendDiagnosticSnapshot?: () => void;
   onSendTestNotification: () => void;
-  nativeAppEntitlement?: { trialActive: boolean; lifetimeUnlocked: boolean; readOnly: boolean; hostedSubscriptionActive: boolean; includedHostedActive: boolean };
+  nativeAppEntitlement?: { trialActive: boolean; lifetimeUnlocked: boolean; readOnly: boolean; hostedSubscriptionActive: boolean; includedHostedActive: boolean; trialRemainingMs?: number };
   trialRemainingLabel?: string;
   hostedPersonalActive?: boolean;
   onPurchaseLifetimeUnlock?: () => void;
@@ -204,13 +205,18 @@ export function SettingsScreen({
     ...supportedLocales.map((locale) => ({ code: locale.code, label: locale.nativeLabel, diagnostic: "language_select" })),
   ];
 
-  const monetizationSection = nativeAppEntitlement ? (
+  const entitlementCopy = nativeAppEntitlement ? entitlementStatusCopy({ trialRemainingMs: 0, ...nativeAppEntitlement }) : null;
+  const entitlementSummary = nativeAppEntitlement?.trialActive && trialRemainingLabel ? trialRemainingLabel : entitlementCopy?.summary;
+  const monetizationSection = nativeAppEntitlement && entitlementCopy ? (
     <View style={styles.settingsSection}>
-      <Text style={styles.sectionHeading}>{tr("Trial and purchases")}</Text>
-      <Text style={styles.pairingHint}>{trialRemainingLabel || tr("Trial status unavailable")}</Text>
-      {nativeAppEntitlement.readOnly ? (
-        <Text style={styles.errorText}>{tr("Your server is yours. The first-party app is paid after trial.")}</Text>
-      ) : null}
+      <Text style={styles.sectionHeading}>{tr("Entitlement status")}</Text>
+      <View style={styles.purchaseCard}>
+        <Text style={styles.organizationName}>{tr(entitlementCopy.title)}</Text>
+        <Text style={styles.organizationMeta}>{entitlementSummary ? tr(entitlementSummary) : tr("Trial status unavailable")}</Text>
+        <Text style={styles.pairingHint}>{tr(entitlementCopy.appAccess)}</Text>
+        <Text style={styles.pairingHint}>{tr(entitlementCopy.hostedAccess)}</Text>
+        <Text style={nativeAppEntitlement.readOnly ? styles.errorText : styles.pairingHint}>{tr(entitlementCopy.paywall)}</Text>
+      </View>
       <View style={styles.purchaseCard}>
         <Text style={styles.organizationName}>{tr("Lifetime app unlock")}</Text>
         <Text style={styles.organizationMeta}>{tr("Use the Agent Tick app with self-hosted servers forever.")}</Text>
