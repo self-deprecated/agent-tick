@@ -26,6 +26,7 @@ const config = {
             'quick-start.md',
             'cli.md',
             'integrations.md',
+            'claude-code-verified-hook-demo.md',
             'cursor-gemini-opencode-support.md',
             'codex-mcp-adapter-demo.md',
             'workflow-no-code-connector-strategy.md',

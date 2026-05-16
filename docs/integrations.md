@@ -31,7 +31,9 @@ For lower-level browser setup without agent instruction installation, run `agent
 
 ## Claude Code Verified Hook and MCP support
 
-`agent-tick install --target claude` installs Claude Code hooks that are inactive by default. The installer can write hooks globally for all Claude Code projects or locally for the current project:
+`agent-tick install --target claude` installs Claude Code hooks that are inactive by default. The installer can write hooks globally for all Claude Code projects or locally for the current project. For a launch-safe verification checklist, demo script, and disclosure boundaries, see [Claude Code Verified Hook verification and demo](./claude-code-verified-hook-demo.md).
+
+The hooks are local Claude Code hooks; Agent Tick does not replace Claude Code's permission model or classify every command itself. It handles Claude `AskUserQuestion` and `PermissionRequest` prompts that Claude Code exposes through supported hook events.
 
 ```sh
 agent-tick install --target claude --dry-run

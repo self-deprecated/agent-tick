@@ -95,7 +95,7 @@ agent-tick install --no-login --target agents-md
 
 Supported install targets:
 
-- `claude` — supported as Verified Hook + MCP. Hooks can route `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions, plus `Bash(agent-tick:*)` so Agent Tick can run without recursive permission prompts. Hooks start in pass-through mode; use `agent-tick mode afk` to route prompts through Agent Tick and `agent-tick mode pass-through` to restore Claude Code's native prompts.
+- `claude` — supported as Verified Hook + MCP. Hooks can route `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions, plus `Bash(agent-tick:*)` so Agent Tick can run without recursive permission prompts. Hooks start in pass-through mode; use `agent-tick mode afk` to route prompts through Agent Tick and `agent-tick mode pass-through` to restore Claude Code's native prompts. See [Claude Code Verified Hook verification and demo](./claude-code-verified-hook-demo.md) for the launch-safe demo script and disclosure boundaries.
 - `codex` — supported via MCP Adapter through `agent-tick mcp`.
 - `pi` — supported as a Native Extension. Installs the repo-maintained `packages/cli/assets/pi/agent-tick-approval.ts` into `~/.pi/agent/extensions/agent-tick-approval.ts`, a Pi `tool_call` extension for risky bash commands.
 - `gemini` — scaffold only until its hook/config path is verified.

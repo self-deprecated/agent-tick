@@ -9,7 +9,7 @@ const sidebars = {
       type: 'category',
       label: 'Integrations',
       link: { type: 'doc', id: 'integrations' },
-      items: ['cursor-gemini-opencode-support', 'codex-mcp-adapter-demo', 'workflow-no-code-connector-strategy', 'n8n-community-node-plan', 'zapier-app-action-opportunity-brief', 'approval-templates']
+      items: ['claude-code-verified-hook-demo', 'cursor-gemini-opencode-support', 'codex-mcp-adapter-demo', 'workflow-no-code-connector-strategy', 'n8n-community-node-plan', 'zapier-app-action-opportunity-brief', 'approval-templates']
     },
     'self-hosting',
     'mobile-app',
