@@ -47,6 +47,8 @@ Templates should be request-shape guidance first. Server-side template IDs, dash
 
 ### Zapier second
 
+See [Zapier app/action opportunity brief](./zapier-app-action-opportunity-brief.md) for the concrete action/auth/positioning plan.
+
 Zapier has the strongest no-code distribution and already has Human in the Loop primitives. Agent Tick should enter Zapier only with a clear complementary story:
 
 - agent-token-scoped approvals for coding agents and self-hosted teams
