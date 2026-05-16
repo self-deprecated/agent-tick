@@ -16,7 +16,7 @@ Hosted push notifications are minimal by default and do not include request titl
 
 ## Encryption
 
-Encrypted Approval Content is supported where available, but end-to-end encryption is not required for hosted launch. Do not send secrets in request titles, bodies, commands, choices, metadata, logs, or notifications.
+Encrypted Approval Content is supported where available, but end-to-end encryption is not required for hosted launch. See [Optional encrypted approval content](./encrypted-approval-content.md) for the current scope, UX, threat model, and launch sequencing. Do not send secrets in request titles, bodies, commands, choices, metadata, logs, or notifications.
 
 ## Retention
 

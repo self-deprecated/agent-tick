@@ -34,6 +34,7 @@ const config = {
             'self-hosting.md',
             'mobile-app.md',
             'security.md',
+            'encrypted-approval-content.md',
             'scoped-guest-approval-links.md',
             'activity-history-cleanup-deletion.md',
             'api-sdk.md'
