@@ -1,0 +1,62 @@
+name: gated-release-example
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Release tag, for example v0.1.0
+        required: true
+      changelog-url:
+        description: Changelog or release notes URL
+        required: true
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release context
+        id: release-context
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.release-tag || github.ref_name }}"
+          changelog="${{ github.event.inputs.changelog-url || github.event.release.html_url }}"
+          sha="${{ github.sha }}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "changelog=${changelog}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test candidate
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm test
+          pnpm build
+
+      - name: Wait for Agent Tick release Sanction
+        id: sanction
+        uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
+        with:
+          server: ${{ secrets.AGENT_TICK_SERVER }}
+          token: ${{ secrets.AGENT_TICK_TOKEN }}
+          title: Publish ${{ github.repository }} ${{ steps.release-context.outputs.tag }}?
+          body: |
+            Repository: ${{ github.repository }}
+            Tag: ${{ steps.release-context.outputs.tag }}
+            Commit: ${{ steps.release-context.outputs.sha }}
+            Changelog: ${{ steps.release-context.outputs.changelog }}
+            Timeout: 30m; no response blocks the release.
+            Rollback owner: release captain
+          command: pnpm publish --access public --provenance
+          timeout: 30m
+
+      - name: Publish release artifact
+        if: ${{ steps.sanction.outputs.choice-id == 'approve' }}
+        run: pnpm publish --access public --provenance

@@ -132,7 +132,7 @@ Use it from a workflow:
   run: ./scripts/deploy.sh
 ```
 
-The action waits for the final decision and exposes `request-id`, `status`, and `choice-id` outputs. Keep approval text limited to bounded summaries, links, commit SHAs, rollout/rollback notes, and other reviewer context; do not include secrets, bearer tokens, private keys, raw logs, or full AI prompts. A fuller workflow example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml).
+The action waits for the final decision and exposes `request-id`, `status`, and `choice-id` outputs. Keep approval text limited to bounded summaries, links, commit SHAs, rollout/rollback notes, and other reviewer context; do not include secrets, bearer tokens, private keys, raw logs, or full AI prompts. A fuller workflow example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml). For release gates, see the [GitHub Actions release Sanction tutorial](./github-actions-release-sanction-tutorial.md) and [`examples/github-actions/release-sanction.yml`](../examples/github-actions/release-sanction.yml).
 
 ### CLI Status Updates, Steering, and Sanctions
 

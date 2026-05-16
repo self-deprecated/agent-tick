@@ -29,6 +29,7 @@ const config = {
             'claude-code-verified-hook-demo.md',
             'cursor-gemini-opencode-support.md',
             'codex-mcp-adapter-demo.md',
+            'github-actions-release-sanction-tutorial.md',
             'workflow-no-code-connector-strategy.md',
             'n8n-community-node-plan.md',
             'zapier-app-action-opportunity-brief.md',

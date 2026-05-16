@@ -7,6 +7,7 @@ Documentation sections for `docs.agenttick.sh`:
 - [Quick Start](./quick-start.md)
 - [CLI](./cli.md)
 - [Integrations](./integrations.md)
+  - [GitHub Actions release Sanction tutorial](./github-actions-release-sanction-tutorial.md)
 - [Self-Hosting](./self-hosting.md)
 - [Mobile App](./mobile-app.md)
 - [Security](./security.md)

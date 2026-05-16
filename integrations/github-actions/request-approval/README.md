@@ -87,4 +87,4 @@ Do not include:
 4. Add this action before the protected workflow step.
 5. Keep the protected command in GitHub Actions, not inside Agent Tick.
 
-For broader integration docs, see [`docs/integrations.md`](../../../docs/integrations.md).
+For broader integration docs, see [`docs/integrations.md`](../../../docs/integrations.md). For a release-specific gate with tag, SHA, changelog, and timeout guidance, see [`docs/github-actions-release-sanction-tutorial.md`](../../../docs/github-actions-release-sanction-tutorial.md).
