@@ -171,4 +171,4 @@ Until counsel clears final registration/filings:
 
 ## Packet status
 
-This document is the repo-side packet skeleton and evidence inventory. It is complete enough to start counsel review with the companion [trademark knockout search memo](./trademark-knockout-search.md), but the owner still needs to attach off-repo evidence: assignments, design/source files, tool history, attorney trademark clearance, filing recommendations, and final store-export hashes.
+This document is the repo-side packet skeleton and evidence inventory. It is complete enough to start counsel review with the companion [trademark knockout search memo](./trademark-knockout-search.md) and [trademark filing strategy counsel packet](./trademark-filing-strategy-counsel-packet.md), but the owner still needs to attach off-repo evidence: assignments, design/source files, tool history, attorney trademark clearance, filing recommendations, and final store-export hashes.
