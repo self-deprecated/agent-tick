@@ -154,7 +154,7 @@ Ask each creator or contributor to answer:
 
 - No editable source file for `apps/mobile/assets/*.png` was found in the inspected paths.
 - No explicit `agenttick.sh` license file was observed during this pass.
-- No formal trademark search results are in the inspected repo paths.
+- A repo-side knockout memo now exists at [`docs/trademark-knockout-search.md`](./trademark-knockout-search.md), but no attorney clearance opinion or filing strategy is in the inspected repo paths.
 - No contributor assignment records, contractor agreements, invoices, or AI-tool prompt logs are in the inspected repo paths.
 - The public website uses a simple checkmark glyph as the mark; counsel should assess distinctiveness and similarity risk before treating it as registerable.
 - The Docusaurus SVG favicon/social card appear hand-authored in repo, but provenance and approval history still need owner confirmation.
@@ -171,4 +171,4 @@ Until counsel clears final registration/filings:
 
 ## Packet status
 
-This document is the repo-side packet skeleton and evidence inventory. It is complete enough to start counsel review, but the owner still needs to attach off-repo evidence: assignments, design/source files, tool history, trademark search results, and final store-export hashes.
+This document is the repo-side packet skeleton and evidence inventory. It is complete enough to start counsel review with the companion [trademark knockout search memo](./trademark-knockout-search.md), but the owner still needs to attach off-repo evidence: assignments, design/source files, tool history, attorney trademark clearance, filing recommendations, and final store-export hashes.
