@@ -175,13 +175,13 @@ Use `agent-tick status-update` to publish AFK progress updates without blocking 
 agent-tick status-update --state working --next "Run tests" "Finished edits; validating now"
 ```
 
-MCP-capable agents can launch the local stdio adapter with the same saved Agent Tick setup/token used by the rest of the CLI. Cursor, Gemini CLI, and OpenCode are planned MCP adapter targets, but native permission-hook enforcement for those clients is not verified; see [Cursor, Gemini CLI, and OpenCode support options](./cursor-gemini-opencode-support.md).
+MCP-capable agents can launch the local stdio adapter with the same saved Agent Tick setup/token used by the rest of the CLI. Codex is the verified launch MCP demo target; see [Codex MCP Adapter verification and demo](./codex-mcp-adapter-demo.md). Cursor, Gemini CLI, and OpenCode are planned MCP adapter targets, but native permission-hook enforcement for those clients is not verified; see [Cursor, Gemini CLI, and OpenCode support options](./cursor-gemini-opencode-support.md).
 
 ```sh
 agent-tick mcp
 ```
 
-The first-party local stdio MCP Adapter exposes `agent_tick_status_update`, `agent_tick_steering`, and `agent_tick_sanction`. It uses the same saved Agent Tick config/token as the CLI and fails with setup instructions when no config exists. For MCP clients that declare form elicitation support, such as Codex with `mcp_elicitations = true`, Mirrored Prompt is the default: the local MCP dialog and remote Agent Tick request race, the first response wins, and the losing surface is abandoned. Configure Codex with a stdio MCP server entry similar to:
+The first-party local stdio MCP Adapter exposes `agent_tick_status_update`, `agent_tick_steering`, and `agent_tick_sanction`. It uses the same saved Agent Tick config/token as the CLI and fails with setup instructions when no config exists. For MCP clients that declare form elicitation support, such as Codex with `mcp_elicitations = true`, Mirrored Prompt is the default: the local MCP dialog and remote Agent Tick request race, the first response wins, and the losing surface is abandoned. Configure Codex manually with a stdio MCP server entry similar to this until `agent-tick install --target codex` config writing is implemented and tested:
 
 ```toml
 [mcp_servers.agent_tick]

@@ -155,7 +155,9 @@ Implemented today:
 
 ## Codex MCP notes
 
-Codex should launch Agent Tick through the local stdio MCP adapter:
+See [Codex MCP Adapter verification and demo](./codex-mcp-adapter-demo.md) for the launch-safe demo script, failure modes, and disclosure boundaries.
+
+Codex should launch Agent Tick through the local stdio MCP adapter. Configure Codex manually until `agent-tick install --target codex` config writing is implemented and tested:
 
 ```toml
 [mcp_servers.agent_tick]

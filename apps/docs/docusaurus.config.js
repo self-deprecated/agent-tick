@@ -27,6 +27,7 @@ const config = {
             'cli.md',
             'integrations.md',
             'cursor-gemini-opencode-support.md',
+            'codex-mcp-adapter-demo.md',
             'workflow-no-code-connector-strategy.md',
             'n8n-community-node-plan.md',
             'zapier-app-action-opportunity-brief.md',
