@@ -39,6 +39,7 @@ const config = {
             'encrypted-approval-content.md',
             'scoped-guest-approval-links.md',
             'activity-history-cleanup-deletion.md',
+            'deletion-controls-verification.md',
             'api-sdk.md'
           ],
           routeBasePath: '/',

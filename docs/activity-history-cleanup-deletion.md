@@ -6,6 +6,8 @@ Activity History cleanup and deletion controls should make hosted privacy behavi
 
 Recommendation: add clear user-facing lifecycle states and admin/member copy before expanding export or deletion UI. Retention-off cleanup should be explicit, immediate where safe, and auditable with minimal metadata.
 
+For the current launch verification map, see [Deletion controls verification](./deletion-controls-verification.md).
+
 ## Current model
 
 Relevant implementation surfaces:
