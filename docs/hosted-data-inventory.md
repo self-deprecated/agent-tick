@@ -1,6 +1,6 @@
 # Hosted data inventory
 
-This inventory maps Agent Tick hosted product data to implementation sources, processors, and launch privacy/store disclosures. It is a privacy and app-review support document, not a data-residency guarantee.
+This inventory maps Agent Tick hosted product data to implementation sources, processors, and launch privacy/store disclosures. It is a privacy and app-review support document, not a data-residency guarantee. For provider and region status, see [Hosted subprocessors and infrastructure regions](./hosted-subprocessors-regions.md).
 
 ## Summary
 
@@ -74,7 +74,7 @@ Do not claim that the mobile app collects no user content if hosted approvals in
 
 ## Open gaps
 
-- Production infrastructure region/subprocessor confirmation is tracked separately in Fizzy #50.
+- Production infrastructure region/subprocessor confirmation is mapped in [Hosted subprocessors and infrastructure regions](./hosted-subprocessors-regions.md); owner confirmation is still required before publishing residency claims.
 - Hosted export controls are not a launch feature.
 - A polished deletion preview/confirmation flow remains future work; see [Deletion controls verification](./deletion-controls-verification.md).
 - The admin client has an `exportAuditEventsCSV` helper, but no matching launch server route was verified; do not disclose complete audit export as available.
@@ -99,4 +99,4 @@ Inspected sources include:
 
 ## Status
 
-This document satisfies Fizzy #49 as a repo-side hosted data inventory and disclosure map. Keep it updated whenever schemas, analytics events, notification processors, billing processors, or hosted infrastructure providers change.
+This document satisfies Fizzy #49 as a repo-side hosted data inventory and disclosure map. The companion [Hosted subprocessors and infrastructure regions](./hosted-subprocessors-regions.md) satisfies the repo-side inventory for Fizzy #50 while preserving owner-confirmation gaps. Keep both updated whenever schemas, analytics events, notification processors, billing processors, or hosted infrastructure providers change.

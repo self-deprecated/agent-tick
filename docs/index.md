@@ -12,6 +12,7 @@ Documentation sections for `docs.agenttick.sh`:
 - [Mobile App](./mobile-app.md)
 - [Entitlement lifecycle](./entitlement-lifecycle.md)
 - [Security](./security.md)
+  - [Hosted subprocessors and infrastructure regions](./hosted-subprocessors-regions.md)
 - [API/SDK](./api-sdk.md)
 
 Privacy Policy and Terms live on the marketing site:

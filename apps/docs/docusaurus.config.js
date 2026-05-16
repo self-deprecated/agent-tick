@@ -43,6 +43,7 @@ const config = {
             'activity-history-cleanup-deletion.md',
             'deletion-controls-verification.md',
             'hosted-data-inventory.md',
+            'hosted-subprocessors-regions.md',
             'api-sdk.md'
           ],
           routeBasePath: '/',
