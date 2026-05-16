@@ -26,6 +26,7 @@ The design direction is the friendly/professional onboarding system explored in:
 | 2 | Approval rules | [`05-approval-rules.md`](./05-approval-rules.md) | `tests/e2e/flows/approval-rules.spec.ts` |
 | 3 | Agent/device management and upgrade gates | [`06-management-and-upgrade-gates.md`](./06-management-and-upgrade-gates.md) | `tests/e2e/flows/management-and-upgrade-gates.spec.ts` |
 | 3 | Approval Access management polish | [`07-approval-access-management.md`](./07-approval-access-management.md) | `tests/e2e/flows/approval-access-management.spec.ts` |
+| 3 | Team Routing polish backlog | [`08-team-routing-polish.md`](./08-team-routing-polish.md) | `tests/e2e/flows/team-routing-polish.spec.ts` |
 
 ## E2E harness requirements
 
