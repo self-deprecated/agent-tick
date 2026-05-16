@@ -165,6 +165,8 @@ Avoid this language:
 
 ### Slice 2 — n8n community node plan/prototype
 
+See [n8n community node plan](./n8n-community-node-plan.md) for the concrete package/repo recommendation, operations, credential shape, output contract, testing plan, and publishing checklist.
+
 - Node credentials: server URL and agent token.
 - Operations: create approval request; wait for decision.
 - Outputs: normalized decision fields for branch nodes.
