@@ -419,7 +419,7 @@ describe('AgentTickClient', () => {
     await expect(client.resendOrganizationInvite('inv_123')).resolves.toMatchObject({ delivery: { status: 'sent', recipient: 'teammate@example.com' }, invite: { emailLastStatus: 'sent' } });
     await expect(client.revokeOrganizationInvite('inv_123')).resolves.toMatchObject({ revokedAt: expect.any(String) });
     expect(requests.map((request) => [request.method, request.url, request.organizationId, request.body])).toEqual([
-      ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', approvalRequired: true, teamIds: ['team_123'], domain: 'example.com', maxUses: 1 }],
+      ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', approvalRequired: false, teamIds: ['team_123'], domain: 'example.com', maxUses: 1 }],
       ['GET', 'https://tick.example.com/v1/organization-invites', 'org_selected', undefined],
       ['GET', 'https://tick.example.com/v1/invites/invite_secret', null, undefined],
       ['POST', 'https://tick.example.com/v1/invites/invite_secret/accept', null, {}],
