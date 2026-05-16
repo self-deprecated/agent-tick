@@ -30,6 +30,7 @@
 	import { inviteAcceptedMessage } from './inviteStatus';
 	import { shouldContinueInviteAcceptance } from './inviteFlow';
 	import { clerkRedirectTarget, hasClerkRedirectCallback } from './clerkRedirect';
+	import { initPlausibleAnalytics, trackPlausibleEvent, trackPlausibleEventOncePerSession } from './analytics';
 	import {
 		activateMessages,
 		defaultLocale,
@@ -147,6 +148,7 @@
 	}
 
 	onMount(() => {
+		initPlausibleAnalytics();
 		void loadLocalePreference();
 		adminToken = localStorage.getItem(adminTokenStorageKey) ?? '';
 		testAuthToken = localStorage.getItem(testAuthTokenStorageKey) ?? '';
@@ -462,6 +464,7 @@
 		}
 		try {
 			billingStatus = await client().getBillingStatus();
+			trackBillingAnalytics();
 		} catch {
 			billingStatus = undefined;
 		}
@@ -475,9 +478,24 @@
 		}
 	}
 
+	function trackBillingAnalytics(): void {
+		if (!isCustomerMode() || !billingStatus || billingStatus.plan === 'self-hosted') return;
+		trackPlausibleEventOncePerSession('paywall_viewed', { plan: billingStatus.plan });
+	}
+
+	function trackOnboardingAnalytics(): void {
+		if (!isCustomerMode() || !onboardingStatus) return;
+		if (onboardingStatus.stage === 'ready_for_first_request') {
+			trackPlausibleEventOncePerSession('onboarding_completed');
+			return;
+		}
+		trackPlausibleEventOncePerSession('onboarding_started', { stage: onboardingStatus.stage });
+	}
+
 	async function refreshOnboarding(): Promise<void> {
 		try {
 			onboardingStatus = await client().getOnboardingStatus();
+			trackOnboardingAnalytics();
 		} catch {
 			onboardingStatus = undefined;
 		}
@@ -778,6 +796,7 @@
 		try {
 			const credential = await client().createAgentToken({ name: cliSetup.name });
 			cliSetupStatus = 'complete';
+			trackPlausibleEvent('setup_completed', { method: 'browser_cli_setup' });
 			postCliSetupCallback(cliSetup.callbackURL, {
 				state: cliSetup.state,
 				server: window.location.origin,

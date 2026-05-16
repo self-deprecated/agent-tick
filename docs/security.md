@@ -24,4 +24,4 @@ Hosted personal activity history follows the hosted personal lifecycle and grace
 
 ## Diagnostics and Analytics
 
-Diagnostics should exclude approval content. Product analytics are minimal onboarding/paywall/usage-shape events and should exclude approval content. Marketing analytics are privacy-friendly aggregate analytics without ad tracking pixels.
+Diagnostics should exclude approval content. Hosted-product analytics use Plausible for minimal onboarding/paywall/setup events and should exclude approval content, commands, request bodies, choices, secrets, tokens, and raw user-entered content. Marketing analytics are privacy-friendly aggregate Plausible page analytics without ad tracking pixels.
