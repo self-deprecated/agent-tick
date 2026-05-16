@@ -1,21 +1,25 @@
 name: Agent Tick Sanction
-description: Create an Agent Tick sanction from GitHub Actions and wait for a decision.
+author: Self-Deprecated
+description: Add a bounded Agent Tick human approval checkpoint to a GitHub Actions workflow.
+branding:
+  icon: check-circle
+  color: yellow
 inputs:
   server:
-    description: Agent Tick server URL
+    description: Agent Tick API server URL, for example https://api.agenttick.sh or a self-hosted URL
     required: true
   token:
-    description: Agent Tick agent token
+    description: Agent Tick agent token stored as a GitHub secret
     required: true
   title:
-    description: Approval title
+    description: Short reviewer-facing approval title
     required: true
   body:
-    description: Optional approval body
+    description: Optional reviewer guidance; avoid secrets, raw logs, and full prompts
     required: false
     default: ""
   command:
-    description: Optional command summary
+    description: Optional safe command or action summary for the reviewer
     required: false
     default: ""
   timeout:

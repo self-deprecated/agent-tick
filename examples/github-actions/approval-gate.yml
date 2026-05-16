@@ -9,15 +9,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The current Agent Tick CLI must be installed on PATH before this action runs.
-      - name: Wait for human approval
+      - name: Wait for Agent Tick approval
+        id: approval
         uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
         with:
           server: ${{ secrets.AGENT_TICK_SERVER }}
           token: ${{ secrets.AGENT_TICK_TOKEN }}
           title: Deploy production?
           body: ${{ github.repository }} @ ${{ github.sha }}
-          command: gh workflow run deploy
+          command: ./scripts/deploy.sh
+          timeout: 10m
 
       - name: Deploy
+        if: ${{ steps.approval.outputs.choice-id == 'approve' }}
         run: ./scripts/deploy.sh

@@ -105,25 +105,32 @@ See [Workflow and no-code connector strategy](./workflow-no-code-connector-strat
 
 ### GitHub Actions
 
-This repo includes a composite action at [`integrations/github-actions/request-approval/action.yml`](../integrations/github-actions/request-approval/action.yml).
+This repo includes a composite action at [`integrations/github-actions/request-approval/action.yml`](../integrations/github-actions/request-approval/action.yml) with Marketplace-facing setup notes in the [GitHub Action README](https://github.com/self-deprecated/agent-tick/tree/main/integrations/github-actions/request-approval).
+
+Use it to add a bounded approval checkpoint before a protected workflow step. GitHub Actions still runs the deploy, refund, migration, or release command; Agent Tick only creates the sanction request, waits for the decision, and returns outputs for branching.
 
 The action installs `@self-deprecated/agent-tick` with npm when `agent-tick` is not already on the runner `PATH`. Set `install-cli: "false"` if your workflow pre-installs and pins the CLI another way.
 
 Use it from a workflow:
 
 ```yaml
-- name: Wait for approval
+- name: Wait for Agent Tick approval
+  id: approval
   uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
   with:
     server: ${{ secrets.AGENT_TICK_SERVER }}
     token: ${{ secrets.AGENT_TICK_TOKEN }}
     title: Deploy production?
     body: ${{ github.repository }} @ ${{ github.sha }}
-    command: gh workflow run deploy
+    command: ./scripts/deploy.sh
     timeout: 10m
+
+- name: Deploy
+  if: ${{ steps.approval.outputs.choice-id == 'approve' }}
+  run: ./scripts/deploy.sh
 ```
 
-The action waits for the final decision and exposes `request-id`, `status`, and `choice-id` outputs. A fuller workflow example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml).
+The action waits for the final decision and exposes `request-id`, `status`, and `choice-id` outputs. Keep approval text limited to bounded summaries, links, commit SHAs, rollout/rollback notes, and other reviewer context; do not include secrets, bearer tokens, private keys, raw logs, or full AI prompts. A fuller workflow example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml).
 
 ### CLI Status Updates, Steering, and Sanctions
 
