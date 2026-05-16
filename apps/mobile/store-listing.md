@@ -36,6 +36,14 @@ Lifetime app unlock includes one hosted month that starts when hosted personal s
 
 ## Screenshot plan
 
+Automated scene data lives in [`store-assets/screenshots/scenes.json`](./store-assets/screenshots/scenes.json). Generate Apple and Google Play exports with:
+
+```sh
+corepack pnpm --filter @agent-tick/mobile screenshots:store
+```
+
+The export script writes generated SVGs for each scene/size and PNGs when ImageMagick `magick` is available.
+
 1. Approval request — show a Sanction with exact action context and minimal lock-screen disclosure posture.
 2. Steering choices — show bounded options with a recommended/favorite choice and a decline/stop option.
 3. Status Update / Activity History — show recent agent progress and session history.

@@ -1,0 +1,67 @@
+{
+  "product": "Agent Tick",
+  "subtitle": "Phone approvals for coding agents",
+  "scenes": [
+    {
+      "id": "01-sanction",
+      "headline": "Approve risky actions from your phone",
+      "kicker": "Sanction",
+      "screenTitle": "Production deploy",
+      "body": "Deploy api@6f57b86 to production? Rollback plan and runbook are linked before approval.",
+      "primaryAction": "Approve deploy",
+      "secondaryAction": "Deny",
+      "badges": ["production", "time sensitive", "audit relevant"],
+      "footer": "Agent Tick records the decision. Your workflow still runs the deploy."
+    },
+    {
+      "id": "02-steering",
+      "headline": "Choose from bounded options",
+      "kicker": "Steering",
+      "screenTitle": "Pick rollout strategy",
+      "body": "The agent needs a direction before continuing. Each option is explicit, and stop is always available.",
+      "primaryAction": "Canary rollout ★",
+      "secondaryAction": "Stop this task",
+      "badges": ["favorite", "reversible", "bounded"],
+      "footer": "No arbitrary remote prompt or shell access."
+    },
+    {
+      "id": "03-history",
+      "headline": "See progress while you are AFK",
+      "kicker": "Activity History",
+      "screenTitle": "Agent progress",
+      "body": "Tests finished. Waiting on approval before publishing the release. Previous updates stay easy to review.",
+      "primaryAction": "Open request",
+      "secondaryAction": "Archive",
+      "badges": ["status update", "history", "local context"],
+      "footer": "Notifications stay brief; details live in the app."
+    },
+    {
+      "id": "04-setup",
+      "headline": "Hosted or self-hosted setup",
+      "kicker": "Connect",
+      "screenTitle": "Choose your server",
+      "body": "Use agenttick.sh for managed routing and push, or connect the app to your own Agent Tick server.",
+      "primaryAction": "Use agenttick.sh",
+      "secondaryAction": "Use self-hosted server",
+      "badges": ["source available", "self-hostable", "mobile first"],
+      "footer": "One app supports hosted and self-hosted teams."
+    },
+    {
+      "id": "05-paywall",
+      "headline": "Clear app-store entitlement copy",
+      "kicker": "Trial & unlock",
+      "screenTitle": "7-day trial active",
+      "body": "Lifetime app unlock keeps self-hosted use available on this app-store account. Hosted personal service is optional.",
+      "primaryAction": "Buy lifetime unlock",
+      "secondaryAction": "Restore purchases",
+      "badges": ["7-day trial", "$19.99 unlock", "optional hosted"],
+      "footer": "Viewing and settings remain available after trial."
+    }
+  ],
+  "sizes": [
+    { "id": "apple-67", "label": "Apple 6.7 inch", "width": 1290, "height": 2796 },
+    { "id": "apple-65", "label": "Apple 6.5 inch", "width": 1242, "height": 2688 },
+    { "id": "apple-55", "label": "Apple 5.5 inch", "width": 1242, "height": 2208 },
+    { "id": "google-phone", "label": "Google Play phone", "width": 1080, "height": 1920 }
+  ]
+}

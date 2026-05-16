@@ -12,6 +12,7 @@
     "ios": "expo start --ios",
     "ios:dev-client": "expo start --dev-client --ios",
     "update:development": "pnpm dlx eas-cli update --channel development",
+    "screenshots:store": "node scripts/generate-store-screenshots.mjs",
     "typecheck": "tsc --noEmit",
     "test": "jest"
   },
