@@ -10,6 +10,7 @@ Documentation sections for `docs.agenttick.sh`:
   - [GitHub Actions release Sanction tutorial](./github-actions-release-sanction-tutorial.md)
 - [Self-Hosting](./self-hosting.md)
 - [Mobile App](./mobile-app.md)
+- [Entitlement lifecycle](./entitlement-lifecycle.md)
 - [Security](./security.md)
 - [API/SDK](./api-sdk.md)
 

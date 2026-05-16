@@ -36,6 +36,7 @@ const config = {
             'approval-templates.md',
             'self-hosting.md',
             'mobile-app.md',
+            'entitlement-lifecycle.md',
             'security.md',
             'encrypted-approval-content.md',
             'scoped-guest-approval-links.md',

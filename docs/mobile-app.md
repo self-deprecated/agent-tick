@@ -14,6 +14,8 @@ The Native App is the primary day-to-day approval surface.
 
 ## Entitlement status screen copy/spec
 
+See [Entitlement lifecycle](./entitlement-lifecycle.md) for the full Trial, Lifetime app unlock, included hosted month, subscription, and read-only routing grace diagram.
+
 The mobile Settings screen should always show one current entitlement status before purchase actions so the user can tell whether they can respond to approvals now, what hosted access is active, and what payment action (if any) keeps access working.
 
 | State | Status title | Summary | App access copy | Hosted access copy | Paywall/action copy |

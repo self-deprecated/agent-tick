@@ -13,6 +13,7 @@ const sidebars = {
     },
     'self-hosting',
     'mobile-app',
+    'entitlement-lifecycle',
     {
       type: 'category',
       label: 'Security',
