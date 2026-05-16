@@ -63,10 +63,10 @@ Installed by Agent Tick:
 
 ## Scaffolded / disabled until verified
 
-- Codex CLI: detected via `codex` command or `~/.codex/config.toml`; hook/config enforcement path not verified in this pass.
-- Gemini CLI: detected via `gemini` command or `~/.gemini`; hook/config enforcement path not verified in this pass.
-- Cursor: detected via `cursor` command or project `.cursor`; enforcement path not verified in this pass.
-- OpenCode: detected via `opencode` command or `~/.config/opencode`; enforcement path not verified in this pass.
+- Codex CLI: detected via `codex` command or `~/.codex/config.toml`; native hook/config enforcement path not verified in this pass. MCP support is planned separately and documented in the MCP implementation plan.
+- Gemini CLI: detected via `gemini` command or `~/.gemini`; verified as an MCP-capable target through `settings.json` `mcpServers`, but native hook/config enforcement remains unverified. See [Cursor, Gemini CLI, and OpenCode support options](./cursor-gemini-opencode-support.md).
+- Cursor: detected via `cursor` command or project `.cursor`; verified as an MCP-capable target through `mcp.json`, but native hook/config enforcement remains unverified. See [Cursor, Gemini CLI, and OpenCode support options](./cursor-gemini-opencode-support.md).
+- OpenCode: detected via `opencode` command or `~/.config/opencode`; verified as an MCP-capable target through OpenCode `mcp` config, but native hook/config enforcement remains unverified. See [Cursor, Gemini CLI, and OpenCode support options](./cursor-gemini-opencode-support.md).
 - Generic `AGENTS.md`: detected but disabled because instructions alone are advisory, not enforcement.
 
 ## Next confirmations

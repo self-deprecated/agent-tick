@@ -9,7 +9,7 @@ const sidebars = {
       type: 'category',
       label: 'Integrations',
       link: { type: 'doc', id: 'integrations' },
-      items: ['workflow-no-code-connector-strategy']
+      items: ['cursor-gemini-opencode-support', 'workflow-no-code-connector-strategy']
     },
     'self-hosting',
     'mobile-app',

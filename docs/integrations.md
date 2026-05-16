@@ -168,7 +168,7 @@ Use `agent-tick status-update` to publish AFK progress updates without blocking 
 agent-tick status-update --state working --next "Run tests" "Finished edits; validating now"
 ```
 
-MCP-capable agents can launch the local stdio adapter with the same saved Agent Tick setup/token used by the rest of the CLI:
+MCP-capable agents can launch the local stdio adapter with the same saved Agent Tick setup/token used by the rest of the CLI. Cursor, Gemini CLI, and OpenCode are planned MCP adapter targets, but native permission-hook enforcement for those clients is not verified; see [Cursor, Gemini CLI, and OpenCode support options](./cursor-gemini-opencode-support.md).
 
 ```sh
 agent-tick mcp
