@@ -20,7 +20,7 @@ Encrypted Approval Content is supported where available, but end-to-end encrypti
 
 ## Retention
 
-Hosted personal activity history follows the hosted personal lifecycle and grace period. Self-hosted deployments configure their own retention windows.
+Hosted personal activity history follows the hosted personal lifecycle and grace period. Self-hosted deployments configure their own retention windows. Cleanup and deletion UX requirements are tracked in [Activity History cleanup and deletion controls](./activity-history-cleanup-deletion.md).
 
 ## Scoped Guest Approval Links
 
