@@ -1,0 +1,22 @@
+{
+  "name": "agent-tick-docs",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "docusaurus build",
+    "start": "docusaurus start --host 127.0.0.1",
+    "serve": "docusaurus serve --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@docusaurus/core": "latest",
+    "@docusaurus/preset-classic": "latest",
+    "@mdx-js/react": "latest",
+    "clsx": "latest",
+    "prism-react-renderer": "latest",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

@@ -2,7 +2,7 @@
 
 Agent Tick currently supports the TypeScript CLI command concepts `install`, `setup`, `mode`, `sanction`, `steering`, `abandon`, and `status-update`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
 
-For product-vs-self-hosting setup flows, see [Using Agent Tick](./using-agent-tick.md). Public surfaces are the marketing site at <https://agenttick.sh>, hosted app at <https://app.agenttick.sh>, hosted API at <https://api.agenttick.sh>, and docs at <https://docs.agenttick.sh>.
+For product-vs-self-hosting setup flows, start with [Quick Start](./quick-start.md) and [Self-Hosting](./self-hosting.md). Public surfaces are the [marketing site](https://agenttick.sh), [hosted app](https://app.agenttick.sh), hosted API at `https://api.agenttick.sh`, and [docs](https://docs.agenttick.sh).
 
 ## CLI setup
 

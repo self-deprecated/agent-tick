@@ -14,5 +14,5 @@ Documentation sections for `docs.agenttick.sh`:
 
 Privacy Policy and Terms live on the marketing site:
 
-- <https://agenttick.sh/privacy>
-- <https://agenttick.sh/terms>
+- [Privacy Policy](https://agenttick.sh/privacy)
+- [Terms](https://agenttick.sh/terms)

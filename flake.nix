@@ -152,6 +152,46 @@
             };
           });
 
+          agent-tick-docs = pkgs.stdenv.mkDerivation (finalAttrs: {
+            pname = "agent-tick-docs";
+            version = "0.1.0";
+            inherit src;
+
+            pnpmDeps = pkgs.fetchPnpmDeps {
+              inherit (finalAttrs) pname version src;
+              fetcherVersion = 2;
+              hash = "sha256-6xVtTTSJ9Ez/v8tD9KJ7sPGiNjqvjt9oTNqDcq9X1Ss=";
+            };
+
+            nativeBuildInputs = [
+              nodejs
+              pnpm
+              pkgs.pnpmConfigHook
+            ];
+
+            buildPhase = ''
+              runHook preBuild
+
+              pnpm --filter agent-tick-docs build
+
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+
+              cp -R apps/docs/build "$out"
+
+              runHook postInstall
+            '';
+
+            meta = {
+              description = "Static Docusaurus documentation site for Agent Tick";
+              homepage = "https://docs.agenttick.sh";
+              platforms = lib.platforms.linux;
+            };
+          });
+
           agent-tick-server = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-server";
             version = "0.1.0";
@@ -220,8 +260,9 @@
           });
         in {
           packages = {
-            inherit agent-tick-cli agent-tick-server agent-tick-diagnostics-mcp;
+            inherit agent-tick-cli agent-tick-server agent-tick-diagnostics-mcp agent-tick-docs;
             agent-tick = agent-tick-cli;
+            docs = agent-tick-docs;
             default = agent-tick-server;
           };
 

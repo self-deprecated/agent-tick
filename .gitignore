@@ -4,6 +4,8 @@
 node_modules/
 .expo/
 dist/
+build/
+.docusaurus/
 coverage/
 test-results/
 playwright-report/

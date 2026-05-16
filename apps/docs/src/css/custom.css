@@ -1,0 +1,24 @@
+:root {
+  --ifm-color-primary: #157f3b;
+  --ifm-color-primary-dark: #126f34;
+  --ifm-color-primary-darker: #10642f;
+  --ifm-color-primary-darkest: #0d5128;
+  --ifm-color-primary-light: #1b9348;
+  --ifm-color-primary-lighter: #23a656;
+  --ifm-color-primary-lightest: #38bd6c;
+  --ifm-code-font-size: 95%;
+}
+
+.hero--primary {
+  --ifm-hero-background-color: #0f172a;
+  --ifm-hero-text-color: #f8fafc;
+}
+
+.theme-doc-sidebar-container,
+.navbar {
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+.markdown h1:first-child {
+  letter-spacing: -0.03em;
+}
