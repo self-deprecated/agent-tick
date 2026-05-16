@@ -1,6 +1,6 @@
 # Deletion controls verification
 
-This document verifies the deletion and retention controls that are currently implemented for Agent Tick launch surfaces. It is a product/privacy verification note, not a promise that every operational trace is erased immediately.
+This document verifies the deletion and retention controls that are currently implemented for Agent Tick launch surfaces. It is a product/privacy verification note, not a promise that every operational trace is erased immediately. For the broader hosted data category and processor map, see [Hosted data inventory](./hosted-data-inventory.md).
 
 ## Summary
 

@@ -17,7 +17,7 @@ const sidebars = {
       type: 'category',
       label: 'Security',
       link: { type: 'doc', id: 'security' },
-      items: ['encrypted-approval-content', 'scoped-guest-approval-links', 'activity-history-cleanup-deletion', 'deletion-controls-verification']
+      items: ['encrypted-approval-content', 'scoped-guest-approval-links', 'activity-history-cleanup-deletion', 'deletion-controls-verification', 'hosted-data-inventory']
     },
     'api-sdk'
   ]

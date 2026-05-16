@@ -40,6 +40,7 @@ const config = {
             'scoped-guest-approval-links.md',
             'activity-history-cleanup-deletion.md',
             'deletion-controls-verification.md',
+            'hosted-data-inventory.md',
             'api-sdk.md'
           ],
           routeBasePath: '/',
