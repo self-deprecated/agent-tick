@@ -239,15 +239,13 @@ Reviewer guidance:
 
 ## CLI example
 
-Today, callers can map a template into the existing CLI fields:
+Today, callers can map a template into the existing CLI fields. `agent-tick sanction` uses the default Approve/Reject choices; use the SDK, API, MCP, or connector primitives when you need custom choice labels or more than two choices.
 
 ```sh
 agent-tick sanction \
   --title "Deploy api to production?" \
   --body "api@6f57b86 · rollback: revert to api@a0255f2 · runbook: https://runbooks.example.com/api-deploy" \
   --command "./scripts/deploy.sh api production 6f57b86" \
-  --choice approve:approve="Approve deploy" \
-  --choice deny:deny="Do not deploy" \
   --choice-flag approve=production \
   --choice-flag approve=time_sensitive \
   --choice-flag approve=audit_relevant \
@@ -259,8 +257,12 @@ agent-tick sanction \
 ```ts
 import { AgentTickClient } from '@agent-tick/sdk';
 
-const client = new AgentTickClient({ serverUrl, token });
+const client = new AgentTickClient({
+  baseUrl: process.env.AGENT_TICK_SERVER ?? 'https://api.agenttick.sh',
+  tokenProvider: () => process.env.AGENT_TICK_TOKEN
+});
 const created = await client.createApprovalRequest({
+  requester: { name: 'Refund workflow' },
   title: 'Approve refund?',
   body: 'Refund USD 199.00 for customer ref cus_1234. Reason: duplicate charge. Policy: https://support.example.com/refunds',
   requestType: 'approval',

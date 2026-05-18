@@ -62,10 +62,15 @@ Start it:
 docker compose up -d
 ```
 
-Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. Install the CLI and configure your agent machine:
+Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. For an interactive agent host, run the installer against your server:
 
 ```sh
-npm install -g @self-deprecated/agent-tick
+npx @self-deprecated/agent-tick install --server https://tick.example.com
+```
+
+For CI or non-interactive hosts, create or copy an `agent_...` token from the dashboard, then save it locally with the CLI available on that host:
+
+```sh
 agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
@@ -133,8 +138,7 @@ Start it with Docker Compose. The dashboard fetches `/v1/auth/config`, loads Cle
 After the server is running, set up an agent host with the installer:
 
 ```sh
-npm install -g @self-deprecated/agent-tick
-agent-tick install --server https://tick.example.com
+npx @self-deprecated/agent-tick install --server https://tick.example.com
 ```
 
 The CLI opens the dashboard, waits while you sign in with Clerk, saves the returned Agent Tick `agent_...` token, and offers to install local coding-agent approval instructions. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick setup --server https://tick.example.com --token agent_...` instead.

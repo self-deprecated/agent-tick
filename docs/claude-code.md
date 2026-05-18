@@ -88,4 +88,4 @@ Expected result: Claude Code asks for permission, the Agent Tick hook creates a 
 | Claude Code still shows native prompts | Agent Tick is in pass-through mode, Claude Code was not restarted, or hooks were installed in a different scope. | Run `agent-tick mode afk`, restart Claude Code, and inspect the selected Claude settings file. |
 | Agent Tick requests appear during pass-through | Routing policy is set to `always`. | Re-run installer dry-run and review `--claude-steering` / `--claude-sanctions`. |
 | Agent Tick hook triggers a permission loop | Missing `Bash(agent-tick:*)` allow rule. | Re-run installer dry-run and add the specific allow rule. |
-| Hook fails closed | Agent Tick CLI setup/token is missing or the server is unreachable. | Run `agent-tick install`, `agent-tick login`, or `agent-tick setup --server ... --token ...`. |
+| Hook fails closed | Agent Tick CLI setup/token is missing or the server is unreachable. | Run `agent-tick install`, `agent-tick setup --login`, or `agent-tick setup --server ... --token ...`. |

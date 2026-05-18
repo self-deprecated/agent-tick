@@ -1,34 +1,36 @@
 # MCP + Agent Tick
 
-MCP support is not currently implemented in the TypeScript CLI.
+Agent Tick exposes a local stdio MCP adapter through `agent-tick mcp`. MCP-capable agents can use it to send status updates, ask bounded steering questions, and request sanctions before sensitive local work proceeds.
 
-The active CLI commands are:
+The adapter reuses the normal CLI setup and saved `agent_...` token. Do not commit Agent Tick tokens into MCP host configuration files.
 
-```sh
-agent-tick setup
-agent-tick sanction
-agent-tick steering
-agent-tick status
-agent-tick abandon
-```
-
-Use `agent-tick sanction` when an MCP host or wrapper needs approval before continuing:
+## Relevant CLI commands
 
 ```sh
-agent-tick sanction \
-  --title "Run production SQL?" \
-  --body "Requested from MCP tool" \
-  --command "psql -f migrate.sql" \
-  --timeout 30m
+agent-tick install
+agent-tick setup --login
+agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick mcp
+agent-tick status-update "MCP preflight"
+agent-tick steering --title "Which path?" --choice safe="Safe path" --choice stop:deny="Stop"
+agent-tick sanction --title "Run production SQL?" --command "psql -f migrate.sql"
+agent-tick abandon apr_123
 ```
 
-Use `agent-tick sanction -- <command>` when the wrapper can express the gated operation as a local command:
+## Minimal stdio server entry
 
-```sh
-agent-tick sanction \
-  --title "Run production SQL?" \
-  --body "Requested from MCP tool" \
-  -- psql -f migrate.sql
+```toml
+[mcp_servers.agent_tick]
+command = "agent-tick"
+args = ["mcp"]
+startup_timeout_sec = 10
+tool_timeout_sec = 1800
 ```
 
-The older `agent-tick mcp` and `agent-tick adapter` commands are intentionally not documented as available commands because they do not exist in the current CLI. Reintroduce MCP/adapter support only with implementation and tests.
+Pre-approve only the Agent Tick MCP tools in hosts that require local tool approval. Do not broadly pre-approve shell or unrelated tools.
+
+## Local execution boundary
+
+Agent Tick does not run commands from MCP. A sanction returns an approve/deny decision; the MCP host or local workflow decides whether to continue.
+
+For Codex-specific configuration and verification prompts, see [`docs/codex.md`](../../docs/codex.md).

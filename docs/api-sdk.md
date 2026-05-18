@@ -25,7 +25,7 @@ import { AgentTickClient } from '@agent-tick/sdk';
 
 export function agentTickClient() {
   return new AgentTickClient({
-    baseUrl: process.env.AGENT_TICK_SERVER ?? 'https://agenttick.sh',
+    baseUrl: process.env.AGENT_TICK_SERVER ?? 'https://api.agenttick.sh',
     tokenProvider: () => process.env.AGENT_TICK_TOKEN,
     organizationIdProvider: () => process.env.AGENT_TICK_ORGANIZATION_ID
   });

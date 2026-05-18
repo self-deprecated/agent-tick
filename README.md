@@ -8,6 +8,7 @@ Product surfaces:
 
 - Marketing site: <https://agenttick.sh>
 - Hosted app: <https://app.agenttick.sh>
+- Hosted API: <https://api.agenttick.sh>
 - Documentation: <https://docs.agenttick.sh>
 
 ## Start here
@@ -31,10 +32,10 @@ If you prefer direct CLI setup, run the installer on the machine where your codi
 npx @self-deprecated/agent-tick install
 ```
 
-To only sign in without installing hooks yet:
+To only sign in and save a local token without installing hooks yet:
 
 ```sh
-npx @self-deprecated/agent-tick login
+npx @self-deprecated/agent-tick setup --login
 ```
 
 The installer opens Agent Tick in your browser, connects this machine to your hosted Agent Tick account, detects local AI coding agents, and installs supported integrations where available: Claude Code as Verified Hook + MCP, Codex via MCP Adapter, and Pi as a Native Extension. Other detected agents are shown as disabled scaffolds until their hook/config path is verified.
@@ -84,20 +85,20 @@ agent-tick status-update --state working --next "Run the build" "Tests are passi
 
 `agent-tick install` does two things:
 
-1. Runs browser-based CLI setup against `https://app.agenttick.sh` and saves an Agent Tick `agent_...` token locally in `~/.config/agent-tick/config.json`.
+1. Runs browser-based CLI setup against hosted Agent Tick by default, or the server passed with `--server`, and saves an Agent Tick `agent_...` token locally in `~/.config/agent-tick/config.json`.
 2. Detects local agent configs and installs supported integrations:
    - Claude Code: Verified Hook + MCP support. Hooks can route `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions; MCP is available through `agent-tick mcp`.
    - Codex: MCP Adapter support through `agent-tick mcp`.
    - Pi: Native Extension support via the repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts`.
    - Gemini, Cursor, OpenCode, generic `AGENTS.md`: detected and shown as disabled scaffolds until their hook/config behavior is verified.
 
-Useful installer options:
+Useful installer options. Omit `--server` for hosted Agent Tick; pass it only for self-hosted or custom deployments.
 
 ```sh
 agent-tick install --target claude --target codex
 agent-tick install --all
 agent-tick install --dry-run
-agent-tick install --server https://app.agenttick.sh
+agent-tick install --server https://tick.example.com
 agent-tick install --target claude --claude-scope local
 agent-tick install --target claude --claude-scope global
 agent-tick install --target claude --claude-sandbox allow
@@ -115,7 +116,7 @@ Self-hosting is not the default onboarding path. If you want it, use [SELFHOSTIN
 - Fastify API server
 - Svelte dashboard served by the server
 - Expo mobile app
-- `agent-tick` CLI with `install`, `setup`, `mode`, `sanction`, `steering`, `abandon`, and `status-update`
+- `agent-tick` CLI with `install`, `setup`, `mode`, `mcp`, `sanction`, `steering`, `abandon`, and `status-update`
 - SQLite persistence
 - optional Clerk human authentication for multi-user mode
 - local Agent Tick organizations, policies, approvals, audit logs, devices, and agent tokens

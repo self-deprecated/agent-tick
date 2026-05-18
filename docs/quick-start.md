@@ -19,6 +19,8 @@ Manual CLI path:
 npx @self-deprecated/agent-tick install
 ```
 
+The examples below use the `agent-tick` binary. If it is not on your `PATH`, run one-off commands with `npx @self-deprecated/agent-tick <command>` or install the package globally first.
+
 ## 2. Prove routing safely
 
 Use a safe steering test first:

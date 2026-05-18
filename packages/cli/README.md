@@ -17,7 +17,7 @@ npm install -g @self-deprecated/agent-tick
 agent-tick install
 ```
 
-The installer opens <https://app.agenttick.sh>, saves a local Agent Tick token, detects local coding agents, and installs supported integrations. Claude Code is supported as Verified Hook + MCP, Codex via MCP Adapter, and Pi as a Native Extension.
+The installer opens Agent Tick in your browser, saves a local Agent Tick token, detects local coding agents, and installs supported integrations. Claude Code is supported as Verified Hook + MCP, Codex via MCP Adapter, and Pi as a Native Extension.
 
 ## Use
 
@@ -93,8 +93,7 @@ agent-tick install --target claude --claude-profile headless --claude-steering a
 Browser sign-in without installing hooks:
 
 ```sh
-agent-tick login
-# equivalent: agent-tick setup --login
+agent-tick setup --login
 ```
 
 Manual setup for CI or self-hosted servers:
@@ -105,4 +104,4 @@ agent-tick setup --server https://tick.example.com --token agent_...
 
 Do not put tokens in logs or committed files.
 
-More documentation: <https://github.com/self-deprecated/agent-tick#readme>
+More documentation: <https://docs.agenttick.sh>
