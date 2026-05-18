@@ -6,7 +6,7 @@ Start here:
 
 - [Quick Start](./quick-start.md) — connect a machine and send safe test requests.
 - [CLI](./cli.md) — the core `status-update`, `steering`, and `sanction` commands.
-- [Integrations](./integrations.md) — setup guides for Claude Code, Codex, GitHub Actions, and reusable approval patterns.
+- [Integrations](./integrations.md) — setup guides for Claude Code, Codex, Pi, and GitHub Actions.
 - [iOS and Android app](./mobile-app.md) — install, pair, and respond from your phone.
 - [Self-Hosting](./self-hosting.md) — run your own Agent Tick server.
 - [Entitlement lifecycle](./entitlement-lifecycle.md) — trial, hosted personal service, and mobile app unlock states.

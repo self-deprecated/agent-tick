@@ -15,16 +15,16 @@ Product surfaces:
 
 Most users should use the hosted service at <https://app.agenttick.sh>.
 
-For the smoothest Claude Code setup, paste this prompt into your coding agent chat on the machine you want to configure:
+For the smoothest setup, paste this prompt into your coding agent chat on the machine you want to configure:
 
 ```text
 Fetch and follow the Agent Tick setup skill from:
 https://agenttick.sh/skill
 
-Use that skill to set up Agent Tick for Claude Code. Ask me how I plan to use it, enable status updates, steering, and sanctions by default unless I explicitly opt out, inspect my current Claude Code settings for conflicts, run a dry run first, explain exactly what will change, then install it after I confirm and verify the result. If Agent Tick is not installed yet, use the skill's first-time setup instructions. Do not frame questions around a specific UI surface; say Agent Tick or remote approval instead.
+Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kind of work I want remote approval for. Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
 ```
 
-The linked prompt-based skill flow works even when the target machine does not have this repo cloned. It inspects your agent configuration, recommends local or global scope, runs a dry run, explains exactly what will change, asks for confirmation, installs, and verifies while keeping status updates, steering, and sanctions enabled by default unless you opt out.
+The linked prompt-based skill flow works even when the target machine does not have this repo cloned. It inspects your agent configuration, chooses the right integration path, runs a dry run, explains exactly what will change, asks for confirmation, installs, and verifies.
 
 If you prefer direct CLI setup, run the installer on the machine where your coding agents run:
 
@@ -89,7 +89,7 @@ agent-tick status-update --state working --next "Run the build" "Tests are passi
 2. Detects local agent configs and installs supported integrations:
    - Claude Code: Verified Hook + MCP support. Hooks can route `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions; MCP is available through `agent-tick mcp`.
    - Codex: MCP Adapter support through `agent-tick mcp`.
-   - Pi: Native Extension support via the repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts`.
+   - Pi: Native Extension support via the repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts`; see [docs/pi.md](./docs/pi.md).
    - Gemini, Cursor, OpenCode, generic `AGENTS.md`: detected and shown as disabled scaffolds until their hook/config behavior is verified.
 
 Useful installer options. Omit `--server` for hosted Agent Tick; pass it only for self-hosted or custom deployments.

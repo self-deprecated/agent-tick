@@ -6,14 +6,14 @@ Agent Tick integrations are for three things:
 - **Steering** — a human chooses from bounded options.
 - **Sanctions** — a human approves or denies a specific local action before it proceeds.
 
-The CLI, MCP adapter, hooks, and GitHub Action are just ways to deliver those three interaction types. Agent Tick does not run commands on your phone or in the hosted app.
+The CLI, MCP adapter, hooks, native extensions, and GitHub Action are just ways to deliver those three interaction types. Agent Tick does not run commands on your phone or in the hosted app.
 
 ## Setup guides
 
 - [Claude Code](./claude-code.md) — install Verified Hooks for steering and Claude permission-prompt sanctions.
 - [Codex](./codex.md) — configure the Agent Tick MCP adapter for status updates, steering, and sanctions.
+- [Pi](./pi.md) — install the native Pi extension for Agent Tick sanctions around risky shell actions.
 - [GitHub Actions release Sanction tutorial](./github-actions-release-sanction-tutorial.md) — gate a workflow step before release or deploy.
-- [Approval templates](./approval-templates.md) — copyable request shapes for deploys, migrations, refunds, releases, and other bounded approvals.
 
 For first-time product setup, start with [Quick Start](./quick-start.md). For running your own server, see [Self-Hosting](./self-hosting.md).
 
