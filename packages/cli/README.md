@@ -93,7 +93,7 @@ agent-tick install --target claude --claude-profile headless --claude-steering a
 Browser sign-in without installing hooks:
 
 ```sh
-agent-tick setup --login
+agent-tick login
 ```
 
 Manual setup for CI or self-hosted servers:

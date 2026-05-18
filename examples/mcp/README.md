@@ -8,7 +8,7 @@ The adapter reuses the normal CLI setup and saved `agent_...` token. Do not comm
 
 ```sh
 agent-tick install
-agent-tick setup --login
+agent-tick login
 agent-tick setup --server https://tick.example.com --token agent_...
 agent-tick mcp
 agent-tick status-update "MCP preflight"

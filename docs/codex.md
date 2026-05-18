@@ -102,7 +102,7 @@ Expected result: Codex calls `agent_tick_sanction`; Agent Tick asks approve/deny
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `agent-tick mcp` fails with setup guidance | CLI config/token is missing. | Run `agent-tick install`, `agent-tick setup --login`, or `agent-tick setup --server ... --token ...`. |
+| `agent-tick mcp` fails with setup guidance | CLI config/token is missing. | Run `agent-tick install`, `agent-tick login`, or `agent-tick setup --server ... --token ...`. |
 | Codex asks for approval before every Agent Tick tool call | Agent Tick MCP tools are not pre-approved in Codex. | Approve only the Agent Tick MCP tools, not broad shell or unrelated tools. |
 | Local Codex prompt does not appear | MCP elicitations are disabled or unsupported. | Enable `mcp_elicitations` if available, or use the remote Agent Tick app/web request. |
 | Request times out or is denied | The human did not approve the action. | Stop or choose a safe alternative; do not run the protected action. |

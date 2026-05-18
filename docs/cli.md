@@ -15,7 +15,7 @@ npx @self-deprecated/agent-tick install
 Sign in and save a local token without installing hooks:
 
 ```sh
-npx @self-deprecated/agent-tick setup --login
+npx @self-deprecated/agent-tick login
 ```
 
 For self-hosted servers or CI, create an agent token in the dashboard and save it locally:

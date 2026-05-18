@@ -35,7 +35,7 @@ npx @self-deprecated/agent-tick install
 To only sign in and save a local token without installing hooks yet:
 
 ```sh
-npx @self-deprecated/agent-tick setup --login
+npx @self-deprecated/agent-tick login
 ```
 
 The installer opens Agent Tick in your browser, connects this machine to your hosted Agent Tick account, detects local AI coding agents, and installs supported integrations where available: Claude Code as Verified Hook + MCP, Codex via MCP Adapter, and Pi as a Native Extension. Other detected agents are shown as disabled scaffolds until their hook/config path is verified.
