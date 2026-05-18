@@ -53,4 +53,4 @@ export EXPO_NO_TELEMETRY=1
 export EAS_NO_VCS="${EAS_NO_VCS:-1}"
 
 cd "$repo_root/apps/mobile"
-exec corepack pnpm dlx eas-cli build --platform android --profile "$profile" --local "$@"
+exec corepack pnpm dlx --allow-build=dtrace-provider eas-cli build --platform android --profile "$profile" --local "$@"

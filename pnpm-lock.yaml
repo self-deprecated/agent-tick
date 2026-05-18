@@ -174,6 +174,9 @@ importers:
       '@types/react':
         specifier: 19.1.17
         version: 19.1.17
+      babel-preset-expo:
+        specifier: 54.0.10
+        version: 54.0.10(@babel/core@7.29.0)(@babel/runtime@7.29.2)(expo@54.0.34(@babel/core@7.29.0)(bufferutil@4.1.0)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@6.0.6))(react@19.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(react-refresh@0.14.2)
       jest:
         specifier: 29.7.0
         version: 29.7.0(@types/node@24.12.3)
