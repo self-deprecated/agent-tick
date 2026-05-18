@@ -43,7 +43,7 @@ corepack pnpm test
 corepack pnpm build
 ```
 
-Follow `docs/dependency-policy.md` for npm dependency changes. Pin npm package versions exactly, commit `pnpm-lock.yaml` with dependency changes, use frozen lockfile installs for CI/release/Docker/reproducibility checks, and keep the `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml` minimal and explicit. Before finishing any dependency or version-bump task, audit whether `flake.nix` contains a related `fetchPnpmDeps` derivation and validate/update its hash in the same change.
+Follow `DEVELOPMENT.md#dependency-policy` for npm dependency changes. Pin npm package versions exactly, commit `pnpm-lock.yaml` with dependency changes, use frozen lockfile installs for CI/release/Docker/reproducibility checks, and keep the `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml` minimal and explicit. Before finishing any dependency or version-bump task, audit whether `flake.nix` contains a related `fetchPnpmDeps` derivation and validate/update its hash in the same change.
 
 Docker is the official server distribution path:
 
@@ -98,7 +98,7 @@ Keep the first-time user flow simple:
 
 - README should point users to either hosted product usage (`https://app.agenttick.sh`) or self-hosting.
 - Self-hosting details belong in `SELFHOSTING.md`.
-- Product-vs-self-hosted usage flow belongs in `docs/using-agent-tick.md`.
+- Product-vs-self-hosted usage flow belongs in user-facing docs such as `docs/quick-start.md`, `docs/self-hosting.md`, and `docs/integrations.md`.
 - Integration details belong in `docs/integrations.md`.
 - Development workflow belongs in `DEVELOPMENT.md`.
 

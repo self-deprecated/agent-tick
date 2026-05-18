@@ -4,7 +4,7 @@ Thanks for contributing to Agent Tick.
 
 ## Dependency changes
 
-Follow [`docs/dependency-policy.md`](docs/dependency-policy.md) for npm dependency changes.
+Follow [`DEVELOPMENT.md#dependency-policy`](DEVELOPMENT.md#dependency-policy) for npm dependency changes.
 
 In short:
 
