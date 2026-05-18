@@ -22,6 +22,15 @@
       "build": [
         "corepack pnpm build"
       ],
+      "docs": [
+        "corepack pnpm --filter agent-tick-docs start"
+      ],
+      "docs:build": [
+        "corepack pnpm --filter agent-tick-docs build"
+      ],
+      "docs:serve": [
+        "corepack pnpm --filter agent-tick-docs serve"
+      ],
       "check": [
         "corepack pnpm typecheck && corepack pnpm test && corepack pnpm build && corepack pnpm --filter agent-tick-admin check && python scripts/validate-mobile-eas-config.py"
       ],

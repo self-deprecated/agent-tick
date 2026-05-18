@@ -2,6 +2,8 @@
 .pi/
 .mcp.json
 node_modules/
+.pnpm-store/
+.pnpm/
 .expo/
 dist/
 build/
