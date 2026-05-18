@@ -1,18 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
-jest.mock("@clerk/expo/native", () => {
-  const React = require("react");
-  const { Text } = require("react-native");
-  return {
-    AuthView: ({ mode, isDismissable }: { mode: string; isDismissable: boolean }) => React.createElement(
-      Text,
-      null,
-      `Native Clerk AuthView ${mode} ${String(isDismissable)}`,
-    ),
-  };
-});
-
 const { ClerkSignInScreen } = require("./ClerkSignInScreen") as typeof import("./ClerkSignInScreen");
 
 describe("ClerkSignInScreen", () => {
