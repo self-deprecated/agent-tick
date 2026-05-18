@@ -42,6 +42,7 @@ const config = {
             'scoped-guest-approval-links.md',
             'activity-history-cleanup-deletion.md',
             'deletion-controls-verification.md',
+            'mobile-permissions-audit.md',
             'hosted-data-inventory.md',
             'hosted-subprocessors-regions.md',
             'api-sdk.md'
