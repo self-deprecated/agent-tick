@@ -222,6 +222,101 @@ export const BillingStatusSchema = z.object({
 });
 export type BillingStatus = z.infer<typeof BillingStatusSchema>;
 
+export const BillingProductKeySchema = z.enum(['lifetime_unlock', 'hosted_personal_monthly', 'hosted_personal_yearly']);
+export type BillingProductKey = z.infer<typeof BillingProductKeySchema>;
+
+export const BillingPlatformSchema = z.enum(['ios', 'android']);
+export type BillingPlatform = z.infer<typeof BillingPlatformSchema>;
+
+export const BillingProductSchema = z.object({
+  id: z.string().optional(),
+  productKey: BillingProductKeySchema,
+  kind: z.enum(['non_consumable', 'subscription']).or(z.string()),
+  entitlementKey: z.enum(['lifetime_app_unlock', 'hosted_personal']).or(z.string()),
+  appleProductId: z.string().optional(),
+  googleProductId: z.string().optional(),
+  googleBasePlanId: z.string().optional(),
+  active: z.boolean().default(true),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional()
+});
+export type BillingProduct = z.infer<typeof BillingProductSchema>;
+
+export const BillingProductsResponseSchema = z.object({
+  products: z.array(BillingProductSchema)
+});
+export type BillingProductsResponse = z.infer<typeof BillingProductsResponseSchema>;
+
+export const PersonalEntitlementSchema = z.object({
+  userId: z.string(),
+  trialStartedAt: z.string(),
+  appUnlockedAt: z.string().optional(),
+  includedHostedActivatedAt: z.string().optional(),
+  hostedSubscriptionEndsAt: z.string().optional(),
+  hostedSubscriptionCanceledAt: z.string().optional(),
+  hostedDataDeletedAt: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+export type PersonalEntitlement = z.infer<typeof PersonalEntitlementSchema>;
+
+export const HostedPersonalStatusSchema = z.object({
+  lifecycle: z.enum(['active', 'read_only_grace', 'expired', 'deleted']).or(z.string()),
+  trialEndsAt: z.string(),
+  includedHostedEndsAt: z.string().optional(),
+  hostedSubscriptionEndsAt: z.string().optional(),
+  readOnlyGraceEndsAt: z.string().optional(),
+  responsesEnabled: z.boolean(),
+  routingEnabled: z.boolean(),
+  pushEnabled: z.boolean(),
+  historyRetentionDays: z.number().int().min(0)
+});
+export type HostedPersonalStatus = z.infer<typeof HostedPersonalStatusSchema>;
+
+export const BillingActiveEntitlementSchema = z.object({
+  active: z.boolean(),
+  originProvider: z.string().optional(),
+  originPlatform: z.enum(['ios', 'android', 'unknown']).or(z.string()).optional(),
+  purchasedAt: z.string().optional(),
+  expiresAt: z.string().optional(),
+  willRenew: z.boolean().optional()
+});
+export type BillingActiveEntitlement = z.infer<typeof BillingActiveEntitlementSchema>;
+
+export const BillingPurchaseAvailabilitySchema = z.object({
+  allowed: z.boolean(),
+  reason: z.string().optional(),
+  originProvider: z.string().optional(),
+  originPlatform: z.enum(['ios', 'android', 'unknown']).or(z.string()).optional()
+});
+export type BillingPurchaseAvailability = z.infer<typeof BillingPurchaseAvailabilitySchema>;
+
+export const PersonalBillingStatusSchema = z.object({
+  entitlement: PersonalEntitlementSchema,
+  hostedPersonal: HostedPersonalStatusSchema,
+  products: z.array(BillingProductSchema),
+  activeEntitlements: z.object({
+    lifetimeUnlock: BillingActiveEntitlementSchema,
+    hostedPersonal: BillingActiveEntitlementSchema
+  }),
+  purchaseAvailability: z.record(BillingProductKeySchema, BillingPurchaseAvailabilitySchema)
+});
+export type PersonalBillingStatus = z.infer<typeof PersonalBillingStatusSchema>;
+
+export const BillingPurchasePreflightRequestSchema = z.object({
+  productKey: BillingProductKeySchema,
+  platform: BillingPlatformSchema
+});
+export type BillingPurchasePreflightRequest = z.input<typeof BillingPurchasePreflightRequestSchema>;
+
+export const BillingPurchasePreflightResponseSchema = z.object({
+  purchaseAttemptId: z.string().optional(),
+  providerUserId: z.string(),
+  allowed: z.boolean(),
+  reason: z.string().optional()
+});
+export type BillingPurchasePreflightResponse = z.infer<typeof BillingPurchasePreflightResponseSchema>;
+
 export const ProjectRecordSchema = z.object({
   projectId: z.string(),
   organizationId: z.string(),

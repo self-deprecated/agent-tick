@@ -53,3 +53,5 @@ The export script writes generated SVGs for each scene/size and PNGs when ImageM
 ## Review notes
 
 Agent Tick routes approval decisions for local developer tools. It does not provide remote desktop, remote shell, or general device control. Push notifications are minimal by default; full request details are reviewed inside the app.
+
+Trial includes hosted and self-hosted app use. Lifetime app unlock is a non-consumable in-app purchase for first-party app use with self-hosted servers after trial. Hosted personal service is an optional auto-renewable subscription for routing, push, updates, and uptime. The MVP app does not include external payment links.

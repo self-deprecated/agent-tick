@@ -102,6 +102,99 @@ export interface UpdatePersonalEntitlementInput {
   hostedDataDeletedAt?: string | null;
 }
 
+export interface BillingProductRecord {
+  id: string;
+  productKey: string;
+  kind: string;
+  entitlementKey: string;
+  appleProductId: string | undefined;
+  googleProductId: string | undefined;
+  googleBasePlanId: string | undefined;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertBillingProductInput {
+  productKey: string;
+  kind: string;
+  entitlementKey: string;
+  appleProductId?: string | null;
+  googleProductId?: string | null;
+  googleBasePlanId?: string | null;
+  active?: boolean;
+}
+
+export interface BillingPurchaseAttemptRecord {
+  attemptId: string;
+  userId: string;
+  productKey: string;
+  productGroup: string;
+  platform: string;
+  provider: string;
+  status: string;
+  providerUserId: string | undefined;
+  idempotencyKey: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBillingPurchaseAttemptInput {
+  userId: string;
+  productKey: string;
+  productGroup: string;
+  platform: string;
+  provider: string;
+  providerUserId?: string;
+  idempotencyKey: string;
+  expiresAt: string;
+}
+
+export interface BillingTransactionRecord {
+  transactionId: string;
+  userId: string;
+  provider: string;
+  environment: string;
+  productKey: string;
+  entitlementKey: string;
+  platform: string;
+  providerTransactionId: string | undefined;
+  providerOriginalTransactionId: string | undefined;
+  providerPurchaseToken: string | undefined;
+  status: string;
+  purchasedAt: string | undefined;
+  expiresAt: string | undefined;
+  canceledAt: string | undefined;
+  revokedAt: string | undefined;
+  rawEventJSON: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertBillingTransactionInput {
+  userId: string;
+  provider: string;
+  environment: string;
+  productKey: string;
+  entitlementKey: string;
+  platform: string;
+  providerTransactionId?: string | null;
+  providerOriginalTransactionId?: string | null;
+  providerPurchaseToken?: string | null;
+  status: string;
+  purchasedAt?: string | null;
+  expiresAt?: string | null;
+  canceledAt?: string | null;
+  revokedAt?: string | null;
+  rawEventJSON?: string | null;
+}
+
+export interface UpsertBillingTransactionResult {
+  record: BillingTransactionRecord;
+  created: boolean;
+}
+
 export interface ClerkIdentityProfile {
   issuer: string;
   subject: string;
@@ -495,6 +588,13 @@ export interface AsyncAgentTickStore {
   verifyAgentToken(token: string, now?: string): Awaitable<AgentTokenAuth | null>;
   getOrStartPersonalEntitlement(userId: string, now?: string): Awaitable<PersonalEntitlementRecord>;
   updatePersonalEntitlement(input: UpdatePersonalEntitlementInput, now?: string): Awaitable<PersonalEntitlementRecord>;
+  upsertBillingProducts(products: UpsertBillingProductInput[], now?: string): Awaitable<void>;
+  listBillingProducts(activeOnly?: boolean): Awaitable<BillingProductRecord[]>;
+  createBillingPurchaseAttempt(input: CreateBillingPurchaseAttemptInput, now?: string): Awaitable<BillingPurchaseAttemptRecord>;
+  updateBillingPurchaseAttemptStatus(attemptId: string, status: string, now?: string): Awaitable<BillingPurchaseAttemptRecord | null>;
+  listActiveBillingPurchaseAttempts(userId: string, productGroup: string, now?: string): Awaitable<BillingPurchaseAttemptRecord[]>;
+  upsertBillingTransaction(input: UpsertBillingTransactionInput, now?: string): Awaitable<UpsertBillingTransactionResult>;
+  listBillingTransactionsForUser(userId: string): Awaitable<BillingTransactionRecord[]>;
   revokeAgentTokensForOwner(userId: string, now?: string): Awaitable<number>;
   deleteHostedPersonalData(userId: string, organizationId: string, now?: string): Awaitable<void>;
   createApprovalRequest(input: CreateApprovalInput, now?: string): Awaitable<ApprovalRequest>;
@@ -582,6 +682,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
     this.db.exec(MIGRATION_0002_MOBILE_DIAGNOSTICS);
     this.db.exec(MIGRATION_0003_AGENT_STATUS_UPDATES);
     this.db.exec(MIGRATION_0004_PERSONAL_ENTITLEMENTS);
+    this.db.exec(MIGRATION_0005_BILLING);
     this.db.exec('DROP INDEX IF EXISTS devices_user_installation_idx');
     this.db.exec('DROP INDEX IF EXISTS devices_user_org_installation_idx');
     this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS devices_user_installation_idx ON devices(user_id, installation_id) WHERE installation_id IS NOT NULL AND unregistered_at IS NULL');
@@ -1463,6 +1564,155 @@ export class AgentTickStore implements AsyncAgentTickStore {
     return this.getOrStartPersonalEntitlement(input.userId, now);
   }
 
+  upsertBillingProducts(products: UpsertBillingProductInput[], now = new Date().toISOString()): void {
+    const statement = this.db.prepare(`
+      INSERT INTO billing_products(id, product_key, kind, entitlement_key, apple_product_id, google_product_id, google_base_plan_id, active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(product_key) DO UPDATE SET
+        kind = excluded.kind,
+        entitlement_key = excluded.entitlement_key,
+        apple_product_id = excluded.apple_product_id,
+        google_product_id = excluded.google_product_id,
+        google_base_plan_id = excluded.google_base_plan_id,
+        active = excluded.active,
+        updated_at = excluded.updated_at
+    `);
+    const tx = this.db.transaction(() => {
+      for (const product of products) {
+        statement.run(
+          `bprod_${product.productKey}`,
+          product.productKey,
+          product.kind,
+          product.entitlementKey,
+          product.appleProductId ?? null,
+          product.googleProductId ?? null,
+          product.googleBasePlanId ?? null,
+          product.active === false ? 0 : 1,
+          now,
+          now
+        );
+      }
+    });
+    tx();
+  }
+
+  listBillingProducts(activeOnly = false): BillingProductRecord[] {
+    const rows = this.db.prepare(`SELECT * FROM billing_products ${activeOnly ? 'WHERE active = 1' : ''} ORDER BY product_key ASC`).all() as BillingProductRow[];
+    return rows.map(mapBillingProductRow);
+  }
+
+  createBillingPurchaseAttempt(input: CreateBillingPurchaseAttemptInput, now = new Date().toISOString()): BillingPurchaseAttemptRecord {
+    const attemptId = newID('bpa');
+    this.db.prepare(`
+      INSERT INTO billing_purchase_attempts(id, user_id, product_key, product_group, platform, provider, status, provider_user_id, idempotency_key, expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(attemptId, input.userId, input.productKey, input.productGroup, input.platform, input.provider, 'started', input.providerUserId ?? null, input.idempotencyKey, input.expiresAt, now, now);
+    return mapBillingPurchaseAttemptRow(this.db.prepare('SELECT * FROM billing_purchase_attempts WHERE id = ?').get(attemptId) as BillingPurchaseAttemptRow);
+  }
+
+  updateBillingPurchaseAttemptStatus(attemptId: string, status: string, now = new Date().toISOString()): BillingPurchaseAttemptRecord | null {
+    this.db.prepare('UPDATE billing_purchase_attempts SET status = ?, updated_at = ? WHERE id = ?').run(status, now, attemptId);
+    const row = this.db.prepare('SELECT * FROM billing_purchase_attempts WHERE id = ?').get(attemptId) as BillingPurchaseAttemptRow | undefined;
+    return row ? mapBillingPurchaseAttemptRow(row) : null;
+  }
+
+  listActiveBillingPurchaseAttempts(userId: string, productGroup: string, now = new Date().toISOString()): BillingPurchaseAttemptRecord[] {
+    const rows = this.db.prepare("SELECT * FROM billing_purchase_attempts WHERE user_id = ? AND product_group = ? AND status = 'started' AND expires_at > ? ORDER BY created_at ASC").all(userId, productGroup, now) as BillingPurchaseAttemptRow[];
+    return rows.map(mapBillingPurchaseAttemptRow);
+  }
+
+  upsertBillingTransaction(input: UpsertBillingTransactionInput, now = new Date().toISOString()): UpsertBillingTransactionResult {
+    const existing = this.findBillingTransaction(input);
+    if (existing) {
+      this.db.prepare(`
+        UPDATE billing_transactions SET
+          user_id = ?,
+          environment = ?,
+          product_key = ?,
+          entitlement_key = ?,
+          platform = ?,
+          provider_transaction_id = ?,
+          provider_original_transaction_id = ?,
+          provider_purchase_token = ?,
+          status = ?,
+          purchased_at = ?,
+          expires_at = ?,
+          canceled_at = ?,
+          revoked_at = ?,
+          raw_event_json = ?,
+          updated_at = ?
+        WHERE id = ?
+      `).run(
+        input.userId,
+        input.environment,
+        input.productKey,
+        input.entitlementKey,
+        input.platform,
+        input.providerTransactionId === undefined ? existing.provider_transaction_id : input.providerTransactionId,
+        input.providerOriginalTransactionId === undefined ? existing.provider_original_transaction_id : input.providerOriginalTransactionId,
+        input.providerPurchaseToken === undefined ? existing.provider_purchase_token : input.providerPurchaseToken,
+        input.status,
+        input.purchasedAt === undefined ? existing.purchased_at : input.purchasedAt,
+        input.expiresAt === undefined ? existing.expires_at : input.expiresAt,
+        input.canceledAt === undefined ? existing.canceled_at : input.canceledAt,
+        input.revokedAt === undefined ? existing.revoked_at : input.revokedAt,
+        input.rawEventJSON === undefined ? existing.raw_event_json : input.rawEventJSON,
+        now,
+        existing.id
+      );
+      const row = this.db.prepare('SELECT * FROM billing_transactions WHERE id = ?').get(existing.id) as BillingTransactionRow;
+      return { record: mapBillingTransactionRow(row), created: false };
+    }
+
+    const transactionId = newID('btxn');
+    this.db.prepare(`
+      INSERT INTO billing_transactions(id, user_id, provider, environment, product_key, entitlement_key, platform, provider_transaction_id, provider_original_transaction_id, provider_purchase_token, status, purchased_at, expires_at, canceled_at, revoked_at, raw_event_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      transactionId,
+      input.userId,
+      input.provider,
+      input.environment,
+      input.productKey,
+      input.entitlementKey,
+      input.platform,
+      input.providerTransactionId ?? null,
+      input.providerOriginalTransactionId ?? null,
+      input.providerPurchaseToken ?? null,
+      input.status,
+      input.purchasedAt ?? null,
+      input.expiresAt ?? null,
+      input.canceledAt ?? null,
+      input.revokedAt ?? null,
+      input.rawEventJSON ?? null,
+      now,
+      now
+    );
+    const row = this.db.prepare('SELECT * FROM billing_transactions WHERE id = ?').get(transactionId) as BillingTransactionRow;
+    return { record: mapBillingTransactionRow(row), created: true };
+  }
+
+  listBillingTransactionsForUser(userId: string): BillingTransactionRecord[] {
+    const rows = this.db.prepare('SELECT * FROM billing_transactions WHERE user_id = ? ORDER BY created_at ASC, id ASC').all(userId) as BillingTransactionRow[];
+    return rows.map(mapBillingTransactionRow);
+  }
+
+  private findBillingTransaction(input: UpsertBillingTransactionInput): BillingTransactionRow | null {
+    if (input.providerTransactionId) {
+      const row = this.db.prepare('SELECT * FROM billing_transactions WHERE provider = ? AND provider_transaction_id = ?').get(input.provider, input.providerTransactionId) as BillingTransactionRow | undefined;
+      if (row) return row;
+    }
+    if (input.providerOriginalTransactionId) {
+      const row = this.db.prepare('SELECT * FROM billing_transactions WHERE provider = ? AND provider_original_transaction_id = ? AND product_key = ?').get(input.provider, input.providerOriginalTransactionId, input.productKey) as BillingTransactionRow | undefined;
+      if (row) return row;
+    }
+    if (input.providerPurchaseToken) {
+      const row = this.db.prepare('SELECT * FROM billing_transactions WHERE provider = ? AND provider_purchase_token = ?').get(input.provider, input.providerPurchaseToken) as BillingTransactionRow | undefined;
+      if (row) return row;
+    }
+    return null;
+  }
+
   revokeAgentTokensForOwner(userId: string, now = new Date().toISOString()): number {
     return this.db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE owner_user_id = ? AND revoked_at IS NULL').run(now, userId).changes;
   }
@@ -2290,6 +2540,61 @@ function mapPersonalEntitlementRow(row: PersonalEntitlementRow): PersonalEntitle
   };
 }
 
+function mapBillingProductRow(row: BillingProductRow): BillingProductRecord {
+  return {
+    id: row.id,
+    productKey: row.product_key,
+    kind: row.kind,
+    entitlementKey: row.entitlement_key,
+    appleProductId: row.apple_product_id ?? undefined,
+    googleProductId: row.google_product_id ?? undefined,
+    googleBasePlanId: row.google_base_plan_id ?? undefined,
+    active: Boolean(row.active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapBillingPurchaseAttemptRow(row: BillingPurchaseAttemptRow): BillingPurchaseAttemptRecord {
+  return {
+    attemptId: row.id,
+    userId: row.user_id,
+    productKey: row.product_key,
+    productGroup: row.product_group,
+    platform: row.platform,
+    provider: row.provider,
+    status: row.status,
+    providerUserId: row.provider_user_id ?? undefined,
+    idempotencyKey: row.idempotency_key,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapBillingTransactionRow(row: BillingTransactionRow): BillingTransactionRecord {
+  return {
+    transactionId: row.id,
+    userId: row.user_id,
+    provider: row.provider,
+    environment: row.environment,
+    productKey: row.product_key,
+    entitlementKey: row.entitlement_key,
+    platform: row.platform,
+    providerTransactionId: row.provider_transaction_id ?? undefined,
+    providerOriginalTransactionId: row.provider_original_transaction_id ?? undefined,
+    providerPurchaseToken: row.provider_purchase_token ?? undefined,
+    status: row.status,
+    purchasedAt: row.purchased_at ?? undefined,
+    expiresAt: row.expires_at ?? undefined,
+    canceledAt: row.canceled_at ?? undefined,
+    revokedAt: row.revoked_at ?? undefined,
+    rawEventJSON: row.raw_event_json ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function mapAvailabilityRow(row: AvailabilityRow): AvailabilityRecord {
   return {
     userId: row.user_id,
@@ -2708,6 +3013,55 @@ interface PersonalEntitlementRow {
   hosted_subscription_ends_at: string | null;
   hosted_subscription_canceled_at: string | null;
   hosted_data_deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BillingProductRow {
+  id: string;
+  product_key: string;
+  kind: string;
+  entitlement_key: string;
+  apple_product_id: string | null;
+  google_product_id: string | null;
+  google_base_plan_id: string | null;
+  active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BillingPurchaseAttemptRow {
+  id: string;
+  user_id: string;
+  product_key: string;
+  product_group: string;
+  platform: string;
+  provider: string;
+  status: string;
+  provider_user_id: string | null;
+  idempotency_key: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BillingTransactionRow {
+  id: string;
+  user_id: string;
+  provider: string;
+  environment: string;
+  product_key: string;
+  entitlement_key: string;
+  platform: string;
+  provider_transaction_id: string | null;
+  provider_original_transaction_id: string | null;
+  provider_purchase_token: string | null;
+  status: string;
+  purchased_at: string | null;
+  expires_at: string | null;
+  canceled_at: string | null;
+  revoked_at: string | null;
+  raw_event_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -3175,4 +3529,62 @@ CREATE TABLE IF NOT EXISTS personal_entitlements (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+`;
+
+const MIGRATION_0005_BILLING = `
+CREATE TABLE IF NOT EXISTS billing_products (
+  id TEXT PRIMARY KEY,
+  product_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  entitlement_key TEXT NOT NULL,
+  apple_product_id TEXT,
+  google_product_id TEXT,
+  google_base_plan_id TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS billing_purchase_attempts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_key TEXT NOT NULL,
+  product_group TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  provider_user_id TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS billing_purchase_attempts_user_group_idx ON billing_purchase_attempts(user_id, product_group, status, expires_at);
+
+CREATE TABLE IF NOT EXISTS billing_transactions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  environment TEXT NOT NULL,
+  product_key TEXT NOT NULL,
+  entitlement_key TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  provider_transaction_id TEXT,
+  provider_original_transaction_id TEXT,
+  provider_purchase_token TEXT,
+  status TEXT NOT NULL,
+  purchased_at TEXT,
+  expires_at TEXT,
+  canceled_at TEXT,
+  revoked_at TEXT,
+  raw_event_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS billing_transactions_provider_transaction_idx ON billing_transactions(provider, provider_transaction_id) WHERE provider_transaction_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS billing_transactions_provider_original_product_idx ON billing_transactions(provider, provider_original_transaction_id, product_key) WHERE provider_original_transaction_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS billing_transactions_provider_purchase_token_idx ON billing_transactions(provider, provider_purchase_token) WHERE provider_purchase_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS billing_transactions_user_entitlement_status_idx ON billing_transactions(user_id, entitlement_key, status);
 `;

@@ -379,5 +379,65 @@ CREATE TABLE IF NOT EXISTS personal_entitlements (
   updated_at TEXT NOT NULL
 );
 `
+  },
+  {
+    version: '0004_billing',
+    sql: `
+CREATE TABLE IF NOT EXISTS billing_products (
+  id TEXT PRIMARY KEY,
+  product_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  entitlement_key TEXT NOT NULL,
+  apple_product_id TEXT,
+  google_product_id TEXT,
+  google_base_plan_id TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS billing_purchase_attempts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  product_key TEXT NOT NULL,
+  product_group TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  provider_user_id TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS billing_purchase_attempts_user_group_idx ON billing_purchase_attempts(user_id, product_group, status, expires_at);
+
+CREATE TABLE IF NOT EXISTS billing_transactions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  environment TEXT NOT NULL,
+  product_key TEXT NOT NULL,
+  entitlement_key TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  provider_transaction_id TEXT,
+  provider_original_transaction_id TEXT,
+  provider_purchase_token TEXT,
+  status TEXT NOT NULL,
+  purchased_at TEXT,
+  expires_at TEXT,
+  canceled_at TEXT,
+  revoked_at TEXT,
+  raw_event_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS billing_transactions_provider_transaction_idx ON billing_transactions(provider, provider_transaction_id) WHERE provider_transaction_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS billing_transactions_provider_original_product_idx ON billing_transactions(provider, provider_original_transaction_id, product_key) WHERE provider_original_transaction_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS billing_transactions_provider_purchase_token_idx ON billing_transactions(provider, provider_purchase_token) WHERE provider_purchase_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS billing_transactions_user_entitlement_status_idx ON billing_transactions(user_id, entitlement_key, status);
+`
   }
 ];

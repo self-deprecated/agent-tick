@@ -62,8 +62,15 @@ import type {
   UpsertTeamMemberInput,
   UserProfileRecord,
   AvailabilityRecord,
+  BillingProductRecord,
+  BillingPurchaseAttemptRecord,
+  BillingTransactionRecord,
+  CreateBillingPurchaseAttemptInput,
   PersonalEntitlementRecord,
-  UpdatePersonalEntitlementInput
+  UpdatePersonalEntitlementInput,
+  UpsertBillingProductInput,
+  UpsertBillingTransactionInput,
+  UpsertBillingTransactionResult
 } from './index.js';
 
 const DEFAULT_USER_ID = 'usr_default';
@@ -182,6 +189,55 @@ interface PersonalEntitlementRow {
   hosted_subscription_ends_at: string | null;
   hosted_subscription_canceled_at: string | null;
   hosted_data_deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BillingProductRow {
+  id: string;
+  product_key: string;
+  kind: string;
+  entitlement_key: string;
+  apple_product_id: string | null;
+  google_product_id: string | null;
+  google_base_plan_id: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BillingPurchaseAttemptRow {
+  id: string;
+  user_id: string;
+  product_key: string;
+  product_group: string;
+  platform: string;
+  provider: string;
+  status: string;
+  provider_user_id: string | null;
+  idempotency_key: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BillingTransactionRow {
+  id: string;
+  user_id: string;
+  provider: string;
+  environment: string;
+  product_key: string;
+  entitlement_key: string;
+  platform: string;
+  provider_transaction_id: string | null;
+  provider_original_transaction_id: string | null;
+  provider_purchase_token: string | null;
+  status: string;
+  purchased_at: string | null;
+  expires_at: string | null;
+  canceled_at: string | null;
+  revoked_at: string | null;
+  raw_event_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1066,6 +1122,157 @@ export class PostgresAgentTickStore extends PostgresStoreConnection implements A
       input.userId
     ]);
     return this.getOrStartPersonalEntitlement(input.userId, now);
+  }
+
+  async upsertBillingProducts(products: UpsertBillingProductInput[], now = new Date().toISOString()): Promise<void> {
+    await this.transaction(async (query) => {
+      for (const product of products) {
+        await query(`
+          INSERT INTO billing_products(id, product_key, kind, entitlement_key, apple_product_id, google_product_id, google_base_plan_id, active, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (product_key) DO UPDATE SET
+            kind = EXCLUDED.kind,
+            entitlement_key = EXCLUDED.entitlement_key,
+            apple_product_id = EXCLUDED.apple_product_id,
+            google_product_id = EXCLUDED.google_product_id,
+            google_base_plan_id = EXCLUDED.google_base_plan_id,
+            active = EXCLUDED.active,
+            updated_at = EXCLUDED.updated_at
+        `, [
+          `bprod_${product.productKey}`,
+          product.productKey,
+          product.kind,
+          product.entitlementKey,
+          product.appleProductId ?? null,
+          product.googleProductId ?? null,
+          product.googleBasePlanId ?? null,
+          product.active === false ? false : true,
+          now,
+          now
+        ]);
+      }
+    });
+  }
+
+  async listBillingProducts(activeOnly = false): Promise<BillingProductRecord[]> {
+    const rows = await this.many<BillingProductRow>(`SELECT * FROM billing_products ${activeOnly ? 'WHERE active = true' : ''} ORDER BY product_key ASC`);
+    return rows.map(mapBillingProductRow);
+  }
+
+  async createBillingPurchaseAttempt(input: CreateBillingPurchaseAttemptInput, now = new Date().toISOString()): Promise<BillingPurchaseAttemptRecord> {
+    const attemptId = newID('bpa');
+    await this.pool.query(`
+      INSERT INTO billing_purchase_attempts(id, user_id, product_key, product_group, platform, provider, status, provider_user_id, idempotency_key, expires_at, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `, [attemptId, input.userId, input.productKey, input.productGroup, input.platform, input.provider, 'started', input.providerUserId ?? null, input.idempotencyKey, input.expiresAt, now, now]);
+    const row = await this.one<BillingPurchaseAttemptRow>('SELECT * FROM billing_purchase_attempts WHERE id = $1', [attemptId]);
+    if (!row) throw new Error('Created billing purchase attempt was not found');
+    return mapBillingPurchaseAttemptRow(row);
+  }
+
+  async updateBillingPurchaseAttemptStatus(attemptId: string, status: string, now = new Date().toISOString()): Promise<BillingPurchaseAttemptRecord | null> {
+    await this.pool.query('UPDATE billing_purchase_attempts SET status = $1, updated_at = $2 WHERE id = $3', [status, now, attemptId]);
+    const row = await this.one<BillingPurchaseAttemptRow>('SELECT * FROM billing_purchase_attempts WHERE id = $1', [attemptId]);
+    return row ? mapBillingPurchaseAttemptRow(row) : null;
+  }
+
+  async listActiveBillingPurchaseAttempts(userId: string, productGroup: string, now = new Date().toISOString()): Promise<BillingPurchaseAttemptRecord[]> {
+    const rows = await this.many<BillingPurchaseAttemptRow>("SELECT * FROM billing_purchase_attempts WHERE user_id = $1 AND product_group = $2 AND status = 'started' AND expires_at > $3 ORDER BY created_at ASC", [userId, productGroup, now]);
+    return rows.map(mapBillingPurchaseAttemptRow);
+  }
+
+  async upsertBillingTransaction(input: UpsertBillingTransactionInput, now = new Date().toISOString()): Promise<UpsertBillingTransactionResult> {
+    const existing = await this.findBillingTransaction(input);
+    if (existing) {
+      await this.pool.query(`
+        UPDATE billing_transactions SET
+          user_id = $1,
+          environment = $2,
+          product_key = $3,
+          entitlement_key = $4,
+          platform = $5,
+          provider_transaction_id = $6,
+          provider_original_transaction_id = $7,
+          provider_purchase_token = $8,
+          status = $9,
+          purchased_at = $10,
+          expires_at = $11,
+          canceled_at = $12,
+          revoked_at = $13,
+          raw_event_json = $14,
+          updated_at = $15
+        WHERE id = $16
+      `, [
+        input.userId,
+        input.environment,
+        input.productKey,
+        input.entitlementKey,
+        input.platform,
+        input.providerTransactionId === undefined ? existing.provider_transaction_id : input.providerTransactionId,
+        input.providerOriginalTransactionId === undefined ? existing.provider_original_transaction_id : input.providerOriginalTransactionId,
+        input.providerPurchaseToken === undefined ? existing.provider_purchase_token : input.providerPurchaseToken,
+        input.status,
+        input.purchasedAt === undefined ? existing.purchased_at : input.purchasedAt,
+        input.expiresAt === undefined ? existing.expires_at : input.expiresAt,
+        input.canceledAt === undefined ? existing.canceled_at : input.canceledAt,
+        input.revokedAt === undefined ? existing.revoked_at : input.revokedAt,
+        input.rawEventJSON === undefined ? existing.raw_event_json : input.rawEventJSON,
+        now,
+        existing.id
+      ]);
+      const row = await this.one<BillingTransactionRow>('SELECT * FROM billing_transactions WHERE id = $1', [existing.id]);
+      if (!row) throw new Error('Updated billing transaction was not found');
+      return { record: mapBillingTransactionRow(row), created: false };
+    }
+
+    const transactionId = newID('btxn');
+    await this.pool.query(`
+      INSERT INTO billing_transactions(id, user_id, provider, environment, product_key, entitlement_key, platform, provider_transaction_id, provider_original_transaction_id, provider_purchase_token, status, purchased_at, expires_at, canceled_at, revoked_at, raw_event_json, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+    `, [
+      transactionId,
+      input.userId,
+      input.provider,
+      input.environment,
+      input.productKey,
+      input.entitlementKey,
+      input.platform,
+      input.providerTransactionId ?? null,
+      input.providerOriginalTransactionId ?? null,
+      input.providerPurchaseToken ?? null,
+      input.status,
+      input.purchasedAt ?? null,
+      input.expiresAt ?? null,
+      input.canceledAt ?? null,
+      input.revokedAt ?? null,
+      input.rawEventJSON ?? null,
+      now,
+      now
+    ]);
+    const row = await this.one<BillingTransactionRow>('SELECT * FROM billing_transactions WHERE id = $1', [transactionId]);
+    if (!row) throw new Error('Created billing transaction was not found');
+    return { record: mapBillingTransactionRow(row), created: true };
+  }
+
+  async listBillingTransactionsForUser(userId: string): Promise<BillingTransactionRecord[]> {
+    const rows = await this.many<BillingTransactionRow>('SELECT * FROM billing_transactions WHERE user_id = $1 ORDER BY created_at ASC, id ASC', [userId]);
+    return rows.map(mapBillingTransactionRow);
+  }
+
+  private async findBillingTransaction(input: UpsertBillingTransactionInput): Promise<BillingTransactionRow | null> {
+    if (input.providerTransactionId) {
+      const row = await this.one<BillingTransactionRow>('SELECT * FROM billing_transactions WHERE provider = $1 AND provider_transaction_id = $2', [input.provider, input.providerTransactionId]);
+      if (row) return row;
+    }
+    if (input.providerOriginalTransactionId) {
+      const row = await this.one<BillingTransactionRow>('SELECT * FROM billing_transactions WHERE provider = $1 AND provider_original_transaction_id = $2 AND product_key = $3', [input.provider, input.providerOriginalTransactionId, input.productKey]);
+      if (row) return row;
+    }
+    if (input.providerPurchaseToken) {
+      const row = await this.one<BillingTransactionRow>('SELECT * FROM billing_transactions WHERE provider = $1 AND provider_purchase_token = $2', [input.provider, input.providerPurchaseToken]);
+      if (row) return row;
+    }
+    return null;
   }
 
   async revokeAgentTokensForOwner(userId: string, now = new Date().toISOString()): Promise<number> {
@@ -1972,6 +2179,61 @@ function mapPersonalEntitlementRow(row: PersonalEntitlementRow): PersonalEntitle
     hostedSubscriptionEndsAt: row.hosted_subscription_ends_at ?? undefined,
     hostedSubscriptionCanceledAt: row.hosted_subscription_canceled_at ?? undefined,
     hostedDataDeletedAt: row.hosted_data_deleted_at ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapBillingProductRow(row: BillingProductRow): BillingProductRecord {
+  return {
+    id: row.id,
+    productKey: row.product_key,
+    kind: row.kind,
+    entitlementKey: row.entitlement_key,
+    appleProductId: row.apple_product_id ?? undefined,
+    googleProductId: row.google_product_id ?? undefined,
+    googleBasePlanId: row.google_base_plan_id ?? undefined,
+    active: Boolean(row.active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapBillingPurchaseAttemptRow(row: BillingPurchaseAttemptRow): BillingPurchaseAttemptRecord {
+  return {
+    attemptId: row.id,
+    userId: row.user_id,
+    productKey: row.product_key,
+    productGroup: row.product_group,
+    platform: row.platform,
+    provider: row.provider,
+    status: row.status,
+    providerUserId: row.provider_user_id ?? undefined,
+    idempotencyKey: row.idempotency_key,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapBillingTransactionRow(row: BillingTransactionRow): BillingTransactionRecord {
+  return {
+    transactionId: row.id,
+    userId: row.user_id,
+    provider: row.provider,
+    environment: row.environment,
+    productKey: row.product_key,
+    entitlementKey: row.entitlement_key,
+    platform: row.platform,
+    providerTransactionId: row.provider_transaction_id ?? undefined,
+    providerOriginalTransactionId: row.provider_original_transaction_id ?? undefined,
+    providerPurchaseToken: row.provider_purchase_token ?? undefined,
+    status: row.status,
+    purchasedAt: row.purchased_at ?? undefined,
+    expiresAt: row.expires_at ?? undefined,
+    canceledAt: row.canceled_at ?? undefined,
+    revokedAt: row.revoked_at ?? undefined,
+    rawEventJSON: row.raw_event_json ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

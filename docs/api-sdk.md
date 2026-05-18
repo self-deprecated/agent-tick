@@ -8,6 +8,7 @@ Launch SDK surfaces include:
 - status update create/list
 - agent token setup and management
 - device registration and push token management
+- personal billing status, product catalog, and purchase preflight helpers for the first-party mobile app
 - organization, team, project, invite, and availability management
 
 Agents authenticate with Agent Tick `agent_...` tokens. Humans authenticate through local single-mode admin/device credentials or hosted Clerk-backed sessions. Organization context is selected with `X-Agent-Tick-Organization-ID` where applicable.

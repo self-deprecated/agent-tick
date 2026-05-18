@@ -87,6 +87,11 @@ AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tic
 AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
 AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
 
+# Billing is disabled by default for self-hosted deployments.
+# Hosted/product deployments that use mobile IAP set:
+# AGENT_TICK_BILLING_PROVIDER=revenuecat
+# AGENT_TICK_REVENUECAT_WEBHOOK_SECRET=change-me
+
 # Retention cleanup windows. Omit to retain operational history indefinitely.
 AGENT_TICK_APPROVAL_RETENTION_DAYS=180
 AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS=180

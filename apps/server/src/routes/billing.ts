@@ -1,9 +1,18 @@
 import { z } from 'zod';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
+import { BillingPurchasePreflightRequestSchema } from '@agent-tick/shared';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman, type AuthContext } from '../auth/context.js';
-import { hostedPersonalStatus } from '../services/personalEntitlements.js';
+import {
+  billingError,
+  billingProducts,
+  getPersonalBillingStatus,
+  normalizeRevenueCatEvent,
+  preflightPurchase,
+  recordVerifiedTransaction,
+  type BillingProductKey
+} from '../services/billing.js';
 
 export interface BillingRoutesOptions {
   config: ServerConfig;
@@ -15,18 +24,23 @@ const PersonalBillingUpdateSchema = z.object({
 });
 
 export async function registerBillingRoutes(app: FastifyInstance, { config, store }: BillingRoutesOptions): Promise<void> {
+  app.get('/v1/billing/products', async () => ({ products: await billingProducts(store) }));
+
   app.get('/v1/billing/personal', async (request) => {
     const auth = await requireHuman(request, config, store);
-    const userId = auth.userId ?? 'usr_default';
-    const entitlement = await store.getOrStartPersonalEntitlement(userId);
-    return { entitlement, hostedPersonal: hostedPersonalStatus(entitlement) };
+    return getPersonalBillingStatus(store, personalUserId(auth), config);
   });
 
   app.post('/v1/billing/personal', async (request) => {
     const auth = await requireHuman(request, config, store);
-    const userId = auth.userId ?? 'usr_default';
+    const userId = personalUserId(auth);
     const now = new Date();
     const input = PersonalBillingUpdateSchema.parse(request.body);
+
+    if (input.event !== 'delete_account_data' && !config.testAuth && !config.billingTestMode) {
+      throw billingError(403, 'billing_test_mode_required', 'Production purchase grants require verified App Store, Play, or billing-provider events');
+    }
+
     const current = await store.getOrStartPersonalEntitlement(userId, now.toISOString());
     if (input.event === 'delete_account_data') {
       await store.deleteHostedPersonalData(userId, auth.organizationId, now.toISOString());
@@ -41,8 +55,21 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
     } else if (input.event === 'cancel_subscription') {
       await store.updatePersonalEntitlement({ userId, hostedSubscriptionCanceledAt: now.toISOString() }, now.toISOString());
     }
-    const entitlement = await store.getOrStartPersonalEntitlement(userId, now.toISOString());
-    return { entitlement, hostedPersonal: hostedPersonalStatus(entitlement, now) };
+    return getPersonalBillingStatus(store, userId, config, now);
+  });
+
+  app.post('/v1/billing/purchases/preflight', async (request) => {
+    const auth = await requireHuman(request, config, store);
+    const input = BillingPurchasePreflightRequestSchema.parse(request.body);
+    return preflightPurchase(store, config, personalUserId(auth), input.platform, input.productKey as BillingProductKey);
+  });
+
+  app.post('/v1/billing/webhooks/revenuecat', async (request) => {
+    verifyRevenueCatWebhook(request, config);
+    const transaction = normalizeRevenueCatEvent(request.body);
+    if (!transaction) return { processed: false, ignored: true };
+    const result = await recordVerifiedTransaction(store, transaction);
+    return { processed: true, transactionId: result.transaction.transactionId, created: result.created };
   });
 
   app.get('/v1/billing', async (request) => {
@@ -63,11 +90,17 @@ function addDays(now: Date, days: number): string {
   return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-function billingError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
-  const error = new Error(message) as Error & { statusCode: number; code: string };
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
+function personalUserId(auth: AuthContext): string {
+  return auth.userId ?? auth.ownerUserId ?? 'usr_default';
+}
+
+function verifyRevenueCatWebhook(request: FastifyRequest, config: ServerConfig): void {
+  const secret = config.revenueCatWebhookSecret?.trim();
+  if (!secret) throw billingError(503, 'billing_webhook_not_configured', 'RevenueCat webhook secret is not configured');
+  const header = request.headers.authorization;
+  const authorization = Array.isArray(header) ? header[0] : header;
+  const accepted = [secret, `Bearer ${secret}`];
+  if (!authorization || !accepted.includes(authorization.trim())) throw billingError(401, 'not_authenticated', 'Invalid RevenueCat webhook authorization');
 }
 
 function requireOrganizationAdmin(auth: AuthContext): void {

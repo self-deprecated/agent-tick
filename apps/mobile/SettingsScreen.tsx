@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { MeResponse } from "@agent-tick/sdk";
 import { localeName, supportedLocales, translateSource, type LocalePreference, type SupportedLocale } from "@agent-tick/i18n";
+import type { PersonalBillingStatus } from "@agent-tick/shared";
+import type { StoreProduct } from "./purchases";
 import { entitlementStatusCopy } from "./AppLogic";
 import type { SavedMobileAccount } from "./mobileAuth";
 import {
@@ -84,6 +86,8 @@ export function SettingsScreen({
   onSendDiagnosticSnapshot,
   onSendTestNotification,
   nativeAppEntitlement,
+  personalBillingStatus,
+  storeProducts = [],
   trialRemainingLabel = "",
   hostedPersonalActive = false,
   onPurchaseLifetimeUnlock,
@@ -142,6 +146,8 @@ export function SettingsScreen({
   onSendDiagnosticSnapshot?: () => void;
   onSendTestNotification: () => void;
   nativeAppEntitlement?: { trialActive: boolean; lifetimeUnlocked: boolean; readOnly: boolean; hostedSubscriptionActive: boolean; includedHostedActive: boolean; trialRemainingMs?: number };
+  personalBillingStatus?: PersonalBillingStatus | null;
+  storeProducts?: StoreProduct[];
   trialRemainingLabel?: string;
   hostedPersonalActive?: boolean;
   onPurchaseLifetimeUnlock?: () => void;
@@ -207,6 +213,19 @@ export function SettingsScreen({
 
   const entitlementCopy = nativeAppEntitlement ? entitlementStatusCopy({ trialRemainingMs: 0, ...nativeAppEntitlement }) : null;
   const entitlementSummary = nativeAppEntitlement?.trialActive && trialRemainingLabel ? trialRemainingLabel : entitlementCopy?.summary;
+  const lifetimeAvailability = personalBillingStatus?.purchaseAvailability.lifetime_unlock;
+  const monthlyAvailability = personalBillingStatus?.purchaseAvailability.hosted_personal_monthly;
+  const yearlyAvailability = personalBillingStatus?.purchaseAvailability.hosted_personal_yearly;
+  const billingStatusLoaded = Boolean(personalBillingStatus);
+  const lifetimeBlocked = Boolean(!billingStatusLoaded || nativeAppEntitlement?.lifetimeUnlocked || lifetimeAvailability?.allowed === false);
+  const monthlyBlocked = !billingStatusLoaded || monthlyAvailability?.allowed === false;
+  const yearlyBlocked = !billingStatusLoaded || yearlyAvailability?.allowed === false;
+  const hostedOriginPlatform = personalBillingStatus?.activeEntitlements.hostedPersonal.originPlatform;
+  const crossPlatformHostedCopy = hostedOriginPlatform === "ios"
+    ? tr("Active via Apple. Manage on iOS or the App Store.")
+    : hostedOriginPlatform === "android"
+      ? tr("Active via Google. Manage on Android or Google Play.")
+      : "";
   const monetizationSection = nativeAppEntitlement && entitlementCopy ? (
     <View style={styles.settingsSection}>
       <Text style={styles.sectionHeading}>{tr("Entitlement status")}</Text>
@@ -216,12 +235,14 @@ export function SettingsScreen({
         <Text style={styles.pairingHint}>{tr(entitlementCopy.appAccess)}</Text>
         <Text style={styles.pairingHint}>{tr(entitlementCopy.hostedAccess)}</Text>
         <Text style={nativeAppEntitlement.readOnly ? styles.errorText : styles.pairingHint}>{tr(entitlementCopy.paywall)}</Text>
+        {!billingStatusLoaded ? <Text style={styles.pairingHint}>{tr("Sign in or connect to Agent Tick to load server purchase status before buying.")}</Text> : null}
       </View>
       <View style={styles.purchaseCard}>
         <Text style={styles.organizationName}>{tr("Lifetime app unlock")}</Text>
         <Text style={styles.organizationMeta}>{tr("Use the Agent Tick app with self-hosted servers forever.")}</Text>
-        <Text style={styles.priceText}>$19.99</Text>
-        <Pressable disabled={nativeAppEntitlement.lifetimeUnlocked} onPress={() => onPurchaseLifetimeUnlock?.()} style={[styles.primaryButton, nativeAppEntitlement.lifetimeUnlocked ? styles.disabledButton : null]}>
+        <Text style={styles.priceText}>{priceForProduct(storeProducts, "lifetime_unlock") ?? "$19.99"}</Text>
+        {lifetimeAvailability?.reason && !nativeAppEntitlement.lifetimeUnlocked ? <Text style={styles.pairingHint}>{purchaseAvailabilityCopy(lifetimeAvailability.reason)}</Text> : null}
+        <Pressable disabled={lifetimeBlocked} onPress={() => onPurchaseLifetimeUnlock?.()} style={[styles.primaryButton, lifetimeBlocked ? styles.disabledButton : null]}>
           <Text style={styles.primaryButtonText}>{nativeAppEntitlement.lifetimeUnlocked ? tr("Purchased") : tr("Buy lifetime unlock")}</Text>
         </Pressable>
       </View>
@@ -229,12 +250,14 @@ export function SettingsScreen({
         <Text style={styles.organizationName}>{tr("Hosted personal service")}</Text>
         <Text style={styles.organizationMeta}>{tr("Let us run the approval routing, push, updates, and uptime for you.")}</Text>
         <Text style={styles.pairingHint}>{hostedPersonalActive ? tr("Hosted personal service is active.") : tr("The included hosted month starts when hosted personal service is first activated after purchase.")}</Text>
+        {crossPlatformHostedCopy ? <Text style={styles.pairingHint}>{crossPlatformHostedCopy}</Text> : null}
+        {monthlyAvailability?.reason || yearlyAvailability?.reason ? <Text style={styles.pairingHint}>{purchaseAvailabilityCopy(monthlyAvailability?.reason ?? yearlyAvailability?.reason)}</Text> : null}
         <View style={styles.notificationActions}>
-          <Pressable onPress={() => onSubscribeHostedPersonal?.("monthly")} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>$5/month</Text>
+          <Pressable disabled={monthlyBlocked} onPress={() => onSubscribeHostedPersonal?.("monthly")} style={[styles.secondaryActionButton, monthlyBlocked ? styles.secondaryActionButtonDisabled : null]}>
+            <Text style={[styles.secondaryActionText, monthlyBlocked ? styles.secondaryActionTextDisabled : null]}>{priceForProduct(storeProducts, "hosted_personal_monthly") ?? "$5/month"}</Text>
           </Pressable>
-          <Pressable onPress={() => onSubscribeHostedPersonal?.("yearly")} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>$50/year</Text>
+          <Pressable disabled={yearlyBlocked} onPress={() => onSubscribeHostedPersonal?.("yearly")} style={[styles.secondaryActionButton, yearlyBlocked ? styles.secondaryActionButtonDisabled : null]}>
+            <Text style={[styles.secondaryActionText, yearlyBlocked ? styles.secondaryActionTextDisabled : null]}>{priceForProduct(storeProducts, "hosted_personal_yearly") ?? "$50/year"}</Text>
           </Pressable>
         </View>
         <Pressable onPress={() => onManageSubscription?.()} style={styles.secondaryActionButton}>
@@ -715,6 +738,27 @@ function savedAccountDetails(account: SavedMobileAccount) {
     return [account.email, account.signInMethod ? `Sign-in method: ${account.signInMethod}` : undefined, serverHost].filter(Boolean).join(" · ");
   }
   return [`local device`, serverHost].filter(Boolean).join(" · ");
+}
+
+function priceForProduct(products: StoreProduct[], productKey: StoreProduct["productKey"]): string | undefined {
+  return products.find((product) => product.productKey === productKey)?.priceString;
+}
+
+function purchaseAvailabilityCopy(reason: string | undefined): string {
+  switch (reason) {
+    case "already_unlocked":
+      return translateSource("Already purchased for this Agent Tick account.");
+    case "already_subscribed":
+      return translateSource("Hosted personal service is already active.");
+    case "active_on_other_platform":
+      return translateSource("Hosted personal service is active on another app-store platform.");
+    case "purchase_in_progress":
+      return translateSource("A purchase is already in progress. Try again in a few minutes.");
+    case "billing_disabled":
+      return translateSource("Purchases are not enabled on this server.");
+    default:
+      return translateSource("Purchase is not available right now.");
+  }
 }
 
 function isCurrentSavedAccount(

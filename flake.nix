@@ -46,7 +46,7 @@
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
               fetcherVersion = 2;
-              hash = "sha256-6xVtTTSJ9Ez/v8tD9KJ7sPGiNjqvjt9oTNqDcq9X1Ss=";
+              hash = "sha256-WA91iiXB4gJIgj5LqpdrYCk5Raq4Rs/0q1sZ3YkVt+8=";
             };
 
             nativeBuildInputs = [
@@ -96,7 +96,7 @@
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
               fetcherVersion = 2;
-              hash = "sha256-6xVtTTSJ9Ez/v8tD9KJ7sPGiNjqvjt9oTNqDcq9X1Ss=";
+              hash = "sha256-WA91iiXB4gJIgj5LqpdrYCk5Raq4Rs/0q1sZ3YkVt+8=";
             };
 
             nativeBuildInputs = [
@@ -160,7 +160,7 @@
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
               fetcherVersion = 2;
-              hash = "sha256-6xVtTTSJ9Ez/v8tD9KJ7sPGiNjqvjt9oTNqDcq9X1Ss=";
+              hash = "sha256-WA91iiXB4gJIgj5LqpdrYCk5Raq4Rs/0q1sZ3YkVt+8=";
             };
 
             nativeBuildInputs = [
@@ -200,7 +200,7 @@
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
               fetcherVersion = 2;
-              hash = "sha256-6xVtTTSJ9Ez/v8tD9KJ7sPGiNjqvjt9oTNqDcq9X1Ss=";
+              hash = "sha256-WA91iiXB4gJIgj5LqpdrYCk5Raq4Rs/0q1sZ3YkVt+8=";
             };
 
             nativeBuildInputs = [

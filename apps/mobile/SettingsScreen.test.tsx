@@ -30,6 +30,37 @@ const baseProps = {
 const unpairedProps = { ...baseProps, deviceID: "" };
 const pairedProps = { ...baseProps, deviceID: "device-abc-123" };
 
+function personalBillingFixture(options: { lifetimeActive?: boolean; hostedActive?: boolean; originPlatform?: string; purchaseReason?: string } = {}) {
+  const now = "2026-05-10T00:00:00.000Z";
+  return {
+    entitlement: {
+      userId: "usr_1",
+      trialStartedAt: "2026-05-01T00:00:00.000Z",
+      ...(options.lifetimeActive ? { appUnlockedAt: now } : {}),
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: now,
+    },
+    hostedPersonal: {
+      lifecycle: options.hostedActive ? "active" : "expired",
+      trialEndsAt: "2026-05-08T00:00:00.000Z",
+      responsesEnabled: Boolean(options.hostedActive),
+      routingEnabled: Boolean(options.hostedActive),
+      pushEnabled: Boolean(options.hostedActive),
+      historyRetentionDays: options.hostedActive ? 30 : 0,
+    },
+    products: [],
+    activeEntitlements: {
+      lifetimeUnlock: { active: Boolean(options.lifetimeActive), ...(options.lifetimeActive ? { originProvider: "revenuecat", originPlatform: "ios", purchasedAt: now } : {}) },
+      hostedPersonal: { active: Boolean(options.hostedActive), ...(options.hostedActive ? { originProvider: "revenuecat", originPlatform: options.originPlatform ?? "ios", purchasedAt: now, expiresAt: "2026-06-10T00:00:00.000Z", willRenew: false } : {}) },
+    },
+    purchaseAvailability: {
+      lifetime_unlock: { allowed: !options.lifetimeActive, ...(options.lifetimeActive ? { reason: "already_unlocked" } : {}) },
+      hosted_personal_monthly: { allowed: !options.hostedActive, ...(options.purchaseReason ? { reason: options.purchaseReason, originPlatform: options.originPlatform } : {}) },
+      hosted_personal_yearly: { allowed: !options.hostedActive, ...(options.purchaseReason ? { reason: options.purchaseReason, originPlatform: options.originPlatform } : {}) },
+    },
+  };
+}
+
 describe("SettingsScreen — unpaired state", () => {
   it("shows Scan Pairing QR button prominently at the top", () => {
     render(<SettingsScreen {...unpairedProps} />);
@@ -205,6 +236,55 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText("Read-only after Trial")).toBeTruthy();
     expect(screen.getByText("Responses are disabled until Lifetime app unlock is purchased or restored.")).toBeTruthy();
     expect(screen.getByText("Buy Lifetime app unlock to respond again and use self-hosted Agent Tick forever.")).toBeTruthy();
+  });
+
+  it("disables hosted subscription buttons when active on another app-store platform", () => {
+    const onSubscribeHostedPersonal = jest.fn();
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: false,
+          lifetimeUnlocked: true,
+          readOnly: false,
+          hostedSubscriptionActive: true,
+          includedHostedActive: false,
+          trialRemainingMs: 0,
+        }}
+        personalBillingStatus={personalBillingFixture({
+          hostedActive: true,
+          originPlatform: "ios",
+          purchaseReason: "active_on_other_platform",
+        })}
+        hostedPersonalActive
+        onSubscribeHostedPersonal={onSubscribeHostedPersonal}
+      />,
+    );
+
+    expect(screen.getByText("Active via Apple. Manage on iOS or the App Store.")).toBeTruthy();
+    fireEvent.press(screen.getByText("$5/month"));
+    fireEvent.press(screen.getByText("$50/year"));
+    expect(onSubscribeHostedPersonal).not.toHaveBeenCalled();
+  });
+
+  it("hides the lifetime purchase action after unlock", () => {
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: false,
+          lifetimeUnlocked: true,
+          readOnly: false,
+          hostedSubscriptionActive: false,
+          includedHostedActive: false,
+          trialRemainingMs: 0,
+        }}
+        personalBillingStatus={personalBillingFixture({ lifetimeActive: true })}
+      />,
+    );
+
+    expect(screen.getByText("Purchased")).toBeTruthy();
+    expect(screen.queryByText("Buy lifetime unlock")).toBeNull();
   });
 
   it("offers coarse availability controls with privacy copy", () => {

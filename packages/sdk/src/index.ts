@@ -9,7 +9,11 @@ import {
   AuditEventRecordSchema,
   AuthConfigSchema,
   AvailabilityRecordSchema,
+  BillingProductsResponseSchema,
+  BillingPurchasePreflightRequestSchema,
+  BillingPurchasePreflightResponseSchema,
   BillingStatusSchema,
+  PersonalBillingStatusSchema,
   CreateAgentTokenSchema,
   CreateAgentStatusUpdateSchema,
   CreateApprovalRequestSchema,
@@ -61,7 +65,11 @@ import {
   type AuditEventRecord,
   type AuthConfig,
   type AvailabilityRecord,
+  type BillingProductsResponse,
+  type BillingPurchasePreflightRequest,
+  type BillingPurchasePreflightResponse,
   type BillingStatus,
+  type PersonalBillingStatus,
   type CreateAgentToken,
   type CreateAgentStatusUpdate,
   type CreateApprovalRequest,
@@ -184,6 +192,21 @@ export class AgentTickClient {
 
   getBillingStatus(): Promise<BillingStatus> {
     return this.#request('GET', '/v1/billing', BillingStatusSchema);
+  }
+
+  getBillingProducts(): Promise<BillingProductsResponse> {
+    return this.#request('GET', '/v1/billing/products', BillingProductsResponseSchema, { includeOrganization: false });
+  }
+
+  getPersonalBillingStatus(): Promise<PersonalBillingStatus> {
+    return this.#request('GET', '/v1/billing/personal', PersonalBillingStatusSchema, { includeOrganization: false });
+  }
+
+  preflightPurchase(input: BillingPurchasePreflightRequest): Promise<BillingPurchasePreflightResponse> {
+    return this.#request('POST', '/v1/billing/purchases/preflight', BillingPurchasePreflightResponseSchema, {
+      body: BillingPurchasePreflightRequestSchema.parse(input),
+      includeOrganization: false
+    });
   }
 
   getOnboardingStatus(): Promise<OnboardingStatus> {
@@ -482,7 +505,11 @@ export type {
   AuditEventRecord,
   AuthConfig,
   AvailabilityRecord,
+  BillingProductsResponse,
+  BillingPurchasePreflightRequest,
+  BillingPurchasePreflightResponse,
   BillingStatus,
+  PersonalBillingStatus,
   CreateAgentToken,
   CreateAgentStatusUpdate,
   CreateApprovalRequest,

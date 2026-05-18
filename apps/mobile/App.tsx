@@ -35,6 +35,16 @@ import {
   type Screen,
 } from "./AppLogic";
 import {
+  configurePurchases,
+  loadStoreProducts,
+  openSubscriptionManagement,
+  purchaseProduct as purchaseStoreProduct,
+  restorePurchases as restoreStorePurchases,
+  setPurchaseCatalog,
+  type ProductKey,
+  type StoreProduct,
+} from "./purchases";
+import {
   buildQuestionnaireAnswers,
   canRespondToRequest,
   groupRequestsByProject,
@@ -63,7 +73,7 @@ import {
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ChoiceInteractionMode, ConnectionStatus, NotificationStatus, OptionPlacement, PushStatus } from "./SettingsScreen";
 import { AgentTickClient, type AgentStatusUpdate, type MeResponse, type OrganizationMembership } from "@agent-tick/sdk";
-import { decryptApprovalPayload } from "@agent-tick/shared";
+import { decryptApprovalPayload, type PersonalBillingStatus } from "@agent-tick/shared";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
   fetchRuntimeAuthConfig,
@@ -122,9 +132,6 @@ const approvalChoiceInteractionModeStorageKey = "agent-tick.approvalChoiceIntera
 const approvalOptionPlacementStorageKey = "agent-tick.approvalOptionPlacement";
 const approvalConfirmBeforeSubmitStorageKey = "agent-tick.approvalConfirmBeforeSubmit";
 const nativeAppFirstOpenedAtStorageKey = "agent-tick.nativeApp.firstOpenedAt";
-const nativeAppLifetimeUnlockedStorageKey = "agent-tick.nativeApp.lifetimeUnlocked";
-const hostedPersonalSubscriptionActiveStorageKey = "agent-tick.hostedPersonal.subscriptionActive";
-const includedHostedActivatedAtStorageKey = "agent-tick.hostedPersonal.includedActivatedAt";
 
 function dismissedAgentStatusStorageKey(serverURL: string, organizationID: string): string {
   const orgScope = organizationID.trim() || "default";
@@ -779,9 +786,8 @@ function AgentTickApp({
   const [optionPlacement, setOptionPlacement] = useState<OptionPlacement>("inline-after-content");
   const [confirmBeforeSubmit, setConfirmBeforeSubmit] = useState(true);
   const [nativeFirstOpenedAt, setNativeFirstOpenedAt] = useState<string | null>(null);
-  const [nativeLifetimeUnlocked, setNativeLifetimeUnlocked] = useState(false);
-  const [hostedSubscriptionActive, setHostedSubscriptionActive] = useState(false);
-  const [includedHostedActivatedAt, setIncludedHostedActivatedAt] = useState<string | null>(null);
+  const [personalBillingStatus, setPersonalBillingStatus] = useState<PersonalBillingStatus | null>(null);
+  const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
   const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
   const [diagnosticsEventCount, setDiagnosticsEventCount] = useState(0);
@@ -829,14 +835,15 @@ function AgentTickApp({
   );
   const nativeEntitlement = nativeAppEntitlement({
     now: new Date(),
-    firstOpenedAt: nativeFirstOpenedAt,
-    lifetimeUnlocked: nativeLifetimeUnlocked,
-    hostedSubscriptionActive,
-    includedHostedActivatedAt,
+    firstOpenedAt: personalBillingStatus?.entitlement.trialStartedAt ?? nativeFirstOpenedAt,
+    lifetimeUnlocked: Boolean(personalBillingStatus?.activeEntitlements.lifetimeUnlock.active || personalBillingStatus?.entitlement.appUnlockedAt),
+    hostedSubscriptionActive: Boolean(personalBillingStatus?.activeEntitlements.hostedPersonal.active),
+    includedHostedActivatedAt: personalBillingStatus?.entitlement.includedHostedActivatedAt ?? null,
   });
   const isHostedAccount = normalizeServerURL(serverURL) === normalizeServerURL(hostedServerURL);
   const appResponsesReadOnly = nativeEntitlement.readOnly;
-  const hostedReadOnly = isHostedAccount && !hostedPersonalActive(nativeEntitlement);
+  const hostedPersonalCurrentlyActive = personalBillingStatus ? personalBillingStatus.hostedPersonal.lifecycle === "active" : hostedPersonalActive(nativeEntitlement);
+  const hostedReadOnly = isHostedAccount && (personalBillingStatus ? !personalBillingStatus.hostedPersonal.responsesEnabled : !hostedPersonalActive(nativeEntitlement));
 
   useEffect(() => {
     setReply("");
@@ -931,9 +938,6 @@ function AgentTickApp({
           firstOpenedAt = new Date().toISOString();
           await AsyncStorage.setItem(nativeAppFirstOpenedAtStorageKey, firstOpenedAt);
         }
-        const savedLifetimeUnlocked = await AsyncStorage.getItem(nativeAppLifetimeUnlockedStorageKey);
-        const savedHostedSubscriptionActive = await AsyncStorage.getItem(hostedPersonalSubscriptionActiveStorageKey);
-        const savedIncludedHostedActivatedAt = await AsyncStorage.getItem(includedHostedActivatedAtStorageKey);
         let parsedAccounts: unknown = [];
         try {
           parsedAccounts = savedAccountJSON ? JSON.parse(savedAccountJSON) : [];
@@ -954,9 +958,6 @@ function AgentTickApp({
             setConfirmBeforeSubmit(savedConfirmBeforeSubmit === "true");
           }
           setNativeFirstOpenedAt(firstOpenedAt);
-          setNativeLifetimeUnlocked(savedLifetimeUnlocked === "true");
-          setHostedSubscriptionActive(savedHostedSubscriptionActive === "true");
-          setIncludedHostedActivatedAt(savedIncludedHostedActivatedAt || null);
         }
       } finally {
         if (!cancelled) {
@@ -1331,6 +1332,40 @@ function AgentTickApp({
     void refreshOrganizations();
   }, [clerkSessionToken, refreshOrganizations, runtimeAuthConfig?.authProvider, settingsLoaded]);
 
+  const refreshPersonalBilling = useCallback(async (options?: { configureStore?: boolean }): Promise<PersonalBillingStatus | null> => {
+    if (!hasRequestAuth) {
+      setPersonalBillingStatus(null);
+      setStoreProducts([]);
+      return null;
+    }
+    try {
+      const status = await sdk.getPersonalBillingStatus();
+      setPersonalBillingStatus(status);
+      setPurchaseCatalog(status.products);
+      if (options?.configureStore && currentAccountProfile?.userId && runtimeAuthConfig?.authProvider === "clerk") {
+        await configurePurchases(currentAccountProfile.userId);
+        const products = await loadStoreProducts().catch(() => []);
+        setStoreProducts(products);
+      }
+      return status;
+    } catch (err) {
+      recordDiagnostic("warn", "billing", "personal_billing_load_failed", { message: err instanceof Error ? err.message : String(err) });
+      setDiagnosticsEventCount(diagnosticEvents().length);
+      setPersonalBillingStatus(null);
+      setStoreProducts([]);
+      return null;
+    }
+  }, [currentAccountProfile?.userId, hasRequestAuth, runtimeAuthConfig?.authProvider, sdk]);
+
+  useEffect(() => {
+    if (!settingsLoaded || !hasRequestAuth) {
+      setPersonalBillingStatus(null);
+      setStoreProducts([]);
+      return;
+    }
+    void refreshPersonalBilling({ configureStore: runtimeAuthConfig?.authProvider === "clerk" });
+  }, [hasRequestAuth, refreshPersonalBilling, runtimeAuthConfig?.authProvider, settingsLoaded]);
+
   const load = useCallback(async (options?: { visible?: boolean }) => {
     if (runtimeAuthConfig?.authProvider === "clerk" && !selectedOrganizationID) {
       setConnectionStatus("checking");
@@ -1404,10 +1439,11 @@ function AgentTickApp({
       if (state === "active") {
         interruptRealtime();
         void load({ visible: false });
+        void refreshPersonalBilling({ configureStore: runtimeAuthConfig?.authProvider === "clerk" });
       }
     });
     return () => subscription.remove();
-  }, [hasRequestAuth, interruptRealtime, load, settingsLoaded]);
+  }, [hasRequestAuth, interruptRealtime, load, refreshPersonalBilling, runtimeAuthConfig?.authProvider, settingsLoaded]);
 
   useEffect(() => {
     if (!settingsLoaded) {
@@ -1711,28 +1747,92 @@ function AgentTickApp({
     });
   };
 
+  const requirePurchaseAccount = () => {
+    if (runtimeAuthConfig?.authProvider !== "clerk" || !currentAccountProfile?.userId) {
+      Alert.alert(
+        "Sign in required",
+        "Purchases require an Agent Tick account so entitlements can be restored across devices and protected from duplicate App Store / Play purchases."
+      );
+      return false;
+    }
+    if (Platform.OS !== "ios" && Platform.OS !== "android") {
+      Alert.alert("Purchases unavailable", "In-app purchases are only available on iOS and Android.");
+      return false;
+    }
+    return true;
+  };
+
+  const runPurchaseFlow = async (productKey: ProductKey, successTitle: string) => {
+    if (!requirePurchaseAccount()) return;
+    const platform = Platform.OS === "ios" ? "ios" : "android";
+    try {
+      const latest = await refreshPersonalBilling({ configureStore: true });
+      const availability = latest?.purchaseAvailability[productKey];
+      if (availability && !availability.allowed) {
+        Alert.alert("Purchase unavailable", purchaseAvailabilityMessage(availability.reason, availability.originPlatform));
+        return;
+      }
+      await sdk.preflightPurchase({ productKey, platform });
+      await configurePurchases(currentAccountProfile!.userId);
+      const result = await purchaseStoreProduct(productKey);
+      if (result.cancelled) return;
+      const confirmed = await refreshPersonalBilling({ configureStore: true });
+      const entitlementActive = productKey === "lifetime_unlock"
+        ? Boolean(confirmed?.activeEntitlements.lifetimeUnlock.active || confirmed?.entitlement.appUnlockedAt)
+        : Boolean(confirmed?.activeEntitlements.hostedPersonal.active || confirmed?.hostedPersonal.responsesEnabled);
+      Alert.alert(
+        successTitle,
+        entitlementActive
+          ? "Purchase confirmed. Your Agent Tick entitlement is active."
+          : "Purchase received. Agent Tick is waiting for the store webhook to sync; this screen will update automatically."
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not complete purchase";
+      Alert.alert("Purchase failed", purchaseAvailabilityMessage(apiCode(err), undefined, message));
+    }
+  };
+
   const purchaseLifetimeUnlock = async () => {
-    setNativeLifetimeUnlocked(true);
-    await AsyncStorage.setItem(nativeAppLifetimeUnlockedStorageKey, "true");
-    if (isHostedAccount) await activateIncludedHostedMonthIfEligible();
-    Alert.alert("Lifetime app unlock", "Purchase recorded. Store purchase plumbing will restore this entitlement on this platform.");
+    await runPurchaseFlow("lifetime_unlock", "Lifetime app unlock");
   };
 
   const restorePurchases = async () => {
-    const restored = await AsyncStorage.getItem(nativeAppLifetimeUnlockedStorageKey);
-    setNativeLifetimeUnlocked(restored === "true");
-    Alert.alert("Restore purchases", restored === "true" ? "Lifetime app unlock restored." : "No local purchase was found for this platform.");
+    if (!requirePurchaseAccount()) return;
+    try {
+      await configurePurchases(currentAccountProfile!.userId);
+      await restoreStorePurchases();
+      const status = await refreshPersonalBilling({ configureStore: true });
+      const restored = Boolean(status?.activeEntitlements.lifetimeUnlock.active || status?.activeEntitlements.hostedPersonal.active || status?.entitlement.appUnlockedAt);
+      Alert.alert(
+        "Restore purchases",
+        restored
+          ? "Store purchases were restored and server entitlements were refreshed."
+          : "Restore completed, but no entitlement is active for this Agent Tick account. If the purchase belongs to another account, contact support."
+      );
+    } catch (err) {
+      Alert.alert("Restore failed", err instanceof Error ? err.message : "Could not restore purchases");
+    }
   };
 
   const subscribeHostedPersonal = async (period: "monthly" | "yearly") => {
-    setHostedSubscriptionActive(true);
-    await AsyncStorage.setItem(hostedPersonalSubscriptionActiveStorageKey, "true");
-    Alert.alert("Hosted personal service", period === "yearly" ? "$50/year subscription selected." : "$5/month subscription selected.");
+    await runPurchaseFlow(period === "yearly" ? "hosted_personal_yearly" : "hosted_personal_monthly", "Hosted personal service");
   };
 
   const manageSubscription = () => {
-    const label = Platform.OS === "ios" ? "Apple subscriptions" : Platform.OS === "android" ? "Google Play subscriptions" : "your app store subscriptions";
-    Alert.alert("Manage subscription", `Manage or cancel Hosted personal service from ${label}.`);
+    const originPlatform = personalBillingStatus?.activeEntitlements.hostedPersonal.originPlatform;
+    if (originPlatform && originPlatform !== "unknown" && originPlatform !== Platform.OS) {
+      Alert.alert(
+        "Manage subscription",
+        originPlatform === "ios"
+          ? "Hosted personal service is active via Apple. Manage it on iOS or in the App Store."
+          : "Hosted personal service is active via Google. Manage it on Android or in Google Play."
+      );
+      return;
+    }
+    void openSubscriptionManagement().catch((err) => {
+      const label = Platform.OS === "ios" ? "Apple subscriptions" : Platform.OS === "android" ? "Google Play subscriptions" : "your app store subscriptions";
+      Alert.alert("Manage subscription", err instanceof Error ? err.message : `Manage or cancel Hosted personal service from ${label}.`);
+    });
   };
 
   const pairDevice = async () => {
@@ -1952,15 +2052,7 @@ function AgentTickApp({
     if (runtimeAuthConfig?.authProvider === "clerk") onForgetClerkSession?.(options);
   }, [bestEffortUnregisterDevice, clearStoredSessionForServer, onForgetClerkSession, runtimeAuthConfig?.authProvider]);
 
-  const activateIncludedHostedMonthIfEligible = useCallback(async () => {
-    if (!nativeLifetimeUnlocked || includedHostedActivatedAt) return;
-    const activatedAt = new Date().toISOString();
-    setIncludedHostedActivatedAt(activatedAt);
-    await AsyncStorage.setItem(includedHostedActivatedAtStorageKey, activatedAt);
-  }, [includedHostedActivatedAt, nativeLifetimeUnlocked]);
-
   const useHostedSignIn = useCallback(async () => {
-    await activateIncludedHostedMonthIfEligible();
     if (deviceID) {
       void bestEffortUnregisterDevice();
     }
@@ -1978,7 +2070,7 @@ function AgentTickApp({
     setConnectionStatus("checking");
     const config = await fetchRuntimeAuthConfigIfAvailable(defaultServer);
     onRuntimeAuthConfig?.(defaultServer, config);
-  }, [activateIncludedHostedMonthIfEligible, bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, onRuntimeAuthConfig]);
+  }, [bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, onRuntimeAuthConfig]);
 
   const selectOrganization = useCallback((organizationID: string) => {
     if (organizationID === selectedOrganizationID) return;
@@ -2177,8 +2269,10 @@ function AgentTickApp({
           onSendDiagnosticSnapshot={() => void sendDiagnostics()}
           onSendTestNotification={() => void sendTestNotification()}
           nativeAppEntitlement={nativeEntitlement}
+          personalBillingStatus={personalBillingStatus}
+          storeProducts={storeProducts}
           trialRemainingLabel={trialRemainingLabel(nativeEntitlement.trialRemainingMs)}
-          hostedPersonalActive={hostedPersonalActive(nativeEntitlement)}
+          hostedPersonalActive={hostedPersonalCurrentlyActive}
           onPurchaseLifetimeUnlock={() => void purchaseLifetimeUnlock()}
           onRestorePurchases={() => void restorePurchases()}
           onSubscribeHostedPersonal={(period) => void subscribeHostedPersonal(period)}
@@ -2563,6 +2657,32 @@ function isUsableProjectID(value: unknown): value is string {
 function apiStatus(error: unknown): number | undefined {
   const status = (error as { status?: unknown }).status;
   return typeof status === "number" ? status : undefined;
+}
+
+function apiCode(error: unknown): string | undefined {
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+function purchaseAvailabilityMessage(reason: string | undefined, originPlatform?: string, fallback = "Purchase is not available right now."): string {
+  switch (reason) {
+    case "already_unlocked":
+      return "Lifetime app unlock is already active for this Agent Tick account.";
+    case "already_subscribed":
+      return "Hosted personal service is already active for this Agent Tick account.";
+    case "active_on_other_platform":
+      return originPlatform === "ios"
+        ? "Hosted personal service is active via Apple. Manage it on iOS or in the App Store."
+        : originPlatform === "android"
+          ? "Hosted personal service is active via Google. Manage it on Android or in Google Play."
+          : "Hosted personal service is active on another app-store platform.";
+    case "purchase_in_progress":
+      return "A purchase is already in progress. Wait a few minutes, then try again.";
+    case "billing_disabled":
+      return "Purchases are not enabled on this server.";
+    default:
+      return fallback;
+  }
 }
 
 function diagnosticsSnapshot(input: {

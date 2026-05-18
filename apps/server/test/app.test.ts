@@ -23,6 +23,18 @@ function testStore(): AgentTickStore {
   return next;
 }
 
+function revenueCatEvent(event: Record<string, unknown>) {
+  return {
+    api_version: '1.0',
+    event: {
+      id: `${event.transaction_id ?? 'evt'}_event`,
+      environment: 'SANDBOX',
+      event_timestamp_ms: Date.parse('2026-05-10T00:00:00.000Z'),
+      ...event
+    }
+  };
+}
+
 describe('server skeleton', () => {
   it('serves health checks', async () => {
     app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
@@ -619,6 +631,190 @@ describe('server skeleton', () => {
     expect(approved.statusCode).toBe(409);
     expect(approved.json()).toMatchObject({ error: { code: 'conflict', message: expect.stringMatching(/seat limit/i) } });
     expect(db.organizationMembershipForUser(bob.userId, organizationId)).toBeNull();
+  });
+
+  it('does not allow production clients to self-grant personal purchase events', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+
+    const denied = await app.inject({ method: 'POST', url: '/v1/billing/personal', payload: { event: 'app_purchase' } });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({ error: { code: 'billing_test_mode_required' } });
+
+    const status = await app.inject({ method: 'GET', url: '/v1/billing/personal' });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().activeEntitlements.lifetimeUnlock.active).toBe(false);
+  });
+
+  it('preflights purchases and blocks duplicate hosted subscriptions across platforms', async () => {
+    const db = testStore();
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
+      store: db
+    });
+
+    const first = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({ allowed: true, providerUserId: 'usr_default', purchaseAttemptId: expect.stringMatching(/^bpa_/) });
+
+    const locked = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_yearly', platform: 'ios' } });
+    expect(locked.statusCode).toBe(409);
+    expect(locked.json()).toMatchObject({ error: { code: 'purchase_in_progress' } });
+
+    const webhook = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/webhooks/revenuecat',
+      headers: { authorization: 'Bearer rc_secret' },
+      payload: revenueCatEvent({
+        type: 'INITIAL_PURCHASE',
+        app_user_id: 'usr_default',
+        product_id: 'ai.selfdeprecated.agenttick.hosted_personal_monthly',
+        store: 'APP_STORE',
+        transaction_id: 'tx_hosted_1',
+        original_transaction_id: 'otx_hosted_1',
+        purchased_at_ms: Date.parse('2026-05-10T00:00:00.000Z'),
+        expiration_at_ms: Date.parse('2026-06-10T00:00:00.000Z')
+      })
+    });
+    expect(webhook.statusCode).toBe(200);
+    expect(webhook.json()).toMatchObject({ processed: true, created: true });
+
+    const duplicate = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_yearly', platform: 'android' } });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({ error: { code: 'active_on_other_platform' } });
+
+    const personal = await app.inject({ method: 'GET', url: '/v1/billing/personal' });
+    expect(personal.statusCode).toBe(200);
+    expect(personal.json()).toMatchObject({
+      activeEntitlements: { hostedPersonal: { active: true, originProvider: 'revenuecat', originPlatform: 'ios', willRenew: true } },
+      purchaseAvailability: { hosted_personal_monthly: { allowed: false } }
+    });
+  });
+
+  it('processes RevenueCat webhooks idempotently and removes refunded lifetime entitlements', async () => {
+    const db = testStore();
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
+      store: db
+    });
+
+    const purchasePayload = revenueCatEvent({
+      type: 'NON_RENEWING_PURCHASE',
+      app_user_id: 'usr_default',
+      product_id: 'ai.selfdeprecated.agenttick.lifetime_unlock',
+      store: 'PLAY_STORE',
+      transaction_id: 'tx_lifetime_1',
+      original_transaction_id: 'otx_lifetime_1',
+      purchased_at_ms: Date.parse('2026-05-10T00:00:00.000Z'),
+      receipt: 'raw-receipt-should-not-be-stored',
+      subscriber_attributes: { email: { value: 'buyer@example.com' } }
+    });
+    const created = await app.inject({ method: 'POST', url: '/v1/billing/webhooks/revenuecat', headers: { authorization: 'Bearer rc_secret' }, payload: purchasePayload });
+    const replayed = await app.inject({ method: 'POST', url: '/v1/billing/webhooks/revenuecat', headers: { authorization: 'Bearer rc_secret' }, payload: purchasePayload });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({ created: true });
+    expect(replayed.statusCode).toBe(200);
+    expect(replayed.json()).toMatchObject({ created: false });
+    const storedEvent = db.listBillingTransactionsForUser('usr_default')[0]?.rawEventJSON ?? '';
+    expect(storedEvent).toContain('tx_lifetime_1');
+    expect(storedEvent).not.toContain('raw-receipt-should-not-be-stored');
+    expect(storedEvent).not.toContain('buyer@example.com');
+
+    let personal = await app.inject({ method: 'GET', url: '/v1/billing/personal' });
+    expect(personal.json().activeEntitlements.lifetimeUnlock).toMatchObject({ active: true, originProvider: 'revenuecat', originPlatform: 'android' });
+
+    const refunded = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/webhooks/revenuecat',
+      headers: { authorization: 'Bearer rc_secret' },
+      payload: revenueCatEvent({
+        type: 'REFUND',
+        app_user_id: 'usr_default',
+        product_id: 'ai.selfdeprecated.agenttick.lifetime_unlock',
+        store: 'PLAY_STORE',
+        transaction_id: 'tx_lifetime_1',
+        original_transaction_id: 'otx_lifetime_1',
+        event_timestamp_ms: Date.parse('2026-05-12T00:00:00.000Z')
+      })
+    });
+    expect(refunded.statusCode).toBe(200);
+
+    personal = await app.inject({ method: 'GET', url: '/v1/billing/personal' });
+    expect(personal.json().activeEntitlements.lifetimeUnlock.active).toBe(false);
+    expect(personal.json().entitlement.appUnlockedAt).toBeUndefined();
+  });
+
+  it('keeps canceled subscriptions active until expiry and then applies read-only grace', async () => {
+    const db = testStore();
+    db.getOrStartPersonalEntitlement('usr_default', '2026-04-01T00:00:00.000Z');
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
+      store: db
+    });
+
+    const futureExpiry = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    const pastExpiry = Date.now() - 24 * 60 * 60 * 1000;
+    const expiredGraceExpiry = Date.now() - 31 * 24 * 60 * 60 * 1000;
+
+    const canceled = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/webhooks/revenuecat',
+      headers: { authorization: 'Bearer rc_secret' },
+      payload: revenueCatEvent({
+        type: 'CANCELLATION',
+        app_user_id: 'usr_default',
+        product_id: 'ai.selfdeprecated.agenttick.hosted_personal_monthly',
+        store: 'APP_STORE',
+        transaction_id: 'tx_hosted_cancel_1',
+        original_transaction_id: 'otx_hosted_cancel_1',
+        purchased_at_ms: Date.now() - 24 * 60 * 60 * 1000,
+        expiration_at_ms: futureExpiry
+      })
+    });
+    expect(canceled.statusCode).toBe(200);
+
+    let personal = await app.inject({ method: 'GET', url: '/v1/billing/personal' });
+    expect(personal.json().activeEntitlements.hostedPersonal).toMatchObject({ active: true, willRenew: false });
+    expect(personal.json().hostedPersonal).toMatchObject({ lifecycle: 'active', responsesEnabled: true, routingEnabled: true });
+    expect(personal.json().entitlement.hostedSubscriptionCanceledAt).toBeTruthy();
+
+    const expired = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/webhooks/revenuecat',
+      headers: { authorization: 'Bearer rc_secret' },
+      payload: revenueCatEvent({
+        type: 'EXPIRATION',
+        app_user_id: 'usr_default',
+        product_id: 'ai.selfdeprecated.agenttick.hosted_personal_monthly',
+        store: 'APP_STORE',
+        transaction_id: 'tx_hosted_cancel_2',
+        original_transaction_id: 'otx_hosted_cancel_1',
+        expiration_at_ms: pastExpiry
+      })
+    });
+    expect(expired.statusCode).toBe(200);
+
+    personal = await app.inject({ method: 'GET', url: '/v1/billing/personal' });
+    expect(personal.json().activeEntitlements.hostedPersonal.active).toBe(false);
+    expect(personal.json().hostedPersonal).toMatchObject({ lifecycle: 'read_only_grace', responsesEnabled: false, routingEnabled: true, pushEnabled: false });
+
+    const graceExpired = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/webhooks/revenuecat',
+      headers: { authorization: 'Bearer rc_secret' },
+      payload: revenueCatEvent({
+        type: 'EXPIRATION',
+        app_user_id: 'usr_default',
+        product_id: 'ai.selfdeprecated.agenttick.hosted_personal_monthly',
+        store: 'APP_STORE',
+        transaction_id: 'tx_hosted_cancel_3',
+        original_transaction_id: 'otx_hosted_cancel_1',
+        expiration_at_ms: expiredGraceExpiry
+      })
+    });
+    expect(graceExpired.statusCode).toBe(200);
+
+    personal = await app.inject({ method: 'GET', url: '/v1/billing/personal' });
+    expect(personal.json().hostedPersonal).toMatchObject({ lifecycle: 'expired', responsesEnabled: false, routingEnabled: false, pushEnabled: false });
   });
 
   it('notifies registered push devices when an approval request is created', async () => {
