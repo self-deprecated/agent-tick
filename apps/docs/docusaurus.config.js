@@ -4,6 +4,12 @@ const config = {
   title: 'Agent Tick Docs',
   tagline: 'Least-permission approvals for coding agents',
   favicon: 'img/favicon.svg',
+  headTags: [
+    { tagName: 'link', attributes: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/img/favicon-16x16.png' } },
+    { tagName: 'link', attributes: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/img/favicon-32x32.png' } },
+    { tagName: 'link', attributes: { rel: 'icon', type: 'image/png', sizes: '96x96', href: '/img/favicon-96x96.png' } },
+    { tagName: 'link', attributes: { rel: 'apple-touch-icon', sizes: '180x180', href: '/img/apple-touch-icon.png' } }
+  ],
   url: 'https://docs.agenttick.sh',
   baseUrl: '/',
   organizationName: 'self-deprecated',
@@ -26,25 +32,14 @@ const config = {
             'quick-start.md',
             'cli.md',
             'integrations.md',
-            'claude-code-verified-hook-demo.md',
-            'cursor-gemini-opencode-support.md',
-            'codex-mcp-adapter-demo.md',
+            'claude-code.md',
+            'codex.md',
             'github-actions-release-sanction-tutorial.md',
-            'workflow-no-code-connector-strategy.md',
-            'n8n-community-node-plan.md',
-            'zapier-app-action-opportunity-brief.md',
             'approval-templates.md',
             'self-hosting.md',
             'mobile-app.md',
             'entitlement-lifecycle.md',
             'security.md',
-            'encrypted-approval-content.md',
-            'scoped-guest-approval-links.md',
-            'activity-history-cleanup-deletion.md',
-            'deletion-controls-verification.md',
-            'mobile-permissions-audit.md',
-            'hosted-data-inventory.md',
-            'hosted-subprocessors-regions.md',
             'api-sdk.md'
           ],
           routeBasePath: '/',
@@ -62,7 +57,11 @@ const config = {
     image: 'img/social-card.svg',
     navbar: {
       title: 'Agent Tick Docs',
-      logo: { alt: 'Agent Tick', src: 'img/favicon.svg' },
+      logo: {
+        alt: 'Agent Tick',
+        src: 'img/agent-tick-logo.svg',
+        srcDark: 'img/favicon.svg'
+      },
       items: [
         { type: 'docSidebar', sidebarId: 'launchDocs', position: 'left', label: 'Docs' },
         { to: '/quick-start', label: 'Quick Start', position: 'left' },
@@ -71,33 +70,29 @@ const config = {
       ]
     },
     footer: {
-      style: 'dark',
+      style: 'light',
       links: [
         {
-          title: 'Launch docs',
+          title: 'Product',
           items: [
             { label: 'Quick Start', to: '/quick-start' },
             { label: 'CLI', to: '/cli' },
             { label: 'Integrations', to: '/integrations' },
-            { label: 'Self-Hosting', to: '/self-hosting' },
-            { label: 'Mobile App', to: '/mobile-app' },
-            { label: 'Security', to: '/security' },
-            { label: 'API/SDK', to: '/api-sdk' }
+            { label: 'Self-Hosting', to: '/self-hosting' }
           ]
         },
         {
-          title: 'Agent Tick',
+          title: 'Project',
           items: [
             { label: 'Website', href: 'https://agenttick.sh' },
-            { label: 'Privacy', href: 'https://agenttick.sh/privacy' },
-            { label: 'Support', href: 'https://agenttick.sh/support' }
+            { label: 'GitHub', href: 'https://github.com/self-deprecated/agent-tick' }
           ]
         }
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Self-Deprecated.`
+      copyright: `Copyright © ${new Date().getFullYear()} Agent Tick.`
     },
     prism: {
-      additionalLanguages: ['bash', 'json', 'typescript', 'toml', 'yaml']
+      additionalLanguages: ['bash', 'toml', 'json', 'yaml']
     }
   }
 };

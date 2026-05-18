@@ -1,21 +1,17 @@
-# Agent Tick Documentation
+# Agent Tick
 
-Agent Tick is a least-permission approval layer for coding agents.
+Agent Tick routes **status updates, steering, and sanctions** from local coding agents to trusted humans without turning your phone or browser into a remote shell.
 
-Documentation sections for `docs.agenttick.sh`:
+Start here:
 
-- [Quick Start](./quick-start.md)
-- [CLI](./cli.md)
-- [Integrations](./integrations.md)
-  - [GitHub Actions release Sanction tutorial](./github-actions-release-sanction-tutorial.md)
-- [Self-Hosting](./self-hosting.md)
-- [Mobile App](./mobile-app.md)
-- [Entitlement lifecycle](./entitlement-lifecycle.md)
-- [Security](./security.md)
-  - [Hosted subprocessors and infrastructure regions](./hosted-subprocessors-regions.md)
-- [API/SDK](./api-sdk.md)
+- [Quick Start](./quick-start.md) — connect a machine and send safe test requests.
+- [CLI](./cli.md) — the core `status-update`, `steering`, and `sanction` commands.
+- [Integrations](./integrations.md) — setup guides for Claude Code, Codex, GitHub Actions, and reusable approval patterns.
+- [iOS and Android app](./mobile-app.md) — install, pair, and respond from your phone.
+- [Self-Hosting](./self-hosting.md) — run your own Agent Tick server.
+- [Security](./security.md) — bounded input, local execution, retention, and encryption notes.
 
-Privacy Policy and Terms live on the marketing site:
+Privacy Policy and Terms live on the product site:
 
 - [Privacy Policy](https://agenttick.sh/privacy)
 - [Terms](https://agenttick.sh/terms)

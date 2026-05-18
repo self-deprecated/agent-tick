@@ -1,1 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630"><rect width="1200" height="630" fill="#0f172a"/><rect x="80" y="80" width="1040" height="470" rx="48" fill="#111827" stroke="#157f3b" stroke-width="6"/><text x="140" y="250" fill="#f8fafc" font-family="Inter,Arial,sans-serif" font-size="86" font-weight="800">Agent Tick Docs</text><text x="140" y="345" fill="#bbf7d0" font-family="Inter,Arial,sans-serif" font-size="42">Least-permission approvals for coding agents</text><path d="M910 324l52 52 105-128" fill="none" stroke="#38bd6c" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Tick Docs</title>
+  <desc id="desc">Agent Tick documentation social card using the Agent Tick brand mark.</desc>
+  <rect width="1200" height="630" fill="#f7f2e8"/>
+  <circle cx="955" cy="145" r="240" fill="#28c61a" opacity="0.12"/>
+  <circle cx="185" cy="520" r="260" fill="#101a28" opacity="0.08"/>
+  <rect x="72" y="72" width="1056" height="486" rx="48" fill="#ffffff" stroke="#101a28" stroke-opacity="0.12" stroke-width="4"/>
+  <g transform="translate(112 142) scale(0.62)">
+    <rect width="512" height="512" rx="96" fill="#ffffff"/>
+    <path id="letter-a" fill="#101a28" d="m 77,374 h 67 l 114,-223.28571 51.63636,68.05194 50.94805,0.49351 L 256,72 Z"/>
+    <path id="check" fill="#28c61a" d="m 466.87946,126.39453 c -0.6571,0.019 -3.32617,2.86133 -7.45117,7.50195 L 304.54545,306.12987 271.74079,270.59766 229.28571,272 l 55,90 c 13,15 37.5672,12.75266 48,-5 L 462.94782,134.66211 c 3.39062,-5.8125 4.54891,-8.28547 3.93164,-8.26758 z"/>
+  </g>
+  <text x="478" y="255" fill="#101a28" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="90" font-weight="900" letter-spacing="-3">Agent Tick</text>
+  <text x="482" y="335" fill="#284034" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="48" font-weight="800">Documentation</text>
+  <text x="482" y="420" fill="#49625a" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="34">Least-permission approvals for coding agents</text>
+</svg>

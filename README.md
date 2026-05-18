@@ -8,7 +8,6 @@ Product surfaces:
 
 - Marketing site: <https://agenttick.sh>
 - Hosted app: <https://app.agenttick.sh>
-- Hosted API: <https://api.agenttick.sh>
 - Documentation: <https://docs.agenttick.sh>
 
 ## Start here
@@ -134,12 +133,12 @@ corepack pnpm build
 
 ## Documentation
 
-- [docs/using-agent-tick.md](./docs/using-agent-tick.md) — hosted-product usage flow
-- [docs/integrations.md](./docs/integrations.md) — CLI and integration examples
-- [docs/agent-install-research.md](./docs/agent-install-research.md) — verified hook install matrix and Preloop research
-- [SELFHOSTING.md](./SELFHOSTING.md) — run your own Agent Tick server
+- [docs/index.md](./docs/index.md) — public documentation source for docs.agenttick.sh
+- [docs/quick-start.md](./docs/quick-start.md) — connect a machine and send safe test requests
+- [docs/integrations.md](./docs/integrations.md) — public integration setup guides
+- [docs/self-hosting.md](./docs/self-hosting.md) — self-hosting guide used by the docs site
+- [SELFHOSTING.md](./SELFHOSTING.md) — full repository-level self-hosting reference
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — local development workflow
-- [docs/competitor-analysis.md](./docs/competitor-analysis.md) — market scan and setup inspiration
 
 ## License
 

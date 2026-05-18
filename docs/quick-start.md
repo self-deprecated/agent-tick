@@ -1,10 +1,10 @@
 # Quick Start
 
-Start with CLI/web proof, then activate the Native App.
+Connect one coding-agent machine, send safe test requests, then install the iOS or Android app when you want phone approvals.
 
 ## 1. Use the setup skill
 
-Paste this into your coding agent on the machine where your local agent runs:
+Paste this into your coding agent on the machine where the agent runs:
 
 ```text
 Fetch and follow the Agent Tick setup skill from:
@@ -21,7 +21,7 @@ npx @self-deprecated/agent-tick install
 
 ## 2. Prove routing safely
 
-Use a safe Steering test first:
+Use a safe steering test first:
 
 ```sh
 agent-tick steering \
@@ -30,13 +30,32 @@ agent-tick steering \
   --choice stop:deny="Stop testing"
 ```
 
-Optional follow-up:
+Send a status update:
 
 ```sh
 agent-tick status-update --state working "Agent Tick setup test status update"
-agent-tick sanction --title "Agent Tick setup test sanction" --body "No command will run."
 ```
 
-## 3. Activate the Native App
+Then test a sanction with an explicit command summary. This creates an approval request for `pwd`; it does not run the command:
 
-Install the app, sign in or pair your self-hosted server, enable notifications if wanted, and verify requests open inside the app.
+```sh
+agent-tick sanction \
+  --title "Approve a harmless command?" \
+  --body "Test that Agent Tick can ask before local work proceeds." \
+  --command "pwd"
+```
+
+To run a command only after approval, put the command after `--`:
+
+```sh
+agent-tick sanction --title "Run pwd?" -- pwd
+```
+
+## 3. Install the iOS or Android app
+
+Install Agent Tick on your phone, sign in to agenttick.sh or connect to your self-hosted server, enable notifications if wanted, and verify requests open in the app.
+
+- [Agent Tick for iOS](https://go.agenttick.sh/ios)
+- [Agent Tick for Android](https://go.agenttick.sh/android)
+
+If a store link is not live yet, continue with the web approval flow and retry after the store listing is published.

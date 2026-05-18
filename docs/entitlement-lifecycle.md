@@ -2,7 +2,7 @@
 
 Agent Tick has two related entitlement tracks:
 
-1. **Native App access** — whether the first-party mobile app can submit responses.
+1. **iOS and Android app access** — whether the first-party mobile app can submit responses.
 2. **Hosted personal service** — whether agenttick.sh hosted routing, push, updates, uptime, and recent hosted history are active.
 
 Self-hosted servers remain under the operator's control. Agent Tick entitlements only decide whether the first-party app and hosted personal service accept new routing/response activity; they do not turn the phone or hosted service into a remote shell.
@@ -73,15 +73,6 @@ stateDiagram-v2
 - Hosted personal service can continue after the included month through optional monthly or yearly app-store subscriptions.
 - **Read-Only Routing Grace** is a hosted personal recovery state after a canceled/lapsed subscription: routing and recent history remain available, but responses and push are disabled.
 - Self-hosted deployments are responsible for their own uptime, backups, notifications, and data retention.
-
-## Implementation anchors
-
-- Mobile app Trial/Lifetime/included-month state: `apps/mobile/AppLogic.ts`
-- Mobile entitlement status copy: `docs/mobile-app.md`
-- Hosted personal lifecycle and read-only grace: `apps/server/src/services/personalEntitlements.ts`
-- Hosted personal billing events: `apps/server/src/routes/billing.ts`
-- Public pricing copy: `agenttick.sh/src/routes/pricing/+page.svelte`
-- Legal/privacy disclosure inputs: `docs/hosted-data-inventory.md` and `docs/deletion-controls-verification.md`
 
 ## Copy boundaries
 

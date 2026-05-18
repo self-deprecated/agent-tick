@@ -22,3 +22,12 @@
 .markdown h1:first-child {
   letter-spacing: -0.03em;
 }
+
+.navbar__logo img {
+  border-radius: 0.45rem;
+}
+
+[data-theme='dark'] .navbar__logo img {
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.72);
+}

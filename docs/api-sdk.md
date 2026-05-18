@@ -1,6 +1,6 @@
 # API/SDK
 
-Agent Tick exposes a TypeScript SDK and HTTP API used by the CLI, dashboard, Native App, and integrations.
+Agent Tick exposes a TypeScript SDK and HTTP API used by the CLI, dashboard, iOS and Android app, and integrations.
 
 Launch SDK surfaces include:
 
@@ -25,7 +25,7 @@ import { AgentTickClient } from '@agent-tick/sdk';
 
 export function agentTickClient() {
   return new AgentTickClient({
-    baseUrl: process.env.AGENT_TICK_SERVER ?? 'https://api.agenttick.sh',
+    baseUrl: process.env.AGENT_TICK_SERVER ?? 'https://agenttick.sh',
     tokenProvider: () => process.env.AGENT_TICK_TOKEN,
     organizationIdProvider: () => process.env.AGENT_TICK_ORGANIZATION_ID
   });

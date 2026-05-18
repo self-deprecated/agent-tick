@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 512 512"
+   role="img"
+   aria-labelledby="title desc"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="agent-tick-logo.svg"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="2.40625"
+     inkscape:cx="255.79221"
+     inkscape:cy="206.12987"
+     inkscape:window-width="2017"
+     inkscape:window-height="1416"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg1" />
+  <title
+     id="title">Agent Tick logo</title>
+  <desc
+     id="desc">A stylized dark letter A with a shortened right stroke, completed by a sharper green checkmark.</desc>
+  <g
+     id="logo">
+    <path
+       id="letter-a"
+       fill="#101a28"
+       d="m 77,374 h 67 l 114,-223.28571 51.63636,68.05194 50.94805,0.49351 L 256,72 Z"
+       sodipodi:nodetypes="ccccccc" />
+    <path
+       d="m 466.87946,126.39453 c -0.6571,0.019 -3.32617,2.86133 -7.45117,7.50195 L 304.54545,306.12987 271.74079,270.59766 229.28571,272 l 55,90 c 13,15 37.5672,12.75266 48,-5 L 462.94782,134.66211 c 3.39062,-5.8125 4.54891,-8.28547 3.93164,-8.26758 z"
+       style="fill:#28c61a"
+       id="path1"
+       sodipodi:nodetypes="scccccccs" />
+  </g>
+</svg>

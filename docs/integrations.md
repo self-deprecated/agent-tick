@@ -1,162 +1,37 @@
 # Integrations
 
-Agent Tick currently supports the TypeScript CLI command concepts `install`, `setup`, `mode`, `sanction`, `steering`, `abandon`, and `status-update`, plus the admin dashboard approval flow. This document only describes integrations that work with the current CLI/server surface.
+Agent Tick integrations are for three things:
 
-For product-vs-self-hosting setup flows, start with [Quick Start](./quick-start.md) and [Self-Hosting](./self-hosting.md). Public surfaces are the [marketing site](https://agenttick.sh), [hosted app](https://app.agenttick.sh), hosted API at `https://api.agenttick.sh`, and [docs](https://docs.agenttick.sh).
+- **Status updates** — non-blocking progress from an agent.
+- **Steering** — a human chooses from bounded options.
+- **Sanctions** — a human approves or denies a specific local action before it proceeds.
 
-## CLI setup
+The CLI, MCP adapter, hooks, and GitHub Action are just ways to deliver those three interaction types. Agent Tick does not run commands on your phone or in the hosted app.
 
-For the hosted product, use the one-command installer:
+## Setup guides
+
+- [Claude Code](./claude-code.md) — install Verified Hooks for steering and Claude permission-prompt sanctions.
+- [Codex](./codex.md) — configure the Agent Tick MCP adapter for status updates, steering, and sanctions.
+- [GitHub Actions release Sanction tutorial](./github-actions-release-sanction-tutorial.md) — gate a workflow step before release or deploy.
+- [Approval templates](./approval-templates.md) — copyable request shapes for deploys, migrations, refunds, releases, and other bounded approvals.
+
+For first-time product setup, start with [Quick Start](./quick-start.md). For running your own server, see [Self-Hosting](./self-hosting.md).
+
+## CLI basics
+
+Install and connect the CLI on the machine where the agent runs:
 
 ```sh
 npx @self-deprecated/agent-tick install
 ```
 
-The installer opens the dashboard for browser authorization, saves a local Agent Tick `agent_...` token, and offers to write approval instructions for supported local coding agents.
-
-Global install alternative:
+Send a status update:
 
 ```sh
-npm install -g @self-deprecated/agent-tick
-agent-tick install
+agent-tick status-update --state working --next "Run tests" "Finished edits; validating now"
 ```
 
-For CI, headless hosts, or single-mode self-hosting, create an agent token in the dashboard and save it manually:
-
-```sh
-agent-tick setup --server https://api.agenttick.sh --token agent_...
-```
-
-For lower-level browser setup without agent instruction installation, run `agent-tick login` (or `agent-tick setup --login --server https://api.agenttick.sh`).
-
-## Claude Code Verified Hook and MCP support
-
-`agent-tick install --target claude` installs Claude Code hooks that are inactive by default. The installer can write hooks globally for all Claude Code projects or locally for the current project. For a launch-safe verification checklist, demo script, and disclosure boundaries, see [Claude Code Verified Hook verification and demo](./claude-code-verified-hook-demo.md).
-
-The hooks are local Claude Code hooks; Agent Tick does not replace Claude Code's permission model or classify every command itself. It handles Claude `AskUserQuestion` and `PermissionRequest` prompts that Claude Code exposes through supported hook events.
-
-```sh
-agent-tick install --target claude --dry-run
-agent-tick install --target claude --claude-scope global
-agent-tick install --target claude --claude-scope local
-```
-
-The Claude Code integration adds:
-
-- a `PreToolUse` hook for `AskUserQuestion` steering
-- a `PermissionRequest` hook for Claude Code's own permission prompts, used as Agent Tick sanctions
-- a `Bash(agent-tick:*)` allow rule so the Agent Tick CLI itself does not trigger recursive permission prompts
-
-The default interactive profile starts in **pass-through** mode. In pass-through mode, hooks exit without decisions and Claude Code behaves normally. Switch to **AFK** mode when you want Claude Code questions and permission prompts routed through Agent Tick:
-
-```sh
-agent-tick mode
-agent-tick mode afk
-agent-tick mode pass-through
-```
-
-For unattended agents, use the headless profile to route enabled Claude Code steering and sanctions through Agent Tick without relying on the mode toggle:
-
-```sh
-agent-tick install --target claude \
-  --claude-profile headless \
-  --claude-steering always \
-  --claude-sanctions always \
-  --claude-initial-mode afk
-```
-
-Available Claude routing policies are `off`, `afk`, and `always`. If you run the installer interactively without `--yes`, it asks for the Claude profile, steering/sanction policies, hook scope, and sandbox allowances when sandboxing is detected. Restart Claude Code after installing or changing hook configuration.
-
-When Claude sandboxing is enabled, Agent Tick can add compatibility settings so hooks can reach Agent Tick and persist local state:
-
-```json
-{
-  "sandbox": {
-    "network": {
-      "allowedDomains": ["agenttick.sh"]
-    },
-    "filesystem": {
-      "allowWrite": ["~/.config/agent-tick"]
-    },
-    "excludedCommands": ["agent-tick"]
-  }
-}
-```
-
-Use `--claude-sandbox auto` to add those only when sandboxing is detected, `--claude-sandbox allow` to add them explicitly, or `--claude-sandbox skip` to leave sandbox settings unchanged.
-
-Agent Tick does not maintain Claude Code command-risk policy yet. Users should manage Claude Code permissions normally; Agent Tick only handles the permission prompts Claude Code was already going to show.
-
-## Outbound notification sinks
-
-### Approval notification webhook
-
-Agent Tick can notify one external endpoint when a new approval request is created. This runs alongside the existing Expo push notification flow.
-
-```sh
-AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick
-```
-
-The webhook receives the approval notification payload generated by the server. Delivery is best-effort: failed notification delivery is surfaced without replacing Agent Tick's local approval state.
-
-## Connector examples
-
-### Workflow and no-code connector strategy
-
-See [Workflow and no-code connector strategy](./workflow-no-code-connector-strategy.md) for the priority order across n8n, Zapier, Make, workflow SDKs, and vertical templates. See [n8n community node plan](./n8n-community-node-plan.md) for the concrete first connector package/operation plan, [Zapier app/action opportunity brief](./zapier-app-action-opportunity-brief.md) for the second connector target, and [Approval templates](./approval-templates.md) for reusable deploy, refund, outbound email, database migration, and release request shapes.
-
-### GitHub Actions
-
-This repo includes a composite action at [`integrations/github-actions/request-approval/action.yml`](../integrations/github-actions/request-approval/action.yml) with Marketplace-facing setup notes in the [GitHub Action README](https://github.com/self-deprecated/agent-tick/tree/main/integrations/github-actions/request-approval).
-
-Use it to add a bounded approval checkpoint before a protected workflow step. GitHub Actions still runs the deploy, refund, migration, or release command; Agent Tick only creates the sanction request, waits for the decision, and returns outputs for branching.
-
-The action installs `@self-deprecated/agent-tick` with npm when `agent-tick` is not already on the runner `PATH`. Set `install-cli: "false"` if your workflow pre-installs and pins the CLI another way.
-
-Use it from a workflow:
-
-```yaml
-- name: Wait for Agent Tick approval
-  id: approval
-  uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
-  with:
-    server: ${{ secrets.AGENT_TICK_SERVER }}
-    token: ${{ secrets.AGENT_TICK_TOKEN }}
-    title: Deploy production?
-    body: ${{ github.repository }} @ ${{ github.sha }}
-    command: ./scripts/deploy.sh
-    timeout: 10m
-
-- name: Deploy
-  if: ${{ steps.approval.outputs.choice-id == 'approve' }}
-  run: ./scripts/deploy.sh
-```
-
-The action waits for the final decision and exposes `request-id`, `status`, and `choice-id` outputs. Keep approval text limited to bounded summaries, links, commit SHAs, rollout/rollback notes, and other reviewer context; do not include secrets, bearer tokens, private keys, raw logs, or full AI prompts. A fuller workflow example lives in [`examples/github-actions/approval-gate.yml`](../examples/github-actions/approval-gate.yml). For release gates, see the [GitHub Actions release Sanction tutorial](./github-actions-release-sanction-tutorial.md) and [`examples/github-actions/release-sanction.yml`](../examples/github-actions/release-sanction.yml).
-
-### CLI Status Updates, Steering, and Sanctions
-
-Use `agent-tick sanction` to ask for approval before sensitive work. Add `--choice-flag approve=...` when the approve action needs mobile-visible warnings such as `production`, `destructive`, or `security_sensitive`:
-
-```sh
-agent-tick sanction \
-  --title "Deploy production?" \
-  --body "Deploy commit abc123 to production." \
-  --command "deploy production" \
-  --choice-flag approve=production \
-  --timeout 30m
-```
-
-Use `agent-tick sanction -- <command>` to run a command only after sanction approval:
-
-```sh
-agent-tick sanction \
-  --title "Run production migration?" \
-  --body "Run the migration against the production database." \
-  -- ./migrate-prod.sh
-```
-
-Use `agent-tick steering` for structured choices. Repeat `--choice` with `id=Label` or `id:kind=Label`. The mobile app and dashboard show each choice; the selected id is returned as the response `choiceId`. Custom choices must include at least one `kind` of `deny`, which is highlighted as the red/destructive option in the mobile app and makes the CLI exit non-zero if selected. Add `--choice-flag choiceId=favorite` for the agent's recommendation; the mobile app shows it with a yellow star. Use `--choice-tag choiceId=tag` for short custom labels.
+Ask a bounded steering question:
 
 ```sh
 agent-tick steering \
@@ -165,67 +40,27 @@ agent-tick steering \
   --choice canary="Canary rollout" \
   --choice blue_green="Blue/green rollout" \
   --choice cancel:deny="Do not deploy" \
-  --choice-flag canary=favorite \
-  --choice-flag canary=reversible
+  --choice-flag canary=favorite
 ```
 
-Supported choice flags are `favorite`, `safest`, `fastest`, `thorough`, `reversible`, `experimental`, `blocked`, `needs_context`, `destructive`, `external_effect`, `security_sensitive`, `costly`, `production`, `time_sensitive`, and `audit_relevant`.
-
-Use `agent-tick status-update` to publish AFK progress updates without blocking for approval. Set `AGENT_TICK_THREAD_ID` from an agent integration when a chat/thread id is available; otherwise the CLI scopes updates to the current host and working directory.
+Ask for a sanction before a local action:
 
 ```sh
-agent-tick status-update --state working --next "Run tests" "Finished edits; validating now"
+agent-tick sanction \
+  --title "Deploy production?" \
+  --body "Deploy commit abc123 to production." \
+  --command "./scripts/deploy.sh" \
+  --choice-flag approve=production \
+  --timeout 30m
 ```
 
-MCP-capable agents can launch the local stdio adapter with the same saved Agent Tick setup/token used by the rest of the CLI. Codex is the verified launch MCP demo target; see [Codex MCP Adapter verification and demo](./codex-mcp-adapter-demo.md). Cursor, Gemini CLI, and OpenCode are planned MCP adapter targets, but native permission-hook enforcement for those clients is not verified; see [Cursor, Gemini CLI, and OpenCode support options](./cursor-gemini-opencode-support.md).
+Run a local command only after the sanction is approved:
 
 ```sh
-agent-tick mcp
+agent-tick sanction \
+  --title "Run production migration?" \
+  --body "Run the migration against the production database." \
+  -- ./migrate-prod.sh
 ```
 
-The first-party local stdio MCP Adapter exposes `agent_tick_status_update`, `agent_tick_steering`, and `agent_tick_sanction`. It uses the same saved Agent Tick config/token as the CLI and fails with setup instructions when no config exists. For MCP clients that declare form elicitation support, such as Codex with `mcp_elicitations = true`, Mirrored Prompt is the default: the local MCP dialog and remote Agent Tick request race, the first response wins, and the losing surface is abandoned. Configure Codex manually with a stdio MCP server entry similar to this until `agent-tick install --target codex` config writing is implemented and tested:
-
-```toml
-[mcp_servers.agent_tick]
-command = "agent-tick"
-args = ["mcp"]
-startup_timeout_sec = 10
-tool_timeout_sec = 1800
-default_tools_approval_mode = "approve"
-
-[mcp_servers.agent_tick.tools.agent_tick_status_update]
-approval_mode = "approve"
-
-[mcp_servers.agent_tick.tools.agent_tick_steering]
-approval_mode = "approve"
-
-[mcp_servers.agent_tick.tools.agent_tick_sanction]
-approval_mode = "approve"
-```
-
-If Codex uses granular approval policy, enable MCP elicitations:
-
-```toml
-approval_policy = { granular = {
-  sandbox_approval = true,
-  rules = true,
-  mcp_elicitations = true,
-  request_permissions = true,
-  skill_approval = true
-}}
-```
-
-`localElicitation: "auto"` is the default and recommended mode. Steering choices must include an explicit caller-provided decline/deny option; deny options are mutually exclusive with normal choices. Sanctions never execute commands through MCP; they return an approval result. CLI fallback remains available for agents without MCP, but is less capable than the adapter because it cannot use Mirrored Prompt.
-
-## Not currently implemented
-
-The previous Go-era/prototype integration docs mentioned additional surfaces such as JSON stdin adapters, constrained steering, Slack/Teams/SMTP notification sinks, and provider-specific webhook fanout. Those are not part of the current TypeScript CLI/server implementation.
-
-If those capabilities become product-relevant again, add them intentionally with implementation, tests, and documentation in the same change.
-
-## Security notes
-
-- Treat third-party sinks as external disclosure boundaries.
-- Do not send secrets in sanction titles, steering bodies, status messages, commands, or metadata.
-- Prefer a short summary plus the dashboard link when routing notifications outside Agent Tick.
-- Set `AGENT_TICK_PUBLIC_URL` so generated links point at the correct dashboard origin.
+Keep request text bounded: include summaries, links, commit SHAs, rollout/rollback notes, and other reviewer context. Do not include secrets, bearer tokens, private keys, raw logs, full prompts, or customer data.
