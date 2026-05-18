@@ -62,6 +62,10 @@
     "icon": "./assets/icon.png",
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#28c61a"
     }
   }
 }
