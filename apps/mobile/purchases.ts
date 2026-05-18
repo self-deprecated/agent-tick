@@ -91,6 +91,11 @@ export async function configurePurchases(userId: string): Promise<void> {
   if (!apiKey) throw new Error("RevenueCat API key is not configured for this platform");
   const Purchases = await loadRevenueCat();
   if (configuredUserID === userId) return;
+  if (configuredUserID && Purchases.logIn) {
+    await Purchases.logIn(userId);
+    configuredUserID = userId;
+    return;
+  }
   Purchases.configure({ apiKey, appUserID: userId });
   configuredUserID = userId;
 }

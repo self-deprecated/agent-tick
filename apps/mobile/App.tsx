@@ -1343,9 +1343,15 @@ function AgentTickApp({
       setPersonalBillingStatus(status);
       setPurchaseCatalog(status.products);
       if (options?.configureStore && currentAccountProfile?.userId && runtimeAuthConfig?.authProvider === "clerk") {
-        await configurePurchases(currentAccountProfile.userId);
-        const products = await loadStoreProducts().catch(() => []);
-        setStoreProducts(products);
+        try {
+          await configurePurchases(currentAccountProfile.userId);
+          const products = await loadStoreProducts().catch(() => []);
+          setStoreProducts(products);
+        } catch (err) {
+          recordDiagnostic("warn", "billing", "store_product_load_failed", { message: err instanceof Error ? err.message : String(err) });
+          setDiagnosticsEventCount(diagnosticEvents().length);
+          setStoreProducts([]);
+        }
       }
       return status;
     } catch (err) {
@@ -1779,7 +1785,7 @@ function AgentTickApp({
       const confirmed = await refreshPersonalBilling({ configureStore: true });
       const entitlementActive = productKey === "lifetime_unlock"
         ? Boolean(confirmed?.activeEntitlements.lifetimeUnlock.active || confirmed?.entitlement.appUnlockedAt)
-        : Boolean(confirmed?.activeEntitlements.hostedPersonal.active || confirmed?.hostedPersonal.responsesEnabled);
+        : Boolean(confirmed?.activeEntitlements.hostedPersonal.active);
       Alert.alert(
         successTitle,
         entitlementActive
