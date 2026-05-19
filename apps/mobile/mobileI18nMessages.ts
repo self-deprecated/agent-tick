@@ -115,6 +115,7 @@ export const i18nMessages = [
   msg`Expires`,
   msg`Favorite choice`,
   msg`Forget Device`,
+  msg`General`,
   msg`Go to dashboard`,
   msg`History`,
   msg`Host`,

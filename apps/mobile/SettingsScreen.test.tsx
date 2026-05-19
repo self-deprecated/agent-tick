@@ -219,12 +219,19 @@ describe("SettingsScreen — paired state", () => {
     expect(onRegisterPush).not.toHaveBeenCalled();
   });
 
-  it("reveals hidden diagnostics controls by long-pressing Notifications", () => {
+  it("opens General settings for language", () => {
+    render(<SettingsScreen {...pairedProps} />);
+    fireEvent.press(screen.getByText("General"));
+    expect(screen.getByText("Language")).toBeTruthy();
+    expect(screen.getByText(/System/)).toBeTruthy();
+  });
+
+  it("reveals hidden diagnostics controls by long-pressing General", () => {
     const onDiagnosticsEnabledChange = jest.fn();
     render(<SettingsScreen {...pairedProps} onDiagnosticsEnabledChange={onDiagnosticsEnabledChange} />);
-    fireEvent.press(screen.getByText("Notifications"));
     expect(screen.queryByText("Diagnostics")).toBeNull();
-    fireEvent(screen.getByText("Notifications"), "longPress");
+    fireEvent(screen.getByText("General"), "longPress");
+    expect(screen.getByText("Language")).toBeTruthy();
     expect(screen.getByText("Diagnostics")).toBeTruthy();
     fireEvent.press(screen.getAllByText("Enable").at(-1)!);
     expect(onDiagnosticsEnabledChange).toHaveBeenCalledWith(true);

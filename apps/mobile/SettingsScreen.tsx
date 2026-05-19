@@ -22,7 +22,7 @@ export type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-c
 export type ChoiceInteractionMode = "click-to-submit" | "select-then-submit";
 export type OptionPlacement = "sticky-bottom" | "inline-after-content";
 
-type SettingsView = "home" | "account" | "accounts" | "access" | "language" | "notifications" | "approval-display" | "security" | "self-hosted";
+type SettingsView = "home" | "account" | "accounts" | "access" | "general" | "notifications" | "approval-display" | "security" | "self-hosted";
 
 const AVAILABILITY_SETTINGS_ENABLED = false;
 
@@ -323,9 +323,7 @@ export function SettingsScreen({
 
   const notificationsSection = (
     <View style={styles.settingsSection}>
-      <Pressable onLongPress={() => setDiagnosticsRevealed(true)}>
-        <Text style={styles.label}>{tr("Notifications")}</Text>
-      </Pressable>
+      <Text style={styles.label}>{tr("Notifications")}</Text>
       {shouldRemindNotifications ? (
         <View style={styles.notificationReminder}>
           <Text style={styles.notificationReminderTitle}>{tr("Enable approval alerts")}</Text>
@@ -385,25 +383,33 @@ export function SettingsScreen({
           {isPushRegistered ? tr("Push Registered") : tr("Register Push")}
         </Text>
       </Pressable>
-      {diagnosticsRevealed ? (
-        <View style={styles.diagnosticsPanel}>
-          <Text style={styles.sectionHeading}>{tr("Diagnostics")}</Text>
-          <Text style={styles.pairingHint}>
-            {tr("Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets.")}
-          </Text>
-          <Text style={styles.notificationStatus}>{tr("Status:")} {diagnosticsEnabled ? tr("Enabled") : tr("Disabled")}</Text>
-          <Text style={styles.pairingHint}>{tr("Buffered events:")} {diagnosticsEventCount}{diagnosticsLastSentAt ? ` · last sent ${diagnosticsLastSentAt}` : ""}</Text>
-          <View style={styles.notificationActions}>
-            <Pressable onPress={() => { trackButton("toggle_diagnostics", { nextEnabled: !diagnosticsEnabled }); onDiagnosticsEnabledChange?.(!diagnosticsEnabled); }} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>{diagnosticsEnabled ? tr("Disable") : tr("Enable")}</Text>
-            </Pressable>
-            <Pressable onPress={() => { trackButton("send_diagnostic_snapshot"); onSendDiagnosticSnapshot?.(); }} style={styles.secondaryActionButton}>
-              <Text style={styles.secondaryActionText}>{tr("Send Snapshot")}</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
     </View>
+  );
+
+  const diagnosticsSection = diagnosticsRevealed ? (
+    <View style={styles.settingsSection}>
+      <Text style={styles.sectionHeading}>{tr("Diagnostics")}</Text>
+      <Text style={styles.pairingHint}>
+        {tr("Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets.")}
+      </Text>
+      <Text style={styles.notificationStatus}>{tr("Status:")} {diagnosticsEnabled ? tr("Enabled") : tr("Disabled")}</Text>
+      <Text style={styles.pairingHint}>{tr("Buffered events:")} {diagnosticsEventCount}{diagnosticsLastSentAt ? ` · last sent ${diagnosticsLastSentAt}` : ""}</Text>
+      <View style={styles.notificationActions}>
+        <Pressable onPress={() => { trackButton("toggle_diagnostics", { nextEnabled: !diagnosticsEnabled }); onDiagnosticsEnabledChange?.(!diagnosticsEnabled); }} style={styles.secondaryActionButton}>
+          <Text style={styles.secondaryActionText}>{diagnosticsEnabled ? tr("Disable") : tr("Enable")}</Text>
+        </Pressable>
+        <Pressable onPress={() => { trackButton("send_diagnostic_snapshot"); onSendDiagnosticSnapshot?.(); }} style={styles.secondaryActionButton}>
+          <Text style={styles.secondaryActionText}>{tr("Send Snapshot")}</Text>
+        </Pressable>
+      </View>
+    </View>
+  ) : null;
+
+  const generalSections = (
+    <>
+      {languageSection}
+      {diagnosticsSection}
+    </>
   );
 
   const renderBackButton = (backView: SettingsView = "home", label = "‹ Settings") => (
@@ -414,8 +420,14 @@ export function SettingsScreen({
     </View>
   );
 
-  const renderNavItem = (title: string, subtitle: string, view: SettingsView, diagnostic: string) => (
-    <Pressable onPress={() => openSettingsView(view, diagnostic)} style={styles.navRow}>
+  const revealDiagnostics = () => {
+    trackButton("reveal_diagnostics");
+    setDiagnosticsRevealed(true);
+    setSettingsView("general");
+  };
+
+  const renderNavItem = (title: string, subtitle: string, view: SettingsView, diagnostic: string, onLongPress?: () => void) => (
+    <Pressable onLongPress={onLongPress} onPress={() => openSettingsView(view, diagnostic)} style={styles.navRow}>
       <View style={styles.navRowText}>
         <Text style={styles.navRowTitle}>{tr(title)}</Text>
         <Text style={styles.navRowSubtitle}>{tr(subtitle)}</Text>
@@ -696,11 +708,11 @@ export function SettingsScreen({
     );
   }
 
-  if (settingsView === "language") {
+  if (settingsView === "general") {
     return (
       <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
         {renderBackButton()}
-        {languageSection}
+        {generalSections}
       </ScrollView>
     );
   }
@@ -805,7 +817,7 @@ export function SettingsScreen({
           {renderNavItem("Notifications", notificationsEnabled ? "Approval alerts and push status" : "Approval alerts are off in Agent Tick", "notifications", "open_notifications_settings")}
           {renderNavItem("Security", "End-to-end approval decryption key", "security", "open_security_settings")}
           {renderNavItem("Approval display", "Choice behavior, action placement, and confirmation", "approval-display", "open_approval_display_settings")}
-          {renderNavItem("Language", selectedLanguageLabel, "language", "open_language_settings")}
+          {renderNavItem("General", selectedLanguageLabel, "general", "open_general_settings", revealDiagnostics)}
         </View>
       </ScrollView>
     );
@@ -846,7 +858,7 @@ export function SettingsScreen({
 
       <View style={styles.settingsSection}>
         {appAccessSection ? renderNavItem("App access", entitlementSummary || "Trial, purchases, and hosted service", "access", "open_app_access") : null}
-        {renderNavItem("Language", selectedLanguageLabel, "language", "open_language_settings")}
+        {renderNavItem("General", selectedLanguageLabel, "general", "open_general_settings", revealDiagnostics)}
         {renderNavItem("Notifications", notificationsEnabled ? "Approval alerts and push status" : "Approval alerts are off in Agent Tick", "notifications", "open_notifications_settings")}
       </View>
     </ScrollView>
@@ -1341,12 +1353,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f1ede4",
     borderColor: "#b9ad9b",
     opacity: 0.7,
-  },
-  diagnosticsPanel: {
-    borderTopColor: "#e3dbc9",
-    borderTopWidth: 1,
-    gap: 10,
-    paddingTop: 12,
   },
   secondaryActionText: {
     color: "#202124",
