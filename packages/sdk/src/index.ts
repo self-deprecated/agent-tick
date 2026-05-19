@@ -209,6 +209,13 @@ export class AgentTickClient {
     });
   }
 
+  activateIncludedHostedMonth(): Promise<PersonalBillingStatus> {
+    return this.#request('POST', '/v1/billing/personal', PersonalBillingStatusSchema, {
+      body: { event: 'activate_included_hosted_month' },
+      includeOrganization: false
+    });
+  }
+
   getOnboardingStatus(): Promise<OnboardingStatus> {
     return this.#request('GET', '/v1/onboarding', OnboardingStatusSchema);
   }

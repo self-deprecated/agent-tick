@@ -93,6 +93,7 @@ export function SettingsScreen({
   onPurchaseLifetimeUnlock,
   onRestorePurchases,
   onSubscribeHostedPersonal,
+  onActivateIncludedHostedMonth,
   onManageSubscription,
   onScanPairing,
   onUseHosted,
@@ -153,6 +154,7 @@ export function SettingsScreen({
   onPurchaseLifetimeUnlock?: () => void;
   onRestorePurchases?: () => void;
   onSubscribeHostedPersonal?: (period: "monthly" | "yearly") => void;
+  onActivateIncludedHostedMonth?: () => void;
   onManageSubscription?: () => void;
   onScanPairing: () => void;
   onSignInAnotherClerkAccount?: () => void;
@@ -220,6 +222,11 @@ export function SettingsScreen({
   const lifetimeBlocked = Boolean(!billingStatusLoaded || nativeAppEntitlement?.lifetimeUnlocked || lifetimeAvailability?.allowed === false);
   const monthlyBlocked = !billingStatusLoaded || monthlyAvailability?.allowed === false;
   const yearlyBlocked = !billingStatusLoaded || yearlyAvailability?.allowed === false;
+  const includedHostedActivated = Boolean(personalBillingStatus?.entitlement.includedHostedActivatedAt);
+  const hostedSubscriptionActive = Boolean(personalBillingStatus?.activeEntitlements.hostedPersonal.active);
+  const canActivateIncludedHostedMonth = Boolean(billingStatusLoaded && nativeAppEntitlement?.lifetimeUnlocked && !nativeAppEntitlement.trialActive && !includedHostedActivated && !hostedSubscriptionActive);
+  const includedHostedWaitsForTrialEnd = Boolean(billingStatusLoaded && nativeAppEntitlement?.lifetimeUnlocked && nativeAppEntitlement.trialActive && !includedHostedActivated && !hostedSubscriptionActive);
+  const showHostedSubscriptionActions = Boolean(nativeAppEntitlement?.lifetimeUnlocked && includedHostedActivated && !hostedPersonalActive) || hostedSubscriptionActive;
   const hostedOriginPlatform = personalBillingStatus?.activeEntitlements.hostedPersonal.originPlatform;
   const crossPlatformHostedCopy = hostedOriginPlatform === "ios"
     ? tr("Active via Apple. Manage on iOS or the App Store.")
@@ -251,15 +258,23 @@ export function SettingsScreen({
         <Text style={styles.organizationMeta}>{tr("Let us run the approval routing, push, updates, and uptime for you.")}</Text>
         <Text style={styles.pairingHint}>{hostedPersonalActive ? tr("Hosted personal service is active.") : tr("The included hosted month starts when hosted personal service is first activated after purchase.")}</Text>
         {crossPlatformHostedCopy ? <Text style={styles.pairingHint}>{crossPlatformHostedCopy}</Text> : null}
+        {includedHostedWaitsForTrialEnd ? <Text style={styles.pairingHint}>{tr("The included hosted month waits until Trial ends, then you can activate it before subscribing.")}</Text> : null}
+        {canActivateIncludedHostedMonth ? (
+          <Pressable onPress={() => onActivateIncludedHostedMonth?.()} style={styles.secondaryActionButton}>
+            <Text style={styles.secondaryActionText}>{tr("Start included hosted month")}</Text>
+          </Pressable>
+        ) : null}
         {monthlyAvailability?.reason || yearlyAvailability?.reason ? <Text style={styles.pairingHint}>{purchaseAvailabilityCopy(monthlyAvailability?.reason ?? yearlyAvailability?.reason)}</Text> : null}
-        <View style={styles.notificationActions}>
-          <Pressable disabled={monthlyBlocked} onPress={() => onSubscribeHostedPersonal?.("monthly")} style={[styles.secondaryActionButton, monthlyBlocked ? styles.secondaryActionButtonDisabled : null]}>
-            <Text style={[styles.secondaryActionText, monthlyBlocked ? styles.secondaryActionTextDisabled : null]}>{priceForProduct(storeProducts, "hosted_personal_monthly") ?? "$5/month"}</Text>
-          </Pressable>
-          <Pressable disabled={yearlyBlocked} onPress={() => onSubscribeHostedPersonal?.("yearly")} style={[styles.secondaryActionButton, yearlyBlocked ? styles.secondaryActionButtonDisabled : null]}>
-            <Text style={[styles.secondaryActionText, yearlyBlocked ? styles.secondaryActionTextDisabled : null]}>{priceForProduct(storeProducts, "hosted_personal_yearly") ?? "$50/year"}</Text>
-          </Pressable>
-        </View>
+        {showHostedSubscriptionActions ? (
+          <View style={styles.notificationActions}>
+            <Pressable disabled={monthlyBlocked} onPress={() => onSubscribeHostedPersonal?.("monthly")} style={[styles.secondaryActionButton, monthlyBlocked ? styles.secondaryActionButtonDisabled : null]}>
+              <Text style={[styles.secondaryActionText, monthlyBlocked ? styles.secondaryActionTextDisabled : null]}>{priceForProduct(storeProducts, "hosted_personal_monthly") ?? "$5/month"}</Text>
+            </Pressable>
+            <Pressable disabled={yearlyBlocked} onPress={() => onSubscribeHostedPersonal?.("yearly")} style={[styles.secondaryActionButton, yearlyBlocked ? styles.secondaryActionButtonDisabled : null]}>
+              <Text style={[styles.secondaryActionText, yearlyBlocked ? styles.secondaryActionTextDisabled : null]}>{priceForProduct(storeProducts, "hosted_personal_yearly") ?? "$50/year"}</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <Pressable onPress={() => onManageSubscription?.()} style={styles.secondaryActionButton}>
           <Text style={styles.secondaryActionText}>{tr("Manage subscription")}</Text>
         </Pressable>
@@ -754,6 +769,12 @@ function purchaseAvailabilityCopy(reason: string | undefined): string {
       return translateSource("Hosted personal service is active on another app-store platform.");
     case "purchase_in_progress":
       return translateSource("A purchase is already in progress. Try again in a few minutes.");
+    case "app_purchase_required":
+      return translateSource("Buy Lifetime app unlock before subscribing to hosted personal service.");
+    case "trial_active":
+      return translateSource("Hosted personal service is included during Trial.");
+    case "included_hosted_month_active":
+      return translateSource("The included hosted month is active. Subscribe after it ends.");
     case "billing_disabled":
       return translateSource("Purchases are not enabled on this server.");
     default:

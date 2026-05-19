@@ -111,7 +111,7 @@ export async function getPersonalBillingStatus(store: AgentTickStore, userId: st
   const products = await billingProducts(store, now.toISOString());
   const entitlement = await recomputePersonalEntitlement(store, userId, now);
   const activeEntitlements = await activeEntitlementsForUser(store, userId, entitlement, now);
-  const purchaseAvailability = await purchaseAvailabilityForUser(store, userId, activeEntitlements, config, now);
+  const purchaseAvailability = await purchaseAvailabilityForUser(store, userId, entitlement, activeEntitlements, config, now);
   return {
     entitlement,
     hostedPersonal: hostedPersonalStatus(entitlement, now),
@@ -128,7 +128,7 @@ export async function preflightPurchase(store: AgentTickStore, config: Pick<Serv
 
   const entitlement = await recomputePersonalEntitlement(store, userId, now);
   const activeEntitlements = await activeEntitlementsForUser(store, userId, entitlement, now);
-  const availability = await purchaseAvailabilityForProduct(store, userId, productKey, activeEntitlements, config, now, platform);
+  const availability = await purchaseAvailabilityForProduct(store, userId, productKey, entitlement, activeEntitlements, config, now, platform);
   if (!availability.allowed) throw billingError(409, availability.reason ?? 'purchase_not_allowed', purchaseBlockedMessage(availability.reason, availability.originPlatform));
 
   const attempt = await store.createBillingPurchaseAttempt({
@@ -274,15 +274,15 @@ async function activeEntitlementsForUser(store: AgentTickStore, userId: string, 
   };
 }
 
-async function purchaseAvailabilityForUser(store: AgentTickStore, userId: string, activeEntitlements: PersonalBillingStatus['activeEntitlements'], config: Pick<ServerConfig, 'billingProvider'>, now: Date): Promise<Record<BillingProductKey, PurchaseAvailability>> {
+async function purchaseAvailabilityForUser(store: AgentTickStore, userId: string, entitlement: PersonalEntitlementRecord, activeEntitlements: PersonalBillingStatus['activeEntitlements'], config: Pick<ServerConfig, 'billingProvider'>, now: Date): Promise<Record<BillingProductKey, PurchaseAvailability>> {
   return {
-    lifetime_unlock: await purchaseAvailabilityForProduct(store, userId, 'lifetime_unlock', activeEntitlements, config, now),
-    hosted_personal_monthly: await purchaseAvailabilityForProduct(store, userId, 'hosted_personal_monthly', activeEntitlements, config, now),
-    hosted_personal_yearly: await purchaseAvailabilityForProduct(store, userId, 'hosted_personal_yearly', activeEntitlements, config, now)
+    lifetime_unlock: await purchaseAvailabilityForProduct(store, userId, 'lifetime_unlock', entitlement, activeEntitlements, config, now),
+    hosted_personal_monthly: await purchaseAvailabilityForProduct(store, userId, 'hosted_personal_monthly', entitlement, activeEntitlements, config, now),
+    hosted_personal_yearly: await purchaseAvailabilityForProduct(store, userId, 'hosted_personal_yearly', entitlement, activeEntitlements, config, now)
   };
 }
 
-async function purchaseAvailabilityForProduct(store: AgentTickStore, userId: string, productKey: BillingProductKey, activeEntitlements: PersonalBillingStatus['activeEntitlements'], config: Pick<ServerConfig, 'billingProvider'>, now: Date, platform?: BillingPlatform): Promise<PurchaseAvailability> {
+async function purchaseAvailabilityForProduct(store: AgentTickStore, userId: string, productKey: BillingProductKey, entitlement: PersonalEntitlementRecord, activeEntitlements: PersonalBillingStatus['activeEntitlements'], config: Pick<ServerConfig, 'billingProvider'>, now: Date, platform?: BillingPlatform): Promise<PurchaseAvailability> {
   if (productKey === 'lifetime_unlock' && activeEntitlements.lifetimeUnlock.active) {
     return {
       allowed: false,
@@ -291,14 +291,23 @@ async function purchaseAvailabilityForProduct(store: AgentTickStore, userId: str
       ...(activeEntitlements.lifetimeUnlock.originPlatform ? { originPlatform: activeEntitlements.lifetimeUnlock.originPlatform } : {})
     };
   }
-  if (productKey !== 'lifetime_unlock' && activeEntitlements.hostedPersonal.active) {
-    const originPlatform = activeEntitlements.hostedPersonal.originPlatform;
-    return {
-      allowed: false,
-      reason: platform && originPlatform && originPlatform !== 'unknown' && originPlatform !== platform ? 'active_on_other_platform' : 'already_subscribed',
-      ...(activeEntitlements.hostedPersonal.originProvider ? { originProvider: activeEntitlements.hostedPersonal.originProvider } : {}),
-      ...(originPlatform ? { originPlatform } : {})
-    };
+  if (productKey !== 'lifetime_unlock') {
+    if (!activeEntitlements.lifetimeUnlock.active && !entitlement.appUnlockedAt) return { allowed: false, reason: 'app_purchase_required' };
+    if (activeEntitlements.hostedPersonal.active) {
+      const originPlatform = activeEntitlements.hostedPersonal.originPlatform;
+      return {
+        allowed: false,
+        reason: platform && originPlatform && originPlatform !== 'unknown' && originPlatform !== platform ? 'active_on_other_platform' : 'already_subscribed',
+        ...(activeEntitlements.hostedPersonal.originProvider ? { originProvider: activeEntitlements.hostedPersonal.originProvider } : {}),
+        ...(originPlatform ? { originPlatform } : {})
+      };
+    }
+    const hostedStatus = hostedPersonalStatus(entitlement, now);
+    if (hostedStatus.lifecycle === 'active') {
+      const trialActive = new Date(hostedStatus.trialEndsAt).getTime() > now.getTime();
+      const includedHostedActive = hostedStatus.includedHostedEndsAt ? new Date(hostedStatus.includedHostedEndsAt).getTime() > now.getTime() : false;
+      return { allowed: false, reason: trialActive ? 'trial_active' : includedHostedActive ? 'included_hosted_month_active' : 'already_subscribed' };
+    }
   }
   if (config.billingProvider === 'none') return { allowed: false, reason: 'billing_disabled' };
   const locks = await store.listActiveBillingPurchaseAttempts(userId, productGroupForProduct(productKey), now.toISOString());
@@ -475,6 +484,12 @@ function purchaseBlockedMessage(reason: string | undefined, originPlatform?: str
           : 'Hosted personal service is already active on another platform.';
     case 'purchase_in_progress':
       return 'A purchase is already in progress. Wait a few minutes, then try again.';
+    case 'app_purchase_required':
+      return 'Lifetime app unlock is required before subscribing to hosted personal service.';
+    case 'trial_active':
+      return 'Hosted personal service is included during Trial.';
+    case 'included_hosted_month_active':
+      return 'The included hosted month is active. Subscribe after it ends.';
     case 'billing_disabled':
       return 'In-app purchases are not enabled for this server';
     default:

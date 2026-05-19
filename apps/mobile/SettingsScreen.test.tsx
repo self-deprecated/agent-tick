@@ -30,13 +30,14 @@ const baseProps = {
 const unpairedProps = { ...baseProps, deviceID: "" };
 const pairedProps = { ...baseProps, deviceID: "device-abc-123" };
 
-function personalBillingFixture(options: { lifetimeActive?: boolean; hostedActive?: boolean; originPlatform?: string; purchaseReason?: string } = {}) {
+function personalBillingFixture(options: { lifetimeActive?: boolean; hostedActive?: boolean; includedHostedActivated?: boolean; originPlatform?: string; purchaseReason?: string } = {}) {
   const now = "2026-05-10T00:00:00.000Z";
   return {
     entitlement: {
       userId: "usr_1",
       trialStartedAt: "2026-05-01T00:00:00.000Z",
       ...(options.lifetimeActive ? { appUnlockedAt: now } : {}),
+      ...(options.includedHostedActivated ? { includedHostedActivatedAt: "2026-04-01T00:00:00.000Z" } : {}),
       createdAt: "2026-05-01T00:00:00.000Z",
       updatedAt: now,
     },
@@ -285,6 +286,74 @@ describe("SettingsScreen — paired state", () => {
 
     expect(screen.getByText("Purchased")).toBeTruthy();
     expect(screen.queryByText("Buy lifetime unlock")).toBeNull();
+  });
+
+  it("offers the included hosted month after lifetime unlock and trial end", () => {
+    const onActivateIncludedHostedMonth = jest.fn();
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: false,
+          lifetimeUnlocked: true,
+          readOnly: false,
+          hostedSubscriptionActive: false,
+          includedHostedActive: false,
+          trialRemainingMs: 0,
+        }}
+        personalBillingStatus={personalBillingFixture({ lifetimeActive: true })}
+        onActivateIncludedHostedMonth={onActivateIncludedHostedMonth}
+      />,
+    );
+
+    expect(screen.getByText("Start included hosted month")).toBeTruthy();
+    expect(screen.queryByText("$5/month")).toBeNull();
+    fireEvent.press(screen.getByText("Start included hosted month"));
+    expect(onActivateIncludedHostedMonth).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits until Trial ends before activating the included hosted month", () => {
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: true,
+          lifetimeUnlocked: true,
+          readOnly: false,
+          hostedSubscriptionActive: false,
+          includedHostedActive: false,
+          trialRemainingMs: 1000,
+        }}
+        personalBillingStatus={personalBillingFixture({ lifetimeActive: true })}
+      />,
+    );
+
+    expect(screen.getByText("The included hosted month waits until Trial ends, then you can activate it before subscribing.")).toBeTruthy();
+    expect(screen.queryByText("Start included hosted month")).toBeNull();
+  });
+
+  it("shows hosted subscription buttons after the included month has been used", () => {
+    const onSubscribeHostedPersonal = jest.fn();
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: false,
+          lifetimeUnlocked: true,
+          readOnly: false,
+          hostedSubscriptionActive: false,
+          includedHostedActive: false,
+          trialRemainingMs: 0,
+        }}
+        personalBillingStatus={personalBillingFixture({ lifetimeActive: true, includedHostedActivated: true })}
+        onSubscribeHostedPersonal={onSubscribeHostedPersonal}
+      />,
+    );
+
+    fireEvent.press(screen.getByText("$5/month"));
+    fireEvent.press(screen.getByText("$50/year"));
+    expect(onSubscribeHostedPersonal).toHaveBeenCalledWith("monthly");
+    expect(onSubscribeHostedPersonal).toHaveBeenCalledWith("yearly");
   });
 
   it("offers coarse availability controls with privacy copy", () => {

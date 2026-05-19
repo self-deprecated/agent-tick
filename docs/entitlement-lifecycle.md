@@ -27,13 +27,11 @@ stateDiagram-v2
   LifetimeUnlocked: self-hosted app responses enabled forever
   LifetimeUnlocked: hosted personal optional
   LifetimeUnlocked --> IncludedHostedMonth: activate included hosted month
-  LifetimeUnlocked --> HostedSubscriptionActive: subscribe monthly/yearly
 
   IncludedHostedMonth: Included hosted month active
   IncludedHostedMonth: 31 days after hosted activation
   IncludedHostedMonth: hosted routing/push/responses enabled
-  IncludedHostedMonth --> HostedExpired: included hosted month ends without subscription
-  IncludedHostedMonth --> HostedSubscriptionActive: subscribe monthly/yearly
+  IncludedHostedMonth --> HostedExpired: included hosted month ends
 
   HostedSubscriptionActive: Hosted subscription active
   HostedSubscriptionActive: hosted routing/push/responses enabled
@@ -56,8 +54,8 @@ stateDiagram-v2
 | --- | --- | --- | --- | --- | --- | --- |
 | Trial active | First open starts the 7-day local Trial | Enabled | Enabled for hosted personal context | Enabled for hosted personal context | Normal launch history behavior | Trial ends, or Lifetime app unlock is purchased/restored |
 | Read-only after Trial | Trial ended and no Lifetime app unlock exists | Disabled | Hosted personal also inactive unless another hosted entitlement exists | Disabled for hosted personal | Viewing, settings, purchase, and restore stay available | Purchase or restore Lifetime app unlock |
-| Lifetime unlock active | One-time app-store purchase is recorded/restored | Enabled for self-hosted servers and active hosted contexts | Not included forever; hosted personal needs Trial, included month, or subscription | Not included forever | Self-hosted app use remains unlocked on the app-store account | Activate included hosted month or subscribe |
-| Included hosted month active | Lifetime unlock exists and hosted personal service is activated for the included month | Enabled | Enabled | Enabled | Normal launch history behavior | Included month ends or user subscribes |
+| Lifetime unlock active | One-time app-store purchase is recorded/restored | Enabled for self-hosted servers and active hosted contexts | Not included forever; hosted personal needs Trial, included month, or subscription | Not included forever | Self-hosted app use remains unlocked on the app-store account | Activate included hosted month |
+| Included hosted month active | Lifetime unlock exists and hosted personal service is activated for the included month | Enabled | Enabled | Enabled | Normal launch history behavior | Included month ends |
 | Hosted subscription active | Monthly/yearly hosted personal subscription is active | Enabled | Enabled | Enabled | Normal launch history behavior | Subscription lapses/cancels |
 | Read-Only Routing Grace | Hosted subscription ended after cancellation and grace has not expired | Disabled for hosted personal requests | Enabled so recent hosted context can still be viewed/recovered | Disabled | Recent hosted personal history remains visible during the grace period | Renew, delete hosted data, or grace expires |
 | Hosted expired | No Trial, included month, active subscription, or grace applies | Disabled for hosted personal requests | Disabled | Disabled | Hosted personal retention drops to zero in current lifecycle status | Subscribe again or switch to self-hosted use |
@@ -70,7 +68,7 @@ stateDiagram-v2
 - **Lifetime app unlock** is a one-time app-store purchase for ongoing first-party app use with self-hosted servers after Trial.
 - Lifetime app unlock **does not include hosted service forever**.
 - The **included hosted month** starts only when hosted personal service is first activated after Lifetime unlock; it does not run during the initial Trial.
-- Hosted personal service can continue after the included month through optional monthly or yearly app-store subscriptions.
+- Hosted personal service can continue after the Trial and included month through optional monthly or yearly app-store subscriptions.
 - **Read-Only Routing Grace** is a hosted personal recovery state after a canceled/lapsed subscription: routing and recent history remain available, but responses and push are disabled.
 - Self-hosted deployments are responsible for their own uptime, backups, notifications, and data retention.
 

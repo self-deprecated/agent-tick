@@ -1824,6 +1824,17 @@ function AgentTickApp({
     await runPurchaseFlow(period === "yearly" ? "hosted_personal_yearly" : "hosted_personal_monthly", "Hosted personal service");
   };
 
+  const activateIncludedHostedMonth = async () => {
+    if (!requirePurchaseAccount()) return;
+    try {
+      await sdk.activateIncludedHostedMonth();
+      await refreshPersonalBilling({ configureStore: true });
+      Alert.alert(translateSource("Included hosted month active"), translateSource("Hosted personal service is active for the included month."));
+    } catch (err) {
+      Alert.alert(translateSource("Activation failed"), err instanceof Error ? err.message : translateSource("Could not activate the included hosted month"));
+    }
+  };
+
   const manageSubscription = () => {
     const originPlatform = personalBillingStatus?.activeEntitlements.hostedPersonal.originPlatform;
     if (originPlatform && originPlatform !== "unknown" && originPlatform !== Platform.OS) {
@@ -2282,6 +2293,7 @@ function AgentTickApp({
           onPurchaseLifetimeUnlock={() => void purchaseLifetimeUnlock()}
           onRestorePurchases={() => void restorePurchases()}
           onSubscribeHostedPersonal={(period) => void subscribeHostedPersonal(period)}
+          onActivateIncludedHostedMonth={() => void activateIncludedHostedMonth()}
           onManageSubscription={manageSubscription}
           onScanPairing={() => {
             pairingInFlight.current = false;
@@ -2684,6 +2696,12 @@ function purchaseAvailabilityMessage(reason: string | undefined, originPlatform?
           : "Hosted personal service is active on another app-store platform.";
     case "purchase_in_progress":
       return "A purchase is already in progress. Wait a few minutes, then try again.";
+    case "app_purchase_required":
+      return "Buy Lifetime app unlock before subscribing to hosted personal service.";
+    case "trial_active":
+      return "Hosted personal service is included during Trial.";
+    case "included_hosted_month_active":
+      return "The included hosted month is active. Subscribe after it ends.";
     case "billing_disabled":
       return "Purchases are not enabled on this server.";
     default:

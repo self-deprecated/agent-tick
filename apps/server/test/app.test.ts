@@ -645,11 +645,87 @@ describe('server skeleton', () => {
     expect(status.json().activeEntitlements.lifetimeUnlock.active).toBe(false);
   });
 
+  it('requires a verified app purchase before activating the included hosted month', async () => {
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: testStore() });
+
+    const withoutPurchase = await app.inject({ method: 'POST', url: '/v1/billing/personal', payload: { event: 'activate_included_hosted_month' } });
+    expect(withoutPurchase.statusCode).toBe(400);
+    expect(withoutPurchase.json()).toMatchObject({ error: { code: 'app_purchase_required' } });
+  });
+
+  it('waits until Trial ends before activating the included hosted month', async () => {
+    const db = testStore();
+    const now = new Date().toISOString();
+    await db.getOrStartPersonalEntitlement('usr_default', now);
+    await db.updatePersonalEntitlement({ userId: 'usr_default', appUnlockedAt: now }, now);
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: db });
+
+    const activated = await app.inject({ method: 'POST', url: '/v1/billing/personal', payload: { event: 'activate_included_hosted_month' } });
+    expect(activated.statusCode).toBe(409);
+    expect(activated.json()).toMatchObject({ error: { code: 'trial_active' } });
+  });
+
+  it('allows verified app purchases to activate the included hosted month after Trial', async () => {
+    const db = testStore();
+    await db.getOrStartPersonalEntitlement('usr_default', '2026-01-01T00:00:00.000Z');
+    await db.updatePersonalEntitlement({ userId: 'usr_default', appUnlockedAt: '2026-01-01T00:00:00.000Z' }, '2026-01-01T00:00:00.000Z');
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: db });
+
+    const activated = await app.inject({ method: 'POST', url: '/v1/billing/personal', payload: { event: 'activate_included_hosted_month' } });
+    expect(activated.statusCode).toBe(200);
+    expect(activated.json().entitlement.includedHostedActivatedAt).toBeTruthy();
+  });
+
+  it('blocks hosted subscriptions while Trial provides hosted service', async () => {
+    const db = testStore();
+    const now = new Date().toISOString();
+    await db.getOrStartPersonalEntitlement('usr_default', now);
+    await db.updatePersonalEntitlement({ userId: 'usr_default', appUnlockedAt: now }, now);
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
+      store: db
+    });
+
+    const response = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: 'trial_active' } });
+  });
+
+  it('blocks hosted subscriptions while the included hosted month is active', async () => {
+    const db = testStore();
+    const now = new Date().toISOString();
+    await db.getOrStartPersonalEntitlement('usr_default', '2026-01-01T00:00:00.000Z');
+    await db.updatePersonalEntitlement({ userId: 'usr_default', appUnlockedAt: '2026-01-01T00:00:00.000Z', includedHostedActivatedAt: now }, now);
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
+      store: db
+    });
+
+    const response = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: { code: 'included_hosted_month_active' } });
+  });
+
   it('preflights purchases and blocks duplicate hosted subscriptions across platforms', async () => {
     const db = testStore();
     app = await buildApp({
       config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
       store: db
+    });
+
+    const requiresAppPurchase = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });
+    expect(requiresAppPurchase.statusCode).toBe(409);
+    expect(requiresAppPurchase.json()).toMatchObject({ error: { code: 'app_purchase_required' } });
+
+    await app.close();
+    app = undefined;
+    db.close();
+    const unlockedDb = testStore();
+    await unlockedDb.getOrStartPersonalEntitlement('usr_default', '2026-01-01T00:00:00.000Z');
+    await unlockedDb.updatePersonalEntitlement({ userId: 'usr_default', appUnlockedAt: '2026-01-01T00:00:00.000Z', includedHostedActivatedAt: '2026-01-01T00:00:00.000Z' }, '2026-01-01T00:00:00.000Z');
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
+      store: unlockedDb
     });
 
     const first = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });

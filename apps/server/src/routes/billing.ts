@@ -11,8 +11,10 @@ import {
   normalizeRevenueCatEvent,
   preflightPurchase,
   recordVerifiedTransaction,
+  recomputePersonalEntitlement,
   type BillingProductKey
 } from '../services/billing.js';
+import { hostedPersonalStatus } from '../services/personalEntitlements.js';
 
 export interface BillingRoutesOptions {
   config: ServerConfig;
@@ -37,17 +39,23 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
     const now = new Date();
     const input = PersonalBillingUpdateSchema.parse(request.body);
 
-    if (input.event !== 'delete_account_data' && !config.testAuth && !config.billingTestMode) {
+    if (!['delete_account_data', 'activate_included_hosted_month'].includes(input.event) && !config.testAuth && !config.billingTestMode) {
       throw billingError(403, 'billing_test_mode_required', 'Production purchase grants require verified App Store, Play, or billing-provider events');
     }
 
-    const current = await store.getOrStartPersonalEntitlement(userId, now.toISOString());
+    const current = await recomputePersonalEntitlement(store, userId, now);
     if (input.event === 'delete_account_data') {
       await store.deleteHostedPersonalData(userId, auth.organizationId, now.toISOString());
     } else if (input.event === 'app_purchase') {
       await store.updatePersonalEntitlement({ userId, appUnlockedAt: current.appUnlockedAt ?? now.toISOString() }, now.toISOString());
     } else if (input.event === 'activate_included_hosted_month') {
       if (!current.appUnlockedAt) throw billingError(400, 'app_purchase_required', 'Lifetime app unlock is required before activating included hosted month');
+      const hostedStatus = hostedPersonalStatus(current, now);
+      const trialActive = new Date(hostedStatus.trialEndsAt).getTime() > now.getTime();
+      if (!current.includedHostedActivatedAt && trialActive) throw billingError(409, 'trial_active', 'The included hosted month can be activated after Trial ends');
+      if (!current.includedHostedActivatedAt && current.hostedSubscriptionEndsAt && new Date(current.hostedSubscriptionEndsAt).getTime() > now.getTime()) {
+        throw billingError(409, 'already_subscribed', 'Hosted personal service is already active for this account');
+      }
       await store.updatePersonalEntitlement({ userId, includedHostedActivatedAt: current.includedHostedActivatedAt ?? now.toISOString() }, now.toISOString());
     } else if (input.event === 'subscribe_monthly' || input.event === 'subscribe_yearly') {
       const days = input.event === 'subscribe_yearly' ? 365 : 31;
