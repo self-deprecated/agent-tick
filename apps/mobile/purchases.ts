@@ -78,6 +78,8 @@ const fallbackCatalog: BillingProduct[] = [
   },
 ];
 
+const defaultRevenueCatIOSAPIKey = "appl_jjQlssmgYrPUZmFPbFuSyVOfPCV";
+
 let configuredUserID: string | null = null;
 let currentCatalog: BillingProduct[] = fallbackCatalog;
 
@@ -173,7 +175,7 @@ async function revenueCatPackages(Purchases: RevenueCatStatic): Promise<RevenueC
 }
 
 function revenueCatAPIKey(): string | undefined {
-  if (Platform.OS === "ios") return process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.trim() || undefined;
+  if (Platform.OS === "ios") return process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.trim() || defaultRevenueCatIOSAPIKey;
   if (Platform.OS === "android") return process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY?.trim() || undefined;
   return undefined;
 }

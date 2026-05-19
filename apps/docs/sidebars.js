@@ -9,7 +9,7 @@ const sidebars = {
       type: 'category',
       label: 'Integrations',
       link: { type: 'doc', id: 'integrations' },
-      items: ['claude-code', 'codex', 'github-actions-release-sanction-tutorial', 'approval-templates']
+      items: ['claude-code', 'codex', 'pi', 'github-actions-release-sanction-tutorial']
     },
     'self-hosting',
     'mobile-app',

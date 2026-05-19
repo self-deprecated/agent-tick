@@ -48,22 +48,24 @@ Open `AGENT_TICK_PUBLIC_URL` in a browser. If `AGENT_TICK_ADMIN_TOKEN` is set, e
 
 ## Connect an agent machine
 
-Install the CLI on the machine where your coding agent runs:
+For an interactive agent host, run the installer against your server:
 
 ```sh
-npm install -g @self-deprecated/agent-tick
+npx @self-deprecated/agent-tick install --server https://tick.example.com
 ```
 
-Create or copy an `agent_...` token from the dashboard, then save it locally:
+For CI or non-interactive hosts, create or copy an `agent_...` token from the dashboard, then save it locally with the CLI available on that host:
 
 ```sh
 agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
+If the host does not already have a persistent `agent-tick` binary for hooks or MCP, install the package globally before using `agent-tick setup`.
+
 Send a safe test request:
 
 ```sh
-agent-tick steering \
+npx @self-deprecated/agent-tick steering \
   --title "Self-hosted Agent Tick test" \
   --choice works="It works" \
   --choice stop:deny="Stop testing"
@@ -138,10 +140,10 @@ AGENT_TICK_CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----..."
 After the server is running, use the browser installer from an agent host:
 
 ```sh
-agent-tick install --server https://tick.example.com
+npx @self-deprecated/agent-tick install --server https://tick.example.com
 ```
 
-For CI or non-interactive hosts, create an agent token in the dashboard and use `agent-tick setup --server ... --token ...`.
+For CI or non-interactive hosts, create an agent token in the dashboard and use `agent-tick setup --server ... --token ...` with the CLI available on that host.
 
 ## Backups and security
 

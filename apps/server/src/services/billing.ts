@@ -244,9 +244,9 @@ export function productKeyFromStoreProductId(productId: string | undefined, base
   const normalized = productId?.trim();
   const normalizedBasePlan = basePlanId?.trim().toLowerCase();
   if (!normalized) return null;
-  if (normalized === 'ai.selfdeprecated.agenttick.lifetime_unlock' || normalized === 'lifetime_unlock') return 'lifetime_unlock';
-  if (normalized === 'ai.selfdeprecated.agenttick.hosted_personal_monthly' || normalized === 'hosted_personal_monthly' || normalized === 'hosted_personal:monthly') return 'hosted_personal_monthly';
-  if (normalized === 'ai.selfdeprecated.agenttick.hosted_personal_yearly' || normalized === 'hosted_personal_yearly' || normalized === 'hosted_personal_yearly' || normalized === 'hosted_personal:yearly' || normalized === 'hosted_personal:annual') return 'hosted_personal_yearly';
+  if (normalized === 'ai.selfdeprecated.agenttick.lifetime_unlock' || normalized === 'lifetime_unlock' || normalized === 'lifetime') return 'lifetime_unlock';
+  if (normalized === 'ai.selfdeprecated.agenttick.hosted_personal_monthly' || normalized === 'hosted_personal_monthly' || normalized === 'hosted_personal:monthly' || normalized === 'monthly') return 'hosted_personal_monthly';
+  if (normalized === 'ai.selfdeprecated.agenttick.hosted_personal_yearly' || normalized === 'hosted_personal_yearly' || normalized === 'hosted_personal:yearly' || normalized === 'hosted_personal:annual' || normalized === 'yearly' || normalized === 'annual') return 'hosted_personal_yearly';
   if (normalized === 'hosted_personal' && normalizedBasePlan === 'monthly') return 'hosted_personal_monthly';
   if (normalized === 'hosted_personal' && (normalizedBasePlan === 'yearly' || normalizedBasePlan === 'annual')) return 'hosted_personal_yearly';
   return null;

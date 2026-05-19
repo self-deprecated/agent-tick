@@ -690,6 +690,39 @@ describe('server skeleton', () => {
     });
   });
 
+  it('accepts RevenueCat Test Store product identifiers', async () => {
+    const db = testStore();
+    app = await buildApp({
+      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
+      store: db
+    });
+
+    const webhook = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/webhooks/revenuecat',
+      headers: { authorization: 'Bearer rc_secret' },
+      payload: revenueCatEvent({
+        type: 'INITIAL_PURCHASE',
+        app_user_id: 'usr_default',
+        product_id: 'monthly',
+        store: 'TEST_STORE',
+        environment: 'SANDBOX',
+        transaction_id: 'tx_test_store_monthly_1',
+        original_transaction_id: 'otx_test_store_monthly_1',
+        purchased_at_ms: Date.parse('2026-05-10T00:00:00.000Z'),
+        expiration_at_ms: Date.parse('2026-06-10T00:00:00.000Z')
+      })
+    });
+    expect(webhook.statusCode).toBe(200);
+    expect(webhook.json()).toMatchObject({ processed: true, created: true });
+
+    const personal = await app.inject({ method: 'GET', url: '/v1/billing/personal' });
+    expect(personal.statusCode).toBe(200);
+    expect(personal.json()).toMatchObject({
+      activeEntitlements: { hostedPersonal: { active: true, originProvider: 'revenuecat', originPlatform: 'unknown' } }
+    });
+  });
+
   it('processes RevenueCat webhooks idempotently and removes refunded lifetime entitlements', async () => {
     const db = testStore();
     app = await buildApp({
