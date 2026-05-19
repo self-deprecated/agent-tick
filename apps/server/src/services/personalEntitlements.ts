@@ -65,13 +65,13 @@ export async function hostedPersonalForAuth(config: ServerConfig, store: AgentTi
 export async function requireHostedPersonalRouting(config: ServerConfig, store: AgentTickStore, auth: AuthContext): Promise<HostedPersonalStatus | null> {
   const status = await hostedPersonalForAuth(config, store, auth);
   if (!status || status.routingEnabled) return status;
-  throw entitlementError('Hosted personal service is inactive. Renew or switch to self-hosted use.');
+  throw entitlementError('Hosted service is inactive. Renew or switch to self-hosted use.');
 }
 
 export async function requireHostedPersonalResponse(config: ServerConfig, store: AgentTickStore, auth: AuthContext): Promise<HostedPersonalStatus | null> {
   const status = await hostedPersonalForAuth(config, store, auth);
   if (!status || status.responsesEnabled) return status;
-  throw entitlementError(status.lifecycle === 'read_only_grace' ? 'Hosted personal service is in read-only grace. Renew to respond.' : 'Hosted personal service is inactive. Renew or switch to self-hosted use.');
+  throw entitlementError(status.lifecycle === 'read_only_grace' ? 'Hosted service is in read-only grace. Renew to respond.' : 'Hosted service is inactive. Renew or switch to self-hosted use.');
 }
 
 function entitlementError(message: string): Error & { statusCode: number; code: string } {

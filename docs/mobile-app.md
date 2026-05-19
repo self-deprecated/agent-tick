@@ -40,7 +40,7 @@ Enable notifications if you want approval alerts while the app is closed. Push n
 - A 7-day trial starts when your personal entitlement is first created.
 - The trial includes hosted and self-hosted app use.
 - After the trial, Lifetime app unlock keeps app responses available for self-hosted servers.
-- Hosted personal service is separate from permanent self-hosted app use.
+- Hosted service is separate from permanent self-hosted app use.
 - iOS and Android purchases use App Store / Google Play in-app purchases through RevenueCat; the Agent Tick server is the source of truth for entitlements.
 - Sign in to an Agent Tick account before buying so purchases can be restored across devices and duplicate Apple/Google purchases can be blocked where possible.
 

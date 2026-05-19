@@ -69,7 +69,7 @@ describe("native app entitlement", () => {
     expect(state.readOnly).toBe(false);
   });
 
-  it("provides clear entitlement status and paywall copy", () => {
+  it("provides clear app access and paywall copy", () => {
     const trial = nativeAppEntitlement({ now: new Date("2026-05-02T00:00:00.000Z"), firstOpenedAt: "2026-05-01T00:00:00.000Z" });
     expect(entitlementStatusCopy(trial)).toMatchObject({
       title: "Trial active",
@@ -90,7 +90,7 @@ describe("native app entitlement", () => {
       hostedSubscriptionActive: true,
     });
     expect(entitlementStatusCopy(subscribed)).toMatchObject({
-      title: "Hosted personal active",
+      title: "Hosted service active",
       hostedAccess: "agenttick.sh routing, push, updates, and uptime are covered by your hosted subscription.",
     });
   });

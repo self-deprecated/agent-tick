@@ -32,7 +32,7 @@ Agent Tick starts with a 7-day Trial. The Trial includes both hosted and self-ho
 
 After the Trial, Lifetime app unlock is a one-time $19.99 in-app purchase: “Use the Agent Tick app with self-hosted servers forever.” The unlock does not imply hosted service forever.
 
-Lifetime app unlock includes one hosted month that starts when hosted personal service is first activated after purchase. Continued hosted personal service is available as an optional in-app subscription: $5/month or $50/year.
+Lifetime app unlock includes one hosted month that starts when hosted service is first activated after purchase. Continued hosted service is available as an optional in-app subscription: $5/month or $50/year.
 
 ## Screenshot plan
 
@@ -48,10 +48,10 @@ The export script writes generated SVGs for each scene/size and PNGs when ImageM
 2. Steering choices — show bounded options with a recommended/favorite choice and a decline/stop option.
 3. Status Update / Activity History — show recent agent progress and session history.
 4. Hosted/self-hosted account setup — show account switcher or setup screen with hosted and self-hosted paths.
-5. Native App Paywall — show 7-day Trial remaining, Lifetime app unlock at $19.99, Restore purchases, and optional Hosted personal service.
+5. Native App Paywall — show 7-day Trial remaining, Lifetime app unlock at $19.99, Restore purchases, and optional hosted service.
 
 ## Review notes
 
 Agent Tick routes approval decisions for local developer tools. It does not provide remote desktop, remote shell, or general device control. Push notifications are minimal by default; full request details are reviewed inside the app.
 
-Trial includes hosted and self-hosted app use. Lifetime app unlock is a non-consumable in-app purchase for first-party app use with self-hosted servers after trial. Hosted personal service is an optional auto-renewable subscription for routing, push, updates, and uptime. The MVP app does not include external payment links.
+Trial includes hosted and self-hosted app use. Lifetime app unlock is a non-consumable in-app purchase for first-party app use with self-hosted servers after trial. Hosted service is an optional auto-renewable subscription for routing, push, updates, and uptime. The MVP app does not include external payment links.

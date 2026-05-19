@@ -67,19 +67,22 @@ describe("SettingsScreen — unpaired state", () => {
     expect(screen.getByText("Scan Pairing QR")).toBeTruthy();
   });
 
-  it("shows server URL input", () => {
+  it("shows server URL input from manual self-hosted setup", () => {
     render(<SettingsScreen {...unpairedProps} />);
+    fireEvent.press(screen.getByText("Manual self-hosted setup"));
     expect(screen.getByPlaceholderText("https://tick.example.com")).toBeTruthy();
   });
 
-  it("shows Check Connection button", () => {
+  it("shows Check Connection from manual self-hosted setup", () => {
     render(<SettingsScreen {...unpairedProps} />);
+    fireEvent.press(screen.getByText("Manual self-hosted setup"));
     expect(screen.getByText("Check Connection")).toBeTruthy();
   });
 
-  it("offers agenttick.sh as the primary escape hatch from self-hosted setup", () => {
+  it("offers hosted service as a clear account choice", () => {
     render(<SettingsScreen {...unpairedProps} />);
-    expect(screen.getByText("Use agenttick.sh")).toBeTruthy();
+    expect(screen.getByText("Agent Tick Hosted")).toBeTruthy();
+    expect(screen.getByText("Sign in to agenttick.sh")).toBeTruthy();
   });
 
   it("hides manual pairing code input by default (collapsed Advanced)", () => {
@@ -92,13 +95,15 @@ describe("SettingsScreen — unpaired state", () => {
     expect(screen.queryByPlaceholderText("test-token")).toBeNull();
   });
 
-  it("shows Advanced toggle to expand the section", () => {
+  it("shows Advanced toggle inside manual self-hosted setup", () => {
     render(<SettingsScreen {...unpairedProps} />);
+    fireEvent.press(screen.getByText("Manual self-hosted setup"));
     expect(screen.getByText("Advanced")).toBeTruthy();
   });
 
   it("reveals manual pairing code input when Advanced is expanded", () => {
     render(<SettingsScreen {...unpairedProps} />);
+    fireEvent.press(screen.getByText("Manual self-hosted setup"));
     fireEvent.press(screen.getByText("Advanced"));
     expect(screen.getByPlaceholderText("pair_...")).toBeTruthy();
   });
@@ -121,8 +126,9 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText("Device device-abc-123")).toBeTruthy();
   });
 
-  it("shows Forget Device button", () => {
+  it("shows Forget Device button in Account settings", () => {
     render(<SettingsScreen {...pairedProps} />);
+    fireEvent.press(screen.getByText("Manage account ›"));
     expect(screen.getByText("Forget Device")).toBeTruthy();
   });
 
@@ -141,8 +147,9 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByPlaceholderText("test-token")).toBeNull();
   });
 
-  it("keeps Check Connection available", () => {
+  it("keeps Check Connection available in Account settings", () => {
     render(<SettingsScreen {...pairedProps} />);
+    fireEvent.press(screen.getByText("Manage account ›"));
     expect(screen.getByText("Check Connection")).toBeTruthy();
   });
 
@@ -159,6 +166,7 @@ describe("SettingsScreen — paired state", () => {
   it("reminds paired users to enable notifications", () => {
     const onRequestNotifications = jest.fn();
     render(<SettingsScreen {...pairedProps} onRequestNotifications={onRequestNotifications} notificationStatus="undetermined" />);
+    fireEvent.press(screen.getByText("Notifications"));
     expect(screen.getByText("Enable approval alerts")).toBeTruthy();
     expect(screen.getByText(/urgent approval requests/)).toBeTruthy();
     fireEvent.press(screen.getByText("Enable Notifications"));
@@ -167,12 +175,14 @@ describe("SettingsScreen — paired state", () => {
 
   it("does not show the notification reminder after notifications are enabled", () => {
     render(<SettingsScreen {...pairedProps} notificationStatus="granted" />);
+    fireEvent.press(screen.getByText("Notifications"));
     expect(screen.queryByText("Enable approval alerts")).toBeNull();
   });
 
   it("disables push registration when push is already registered", () => {
     const onRegisterPush = jest.fn();
     render(<SettingsScreen {...pairedProps} onRegisterPush={onRegisterPush} pushStatus="registered" />);
+    fireEvent.press(screen.getByText("Notifications"));
     expect(screen.getByText("Push Registered")).toBeTruthy();
     expect(screen.queryByText("Register Push")).toBeNull();
     fireEvent.press(screen.getByText("Push Registered"));
@@ -196,6 +206,7 @@ describe("SettingsScreen — paired state", () => {
       />,
     );
 
+    fireEvent.press(screen.getByText("Notifications"));
     expect(screen.getByText("Off in Agent Tick")).toBeTruthy();
     fireEvent.press(screen.getByText("Turn On"));
     expect(onNotificationsEnabledChange).toHaveBeenCalledWith(true);
@@ -210,6 +221,7 @@ describe("SettingsScreen — paired state", () => {
   it("reveals hidden diagnostics controls by long-pressing Notifications", () => {
     const onDiagnosticsEnabledChange = jest.fn();
     render(<SettingsScreen {...pairedProps} onDiagnosticsEnabledChange={onDiagnosticsEnabledChange} />);
+    fireEvent.press(screen.getByText("Notifications"));
     expect(screen.queryByText("Diagnostics")).toBeNull();
     fireEvent(screen.getByText("Notifications"), "longPress");
     expect(screen.getByText("Diagnostics")).toBeTruthy();
@@ -217,7 +229,7 @@ describe("SettingsScreen — paired state", () => {
     expect(onDiagnosticsEnabledChange).toHaveBeenCalledWith(true);
   });
 
-  it("shows clear entitlement status and paywall messaging", () => {
+  it("shows clear app access and paywall messaging", () => {
     render(
       <SettingsScreen
         {...pairedProps}
@@ -232,7 +244,8 @@ describe("SettingsScreen — paired state", () => {
         trialRemainingLabel="Trial ended"
       />,
     );
-    expect(screen.getByText("Entitlement status")).toBeTruthy();
+    fireEvent.press(screen.getByText("App access"));
+    expect(screen.getByText("App access")).toBeTruthy();
     expect(screen.getByText("Read-only after Trial")).toBeTruthy();
     expect(screen.getByText("Responses are disabled until Lifetime app unlock is purchased or restored.")).toBeTruthy();
     expect(screen.getByText("Buy Lifetime app unlock to respond again and use self-hosted Agent Tick forever.")).toBeTruthy();
@@ -261,6 +274,7 @@ describe("SettingsScreen — paired state", () => {
       />,
     );
 
+    fireEvent.press(screen.getByText("App access"));
     expect(screen.getByText("Active via Apple. Manage on iOS or the App Store.")).toBeTruthy();
     fireEvent.press(screen.getByText("$5/month"));
     fireEvent.press(screen.getByText("$50/year"));
@@ -283,22 +297,25 @@ describe("SettingsScreen — paired state", () => {
       />,
     );
 
+    fireEvent.press(screen.getByText("App access"));
     expect(screen.getByText("Purchased")).toBeTruthy();
     expect(screen.queryByText("Buy lifetime unlock")).toBeNull();
   });
 
-  it("offers coarse availability controls with privacy copy", () => {
+  it("keeps availability controls hidden while the feature is turned off", () => {
     const onAvailabilityChange = jest.fn();
     render(<SettingsScreen {...pairedProps} availability="available" onAvailabilityChange={onAvailabilityChange} />);
-    expect(screen.getByText("Availability")).toBeTruthy();
-    expect(screen.getByText(/coarse last-seen/)).toBeTruthy();
-    fireEvent.press(screen.getByText("Off-call"));
-    expect(onAvailabilityChange).toHaveBeenCalledWith("off-call");
+    expect(screen.queryByText("Availability")).toBeNull();
+    fireEvent.press(screen.getByText("Manage account ›"));
+    expect(screen.queryByText("Availability")).toBeNull();
+    expect(screen.queryByText("Off-call")).toBeNull();
+    expect(onAvailabilityChange).not.toHaveBeenCalled();
   });
 
   it("lets paired users save an E2EE decryption key", () => {
     const setE2eeKey = jest.fn();
     render(<SettingsScreen {...pairedProps} e2eeKey="" setE2eeKey={setE2eeKey} />);
+    fireEvent.press(screen.getByText("Security"));
     expect(screen.getByText("End-to-end encryption")).toBeTruthy();
     fireEvent.changeText(screen.getByPlaceholderText("key or passphrase"), " key_123 ");
     expect(setE2eeKey).toHaveBeenCalledWith("key_123");
@@ -317,7 +334,8 @@ describe("SettingsScreen — paired state", () => {
     render(<SettingsScreen {...pairedProps} accounts={[account]} serverURL="https://tick.example.com" onSavedAccountSelect={onSavedAccountSelect} />);
     expect(screen.getByText("Current account")).toBeTruthy();
     expect(screen.queryByText("Accounts")).toBeNull();
-    fireEvent.press(screen.getByText("Switch accounts ›"));
+    fireEvent.press(screen.getByText("Manage account ›"));
+    fireEvent.press(screen.getByText("Switch accounts"));
     expect(screen.getByText("Accounts")).toBeTruthy();
     expect(screen.queryByText("Saved accounts")).toBeNull();
     expect(screen.getByText("Example device")).toBeTruthy();
@@ -347,7 +365,8 @@ describe("SettingsScreen — paired state", () => {
       />,
     );
 
-    fireEvent.press(screen.getByText("Switch accounts ›"));
+    fireEvent.press(screen.getByText("Manage account ›"));
+    fireEvent.press(screen.getByText("Switch accounts"));
     fireEvent.press(screen.getAllByText("Sign Out").at(-1)!);
     expect(onSavedAccountRemove).toHaveBeenCalledWith(account);
   });
@@ -356,7 +375,8 @@ describe("SettingsScreen — paired state", () => {
     const onForgetDevice = jest.fn();
     render(<SettingsScreen {...pairedProps} onForgetDevice={onForgetDevice} />);
 
-    fireEvent.press(screen.getByText("Switch accounts ›"));
+    fireEvent.press(screen.getByText("Manage account ›"));
+    fireEvent.press(screen.getByText("Switch accounts"));
     fireEvent.press(screen.getByText("Sign Out"));
     expect(onForgetDevice).toHaveBeenCalled();
   });
@@ -376,12 +396,13 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText(/ada@example.com/)).toBeTruthy();
     expect(screen.getByText(/Sign-in method: GitHub/)).toBeTruthy();
     expect(screen.queryByText(/org_/)).toBeNull();
-    fireEvent.press(screen.getByText("Switch accounts ›"));
+    fireEvent.press(screen.getByText("Manage account ›"));
+    fireEvent.press(screen.getByText("Switch accounts"));
     fireEvent.press(screen.getByText("Add another account"));
     expect(onSignInAnotherClerkAccount).toHaveBeenCalled();
   });
 
-  it("shows Clerk organization choices without device pairing", () => {
+  it("hides workspace choices when a Clerk account has only one organization", () => {
     const onSelectOrganization = jest.fn();
     render(
       <SettingsScreen
@@ -394,8 +415,28 @@ describe("SettingsScreen — paired state", () => {
     );
     expect(screen.getByText("Account")).toBeTruthy();
     expect(screen.queryByText(/org_1/)).toBeNull();
+    expect(screen.queryByText("Platform")).toBeNull();
+  });
+
+  it("shows Clerk workspace choices only when there are multiple organizations", () => {
+    const onSelectOrganization = jest.fn();
+    render(
+      <SettingsScreen
+        {...unpairedProps}
+        authProvider="clerk"
+        organizations={[
+          { organizationId: "org_1", name: "Platform", role: "owner" },
+          { organizationId: "org_2", name: "Research", role: "member" },
+        ]}
+        selectedOrganizationID="org_1"
+        setSelectedOrganizationID={onSelectOrganization}
+      />,
+    );
+    fireEvent.press(screen.getByText("Manage account ›"));
+    expect(screen.getByText("Workspace")).toBeTruthy();
+    expect(screen.queryByText(/org_1/)).toBeNull();
     expect(screen.getByText("Platform")).toBeTruthy();
-    fireEvent.press(screen.getByText("Platform"));
-    expect(onSelectOrganization).toHaveBeenCalledWith("org_1");
+    fireEvent.press(screen.getByText("Research"));
+    expect(onSelectOrganization).toHaveBeenCalledWith("org_2");
   });
 });

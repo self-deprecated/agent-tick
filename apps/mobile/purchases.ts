@@ -235,8 +235,8 @@ function titleForProduct(productKey: ProductKey): string {
     case "lifetime_unlock":
       return "Lifetime app unlock";
     case "hosted_personal_monthly":
-      return "Hosted personal monthly";
+      return "Hosted service monthly";
     case "hosted_personal_yearly":
-      return "Hosted personal yearly";
+      return "Hosted service yearly";
   }
 }

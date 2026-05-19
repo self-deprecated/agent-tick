@@ -466,13 +466,13 @@ function purchaseBlockedMessage(reason: string | undefined, originPlatform?: str
     case 'already_unlocked':
       return 'Lifetime app unlock is already active for this account';
     case 'already_subscribed':
-      return 'Hosted personal service is already active for this account';
+      return 'Hosted service is already active for this account';
     case 'active_on_other_platform':
       return originPlatform === 'ios'
-        ? 'Hosted personal service is active via Apple. Manage it on iOS or the App Store.'
+        ? 'Hosted service is active via Apple. Manage it on iOS or the App Store.'
         : originPlatform === 'android'
-          ? 'Hosted personal service is active via Google. Manage it on Android or Google Play.'
-          : 'Hosted personal service is already active on another platform.';
+          ? 'Hosted service is active via Google. Manage it on Android or Google Play.'
+          : 'Hosted service is already active on another platform.';
     case 'purchase_in_progress':
       return 'A purchase is already in progress. Wait a few minutes, then try again.';
     case 'billing_disabled':
