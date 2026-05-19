@@ -47,8 +47,8 @@ export type ServerConfig = Omit<z.infer<typeof ConfigSchema>, 'adminDistDir'> & 
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const parsed = ConfigSchema.parse({
-    mode: env.AGENT_TICK_MODE ?? 'single',
-    host: env.AGENT_TICK_HOST ?? env.HOST ?? '0.0.0.0',
+    mode: optionalEnv(env.AGENT_TICK_MODE) ?? 'single',
+    host: optionalEnv(env.AGENT_TICK_HOST) ?? optionalEnv(env.HOST) ?? '0.0.0.0',
     port: env.AGENT_TICK_PORT ?? env.PORT ?? 8787,
     publicURL: env.AGENT_TICK_PUBLIC_URL,
     databaseURL: env.AGENT_TICK_DATABASE_URL ?? env.AGENT_TICK_DATA ?? 'file:./agent-tick.db',
@@ -70,17 +70,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     expiredInviteRetentionDays: optionalEnv(env.AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS),
     retentionCleanupEnabled: booleanEnv(env.AGENT_TICK_RETENTION_CLEANUP_ENABLED, true),
     retentionCleanupIntervalMinutes: optionalEnv(env.AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES),
-    retentionCleanupLockBackend: env.AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND ?? (env.AGENT_TICK_REDIS_URL ? 'redis' : 'none'),
+    retentionCleanupLockBackend: optionalEnv(env.AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND) ?? (optionalEnv(env.AGENT_TICK_REDIS_URL) ? 'redis' : 'none'),
     retentionCleanupLockTtlMs: optionalEnv(env.AGENT_TICK_RETENTION_CLEANUP_LOCK_TTL_MS),
     rateLimitWindowMs: optionalEnv(env.AGENT_TICK_RATE_LIMIT_WINDOW_MS),
     rateLimitMaxRequests: optionalEnv(env.AGENT_TICK_RATE_LIMIT_MAX_REQUESTS),
-    billingProvider: env.AGENT_TICK_BILLING_PROVIDER ?? 'none',
+    billingProvider: optionalEnv(env.AGENT_TICK_BILLING_PROVIDER) ?? 'none',
     revenueCatWebhookSecret: optionalEnv(env.AGENT_TICK_REVENUECAT_WEBHOOK_SECRET),
     revenueCatProjectId: optionalEnv(env.AGENT_TICK_REVENUECAT_PROJECT_ID),
     billingTestMode: booleanEnv(env.AGENT_TICK_BILLING_TEST_MODE, false),
     redisURL: optionalEnv(env.AGENT_TICK_REDIS_URL),
-    eventBusBackend: env.AGENT_TICK_EVENT_BUS_BACKEND ?? (env.AGENT_TICK_REDIS_URL ? 'redis' : 'memory'),
-    rateLimitBackend: env.AGENT_TICK_RATE_LIMIT_BACKEND ?? (env.AGENT_TICK_REDIS_URL ? 'redis' : 'memory'),
+    eventBusBackend: optionalEnv(env.AGENT_TICK_EVENT_BUS_BACKEND) ?? (optionalEnv(env.AGENT_TICK_REDIS_URL) ? 'redis' : 'memory'),
+    rateLimitBackend: optionalEnv(env.AGENT_TICK_RATE_LIMIT_BACKEND) ?? (optionalEnv(env.AGENT_TICK_REDIS_URL) ? 'redis' : 'memory'),
     testAuth: env.AGENT_TICK_TEST_AUTH === '1' || env.AGENT_TICK_TEST_AUTH === 'true'
   });
 

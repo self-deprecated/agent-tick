@@ -36,11 +36,6 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 # AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
 # AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
 
-# Billing/IAP is disabled by default for self-hosted deployments.
-# Hosted product deployments that use mobile IAP set:
-# AGENT_TICK_BILLING_PROVIDER=revenuecat
-# AGENT_TICK_REVENUECAT_WEBHOOK_SECRET=change-me
-
 # Optional Redis coordination for multi-process deployments. SQLite remains the
 # default simple self-hosted path; use Redis when multiple server instances need
 # shared event wakeups/rate limits.

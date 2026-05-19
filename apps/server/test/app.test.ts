@@ -110,6 +110,19 @@ describe('server skeleton', () => {
     expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_MAX_ACTIVE_MEMBERS: '' }).maxActiveMembers).toBeUndefined();
     expect(loadConfig({ AGENT_TICK_MODE: 'single' }).retentionCleanupIntervalMinutes).toBe(60);
     expect(loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_REDIS_URL: 'redis://localhost:6379' }).retentionCleanupLockBackend).toBe('redis');
+    const blankEnumConfig = loadConfig({
+      AGENT_TICK_MODE: 'single',
+      AGENT_TICK_BILLING_PROVIDER: '',
+      AGENT_TICK_EVENT_BUS_BACKEND: '',
+      AGENT_TICK_RATE_LIMIT_BACKEND: '',
+      AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND: ''
+    });
+    expect(blankEnumConfig).toMatchObject({
+      billingProvider: 'none',
+      eventBusBackend: 'memory',
+      rateLimitBackend: 'memory',
+      retentionCleanupLockBackend: 'none'
+    });
     expect(loadConfig({ AGENT_TICK_MODE: 'single' }).rateLimitWindowMs).toBe(60_000);
     expect(loadConfig({ AGENT_TICK_MODE: 'single' }).rateLimitMaxRequests).toBeUndefined();
   });

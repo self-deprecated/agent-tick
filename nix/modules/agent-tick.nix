@@ -97,8 +97,10 @@ in {
       example = "/run/agenix/agent-tick-env";
       description = ''
         Optional environment file containing secrets such as
-        AGENT_TICK_ADMIN_TOKEN or AGENT_TICK_CLERK_SECRET_KEY. This is intended
-        to be provided by agenix, sops-nix, or another secret manager.
+        AGENT_TICK_ADMIN_TOKEN, AGENT_TICK_CLERK_SECRET_KEY,
+        AGENT_TICK_SESSION_SECRET, or AGENT_TICK_REVENUECAT_WEBHOOK_SECRET.
+        This is intended to be provided by agenix, sops-nix, or another secret
+        manager.
       '';
     };
 
@@ -120,6 +122,24 @@ in {
       description = "Optional self-hosted active-member seat limit.";
     };
 
+    billingProvider = lib.mkOption {
+      type = lib.types.enum [ "none" "revenuecat" ];
+      default = "none";
+      description = "Billing provider for mobile in-app purchases. Set to revenuecat for hosted deployments that receive RevenueCat webhooks.";
+    };
+
+    revenueCatProjectId = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional RevenueCat project identifier for deployments using RevenueCat billing.";
+    };
+
+    billingTestMode = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Allow test-only manual billing state mutations. Keep disabled for production RevenueCat deployments.";
+    };
+
     inviteEmailWebhookUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -134,6 +154,7 @@ in {
 
     retention = {
       approvalDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
+      statusUpdateDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       auditDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       unregisteredDeviceDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       expiredInviteDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
@@ -183,9 +204,13 @@ in {
       // optionalEnv "AGENT_TICK_CLERK_PUBLISHABLE_KEY" cfg.clerkPublishableKey
       // optionalCSVEnv "AGENT_TICK_CLERK_AUTHORIZED_PARTIES" cfg.clerkAuthorizedParties
       // optionalEnv "AGENT_TICK_MAX_ACTIVE_MEMBERS" cfg.maxActiveMembers
+      // optionalEnv "AGENT_TICK_BILLING_PROVIDER" cfg.billingProvider
+      // optionalEnv "AGENT_TICK_REVENUECAT_PROJECT_ID" cfg.revenueCatProjectId
+      // optionalEnv "AGENT_TICK_BILLING_TEST_MODE" cfg.billingTestMode
       // optionalEnv "AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL" cfg.inviteEmailWebhookUrl
       // optionalEnv "AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL" cfg.approvalNotificationWebhookUrl
       // optionalEnv "AGENT_TICK_APPROVAL_RETENTION_DAYS" cfg.retention.approvalDays
+      // optionalEnv "AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS" cfg.retention.statusUpdateDays
       // optionalEnv "AGENT_TICK_AUDIT_RETENTION_DAYS" cfg.retention.auditDays
       // optionalEnv "AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS" cfg.retention.unregisteredDeviceDays
       // optionalEnv "AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS" cfg.retention.expiredInviteDays
