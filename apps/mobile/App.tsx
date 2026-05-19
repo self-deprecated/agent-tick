@@ -72,6 +72,7 @@ import {
   type ApprovalRequest,
   type Choice,
 } from "./approvalRequests";
+import { NativePaywall } from "./NativePaywall";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ChoiceInteractionMode, ConnectionStatus, NotificationStatus, OptionPlacement, PushStatus } from "./SettingsScreen";
 import { AgentTickClient, type AgentStatusUpdate, type MeResponse, type OrganizationMembership } from "@agent-tick/sdk";
@@ -790,6 +791,7 @@ function AgentTickApp({
   const [nativeFirstOpenedAt, setNativeFirstOpenedAt] = useState<string | null>(null);
   const [personalBillingStatus, setPersonalBillingStatus] = useState<PersonalBillingStatus | null>(null);
   const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
+  const [paywallDismissedKey, setPaywallDismissedKey] = useState("");
   const [pushStatus, setPushStatus] = useState<PushStatus>("idle");
   const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false);
   const [diagnosticsEventCount, setDiagnosticsEventCount] = useState(0);
@@ -847,6 +849,16 @@ function AgentTickApp({
   const appResponsesReadOnly = nativeEntitlement.readOnly;
   const hostedPersonalCurrentlyActive = personalBillingStatus ? personalBillingStatus.hostedPersonal.lifecycle === "active" : hostedPersonalActive(nativeEntitlement);
   const hostedReadOnly = isHostedAccount && (personalBillingStatus ? !personalBillingStatus.hostedPersonal.responsesEnabled : !hostedPersonalActive(nativeEntitlement));
+  const appPaywallKey = nativeEntitlement.readOnly && !nativeEntitlement.lifetimeUnlocked ? nativeEntitlement.trialEndsAt : "";
+  const purchaseAccountReady = runtimeAuthConfig?.authProvider === "clerk" && Boolean(currentAccountProfile?.userId);
+  const lifetimeAvailability = personalBillingStatus?.purchaseAvailability.lifetime_unlock;
+  const paywallPurchaseUnavailable = purchaseAccountReady && (!personalBillingStatus || lifetimeAvailability?.allowed === false);
+  const paywallPurchaseUnavailableMessage = !personalBillingStatus
+    ? translateSource("Purchases are still loading. Try again in a moment or open App access for details.")
+    : lifetimeAvailability?.reason
+      ? purchaseAvailabilityMessage(lifetimeAvailability.reason, lifetimeAvailability.originPlatform)
+      : undefined;
+  const paywallVisible = Boolean(appPaywallKey && paywallDismissedKey !== appPaywallKey);
 
   useEffect(() => {
     setReply("");
@@ -1623,7 +1635,11 @@ function AgentTickApp({
     payload: { choiceId?: string; message?: string; answers?: Record<string, string[]>; encryptedPayloadAcknowledged?: boolean },
   ) => {
     if (appResponsesReadOnly || hostedReadOnly) {
-      Alert.alert("Read-only", appResponsesReadOnly ? "Your trial ended. Buy Lifetime app unlock to respond." : "Renew Hosted service to respond on hosted requests.");
+      if (appResponsesReadOnly && appPaywallKey) {
+        setPaywallDismissedKey("");
+        return;
+      }
+      Alert.alert("Read-only", "Renew Hosted service to respond on hosted requests.");
       return;
     }
     interruptRealtime();
@@ -2408,6 +2424,22 @@ function AgentTickApp({
           setSelectedID={setSelectedID}
         />
       )}
+
+      <NativePaywall
+        lifetimePrice={priceForStoreProduct(storeProducts, "lifetime_unlock") ?? "$19.99"}
+        needsSignIn={!purchaseAccountReady}
+        onBuyLifetimeUnlock={() => void purchaseLifetimeUnlock()}
+        onDismiss={() => setPaywallDismissedKey(appPaywallKey)}
+        onRestorePurchases={() => void restorePurchases()}
+        onSignInToBuy={() => void useHostedSignIn()}
+        onViewAppAccess={() => {
+          setPaywallDismissedKey(appPaywallKey);
+          setScreen("settings");
+        }}
+        purchaseUnavailable={paywallPurchaseUnavailable}
+        purchaseUnavailableMessage={paywallPurchaseUnavailableMessage}
+        visible={paywallVisible}
+      />
     </View>
   );
 }
@@ -2713,6 +2745,10 @@ function apiStatus(error: unknown): number | undefined {
 function apiCode(error: unknown): string | undefined {
   const code = (error as { code?: unknown }).code;
   return typeof code === "string" ? code : undefined;
+}
+
+function priceForStoreProduct(products: StoreProduct[], productKey: ProductKey): string | undefined {
+  return products.find((product) => product.productKey === productKey)?.priceString;
 }
 
 function purchaseAvailabilityMessage(reason: string | undefined, originPlatform?: string, fallback = "Purchase is not available right now."): string {
