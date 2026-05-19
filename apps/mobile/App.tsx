@@ -1623,7 +1623,7 @@ function AgentTickApp({
     payload: { choiceId?: string; message?: string; answers?: Record<string, string[]>; encryptedPayloadAcknowledged?: boolean },
   ) => {
     if (appResponsesReadOnly || hostedReadOnly) {
-      Alert.alert("Read-only", appResponsesReadOnly ? "Your trial ended. Buy Lifetime app unlock to respond." : "Renew Hosted personal service to respond on hosted personal requests.");
+      Alert.alert("Read-only", appResponsesReadOnly ? "Your trial ended. Buy Lifetime app unlock to respond." : "Renew Hosted service to respond on hosted requests.");
       return;
     }
     interruptRealtime();
@@ -1843,7 +1843,7 @@ function AgentTickApp({
   };
 
   const subscribeHostedPersonal = async (period: "monthly" | "yearly") => {
-    await runPurchaseFlow(period === "yearly" ? "hosted_personal_yearly" : "hosted_personal_monthly", "Hosted personal service");
+    await runPurchaseFlow(period === "yearly" ? "hosted_personal_yearly" : "hosted_personal_monthly", "Hosted service");
   };
 
   const activateIncludedHostedMonth = async () => {
@@ -1863,14 +1863,14 @@ function AgentTickApp({
       Alert.alert(
         "Manage subscription",
         originPlatform === "ios"
-          ? "Hosted personal service is active via Apple. Manage it on iOS or in the App Store."
-          : "Hosted personal service is active via Google. Manage it on Android or in Google Play."
+          ? "Hosted service is active via Apple. Manage it on iOS or in the App Store."
+          : "Hosted service is active via Google. Manage it on Android or in Google Play."
       );
       return;
     }
     void openSubscriptionManagement().catch((err) => {
       const label = Platform.OS === "ios" ? "Apple subscriptions" : Platform.OS === "android" ? "Google Play subscriptions" : "your app store subscriptions";
-      Alert.alert("Manage subscription", err instanceof Error ? err.message : `Manage or cancel Hosted personal service from ${label}.`);
+      Alert.alert("Manage subscription", err instanceof Error ? err.message : `Manage or cancel Hosted service from ${label}.`);
     });
   };
 
@@ -2233,7 +2233,18 @@ function AgentTickApp({
       <StatusBar style="dark" />
       <View style={styles.header}>
         <View>
-          <Text style={styles.brand}>Agent Tick</Text>
+          <Pressable
+            accessibilityLabel={translateSource("Go to dashboard")}
+            accessibilityRole="button"
+            onPress={() => {
+              recordDiagnostic("info", "navigation", "brand_pressed", { from: screen, to: "approvals" });
+              setScreen("approvals");
+              setMenuOpen(false);
+            }}
+            style={styles.brandButton}
+          >
+            <Text style={styles.brand}>Agent Tick</Text>
+          </Pressable>
           <ConnectionBadge status={connectionStatus} />
         </View>
         <View style={styles.headerActions}>
@@ -2369,7 +2380,7 @@ function AgentTickApp({
           onRespond={(request, choice) => void respond(request, choice)}
           onSubmitQuestionnaire={(request) => void submitQuestionnaire(request)}
           readOnly={appResponsesReadOnly || hostedReadOnly}
-          readOnlyReason={appResponsesReadOnly ? "Your trial ended. Viewing, settings, purchase, and restore stay available; responses require Lifetime app unlock." : hostedReadOnly ? "Hosted personal service is inactive. Renew to respond on hosted personal requests." : undefined}
+          readOnlyReason={appResponsesReadOnly ? "Your trial ended. Viewing, settings, purchase, and restore stay available; responses require Lifetime app unlock." : hostedReadOnly ? "Hosted service is inactive. Renew to respond on hosted requests." : undefined}
           choiceInteractionMode={choiceInteractionMode}
           optionPlacement={optionPlacement}
           confirmBeforeSubmit={confirmBeforeSubmit}
@@ -2709,13 +2720,13 @@ function purchaseAvailabilityMessage(reason: string | undefined, originPlatform?
     case "already_unlocked":
       return "Lifetime app unlock is already active for this Agent Tick account.";
     case "already_subscribed":
-      return "Hosted personal service is already active for this Agent Tick account.";
+      return "Hosted service is already active for this Agent Tick account.";
     case "active_on_other_platform":
       return originPlatform === "ios"
-        ? "Hosted personal service is active via Apple. Manage it on iOS or in the App Store."
+        ? "Hosted service is active via Apple. Manage it on iOS or in the App Store."
         : originPlatform === "android"
-          ? "Hosted personal service is active via Google. Manage it on Android or in Google Play."
-          : "Hosted personal service is active on another app-store platform.";
+          ? "Hosted service is active via Google. Manage it on Android or in Google Play."
+          : "Hosted service is active on another app-store platform.";
     case "purchase_in_progress":
       return "A purchase is already in progress. Wait a few minutes, then try again.";
     case "app_purchase_required":
@@ -3698,6 +3709,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 14,
+  },
+  brandButton: {
+    alignSelf: "flex-start",
+    minHeight: 36,
+    justifyContent: "center",
   },
   brand: {
     color: "#202124",

@@ -51,7 +51,7 @@
       "headline": "Clear app-store entitlement copy",
       "kicker": "Trial & unlock",
       "screenTitle": "7-day trial active",
-      "body": "Lifetime app unlock keeps self-hosted use available on this app-store account. Hosted personal service is optional.",
+      "body": "Lifetime app unlock keeps self-hosted use available on this app-store account. Hosted service is optional.",
       "primaryAction": "Buy lifetime unlock",
       "secondaryAction": "Restore purchases",
       "badges": ["7-day trial", "$19.99 unlock", "optional hosted"],
