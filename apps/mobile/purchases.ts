@@ -175,6 +175,9 @@ async function revenueCatPackages(Purchases: RevenueCatStatic): Promise<RevenueC
 }
 
 function revenueCatAPIKey(): string | undefined {
+  const testStoreKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY?.trim();
+  const useTestStore = ["1", "true", "yes"].includes(process.env.EXPO_PUBLIC_REVENUECAT_USE_TEST_STORE?.trim().toLowerCase() ?? "");
+  if (useTestStore && testStoreKey) return testStoreKey;
   if (Platform.OS === "ios") return process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.trim() || defaultRevenueCatIOSAPIKey;
   if (Platform.OS === "android") return process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY?.trim() || undefined;
   return undefined;
