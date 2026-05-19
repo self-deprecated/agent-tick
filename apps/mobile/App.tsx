@@ -2200,7 +2200,18 @@ function AgentTickApp({
       <StatusBar style="dark" />
       <View style={styles.header}>
         <View>
-          <Text style={styles.brand}>Agent Tick</Text>
+          <Pressable
+            accessibilityLabel={translateSource("Go to dashboard")}
+            accessibilityRole="button"
+            onPress={() => {
+              recordDiagnostic("info", "navigation", "brand_pressed", { from: screen, to: "approvals" });
+              setScreen("approvals");
+              setMenuOpen(false);
+            }}
+            style={styles.brandButton}
+          >
+            <Text style={styles.brand}>Agent Tick</Text>
+          </Pressable>
           <ConnectionBadge status={connectionStatus} />
         </View>
         <View style={styles.headerActions}>
@@ -3658,6 +3669,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 14,
+  },
+  brandButton: {
+    alignSelf: "flex-start",
+    minHeight: 36,
+    justifyContent: "center",
   },
   brand: {
     color: "#202124",

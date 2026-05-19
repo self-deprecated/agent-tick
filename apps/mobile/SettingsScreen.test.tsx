@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import { SettingsScreen, ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
 
 const baseProps = {
@@ -310,6 +311,13 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByText("Availability")).toBeNull();
     expect(screen.queryByText("Off-call")).toBeNull();
     expect(onAvailabilityChange).not.toHaveBeenCalled();
+  });
+
+  it("makes sub-settings back buttons full-width press targets", () => {
+    render(<SettingsScreen {...pairedProps} />);
+    fireEvent.press(screen.getByText("Security"));
+    const backButtonStyle = StyleSheet.flatten(screen.getByLabelText("‹ Settings").props.style);
+    expect(backButtonStyle.alignSelf).toBe("stretch");
   });
 
   it("lets paired users save an E2EE decryption key", () => {

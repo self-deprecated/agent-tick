@@ -408,7 +408,7 @@ export function SettingsScreen({
 
   const renderBackButton = (backView: SettingsView = "home", label = "‹ Settings") => (
     <View style={styles.settingsSection}>
-      <Pressable onPress={() => { trackButton("settings_back", { to: backView }); setSettingsView(backView); }} style={styles.backButton}>
+      <Pressable accessibilityLabel={tr(label)} accessibilityRole="button" onPress={() => { trackButton("settings_back", { to: backView }); setSettingsView(backView); }} style={styles.backButton}>
         <Text style={styles.secondaryActionText}>{tr(label)}</Text>
       </Pressable>
     </View>
@@ -634,7 +634,7 @@ export function SettingsScreen({
         style={styles.settingsPane}
       >
         <View style={styles.settingsSection}>
-          <Pressable onPress={() => { trackButton("accounts_back"); setSettingsView("account"); }} style={styles.backButton}>
+          <Pressable accessibilityLabel={tr("‹ Account")} accessibilityRole="button" onPress={() => { trackButton("accounts_back"); setSettingsView("account"); }} style={styles.backButton}>
             <Text style={styles.secondaryActionText}>{tr("‹ Account")}</Text>
           </Pressable>
           <Text style={styles.sectionHeading}>{tr("Accounts")}</Text>
@@ -736,7 +736,7 @@ export function SettingsScreen({
     return (
       <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
         <View style={styles.settingsSection}>
-          <Pressable onPress={() => { trackButton("account_back"); setSettingsView("home"); }} style={styles.backButton}>
+          <Pressable accessibilityLabel={tr("‹ Settings")} accessibilityRole="button" onPress={() => { trackButton("account_back"); setSettingsView("home"); }} style={styles.backButton}>
             <Text style={styles.secondaryActionText}>{tr("‹ Settings")}</Text>
           </Pressable>
           <Text style={styles.sectionHeading}>{tr("Account")}</Text>
@@ -1104,8 +1104,8 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   backButton: {
-    alignSelf: "flex-start",
-    minHeight: 36,
+    alignSelf: "stretch",
+    minHeight: 44,
     justifyContent: "center",
   },
   pairingHint: {
