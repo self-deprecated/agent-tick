@@ -614,6 +614,14 @@ msgid "Current account"
 msgstr "Cuenta actual"
 
 #: apps/mobile/mobileI18nMessages.ts:100
+msgid "Debug"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:101
+msgid "Debug tools for testing paywalls, hosted expiry warnings, diagnostics, and mobile state. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:102
 msgid "Decrypt this request before approving or rejecting it."
 msgstr "Descifra esta solicitud antes de aprobarla o rechazarla."
 
@@ -625,55 +633,55 @@ msgstr "Descifra esta solicitud en la app móvil antes de aprobarla o rechazarla
 msgid "Default policy"
 msgstr "Política predeterminada"
 
-#: apps/mobile/mobileI18nMessages.ts:101
+#: apps/mobile/mobileI18nMessages.ts:103
 msgid "Denied"
 msgstr "Denegado"
 
-#: apps/mobile/mobileI18nMessages.ts:102
+#: apps/mobile/mobileI18nMessages.ts:104
 msgid "Development build required"
 msgstr "Se requiere build de desarrollo"
 
-#: apps/mobile/mobileI18nMessages.ts:103
-msgid "Diagnostics"
-msgstr "Diagnósticos"
+#: apps/mobile/mobileI18nMessages.ts:105
+msgid "Diagnostic logs"
+msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:104
+#: apps/mobile/mobileI18nMessages.ts:106
 msgid "Diagnostics failed"
 msgstr "Error en diagnósticos"
 
-#: apps/mobile/mobileI18nMessages.ts:105
+#: apps/mobile/mobileI18nMessages.ts:107
 msgid "Diagnostics sent"
 msgstr "Diagnósticos enviados"
 
-#: apps/mobile/mobileI18nMessages.ts:106
+#: apps/mobile/mobileI18nMessages.ts:108
 msgid "Directory"
 msgstr "Directorio"
 
-#: apps/mobile/mobileI18nMessages.ts:107
+#: apps/mobile/mobileI18nMessages.ts:109
 msgid "Disable"
 msgstr "Desactivar"
 
-#: apps/mobile/mobileI18nMessages.ts:108
+#: apps/mobile/mobileI18nMessages.ts:110
 msgid "Disabled"
 msgstr "Desactivado"
 
-#: apps/mobile/mobileI18nMessages.ts:109
+#: apps/mobile/mobileI18nMessages.ts:111
 msgid "Disconnected"
 msgstr "Desconectado"
 
-#: apps/mobile/mobileI18nMessages.ts:110
+#: apps/mobile/mobileI18nMessages.ts:112
 msgid "Dismiss"
 msgstr "Descartar"
 
-#: apps/mobile/mobileI18nMessages.ts:111
+#: apps/mobile/mobileI18nMessages.ts:113
 msgid "Dismiss encrypted request"
 msgstr "Descartar solicitud cifrada"
 
-#: apps/mobile/mobileI18nMessages.ts:112
+#: apps/mobile/mobileI18nMessages.ts:114
 msgid "Dismiss latest agent status"
 msgstr "Descartar último estado del agente"
 
-#: apps/mobile/mobileI18nMessages.ts:113
+#: apps/mobile/mobileI18nMessages.ts:115
 msgid "Do Not Disturb"
 msgstr "No molestar"
 
@@ -681,27 +689,27 @@ msgstr "No molestar"
 msgid "Email invite"
 msgstr "Invitación por correo"
 
-#: apps/mobile/mobileI18nMessages.ts:114
+#: apps/mobile/mobileI18nMessages.ts:116
 msgid "Enable"
 msgstr "Activar"
 
-#: apps/mobile/mobileI18nMessages.ts:115
+#: apps/mobile/mobileI18nMessages.ts:117
 msgid "Enable approval alerts"
 msgstr "Activar alertas de aprobación"
 
-#: apps/mobile/mobileI18nMessages.ts:116
+#: apps/mobile/mobileI18nMessages.ts:118
 msgid "Enable Camera"
 msgstr "Activar cámara"
 
-#: apps/mobile/mobileI18nMessages.ts:117
+#: apps/mobile/mobileI18nMessages.ts:119
 msgid "Enable Notifications"
 msgstr "Activar notificaciones"
 
-#: apps/mobile/mobileI18nMessages.ts:118
+#: apps/mobile/mobileI18nMessages.ts:120
 msgid "Enable notifications first."
 msgstr "Activa primero las notificaciones."
 
-#: apps/mobile/mobileI18nMessages.ts:119
+#: apps/mobile/mobileI18nMessages.ts:121
 msgid "Enabled"
 msgstr "Activado"
 
@@ -709,15 +717,15 @@ msgstr "Activado"
 msgid "Encrypted request."
 msgstr "Solicitud cifrada."
 
-#: apps/mobile/mobileI18nMessages.ts:120
+#: apps/mobile/mobileI18nMessages.ts:122
 msgid "End-to-end approval decryption key"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:121
+#: apps/mobile/mobileI18nMessages.ts:123
 msgid "End-to-end encryption"
 msgstr "Cifrado de extremo a extremo"
 
-#: apps/mobile/mobileI18nMessages.ts:122
+#: apps/mobile/mobileI18nMessages.ts:124
 msgid "Enter the code from agent-tick pair."
 msgstr "Introduce el código de agent-tick pair."
 
@@ -729,11 +737,11 @@ msgstr "Todo está desbloqueado en tu servidor"
 msgid "example.com domain (optional)"
 msgstr "example.com domain (optional)"
 
-#: apps/mobile/mobileI18nMessages.ts:123
+#: apps/mobile/mobileI18nMessages.ts:125
 msgid "Expired"
 msgstr "Caducado"
 
-#: apps/mobile/mobileI18nMessages.ts:124
+#: apps/mobile/mobileI18nMessages.ts:126
 msgid "Expires"
 msgstr "Caduca"
 
@@ -741,95 +749,95 @@ msgstr "Caduca"
 msgid "Expires at"
 msgstr "Caduca el"
 
-#: apps/mobile/mobileI18nMessages.ts:125
+#: apps/mobile/mobileI18nMessages.ts:127
 msgid "Favorite choice"
 msgstr "Opción favorita"
 
-#: apps/mobile/mobileI18nMessages.ts:126
+#: apps/mobile/mobileI18nMessages.ts:128
 msgid "Forget Device"
 msgstr "Olvidar dispositivo"
 
-#: apps/mobile/mobileI18nMessages.ts:127
+#: apps/mobile/mobileI18nMessages.ts:129
 msgid "General"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:128
+#: apps/mobile/mobileI18nMessages.ts:130
 msgid "Go to dashboard"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:129
+#: apps/mobile/mobileI18nMessages.ts:131
 msgid "History"
 msgstr "Historial"
 
-#: apps/mobile/mobileI18nMessages.ts:130
+#: apps/mobile/mobileI18nMessages.ts:132
 msgid "Host"
 msgstr "Host"
 
-#: apps/mobile/mobileI18nMessages.ts:131
+#: apps/mobile/mobileI18nMessages.ts:133
 msgid "Hosted personal service is active for the included month."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:132
+#: apps/mobile/mobileI18nMessages.ts:134
 msgid "Hosted read-only grace ends on"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:133
+#: apps/mobile/mobileI18nMessages.ts:135
 msgid "Hosted service"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:134
+#: apps/mobile/mobileI18nMessages.ts:136
 msgid "Hosted service active"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:135
+#: apps/mobile/mobileI18nMessages.ts:137
 msgid "Hosted service also requires an active Trial, included hosted month, or subscription."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:136
+#: apps/mobile/mobileI18nMessages.ts:138
 msgid "Hosted service ending soon"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:137
+#: apps/mobile/mobileI18nMessages.ts:139
 msgid "Hosted service is active on another app-store platform."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:138
+#: apps/mobile/mobileI18nMessages.ts:140
 msgid "Hosted service is active via Apple. Manage it on iOS or in the App Store."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:139
+#: apps/mobile/mobileI18nMessages.ts:141
 msgid "Hosted service is active via Google. Manage it on Android or in Google Play."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:140
+#: apps/mobile/mobileI18nMessages.ts:142
 msgid "Hosted service is active."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:141
+#: apps/mobile/mobileI18nMessages.ts:143
 msgid "Hosted service is already active."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:142
+#: apps/mobile/mobileI18nMessages.ts:144
 msgid "Hosted service is inactive. Renew to respond on hosted requests."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:143
+#: apps/mobile/mobileI18nMessages.ts:145
 msgid "Hosted service is included during Trial."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:144
+#: apps/mobile/mobileI18nMessages.ts:146
 msgid "Hosted service is optional for agenttick.sh routing, push, updates, and uptime."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:145
+#: apps/mobile/mobileI18nMessages.ts:147
 msgid "Hosted subscription expires on"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:146
+#: apps/mobile/mobileI18nMessages.ts:148
 msgid "Hosted subscription renews on"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:147
+#: apps/mobile/mobileI18nMessages.ts:149
 msgid "Hosted Trial ends on"
 msgstr ""
 
@@ -837,15 +845,15 @@ msgstr ""
 msgid "I installed the mobile app"
 msgstr "Instalé la app móvil"
 
-#: apps/mobile/mobileI18nMessages.ts:148
+#: apps/mobile/mobileI18nMessages.ts:150
 msgid "In-app purchases are only available on iOS and Android."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:149
+#: apps/mobile/mobileI18nMessages.ts:151
 msgid "Included hosted month active"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:150
+#: apps/mobile/mobileI18nMessages.ts:152
 msgid "Included hosted month ends on"
 msgstr ""
 
@@ -853,7 +861,7 @@ msgstr ""
 msgid "Install Agent Tick mobile and sign in with the same account. This button refreshes setup state, and registers a deterministic device only in test mode."
 msgstr "Instala Agent Tick móvil e inicia sesión con la misma cuenta. Este botón actualiza el estado de configuración y solo registra un dispositivo determinista en modo de prueba."
 
-#: apps/mobile/mobileI18nMessages.ts:151
+#: apps/mobile/mobileI18nMessages.ts:153
 msgid "Invalid QR code"
 msgstr "Código QR no válido"
 
@@ -889,7 +897,7 @@ msgstr "te invitó como"
 msgid "Invites"
 msgstr "Invitaciones"
 
-#: apps/mobile/mobileI18nMessages.ts:152
+#: apps/mobile/mobileI18nMessages.ts:154
 msgid "key or passphrase"
 msgstr "clave o frase de contraseña"
 
@@ -897,7 +905,7 @@ msgstr "clave o frase de contraseña"
 msgid "Label (optional)"
 msgstr "Etiqueta (opcional)"
 
-#: apps/mobile/mobileI18nMessages.ts:153
+#: apps/mobile/mobileI18nMessages.ts:155
 msgid "Language"
 msgstr "Idioma"
 
@@ -905,19 +913,19 @@ msgstr "Idioma"
 msgid "Legacy pending members"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:154
+#: apps/mobile/mobileI18nMessages.ts:156
 msgid "Let us run the approval routing, push, updates, and uptime for you."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:155
+#: apps/mobile/mobileI18nMessages.ts:157
 msgid "Lifetime app unlock"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:156
+#: apps/mobile/mobileI18nMessages.ts:158
 msgid "Lifetime unlock active"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:157
+#: apps/mobile/mobileI18nMessages.ts:159
 msgid "Loading Agent Tick…"
 msgstr "Cargando Agent Tick…"
 
@@ -929,31 +937,31 @@ msgstr "Cargando invitación…"
 msgid "Loading sign-in configuration…"
 msgstr "Cargando configuración de inicio de sesión…"
 
-#: apps/mobile/mobileI18nMessages.ts:158
+#: apps/mobile/mobileI18nMessages.ts:160
 msgid "Manage account ›"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:159
+#: apps/mobile/mobileI18nMessages.ts:161
 msgid "Manage or cancel Hosted service from $ ."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:160
+#: apps/mobile/mobileI18nMessages.ts:162
 msgid "Manage or cancel the hosted subscription from the app store when needed."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:161
+#: apps/mobile/mobileI18nMessages.ts:163
 msgid "Manage subscription"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:162
+#: apps/mobile/mobileI18nMessages.ts:164
 msgid "Manual Bearer Token"
 msgstr "Token bearer manual"
 
-#: apps/mobile/mobileI18nMessages.ts:163
+#: apps/mobile/mobileI18nMessages.ts:165
 msgid "Manual Pairing Code"
 msgstr "Código de vinculación manual"
 
-#: apps/mobile/mobileI18nMessages.ts:164
+#: apps/mobile/mobileI18nMessages.ts:166
 msgid "Manual self-hosted setup"
 msgstr ""
 
@@ -961,7 +969,7 @@ msgstr ""
 msgid "Member"
 msgstr "Miembro"
 
-#: apps/mobile/mobileI18nMessages.ts:165
+#: apps/mobile/mobileI18nMessages.ts:167
 msgid "Menu"
 msgstr "Menú"
 
@@ -969,15 +977,15 @@ msgstr "Menú"
 msgid "Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs."
 msgstr "Nombra tu agente local abajo, copia el comando de configuración y pégalo en el proyecto donde se ejecuta tu agente de IA."
 
-#: apps/mobile/mobileI18nMessages.ts:166
+#: apps/mobile/mobileI18nMessages.ts:168
 msgid "Needs sign-in"
 msgstr "Requiere iniciar sesión"
 
-#: apps/mobile/mobileI18nMessages.ts:167
+#: apps/mobile/mobileI18nMessages.ts:169
 msgid "Next ›"
 msgstr "Siguiente ›"
 
-#: apps/mobile/mobileI18nMessages.ts:168
+#: apps/mobile/mobileI18nMessages.ts:170
 msgid "Next history item"
 msgstr "Siguiente elemento del historial"
 
@@ -985,7 +993,7 @@ msgstr "Siguiente elemento del historial"
 msgid "No active or historical invites yet."
 msgstr "Aún no hay invitaciones activas ni históricas."
 
-#: apps/mobile/mobileI18nMessages.ts:169
+#: apps/mobile/mobileI18nMessages.ts:171
 msgid "No approval history yet."
 msgstr "Aún no hay historial de aprobaciones."
 
@@ -1001,11 +1009,15 @@ msgstr "Aún no hay eventos de auditoría."
 msgid "No empty queue, policies, or audit console yet. Complete the current setup step first."
 msgstr "Aún no hay cola vacía, políticas ni consola de auditoría. Completa primero el paso de configuración actual."
 
+#: apps/mobile/mobileI18nMessages.ts:172
+msgid "No hosted expiry loaded"
+msgstr ""
+
 #: apps/admin/src/adminI18nMessages.ts:87
 msgid "No local organization memberships loaded yet."
 msgstr "Aún no se cargaron membresías de organización local."
 
-#: apps/mobile/mobileI18nMessages.ts:170
+#: apps/mobile/mobileI18nMessages.ts:173
 msgid "No pending approvals"
 msgstr "No hay aprobaciones pendientes"
 
@@ -1029,51 +1041,55 @@ msgstr "Sin equipo"
 msgid "No teams yet. Teams will back policy routing and quorum approval rules."
 msgstr "Aún no hay equipos. Los equipos respaldarán el enrutamiento de políticas y las reglas de aprobación por quórum."
 
-#: apps/mobile/mobileI18nMessages.ts:171
+#: apps/mobile/mobileI18nMessages.ts:174
 msgid "Not Asked"
 msgstr "No solicitado"
 
-#: apps/mobile/mobileI18nMessages.ts:172
+#: apps/mobile/mobileI18nMessages.ts:175
 msgid "Notifications"
 msgstr "Notificaciones"
 
-#: apps/mobile/mobileI18nMessages.ts:173
+#: apps/mobile/mobileI18nMessages.ts:176
 msgid "Notifications are off"
 msgstr "Las notificaciones están desactivadas"
 
-#: apps/mobile/mobileI18nMessages.ts:174
+#: apps/mobile/mobileI18nMessages.ts:177
 msgid "Notifications are working."
 msgstr "Las notificaciones funcionan."
 
-#: apps/mobile/mobileI18nMessages.ts:175
+#: apps/mobile/mobileI18nMessages.ts:178
 msgid "Off"
 msgstr "Desactivado"
 
-#: apps/mobile/mobileI18nMessages.ts:176
+#: apps/mobile/mobileI18nMessages.ts:179
 msgid "Off in Agent Tick"
 msgstr "Desactivado en Agent Tick"
 
-#: apps/mobile/mobileI18nMessages.ts:177
+#: apps/mobile/mobileI18nMessages.ts:180
 msgid "Off in system settings"
 msgstr "Desactivado en ajustes del sistema"
 
-#: apps/mobile/mobileI18nMessages.ts:178
+#: apps/mobile/mobileI18nMessages.ts:181
 msgid "Off-call"
 msgstr "Fuera de guardia"
 
-#: apps/mobile/mobileI18nMessages.ts:179
+#: apps/mobile/mobileI18nMessages.ts:182
 msgid "On"
 msgstr "Activado"
 
-#: apps/mobile/mobileI18nMessages.ts:180
+#: apps/mobile/mobileI18nMessages.ts:183
 msgid "Open $"
 msgstr "Open $"
 
-#: apps/mobile/mobileI18nMessages.ts:181
+#: apps/mobile/mobileI18nMessages.ts:184
+msgid "Open App access after billing status loads, then try again."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:185
 msgid "Open history item $"
 msgstr "Open history item $"
 
-#: apps/mobile/mobileI18nMessages.ts:182
+#: apps/mobile/mobileI18nMessages.ts:186
 msgid "Open menu"
 msgstr "Abrir menú"
 
@@ -1081,19 +1097,15 @@ msgstr "Abrir menú"
 msgid "Open the mobile app and add the E2EE key in Settings to decrypt the title, body, and command before responding."
 msgstr "Abre la app móvil y añade la clave E2EE en Ajustes para descifrar el título, el cuerpo y el comando antes de responder."
 
-#: apps/mobile/mobileI18nMessages.ts:183
-msgid "Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets."
-msgstr "Los registros de diagnóstico opcionales ayudan a depurar autenticación móvil, notificaciones y problemas de conexión. Agent Tick evita enviar texto de aprobaciones, comandos, tokens bearer o secretos de Clerk."
-
 #: apps/admin/src/adminI18nMessages.ts:94
 msgid "Optional for localhost single mode"
 msgstr "Optional for localhost single mode"
 
-#: apps/mobile/mobileI18nMessages.ts:184
+#: apps/mobile/mobileI18nMessages.ts:187
 msgid "Optional message"
 msgstr "Mensaje opcional"
 
-#: apps/mobile/mobileI18nMessages.ts:185
+#: apps/mobile/mobileI18nMessages.ts:188
 msgid "Options:"
 msgstr "Opciones:"
 
@@ -1101,7 +1113,7 @@ msgstr "Opciones:"
 msgid "or continue with email"
 msgstr "o continuar con correo"
 
-#: apps/mobile/mobileI18nMessages.ts:186
+#: apps/mobile/mobileI18nMessages.ts:189
 msgid "Org: $"
 msgstr "Org: $"
 
@@ -1113,7 +1125,7 @@ msgstr "Invitación de organización"
 msgid "Organization name"
 msgstr "Nombre de la organización"
 
-#: apps/mobile/mobileI18nMessages.ts:187
+#: apps/mobile/mobileI18nMessages.ts:190
 msgid "Owner"
 msgstr "Propietario"
 
@@ -1121,39 +1133,39 @@ msgstr "Propietario"
 msgid "Pair a phone"
 msgstr "Vincular un teléfono"
 
-#: apps/mobile/mobileI18nMessages.ts:188
+#: apps/mobile/mobileI18nMessages.ts:191
 msgid "Pair first"
 msgstr "Vincula primero"
 
-#: apps/mobile/mobileI18nMessages.ts:189
+#: apps/mobile/mobileI18nMessages.ts:192
 msgid "Pair Manually"
 msgstr "Vincular manualmente"
 
-#: apps/mobile/mobileI18nMessages.ts:190
+#: apps/mobile/mobileI18nMessages.ts:193
 msgid "Pair this device before registering push notifications."
 msgstr "Vincula este dispositivo antes de registrar notificaciones push."
 
-#: apps/mobile/mobileI18nMessages.ts:191
+#: apps/mobile/mobileI18nMessages.ts:194
 msgid "Paired"
 msgstr "Vinculado"
 
-#: apps/mobile/mobileI18nMessages.ts:192
+#: apps/mobile/mobileI18nMessages.ts:195
 msgid "Pairing"
 msgstr "Vinculación"
 
-#: apps/mobile/mobileI18nMessages.ts:193
+#: apps/mobile/mobileI18nMessages.ts:196
 msgid "Pairing code required"
 msgstr "Se requiere código de vinculación"
 
-#: apps/mobile/mobileI18nMessages.ts:194
+#: apps/mobile/mobileI18nMessages.ts:197
 msgid "Pairing failed"
 msgstr "Error de vinculación"
 
-#: apps/mobile/mobileI18nMessages.ts:195
+#: apps/mobile/mobileI18nMessages.ts:198
 msgid "Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally."
 msgstr "Pega la clave de cifrado de aprobación compartida o frase de contraseña para este dispositivo para descifrar localmente los detalles de solicitudes cifradas."
 
-#: apps/mobile/mobileI18nMessages.ts:196
+#: apps/mobile/mobileI18nMessages.ts:199
 msgid "Pending"
 msgstr "Pendiente"
 
@@ -1165,7 +1177,7 @@ msgstr "Política"
 msgid "Policy name"
 msgstr "Nombre de la política"
 
-#: apps/mobile/mobileI18nMessages.ts:197
+#: apps/mobile/mobileI18nMessages.ts:200
 msgid "Previous history item"
 msgstr "Elemento anterior del historial"
 
@@ -1185,75 +1197,75 @@ msgstr "Nombre del proyecto"
 msgid "Projects"
 msgstr "Proyectos"
 
-#: apps/mobile/mobileI18nMessages.ts:198
+#: apps/mobile/mobileI18nMessages.ts:201
 msgid "Purchase confirmed. Your Agent Tick entitlement is active."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:199
+#: apps/mobile/mobileI18nMessages.ts:202
 msgid "Purchase failed"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:200
+#: apps/mobile/mobileI18nMessages.ts:203
 msgid "Purchase is not available right now."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:201
+#: apps/mobile/mobileI18nMessages.ts:204
 msgid "Purchase received. Agent Tick is waiting for the store webhook to sync; this screen will update automatically."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:202
+#: apps/mobile/mobileI18nMessages.ts:205
 msgid "Purchase unavailable"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:203
+#: apps/mobile/mobileI18nMessages.ts:206
 msgid "Purchased"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:204
+#: apps/mobile/mobileI18nMessages.ts:207
 msgid "Purchases are not enabled on this server."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:205
+#: apps/mobile/mobileI18nMessages.ts:208
 msgid "Purchases are still loading. Try again in a moment or open App access for details."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:206
+#: apps/mobile/mobileI18nMessages.ts:209
 msgid "Purchases require an Agent Tick account so entitlements can be restored across devices and protected from duplicate App Store / Play purchases."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:207
+#: apps/mobile/mobileI18nMessages.ts:210
 msgid "Purchases unavailable"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:208
+#: apps/mobile/mobileI18nMessages.ts:211
 msgid "Push Registered"
 msgstr "Push registrado"
 
-#: apps/mobile/mobileI18nMessages.ts:209
+#: apps/mobile/mobileI18nMessages.ts:212
 msgid "Push registration failed"
 msgstr "Error al registrar push"
 
-#: apps/mobile/mobileI18nMessages.ts:210
+#: apps/mobile/mobileI18nMessages.ts:213
 msgid "Push:"
 msgstr "Push:"
 
-#: apps/mobile/mobileI18nMessages.ts:211
+#: apps/mobile/mobileI18nMessages.ts:214
 msgid "Question"
 msgstr "Pregunta"
 
-#: apps/mobile/mobileI18nMessages.ts:212
+#: apps/mobile/mobileI18nMessages.ts:215
 msgid "Questions"
 msgstr "Preguntas"
 
-#: apps/mobile/mobileI18nMessages.ts:213
+#: apps/mobile/mobileI18nMessages.ts:216
 msgid "Read-only"
 msgstr "Solo lectura"
 
-#: apps/mobile/mobileI18nMessages.ts:214
+#: apps/mobile/mobileI18nMessages.ts:217
 msgid "Read-only after Trial"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:215
+#: apps/mobile/mobileI18nMessages.ts:218
 msgid "Refresh"
 msgstr "Actualizar"
 
@@ -1289,11 +1301,11 @@ msgstr "Actualizar solicitudes"
 msgid "Refresh teams"
 msgstr "Actualizar equipos"
 
-#: apps/mobile/mobileI18nMessages.ts:216
+#: apps/mobile/mobileI18nMessages.ts:219
 msgid "Register Push"
 msgstr "Registrar push"
 
-#: apps/mobile/mobileI18nMessages.ts:217
+#: apps/mobile/mobileI18nMessages.ts:220
 msgid "Registered"
 msgstr "Registrado"
 
@@ -1301,7 +1313,7 @@ msgstr "Registrado"
 msgid "Reject"
 msgstr "Rechazar"
 
-#: apps/mobile/mobileI18nMessages.ts:218
+#: apps/mobile/mobileI18nMessages.ts:221
 msgid "Remote push needs a real EAS project id. Pairing still works; use local notifications until an EAS development build is configured."
 msgstr "El push remoto necesita un ID de proyecto EAS real. La vinculación sigue funcionando; usa notificaciones locales hasta configurar un build de desarrollo EAS."
 
@@ -1309,19 +1321,19 @@ msgstr "El push remoto necesita un ID de proyecto EAS real. La vinculación sigu
 msgid "Remove"
 msgstr "Eliminar"
 
-#: apps/mobile/mobileI18nMessages.ts:219
+#: apps/mobile/mobileI18nMessages.ts:222
 msgid "Renew Hosted service to respond on hosted requests."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:220
+#: apps/mobile/mobileI18nMessages.ts:223
 msgid "Request ID"
 msgstr "ID de solicitud"
 
-#: apps/mobile/mobileI18nMessages.ts:221
+#: apps/mobile/mobileI18nMessages.ts:224
 msgid "Requested"
 msgstr "Solicitado"
 
-#: apps/mobile/mobileI18nMessages.ts:222
+#: apps/mobile/mobileI18nMessages.ts:225
 msgid "Requester"
 msgstr "Solicitante"
 
@@ -1333,15 +1345,15 @@ msgstr "Las solicitudes, tokens de agente y dispositivos usan esta organización
 msgid "Required approvals"
 msgstr "Aprobaciones requeridas"
 
-#: apps/mobile/mobileI18nMessages.ts:223
+#: apps/mobile/mobileI18nMessages.ts:226
 msgid "Responded"
 msgstr "Respondido"
 
-#: apps/mobile/mobileI18nMessages.ts:224
+#: apps/mobile/mobileI18nMessages.ts:227
 msgid "Response failed"
 msgstr "Error al responder"
 
-#: apps/mobile/mobileI18nMessages.ts:225
+#: apps/mobile/mobileI18nMessages.ts:228
 msgid "Response message"
 msgstr "Mensaje de respuesta"
 
@@ -1349,19 +1361,19 @@ msgstr "Mensaje de respuesta"
 msgid "Response:"
 msgstr "Respuesta:"
 
-#: apps/mobile/mobileI18nMessages.ts:226
+#: apps/mobile/mobileI18nMessages.ts:229
 msgid "Responses are disabled until Lifetime app unlock is purchased or restored."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:227
+#: apps/mobile/mobileI18nMessages.ts:230
 msgid "Restore completed, but no entitlement is active for this Agent Tick account. If the purchase belongs to another account, contact support."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:228
+#: apps/mobile/mobileI18nMessages.ts:231
 msgid "Restore failed"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:229
+#: apps/mobile/mobileI18nMessages.ts:232
 msgid "Restore purchases"
 msgstr ""
 
@@ -1373,7 +1385,7 @@ msgstr "Reintentar"
 msgid "Retry preview"
 msgstr "Reintentar vista previa"
 
-#: apps/mobile/mobileI18nMessages.ts:230
+#: apps/mobile/mobileI18nMessages.ts:233
 msgid "Retry sign-in"
 msgstr "Reintentar inicio de sesión"
 
@@ -1385,7 +1397,7 @@ msgstr "Revocar"
 msgid "Route approvals to the right humans"
 msgstr "Dirige aprobaciones a las personas correctas"
 
-#: apps/mobile/mobileI18nMessages.ts:231
+#: apps/mobile/mobileI18nMessages.ts:234
 msgid "Routing"
 msgstr "Enrutamiento"
 
@@ -1393,11 +1405,11 @@ msgstr "Enrutamiento"
 msgid "Save token"
 msgstr "Guardar token"
 
-#: apps/mobile/mobileI18nMessages.ts:232
+#: apps/mobile/mobileI18nMessages.ts:235
 msgid "Scan Pairing QR"
 msgstr "Escanear QR de vinculación"
 
-#: apps/mobile/mobileI18nMessages.ts:233
+#: apps/mobile/mobileI18nMessages.ts:236
 msgid "Scan the QR code from"
 msgstr "Escanea el código QR de"
 
@@ -1405,19 +1417,19 @@ msgstr "Escanea el código QR de"
 msgid "Secured by Clerk"
 msgstr "Protegido por Clerk"
 
-#: apps/mobile/mobileI18nMessages.ts:234
+#: apps/mobile/mobileI18nMessages.ts:237
 msgid "Security"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:235
+#: apps/mobile/mobileI18nMessages.ts:238
 msgid "Select + send"
 msgstr "Seleccionar + enviar"
 
-#: apps/mobile/mobileI18nMessages.ts:236
+#: apps/mobile/mobileI18nMessages.ts:239
 msgid "Select all that apply"
 msgstr "Selecciona todo lo que corresponda"
 
-#: apps/mobile/mobileI18nMessages.ts:237
+#: apps/mobile/mobileI18nMessages.ts:240
 msgid "Select one"
 msgstr "Selecciona una"
 
@@ -1425,59 +1437,59 @@ msgstr "Selecciona una"
 msgid "Self-hosted admin"
 msgstr "Administración autohospedada"
 
-#: apps/mobile/mobileI18nMessages.ts:238
+#: apps/mobile/mobileI18nMessages.ts:241
 msgid "Self-hosted Agent Tick access stays unlocked forever on this app-store account."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:239
+#: apps/mobile/mobileI18nMessages.ts:242
 msgid "Self-hosted Agent Tick use is unlocked forever on this app-store account."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:240
+#: apps/mobile/mobileI18nMessages.ts:243
 msgid "Self-hosted server"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:241
+#: apps/mobile/mobileI18nMessages.ts:244
 msgid "Self-hosted server URL"
 msgstr "URL del servidor autohospedado"
 
-#: apps/mobile/mobileI18nMessages.ts:242
+#: apps/mobile/mobileI18nMessages.ts:245
 msgid "Self-hosting Agent Tick?"
 msgstr "¿Autohospedas Agent Tick?"
 
-#: apps/mobile/mobileI18nMessages.ts:243
+#: apps/mobile/mobileI18nMessages.ts:246
 msgid "Send decision"
 msgstr "Enviar decisión"
 
-#: apps/mobile/mobileI18nMessages.ts:244
+#: apps/mobile/mobileI18nMessages.ts:247
 msgid "Send Snapshot"
 msgstr "Enviar captura"
 
-#: apps/mobile/mobileI18nMessages.ts:245
+#: apps/mobile/mobileI18nMessages.ts:248
 msgid "Send this decision?"
 msgstr "¿Enviar esta decisión?"
 
-#: apps/mobile/mobileI18nMessages.ts:246
+#: apps/mobile/mobileI18nMessages.ts:249
 msgid "Sent $ diagnostic event$ ."
 msgstr "Sent $ diagnostic event$ ."
 
-#: apps/mobile/mobileI18nMessages.ts:247
+#: apps/mobile/mobileI18nMessages.ts:250
 msgid "Server discovery failed"
 msgstr "Error al descubrir servidor"
 
-#: apps/mobile/mobileI18nMessages.ts:248
+#: apps/mobile/mobileI18nMessages.ts:251
 msgid "Server saved"
 msgstr "Servidor guardado"
 
-#: apps/mobile/mobileI18nMessages.ts:249
+#: apps/mobile/mobileI18nMessages.ts:252
 msgid "Server URL"
 msgstr "URL del servidor"
 
-#: apps/mobile/mobileI18nMessages.ts:250
+#: apps/mobile/mobileI18nMessages.ts:253
 msgid "session:$"
 msgstr "session:$"
 
-#: apps/mobile/mobileI18nMessages.ts:251
+#: apps/mobile/mobileI18nMessages.ts:254
 msgid "Settings"
 msgstr "Ajustes"
 
@@ -1489,11 +1501,19 @@ msgstr "Configuración completada"
 msgid "Setup complete. Redirecting back to your terminal…"
 msgstr "Configuración completada. Redirigiendo de vuelta a tu terminal…"
 
+#: apps/mobile/mobileI18nMessages.ts:255
+msgid "Show hosted expiry warning"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:256
+msgid "Show native paywall"
+msgstr ""
+
 #: apps/admin/src/adminI18nMessages.ts:127
 msgid "Sign in above to finish setting up the Agent Tick CLI. Agent Tick will redirect back to your terminal automatically."
 msgstr "Inicia sesión arriba para terminar de configurar la CLI de Agent Tick. Agent Tick te redirigirá automáticamente a tu terminal."
 
-#: apps/mobile/mobileI18nMessages.ts:252
+#: apps/mobile/mobileI18nMessages.ts:257
 msgid "Sign in or connect to Agent Tick to load server purchase status before buying."
 msgstr ""
 
@@ -1505,35 +1525,35 @@ msgstr "Iniciar sesión o crear cuenta"
 msgid "Sign in or create an account above to accept this invite. Agent Tick will continue automatically after sign-in."
 msgstr "Inicia sesión o crea una cuenta arriba para aceptar esta invitación. Agent Tick continuará automáticamente tras iniciar sesión."
 
-#: apps/mobile/mobileI18nMessages.ts:253
+#: apps/mobile/mobileI18nMessages.ts:258
 msgid "Sign in required"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:254
+#: apps/mobile/mobileI18nMessages.ts:259
 msgid "Sign in to Agent Tick"
 msgstr "Iniciar sesión en Agent Tick"
 
-#: apps/mobile/mobileI18nMessages.ts:255
+#: apps/mobile/mobileI18nMessages.ts:260
 msgid "Sign in to agenttick.sh"
 msgstr "Iniciar sesión en agenttick.sh"
 
-#: apps/mobile/mobileI18nMessages.ts:256
+#: apps/mobile/mobileI18nMessages.ts:261
 msgid "Sign in to agenttick.sh for hosted routing, push, updates, and uptime."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:257
+#: apps/mobile/mobileI18nMessages.ts:262
 msgid "Sign in to an Agent Tick account before buying so purchases can be restored and protected from duplicates."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:258
+#: apps/mobile/mobileI18nMessages.ts:263
 msgid "Sign in to buy"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:259
+#: apps/mobile/mobileI18nMessages.ts:264
 msgid "Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server."
 msgstr "Inicia sesión en el servicio alojado de Agent Tick o conecta esta app a tu servidor autohospedado."
 
-#: apps/mobile/mobileI18nMessages.ts:260
+#: apps/mobile/mobileI18nMessages.ts:265
 msgid "Sign in with Clerk to use this Agent Tick server."
 msgstr "Inicia sesión con Clerk para usar este servidor Agent Tick."
 
@@ -1541,11 +1561,11 @@ msgstr "Inicia sesión con Clerk para usar este servidor Agent Tick."
 msgid "Sign out"
 msgstr "Cerrar sesión"
 
-#: apps/mobile/mobileI18nMessages.ts:261
+#: apps/mobile/mobileI18nMessages.ts:266
 msgid "Sign Out"
 msgstr "Cerrar sesión"
 
-#: apps/mobile/mobileI18nMessages.ts:262
+#: apps/mobile/mobileI18nMessages.ts:267
 msgid "signInOrUp"
 msgstr "signInOrUp"
 
@@ -1557,7 +1577,7 @@ msgstr "Espacio de trabajo individual"
 msgid "Start here"
 msgstr "Empieza aquí"
 
-#: apps/mobile/mobileI18nMessages.ts:263
+#: apps/mobile/mobileI18nMessages.ts:268
 msgid "Start included hosted month"
 msgstr ""
 
@@ -1565,19 +1585,19 @@ msgstr ""
 msgid "Start simple, then scope rules by project or team when your organization grows."
 msgstr "Empieza simple y luego delimita reglas por proyecto o equipo cuando tu organización crezca."
 
-#: apps/mobile/mobileI18nMessages.ts:264
+#: apps/mobile/mobileI18nMessages.ts:269
 msgid "Status:"
 msgstr "Estado:"
 
-#: apps/mobile/mobileI18nMessages.ts:265
+#: apps/mobile/mobileI18nMessages.ts:270
 msgid "Steering"
 msgstr "Dirección"
 
-#: apps/mobile/mobileI18nMessages.ts:266
+#: apps/mobile/mobileI18nMessages.ts:271
 msgid "Sticky bottom"
 msgstr "Fijo abajo"
 
-#: apps/mobile/mobileI18nMessages.ts:267
+#: apps/mobile/mobileI18nMessages.ts:272
 msgid "Store purchases were restored and server entitlements were refreshed."
 msgstr ""
 
@@ -1585,31 +1605,31 @@ msgstr ""
 msgid "Submit answers"
 msgstr "Enviar respuestas"
 
-#: apps/mobile/mobileI18nMessages.ts:268
+#: apps/mobile/mobileI18nMessages.ts:273
 msgid "Submit Answers"
 msgstr "Enviar respuestas"
 
-#: apps/mobile/mobileI18nMessages.ts:269
+#: apps/mobile/mobileI18nMessages.ts:274
 msgid "Subscribe monthly or yearly to keep hosted routing, push, and responses active."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:270
+#: apps/mobile/mobileI18nMessages.ts:275
 msgid "Subscribe monthly or yearly to keep hosted service active after the included month."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:271
+#: apps/mobile/mobileI18nMessages.ts:276
 msgid "Switch accounts"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:272
+#: apps/mobile/mobileI18nMessages.ts:277
 msgid "Switch to $"
 msgstr "Switch to $"
 
-#: apps/mobile/mobileI18nMessages.ts:273
+#: apps/mobile/mobileI18nMessages.ts:278
 msgid "System"
 msgstr "Sistema"
 
-#: apps/mobile/mobileI18nMessages.ts:274
+#: apps/mobile/mobileI18nMessages.ts:279
 msgid "Tap for details"
 msgstr "Toca para ver detalles"
 
@@ -1633,23 +1653,23 @@ msgstr "teammate@example.com (optional)"
 msgid "Teams"
 msgstr "Equipos"
 
-#: apps/mobile/mobileI18nMessages.ts:275
+#: apps/mobile/mobileI18nMessages.ts:280
 msgid "Test"
 msgstr "Prueba"
 
-#: apps/mobile/mobileI18nMessages.ts:276
+#: apps/mobile/mobileI18nMessages.ts:281
 msgid "The included hosted month does not start during Trial."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:277
+#: apps/mobile/mobileI18nMessages.ts:282
 msgid "The included hosted month is active. Subscribe after it ends."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:278
+#: apps/mobile/mobileI18nMessages.ts:283
 msgid "The included hosted month starts when hosted service is first activated after purchase."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:279
+#: apps/mobile/mobileI18nMessages.ts:284
 msgid "The included hosted month waits until Trial ends, then you can activate it before subscribing."
 msgstr ""
 
@@ -1657,7 +1677,7 @@ msgstr ""
 msgid "The mobile app is the primary approval surface. Use the same Clerk account on your phone."
 msgstr "La app móvil es la superficie principal de aprobación. Usa la misma cuenta de Clerk en tu teléfono."
 
-#: apps/mobile/mobileI18nMessages.ts:280
+#: apps/mobile/mobileI18nMessages.ts:285
 msgid "The mobile app signs in to agenttick.sh by default. Use a custom server only when you self-host Agent Tick."
 msgstr "La app móvil inicia sesión en agenttick.sh de forma predeterminada. Usa un servidor personalizado solo si autohospedas Agent Tick."
 
@@ -1665,7 +1685,11 @@ msgstr "La app móvil inicia sesión en agenttick.sh de forma predeterminada. Us
 msgid "The plaintext token is shown once. Agent Tick stores only a hash. Launch invites grant active Admin or Member membership when accepted."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:281
+#: apps/mobile/mobileI18nMessages.ts:286
+msgid "This account does not currently have a hosted expiry to show."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:287
 msgid "This app is read-only. Viewing, purchase, restore, and settings remain available."
 msgstr ""
 
@@ -1673,71 +1697,71 @@ msgstr ""
 msgid "This dashboard is focused on your personal approval workflow. Team administration is available when you upgrade or self-host."
 msgstr "Este panel se centra en tu flujo personal de aprobaciones. La administración de equipos está disponible al mejorar el plan o autohospedar."
 
-#: apps/mobile/mobileI18nMessages.ts:282
+#: apps/mobile/mobileI18nMessages.ts:288
 msgid "This device can now receive approval requests."
 msgstr "Este dispositivo ya puede recibir solicitudes de aprobación."
 
-#: apps/mobile/mobileI18nMessages.ts:283
+#: apps/mobile/mobileI18nMessages.ts:289
 msgid "This does not look like an Agent Tick pairing code."
 msgstr "Esto no parece un código de vinculación de Agent Tick."
 
-#: apps/mobile/mobileI18nMessages.ts:284
+#: apps/mobile/mobileI18nMessages.ts:290
 msgid "This request is read-only."
 msgstr "Esta solicitud es de solo lectura."
 
-#: apps/mobile/mobileI18nMessages.ts:285
+#: apps/mobile/mobileI18nMessages.ts:291
 msgid "to connect."
 msgstr "para conectar."
 
-#: apps/mobile/mobileI18nMessages.ts:286
+#: apps/mobile/mobileI18nMessages.ts:292
 msgid "Trial active"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:287
+#: apps/mobile/mobileI18nMessages.ts:293
 msgid "Trial ended"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:288
+#: apps/mobile/mobileI18nMessages.ts:294
 msgid "Trial ended. Viewing, settings, purchase, and restore stay available."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:289
+#: apps/mobile/mobileI18nMessages.ts:295
 msgid "Trial includes hosted and self-hosted app use."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:290
+#: apps/mobile/mobileI18nMessages.ts:296
 msgid "Trial status unavailable"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:291
+#: apps/mobile/mobileI18nMessages.ts:297
 msgid "Trial, purchases, and hosted service"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:292
+#: apps/mobile/mobileI18nMessages.ts:298
 msgid "Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding."
 msgstr "Ajusta cómo presentan sus opciones las solicitudes de aprobación. Las acciones en línea aparecen después del mensaje para que puedas revisar todo el contexto antes de decidir."
 
-#: apps/mobile/mobileI18nMessages.ts:293
+#: apps/mobile/mobileI18nMessages.ts:299
 msgid "Turn Off"
 msgstr "Apagar"
 
-#: apps/mobile/mobileI18nMessages.ts:294
+#: apps/mobile/mobileI18nMessages.ts:300
 msgid "Turn On"
 msgstr "Activar"
 
-#: apps/mobile/mobileI18nMessages.ts:295
+#: apps/mobile/mobileI18nMessages.ts:301
 msgid "Turn on notifications before registering push notifications."
 msgstr "Activa las notificaciones antes de registrar notificaciones push."
 
-#: apps/mobile/mobileI18nMessages.ts:296
+#: apps/mobile/mobileI18nMessages.ts:302
 msgid "Turn on notifications in Agent Tick first."
 msgstr "Activa primero las notificaciones en Agent Tick."
 
-#: apps/mobile/mobileI18nMessages.ts:297
+#: apps/mobile/mobileI18nMessages.ts:303
 msgid "Unable to check"
 msgstr "No se puede comprobar"
 
-#: apps/mobile/mobileI18nMessages.ts:298
+#: apps/mobile/mobileI18nMessages.ts:304
 msgid "Unlock Agent Tick"
 msgstr ""
 
@@ -1745,11 +1769,11 @@ msgstr ""
 msgid "Upgrade for teams"
 msgstr "Mejorar para equipos"
 
-#: apps/mobile/mobileI18nMessages.ts:299
+#: apps/mobile/mobileI18nMessages.ts:305
 msgid "Use a self-hosted server instead"
 msgstr "Usar un servidor autohospedado"
 
-#: apps/mobile/mobileI18nMessages.ts:300
+#: apps/mobile/mobileI18nMessages.ts:306
 msgid "Use Agent Tick Hosted"
 msgstr ""
 
@@ -1757,7 +1781,7 @@ msgstr ""
 msgid "Use it with:"
 msgstr "Úsalo con:"
 
-#: apps/mobile/mobileI18nMessages.ts:301
+#: apps/mobile/mobileI18nMessages.ts:307
 msgid "Use Self-hosted Server"
 msgstr "Usar servidor autohospedado"
 
@@ -1765,19 +1789,19 @@ msgstr "Usar servidor autohospedado"
 msgid "Use the admin token to manage local users, teams, policies, devices, and agent tokens."
 msgstr "Usa el token de administrador para gestionar usuarios locales, equipos, políticas, dispositivos y tokens de agente."
 
-#: apps/mobile/mobileI18nMessages.ts:302
+#: apps/mobile/mobileI18nMessages.ts:308
 msgid "Use the Agent Tick app with self-hosted servers forever."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:303
+#: apps/mobile/mobileI18nMessages.ts:309
 msgid "Use the hosted Agent Tick service, or connect this app to your own self-hosted server."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:304
+#: apps/mobile/mobileI18nMessages.ts:310
 msgid "View App access"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:305
+#: apps/mobile/mobileI18nMessages.ts:311
 msgid "Waiting"
 msgstr "Esperando"
 
@@ -1785,15 +1809,15 @@ msgstr "Esperando"
 msgid "Waiting for mobile sign-in"
 msgstr "Esperando inicio de sesión móvil"
 
-#: apps/mobile/mobileI18nMessages.ts:306
+#: apps/mobile/mobileI18nMessages.ts:312
 msgid "Waiting for others"
 msgstr "Esperando a otros"
 
-#: apps/mobile/mobileI18nMessages.ts:307
+#: apps/mobile/mobileI18nMessages.ts:313
 msgid "Workspace"
 msgstr "Espacio de trabajo"
 
-#: apps/mobile/mobileI18nMessages.ts:308
+#: apps/mobile/mobileI18nMessages.ts:314
 msgid "You can keep using the app with self-hosted servers without another app purchase."
 msgstr ""
 
@@ -1801,7 +1825,7 @@ msgstr ""
 msgid "You can now send a real test request from the CLI. Web approvals can be enabled as a secondary surface later."
 msgstr "Ahora puedes enviar una solicitud de prueba real desde la CLI. Las aprobaciones web pueden habilitarse más tarde como superficie secundaria."
 
-#: apps/mobile/mobileI18nMessages.ts:309
+#: apps/mobile/mobileI18nMessages.ts:315
 msgid "You can respond to approvals from hosted or self-hosted Agent Tick servers."
 msgstr ""
 
@@ -1813,27 +1837,27 @@ msgstr "Has iniciado sesión y estás listo para conectar un agente"
 msgid "Your access will appear in the organization selector after an admin approves this request."
 msgstr "Tu acceso aparecerá en el selector de organización después de que un administrador apruebe esta solicitud."
 
-#: apps/mobile/mobileI18nMessages.ts:310
+#: apps/mobile/mobileI18nMessages.ts:316
 msgid "Your approval is needed"
 msgstr "Se necesita tu aprobación"
 
-#: apps/mobile/mobileI18nMessages.ts:311
+#: apps/mobile/mobileI18nMessages.ts:317
 msgid "Your hosted subscription expires on"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:312
+#: apps/mobile/mobileI18nMessages.ts:318
 msgid "Your hosted Trial ends on"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:313
+#: apps/mobile/mobileI18nMessages.ts:319
 msgid "Your included hosted month ends on"
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:314
+#: apps/mobile/mobileI18nMessages.ts:320
 msgid "Your Lifetime app unlock and hosted service are active."
 msgstr ""
 
-#: apps/mobile/mobileI18nMessages.ts:315
+#: apps/mobile/mobileI18nMessages.ts:321
 msgid "Your Lifetime app unlock is active, and the included hosted month is running."
 msgstr ""
 
@@ -1841,6 +1865,6 @@ msgstr ""
 msgid "Your organization requests"
 msgstr "Tus solicitudes de organización"
 
-#: apps/mobile/mobileI18nMessages.ts:316
+#: apps/mobile/mobileI18nMessages.ts:322
 msgid "Your trial ended. Viewing, settings, purchase, and restore stay available; responses require Lifetime app unlock."
 msgstr ""
