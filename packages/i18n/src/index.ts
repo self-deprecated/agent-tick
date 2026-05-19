@@ -52,7 +52,7 @@ export function activateLocale(locale: SupportedLocale, messages: Messages): voi
 }
 
 export function translateSource(message: string): string {
-  return i18n._(generateMessageId(message));
+  return i18n._(generateMessageId(message), undefined, { message });
 }
 
 export { i18n };

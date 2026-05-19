@@ -19,14 +19,22 @@ const visibleAttributeNames = new Set([
   'aria-label'
 ]);
 const visibleObjectPropertyNames = new Set([
+  'appAccess',
   'body',
   'buttonTitle',
+  'hostedAccess',
   'label',
   'message',
+  'paywall',
   'placeholder',
   'subtitle',
+  'summary',
   'text',
   'title'
+]);
+const visibleCallNames = new Set([
+  'translateSource',
+  'tr'
 ]);
 const ignoredObjectPropertyNames = new Set([
   'area',
@@ -139,7 +147,7 @@ function extractTsx(file) {
       const value = literalText(node, source);
       if (value) {
         const call = nearestCallName(node);
-        if (hasJsxAncestor(node) || call === 'Alert.alert') add(candidates, file, value);
+        if (hasJsxAncestor(node) || call === 'Alert.alert' || visibleCallNames.has(call)) add(candidates, file, value);
       }
     }
 
