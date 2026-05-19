@@ -20,7 +20,10 @@ import {
 } from "./approvalRequests";
 import {
   entitlementStatusCopy,
+  formatHostedDate,
   hostedPersonalActive,
+  hostedUsageExpiry,
+  hostedUsageExpiryWarning,
   nativeAppEntitlement,
   notificationDecision,
   notificationFallbackState,
@@ -108,6 +111,50 @@ describe("native app entitlement", () => {
     });
     expect(hostedPersonalActive(includedMonth)).toBe(true);
     expect(includedMonth.includedHostedActive).toBe(true);
+  });
+});
+
+describe("hosted usage expiry", () => {
+  it("reports trial expiry and warns inside one week without renewal", () => {
+    const status = {
+      hostedPersonal: {
+        lifecycle: "active",
+        trialEndsAt: "2026-05-08T00:00:00.000Z",
+        responsesEnabled: true,
+        routingEnabled: true,
+        pushEnabled: true,
+        historyRetentionDays: 30,
+      },
+      activeEntitlements: {
+        lifetimeUnlock: { active: false },
+        hostedPersonal: { active: false },
+      },
+    } as const;
+
+    expect(hostedUsageExpiry(status, new Date("2026-05-02T00:00:00.000Z"))).toMatchObject({ source: "trial", expiresAt: "2026-05-08T00:00:00.000Z", renewable: false });
+    expect(hostedUsageExpiryWarning(status, new Date("2026-05-02T00:00:00.000Z"))).toMatchObject({ source: "trial" });
+    expect(formatHostedDate("2026-05-08T00:00:00.000Z")).toBe("May 8, 2026");
+  });
+
+  it("does not warn when a hosted subscription is set to renew", () => {
+    const status = {
+      hostedPersonal: {
+        lifecycle: "active",
+        trialEndsAt: "2026-05-08T00:00:00.000Z",
+        hostedSubscriptionEndsAt: "2026-05-20T00:00:00.000Z",
+        responsesEnabled: true,
+        routingEnabled: true,
+        pushEnabled: true,
+        historyRetentionDays: 30,
+      },
+      activeEntitlements: {
+        lifetimeUnlock: { active: true },
+        hostedPersonal: { active: true, expiresAt: "2026-05-20T00:00:00.000Z", willRenew: true },
+      },
+    } as const;
+
+    expect(hostedUsageExpiry(status, new Date("2026-05-15T00:00:00.000Z"))).toMatchObject({ source: "subscription", renewable: true });
+    expect(hostedUsageExpiryWarning(status, new Date("2026-05-15T00:00:00.000Z"))).toBeNull();
   });
 });
 

@@ -1,3 +1,5 @@
+import type { PersonalBillingStatus } from "@agent-tick/shared";
+
 export type Screen = "approvals" | "history" | "settings" | "scanner";
 
 export const NATIVE_APP_TRIAL_DAYS = 7;
@@ -60,6 +62,53 @@ export function trialRemainingLabel(remainingMs: number): string {
 
 export function hostedPersonalActive(state: NativeAppEntitlementState): boolean {
   return state.trialActive || state.includedHostedActive || state.hostedSubscriptionActive;
+}
+
+export type HostedUsageExpirySource = "trial" | "included_month" | "subscription" | "read_only_grace";
+
+export type HostedUsageExpiry = {
+  expiresAt: string;
+  source: HostedUsageExpirySource;
+  renewable: boolean;
+};
+
+export function hostedUsageExpiry(status: Pick<PersonalBillingStatus, "hostedPersonal" | "activeEntitlements">, now = new Date()): HostedUsageExpiry | null {
+  const subscription = status.activeEntitlements.hostedPersonal;
+  if (subscription.active && subscription.expiresAt) {
+    return { expiresAt: subscription.expiresAt, source: "subscription", renewable: subscription.willRenew === true };
+  }
+
+  const hosted = status.hostedPersonal;
+  if (hosted.lifecycle === "active") {
+    if (hosted.includedHostedEndsAt && new Date(hosted.includedHostedEndsAt).getTime() > now.getTime()) {
+      return { expiresAt: hosted.includedHostedEndsAt, source: "included_month", renewable: false };
+    }
+    if (hosted.hostedSubscriptionEndsAt && new Date(hosted.hostedSubscriptionEndsAt).getTime() > now.getTime()) {
+      return { expiresAt: hosted.hostedSubscriptionEndsAt, source: "subscription", renewable: false };
+    }
+    if (new Date(hosted.trialEndsAt).getTime() > now.getTime()) {
+      return { expiresAt: hosted.trialEndsAt, source: "trial", renewable: false };
+    }
+  }
+
+  if (hosted.lifecycle === "read_only_grace" && hosted.readOnlyGraceEndsAt) {
+    return { expiresAt: hosted.readOnlyGraceEndsAt, source: "read_only_grace", renewable: false };
+  }
+  return null;
+}
+
+export function hostedUsageExpiryWarning(status: Pick<PersonalBillingStatus, "hostedPersonal" | "activeEntitlements">, now = new Date(), warningWindowMs = 7 * DAY_MS): HostedUsageExpiry | null {
+  const expiry = hostedUsageExpiry(status, now);
+  if (!expiry || expiry.renewable) return null;
+  const remainingMs = new Date(expiry.expiresAt).getTime() - now.getTime();
+  return remainingMs > 0 && remainingMs <= warningWindowMs ? expiry : null;
+}
+
+export function formatHostedDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
 }
 
 export type EntitlementStatusCopy = {

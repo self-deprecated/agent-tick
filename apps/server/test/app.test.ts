@@ -676,22 +676,21 @@ describe('server skeleton', () => {
     expect(activated.json().entitlement.includedHostedActivatedAt).toBeTruthy();
   });
 
-  it('blocks hosted subscriptions while Trial provides hosted service', async () => {
+  it('allows hosted subscriptions while Trial provides hosted service', async () => {
     const db = testStore();
     const now = new Date().toISOString();
     await db.getOrStartPersonalEntitlement('usr_default', now);
-    await db.updatePersonalEntitlement({ userId: 'usr_default', appUnlockedAt: now }, now);
     app = await buildApp({
       config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
       store: db
     });
 
     const response = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });
-    expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ error: { code: 'trial_active' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ allowed: true, providerUserId: 'usr_default', purchaseAttemptId: expect.stringMatching(/^bpa_/) });
   });
 
-  it('blocks hosted subscriptions while the included hosted month is active', async () => {
+  it('allows hosted subscriptions while the included hosted month is active', async () => {
     const db = testStore();
     const now = new Date().toISOString();
     await db.getOrStartPersonalEntitlement('usr_default', '2026-01-01T00:00:00.000Z');
@@ -702,8 +701,8 @@ describe('server skeleton', () => {
     });
 
     const response = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });
-    expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ error: { code: 'included_hosted_month_active' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ allowed: true, providerUserId: 'usr_default', purchaseAttemptId: expect.stringMatching(/^bpa_/) });
   });
 
   it('preflights purchases and blocks duplicate hosted subscriptions across platforms', async () => {
@@ -711,21 +710,6 @@ describe('server skeleton', () => {
     app = await buildApp({
       config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
       store: db
-    });
-
-    const requiresAppPurchase = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });
-    expect(requiresAppPurchase.statusCode).toBe(409);
-    expect(requiresAppPurchase.json()).toMatchObject({ error: { code: 'app_purchase_required' } });
-
-    await app.close();
-    app = undefined;
-    db.close();
-    const unlockedDb = testStore();
-    await unlockedDb.getOrStartPersonalEntitlement('usr_default', '2026-01-01T00:00:00.000Z');
-    await unlockedDb.updatePersonalEntitlement({ userId: 'usr_default', appUnlockedAt: '2026-01-01T00:00:00.000Z', includedHostedActivatedAt: '2026-01-01T00:00:00.000Z' }, '2026-01-01T00:00:00.000Z');
-    app = await buildApp({
-      config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_BILLING_PROVIDER: 'revenuecat', AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: 'rc_secret' }),
-      store: unlockedDb
     });
 
     const first = await app.inject({ method: 'POST', url: '/v1/billing/purchases/preflight', payload: { productKey: 'hosted_personal_monthly', platform: 'ios' } });

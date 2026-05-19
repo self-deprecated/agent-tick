@@ -30,24 +30,28 @@ const baseProps = {
 const unpairedProps = { ...baseProps, deviceID: "" };
 const pairedProps = { ...baseProps, deviceID: "device-abc-123" };
 
-function personalBillingFixture(options: { lifetimeActive?: boolean; hostedActive?: boolean; includedHostedActivated?: boolean; originPlatform?: string; purchaseReason?: string } = {}) {
+function personalBillingFixture(options: { lifetimeActive?: boolean; hostedActive?: boolean; trialActive?: boolean; includedHostedActivated?: boolean; includedHostedActive?: boolean; originPlatform?: string; purchaseReason?: string } = {}) {
   const now = "2026-05-10T00:00:00.000Z";
+  const trialStartedAt = options.trialActive ? "2099-05-04T00:00:00.000Z" : "2026-05-01T00:00:00.000Z";
+  const includedHostedActivatedAt = options.includedHostedActive ? "2026-05-01T00:00:00.000Z" : options.includedHostedActivated ? "2026-04-01T00:00:00.000Z" : undefined;
+  const hostedLifecycleActive = Boolean(options.hostedActive || options.trialActive || options.includedHostedActive);
   return {
     entitlement: {
       userId: "usr_1",
-      trialStartedAt: "2026-05-01T00:00:00.000Z",
+      trialStartedAt,
       ...(options.lifetimeActive ? { appUnlockedAt: now } : {}),
-      ...(options.includedHostedActivated ? { includedHostedActivatedAt: "2026-04-01T00:00:00.000Z" } : {}),
+      ...(includedHostedActivatedAt ? { includedHostedActivatedAt } : {}),
       createdAt: "2026-05-01T00:00:00.000Z",
       updatedAt: now,
     },
     hostedPersonal: {
-      lifecycle: options.hostedActive ? "active" : "expired",
-      trialEndsAt: "2026-05-08T00:00:00.000Z",
-      responsesEnabled: Boolean(options.hostedActive),
-      routingEnabled: Boolean(options.hostedActive),
-      pushEnabled: Boolean(options.hostedActive),
-      historyRetentionDays: options.hostedActive ? 30 : 0,
+      lifecycle: hostedLifecycleActive ? "active" : "expired",
+      trialEndsAt: options.trialActive ? "2099-05-11T00:00:00.000Z" : "2026-05-08T00:00:00.000Z",
+      ...(options.includedHostedActive ? { includedHostedEndsAt: "2026-06-01T00:00:00.000Z" } : {}),
+      responsesEnabled: hostedLifecycleActive,
+      routingEnabled: hostedLifecycleActive,
+      pushEnabled: hostedLifecycleActive,
+      historyRetentionDays: hostedLifecycleActive ? 30 : 0,
     },
     products: [],
     activeEntitlements: {
@@ -307,7 +311,8 @@ describe("SettingsScreen — paired state", () => {
     );
 
     expect(screen.getByText("Start included hosted month")).toBeTruthy();
-    expect(screen.queryByText("$5/month")).toBeNull();
+    expect(screen.getByText("$5/month")).toBeTruthy();
+    expect(screen.getByText("$50/year")).toBeTruthy();
     fireEvent.press(screen.getByText("Start included hosted month"));
     expect(onActivateIncludedHostedMonth).toHaveBeenCalledTimes(1);
   });
@@ -329,7 +334,28 @@ describe("SettingsScreen — paired state", () => {
     );
 
     expect(screen.getByText("The included hosted month waits until Trial ends, then you can activate it before subscribing.")).toBeTruthy();
+    expect(screen.getByText("$5/month")).toBeTruthy();
+    expect(screen.getByText("$50/year")).toBeTruthy();
     expect(screen.queryByText("Start included hosted month")).toBeNull();
+  });
+
+  it("shows the current hosted usage expiry date", () => {
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: true,
+          lifetimeUnlocked: false,
+          readOnly: false,
+          hostedSubscriptionActive: false,
+          includedHostedActive: false,
+          trialRemainingMs: 1000,
+        }}
+        personalBillingStatus={personalBillingFixture({ trialActive: true })}
+      />,
+    );
+
+    expect(screen.getByText("Hosted Trial ends on May 11, 2099.")).toBeTruthy();
   });
 
   it("shows hosted subscription buttons after the included month has been used", () => {

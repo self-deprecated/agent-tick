@@ -3,7 +3,7 @@ import type { MeResponse } from "@agent-tick/sdk";
 import { localeName, supportedLocales, translateSource, type LocalePreference, type SupportedLocale } from "@agent-tick/i18n";
 import type { PersonalBillingStatus } from "@agent-tick/shared";
 import type { StoreProduct } from "./purchases";
-import { entitlementStatusCopy } from "./AppLogic";
+import { entitlementStatusCopy, formatHostedDate, hostedUsageExpiry, type HostedUsageExpiry } from "./AppLogic";
 import type { SavedMobileAccount } from "./mobileAuth";
 import {
   ActivityIndicator,
@@ -226,7 +226,8 @@ export function SettingsScreen({
   const hostedSubscriptionActive = Boolean(personalBillingStatus?.activeEntitlements.hostedPersonal.active);
   const canActivateIncludedHostedMonth = Boolean(billingStatusLoaded && nativeAppEntitlement?.lifetimeUnlocked && !nativeAppEntitlement.trialActive && !includedHostedActivated && !hostedSubscriptionActive);
   const includedHostedWaitsForTrialEnd = Boolean(billingStatusLoaded && nativeAppEntitlement?.lifetimeUnlocked && nativeAppEntitlement.trialActive && !includedHostedActivated && !hostedSubscriptionActive);
-  const showHostedSubscriptionActions = Boolean(nativeAppEntitlement?.lifetimeUnlocked && includedHostedActivated && !hostedPersonalActive) || hostedSubscriptionActive;
+  const showHostedSubscriptionActions = billingStatusLoaded;
+  const hostedExpiry = personalBillingStatus ? hostedUsageExpiry(personalBillingStatus) : null;
   const hostedOriginPlatform = personalBillingStatus?.activeEntitlements.hostedPersonal.originPlatform;
   const crossPlatformHostedCopy = hostedOriginPlatform === "ios"
     ? tr("Active via Apple. Manage on iOS or the App Store.")
@@ -257,6 +258,7 @@ export function SettingsScreen({
         <Text style={styles.organizationName}>{tr("Hosted personal service")}</Text>
         <Text style={styles.organizationMeta}>{tr("Let us run the approval routing, push, updates, and uptime for you.")}</Text>
         <Text style={styles.pairingHint}>{hostedPersonalActive ? tr("Hosted personal service is active.") : tr("The included hosted month starts when hosted personal service is first activated after purchase.")}</Text>
+        {hostedExpiry ? <Text style={styles.pairingHint}>{hostedExpiryCopy(hostedExpiry, tr)}</Text> : null}
         {crossPlatformHostedCopy ? <Text style={styles.pairingHint}>{crossPlatformHostedCopy}</Text> : null}
         {includedHostedWaitsForTrialEnd ? <Text style={styles.pairingHint}>{tr("The included hosted month waits until Trial ends, then you can activate it before subscribing.")}</Text> : null}
         {canActivateIncludedHostedMonth ? (
@@ -757,6 +759,16 @@ function savedAccountDetails(account: SavedMobileAccount) {
 
 function priceForProduct(products: StoreProduct[], productKey: StoreProduct["productKey"]): string | undefined {
   return products.find((product) => product.productKey === productKey)?.priceString;
+}
+
+function hostedExpiryCopy(expiry: HostedUsageExpiry, tr: (value: string) => string): string {
+  const date = formatHostedDate(expiry.expiresAt);
+  if (expiry.source === "subscription") {
+    return expiry.renewable ? `${tr("Hosted subscription renews on")} ${date}.` : `${tr("Hosted subscription expires on")} ${date}.`;
+  }
+  if (expiry.source === "included_month") return `${tr("Included hosted month ends on")} ${date}.`;
+  if (expiry.source === "read_only_grace") return `${tr("Hosted read-only grace ends on")} ${date}.`;
+  return `${tr("Hosted Trial ends on")} ${date}.`;
 }
 
 function purchaseAvailabilityCopy(reason: string | undefined): string {

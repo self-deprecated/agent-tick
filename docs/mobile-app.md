@@ -41,7 +41,8 @@ Enable notifications if you want approval alerts while the app is closed. Push n
 - The trial includes hosted and self-hosted app use.
 - After the trial, Lifetime app unlock keeps app responses available for self-hosted servers.
 - Lifetime app unlock includes one hosted month that can be activated after the Trial.
-- Hosted personal service is separate from permanent self-hosted app use and can continue through monthly/yearly app-store subscriptions after the included month.
+- Hosted personal service is separate from permanent self-hosted app use; monthly/yearly hosted subscriptions can be purchased during Trial, during the included hosted month, or after hosted access expires.
+- The app shows the current hosted access expiry date and warns when non-renewing hosted access has one week or less remaining.
 - iOS and Android purchases use App Store / Google Play in-app purchases through RevenueCat; the Agent Tick server is the source of truth for entitlements.
 - Sign in to an Agent Tick account before buying so purchases can be restored across devices and duplicate Apple/Google purchases can be blocked where possible.
 

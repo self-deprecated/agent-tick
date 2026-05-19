@@ -24,7 +24,9 @@ import {
   type TurboModule,
 } from "react-native";
 import {
+  formatHostedDate,
   hostedPersonalActive,
+  hostedUsageExpiryWarning,
   nativeAppEntitlement,
   notificationDecision,
   notificationFallbackState,
@@ -802,6 +804,7 @@ function AgentTickApp({
   const pairingInFlight = useRef(false);
   const previousScreenRef = useRef<Screen>(screen);
   const lastClerkPushRegistrationKey = useRef("");
+  const lastHostedExpiryAlertKey = useRef("");
 
   const dismissedStatusScopeKey = `${normalizeServerURL(serverURL)}:${selectedOrganizationID || "default"}`;
   const visibleDismissedStatusID = dismissedStatusScope === dismissedStatusScopeKey ? dismissedStatusID : statusUpdates[0]?.statusId ?? null;
@@ -1371,6 +1374,25 @@ function AgentTickApp({
     }
     void refreshPersonalBilling({ configureStore: runtimeAuthConfig?.authProvider === "clerk" });
   }, [hasRequestAuth, refreshPersonalBilling, runtimeAuthConfig?.authProvider, settingsLoaded]);
+
+  useEffect(() => {
+    if (!personalBillingStatus) return;
+    const expiry = hostedUsageExpiryWarning(personalBillingStatus);
+    if (!expiry) return;
+    const alertKey = `${expiry.source}:${expiry.expiresAt}`;
+    if (lastHostedExpiryAlertKey.current === alertKey) return;
+    lastHostedExpiryAlertKey.current = alertKey;
+    const date = formatHostedDate(expiry.expiresAt);
+    const lead = expiry.source === "trial"
+      ? `${translateSource("Your hosted Trial ends on")} ${date}.`
+      : expiry.source === "included_month"
+        ? `${translateSource("Your included hosted month ends on")} ${date}.`
+        : expiry.source === "read_only_grace"
+          ? `${translateSource("Hosted read-only grace ends on")} ${date}.`
+          : `${translateSource("Your hosted subscription expires on")} ${date}.`;
+    const message = [lead, translateSource("Subscribe monthly or yearly to keep hosted routing, push, and responses active.")].join("\n\n");
+    Alert.alert(translateSource("Hosted service ending soon"), message);
+  }, [personalBillingStatus]);
 
   const load = useCallback(async (options?: { visible?: boolean }) => {
     if (runtimeAuthConfig?.authProvider === "clerk" && !selectedOrganizationID) {

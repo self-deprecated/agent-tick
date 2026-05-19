@@ -292,7 +292,6 @@ async function purchaseAvailabilityForProduct(store: AgentTickStore, userId: str
     };
   }
   if (productKey !== 'lifetime_unlock') {
-    if (!activeEntitlements.lifetimeUnlock.active && !entitlement.appUnlockedAt) return { allowed: false, reason: 'app_purchase_required' };
     if (activeEntitlements.hostedPersonal.active) {
       const originPlatform = activeEntitlements.hostedPersonal.originPlatform;
       return {
@@ -302,12 +301,7 @@ async function purchaseAvailabilityForProduct(store: AgentTickStore, userId: str
         ...(originPlatform ? { originPlatform } : {})
       };
     }
-    const hostedStatus = hostedPersonalStatus(entitlement, now);
-    if (hostedStatus.lifecycle === 'active') {
-      const trialActive = new Date(hostedStatus.trialEndsAt).getTime() > now.getTime();
-      const includedHostedActive = hostedStatus.includedHostedEndsAt ? new Date(hostedStatus.includedHostedEndsAt).getTime() > now.getTime() : false;
-      return { allowed: false, reason: trialActive ? 'trial_active' : includedHostedActive ? 'included_hosted_month_active' : 'already_subscribed' };
-    }
+    if (entitlement.hostedSubscriptionEndsAt && new Date(entitlement.hostedSubscriptionEndsAt).getTime() > now.getTime()) return { allowed: false, reason: 'already_subscribed' };
   }
   if (config.billingProvider === 'none') return { allowed: false, reason: 'billing_disabled' };
   const locks = await store.listActiveBillingPurchaseAttempts(userId, productGroupForProduct(productKey), now.toISOString());
