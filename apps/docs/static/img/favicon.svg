@@ -2,7 +2,7 @@
   <title id="title">Agent Tick app icon</title>
   <desc id="desc">Agent Tick logo centered on a white app-icon canvas.</desc>
   <rect width="1024" height="1024" fill="#ffffff"/>
-  <g id="logo" transform="translate(-82 -32) scale(2.18)">
+  <g id="logo" transform="translate(-81 28) scale(2.18)">
     <path id="letter-a" fill="#101a28" d="m 77,374 h 67 l 114,-223.28571 51.63636,68.05194 50.94805,0.49351 L 256,72 Z"/>
     <path id="check" fill="#28c61a" d="m 466.87946,126.39453 c -0.6571,0.019 -3.32617,2.86133 -7.45117,7.50195 L 304.54545,306.12987 271.74079,270.59766 229.28571,272 l 55,90 c 13,15 37.5672,12.75266 48,-5 L 462.94782,134.66211 c 3.39062,-5.8125 4.54891,-8.28547 3.93164,-8.26758 z"/>
   </g>
