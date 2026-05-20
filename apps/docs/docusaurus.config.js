@@ -38,6 +38,7 @@ const config = {
             'github-actions-release-sanction-tutorial.md',
             'self-hosting.md',
             'mobile-app.md',
+            'clerk-production.md',
             'entitlement-lifecycle.md',
             'security.md',
             'api-sdk.md'
