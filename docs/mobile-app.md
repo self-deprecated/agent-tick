@@ -39,7 +39,7 @@ Enable notifications if you want approval alerts while the app is closed. Push n
 
 - A 7-day trial starts when your personal entitlement is first created.
 - The trial includes hosted and self-hosted app use.
-- After the trial, Lifetime app unlock keeps app responses available for self-hosted servers.
+- After the trial, the app shows a native paywall; Lifetime app unlock keeps app responses available for self-hosted servers.
 - Lifetime app unlock includes one hosted month that can be activated after the Trial.
 - Hosted service is separate from permanent self-hosted app use; monthly/yearly hosted subscriptions can be purchased during Trial, during the included hosted month, or after hosted access expires.
 - The app shows the current hosted access expiry date and warns when non-renewing hosted access has one week or less remaining.

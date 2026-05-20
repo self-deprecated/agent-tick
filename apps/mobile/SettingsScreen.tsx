@@ -89,6 +89,8 @@ export function SettingsScreen({
   onSavedAccountSelect,
   onSendDiagnosticSnapshot,
   onSendTestNotification,
+  onShowHostedExpiryWarning,
+  onShowNativePaywall,
   nativeAppEntitlement,
   personalBillingStatus,
   storeProducts = [],
@@ -150,6 +152,8 @@ export function SettingsScreen({
   onSavedAccountSelect?: (account: SavedMobileAccount) => void;
   onSendDiagnosticSnapshot?: () => void;
   onSendTestNotification: () => void;
+  onShowHostedExpiryWarning?: () => void;
+  onShowNativePaywall?: () => void;
   nativeAppEntitlement?: { trialActive: boolean; lifetimeUnlocked: boolean; readOnly: boolean; hostedSubscriptionActive: boolean; includedHostedActive: boolean; trialRemainingMs?: number };
   personalBillingStatus?: PersonalBillingStatus | null;
   storeProducts?: StoreProduct[];
@@ -182,7 +186,7 @@ export function SettingsScreen({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [settingsView, setSettingsView] = useState<SettingsView>("home");
   const [languageOpen, setLanguageOpen] = useState(false);
-  const [diagnosticsRevealed, setDiagnosticsRevealed] = useState(diagnosticsEnabled);
+  const [diagnosticsRevealed, setDiagnosticsRevealed] = useState(false);
   const scrollRef = useRef<ScrollView | null>(null);
   const e2eeSectionY = useRef(0);
 
@@ -405,10 +409,19 @@ export function SettingsScreen({
 
   const diagnosticsSection = diagnosticsRevealed ? (
     <View style={styles.settingsSection}>
-      <Text style={styles.sectionHeading}>{tr("Diagnostics")}</Text>
+      <Text style={styles.sectionHeading}>{tr("Debug")}</Text>
       <Text style={styles.pairingHint}>
-        {tr("Optional diagnostic logs help debug mobile auth, notification, and connection issues. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets.")}
+        {tr("Debug tools for testing paywalls, hosted expiry warnings, diagnostics, and mobile state. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets.")}
       </Text>
+      <View style={styles.notificationActions}>
+        <Pressable onPress={() => { trackButton("debug_show_native_paywall"); onShowNativePaywall?.(); }} style={styles.secondaryActionButton}>
+          <Text style={styles.secondaryActionText}>{tr("Show native paywall")}</Text>
+        </Pressable>
+        <Pressable onPress={() => { trackButton("debug_show_hosted_expiry_warning"); onShowHostedExpiryWarning?.(); }} style={styles.secondaryActionButton}>
+          <Text style={styles.secondaryActionText}>{tr("Show hosted expiry warning")}</Text>
+        </Pressable>
+      </View>
+      <Text style={styles.label}>{tr("Diagnostic logs")}</Text>
       <Text style={styles.notificationStatus}>{tr("Status:")} {diagnosticsEnabled ? tr("Enabled") : tr("Disabled")}</Text>
       <Text style={styles.pairingHint}>{tr("Buffered events:")} {diagnosticsEventCount}{diagnosticsLastSentAt ? ` · last sent ${diagnosticsLastSentAt}` : ""}</Text>
       <View style={styles.notificationActions}>
