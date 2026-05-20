@@ -7,8 +7,7 @@ Agent Tick routes **Status Updates, Steering, and Sanctions** from local coding 
 Product surfaces:
 
 - Marketing site: <https://agenttick.sh>
-- Hosted app: <https://app.agenttick.sh>
-- Hosted API: <https://api.agenttick.sh>
+- Hosted app/API: <https://app.agenttick.sh>
 - Documentation: <https://docs.agenttick.sh>
 
 ## Start here

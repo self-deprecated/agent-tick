@@ -9,6 +9,7 @@ Start here:
 - [Integrations](./integrations.md) — setup guides for Claude Code, Codex, Pi, and GitHub Actions.
 - [iOS and Android app](./mobile-app.md) — install, pair, and respond from your phone.
 - [Self-Hosting](./self-hosting.md) — run your own Agent Tick server.
+- [Hosted Clerk production setup](./clerk-production.md) — production Clerk keys, domains, and SSO behavior.
 - [Entitlement lifecycle](./entitlement-lifecycle.md) — trial, hosted service, and mobile app unlock states.
 - [Security](./security.md) — bounded input, local execution, retention, and encryption notes.
 - [API/SDK](./api-sdk.md) — low-level TypeScript client and HTTP request patterns.

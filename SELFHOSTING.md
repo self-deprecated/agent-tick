@@ -74,7 +74,7 @@ For CI or non-interactive hosts, create or copy an `agent_...` token from the da
 agent-tick setup --server https://tick.example.com --token agent_...
 ```
 
-The public product surfaces are <https://agenttick.sh> for marketing, <https://app.agenttick.sh> for the hosted app, <https://api.agenttick.sh> for the hosted API, and <https://docs.agenttick.sh> for documentation. Self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
+The public product surfaces are <https://agenttick.sh> for marketing, <https://app.agenttick.sh> for the hosted app and API, and <https://docs.agenttick.sh> for documentation. Self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
 
 ## PostgreSQL and Redis production mode
 

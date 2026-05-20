@@ -14,6 +14,8 @@ import { AgentTickClient, type ApprovalRequest, type CreateApprovalResponse } fr
 import { ChoiceFlagSchema, EncryptedApprovalPayloadSchema, createEncryptedApprovalPayload, generateApprovalEncryptionKey, type ChoiceFlag, type EncryptedApprovalPayload } from '@agent-tick/shared';
 import { resolveServerAndToken, saveClientConfig } from './config.js';
 
+export const hostedAgentTickURL = 'https://app.agenttick.sh';
+
 export function createProgram(): Command {
   const program = new Command();
   program
@@ -34,7 +36,7 @@ export function createProgram(): Command {
   program
     .command('login')
     .description('Sign in to Agent Tick in your browser')
-    .option('--server <url>', 'Agent Tick server URL', 'https://agenttick.sh')
+    .option('--server <url>', 'Agent Tick server URL', hostedAgentTickURL)
     .option('--name <name>', 'agent token name for browser sign-in', defaultAgentName())
     .addHelpText('after', loginHelpText)
     .action(async (options: SetupOptions) => {
@@ -45,7 +47,7 @@ export function createProgram(): Command {
   program
     .command('setup')
     .description('Sign in or save an Agent Tick server URL and agent token')
-    .option('--server <url>', 'Agent Tick server URL', 'https://agenttick.sh')
+    .option('--server <url>', 'Agent Tick server URL', hostedAgentTickURL)
     .option('--token <token>', 'Agent Tick agent token')
     .option('--login', 'open browser sign-in and create an agent token')
     .option('--name <name>', 'agent token name for browser sign-in', defaultAgentName())
@@ -64,7 +66,7 @@ export function createProgram(): Command {
   program
     .command('install')
     .description('Interactive hosted-service setup for local AI coding agents')
-    .option('--server <url>', 'Agent Tick server URL', 'https://agenttick.sh')
+    .option('--server <url>', 'Agent Tick server URL', hostedAgentTickURL)
     .option('--target <target>', 'agent to configure, repeatable: claude, codex, gemini, pi, cursor, opencode, agents-md', collectOption, [])
     .option('--all', 'configure every supported target without prompting')
     .option('--yes', 'accept defaults and do not prompt')
@@ -356,13 +358,17 @@ async function readCallbackParams(request: IncomingMessage, url: URL): Promise<U
   return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
-export function buildCliSetupURL(options: { server: string; callbackURL: string; state: string; name?: string }): string {
-  const url = new URL('/', options.server);
+export function buildCliSetupURL(options: { appURL?: string; server: string; callbackURL: string; state: string; name?: string }): string {
+  const appURL = normalizeURL(options.appURL ?? options.server);
+  const server = normalizeURL(options.server);
+  const url = new URL('/', appURL);
   url.searchParams.set('cli_callback', options.callbackURL);
   url.searchParams.set('cli_state', options.state);
+  if (server !== appURL) url.searchParams.set('cli_server', server);
   if (options.name?.trim()) url.searchParams.set('cli_name', options.name.trim());
   return url.toString();
 }
+
 
 function openBrowser(url: string): void {
   const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
@@ -558,7 +564,7 @@ function normalizeClaudeSandboxPolicy(value: string): ClaudeSandboxPolicy {
 }
 
 async function runInstall(options: InstallOptions): Promise<void> {
-  const server = normalizeURL(options.server ?? 'https://agenttick.sh');
+  const server = normalizeURL(options.server ?? hostedAgentTickURL);
   process.stdout.write('Agent Tick installer\n');
   process.stdout.write(`Hosted server: ${server}\n\n`);
 

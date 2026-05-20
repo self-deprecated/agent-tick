@@ -15,7 +15,7 @@ Agent Tick does **not** run your deploy, refund, migration, or release command. 
 
 | Input | Required | Default | Description |
 | --- | --- | --- | --- |
-| `server` | yes | — | Agent Tick API server URL, for example `https://api.agenttick.sh` or a self-hosted URL. |
+| `server` | yes | — | Agent Tick app/API server URL, for example `https://app.agenttick.sh` or a self-hosted URL. |
 | `token` | yes | — | Agent Tick agent token stored as a GitHub secret. |
 | `title` | yes | — | Short reviewer-facing approval title. |
 | `body` | no | `""` | Reviewer guidance. Keep it concise and avoid secrets or raw logs. |
@@ -81,7 +81,7 @@ Do not include:
 
 ## Setup checklist
 
-1. Create or choose an Agent Tick server: hosted `https://api.agenttick.sh` or self-hosted.
+1. Create or choose an Agent Tick server: hosted `https://app.agenttick.sh` or self-hosted.
 2. Create an Agent Tick agent token and store it in `AGENT_TICK_TOKEN`.
 3. Store the API URL in `AGENT_TICK_SERVER`.
 4. Add this action before the protected workflow step.

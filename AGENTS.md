@@ -14,7 +14,7 @@ Agent Tick is a fresh TypeScript-first least-permission approval layer for codin
 
 The old Go server/CLI and prototype compatibility paths are not active product surfaces. Do not add Go-era compatibility unless explicitly requested.
 
-Public surfaces: marketing at <https://agenttick.sh>, hosted app at <https://app.agenttick.sh>, API at <https://api.agenttick.sh>, and docs at <https://docs.agenttick.sh>. Self-hosting docs live in `SELFHOSTING.md`.
+Public surfaces: marketing at <https://agenttick.sh>, hosted app/API at <https://app.agenttick.sh>, and docs at <https://docs.agenttick.sh>. Self-hosting docs live in `SELFHOSTING.md`.
 
 ## Source-control workflow
 

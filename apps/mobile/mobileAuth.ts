@@ -1,6 +1,11 @@
 export type MobileAuthProvider = "local" | "clerk";
 
-export const agentTickHostedServerURL = "https://agenttick.sh";
+const defaultHostedServerURL = "https://app.agenttick.sh";
+
+export const agentTickHostedServerURL = normalizeConfiguredServerURL(
+  process.env.EXPO_PUBLIC_AGENT_TICK_HOSTED_SERVER_URL,
+  defaultHostedServerURL,
+);
 export const hostedServerURL = agentTickHostedServerURL;
 export const selfHostedServerURLPreset = process.env.EXPO_PUBLIC_AGENT_TICK_SELF_HOSTED_SERVER_URL?.trim() ?? "";
 export const serverURLStorageKey = "agent-tick.serverURL";
@@ -42,8 +47,12 @@ export async function fetchRuntimeAuthConfig(serverURL: string, fetchImpl: typeo
 }
 
 export function normalizeServerURL(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  return trimmed || hostedServerURL;
+  return normalizeConfiguredServerURL(value, hostedServerURL);
+}
+
+function normalizeConfiguredServerURL(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim().replace(/\/+$/, "") ?? "";
+  return trimmed || fallback;
 }
 
 export function mobileSessionStorageKeys(serverURL: string) {

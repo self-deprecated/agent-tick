@@ -10,11 +10,8 @@
 </div>
 <div class="clerk-card stack" aria-label="Clerk account entry">
 	<p class="eyebrow">Secured by Clerk</p>
-	<button class="provider-button" onclick={() => void onSignIn()}>Continue with GitHub</button>
-	<button class="provider-button" onclick={() => void onSignIn()}>Continue with Google</button>
-	<button class="provider-button" onclick={() => void onSignIn()}>Continue with Apple</button>
-	<div class="divider">or continue with email</div>
-	<button onclick={() => void onSignIn()}>Sign in or create account</button>
+	<p class="subtle">Use any sign-in method enabled in Clerk. Apple, GitHub, Google, email, and future SSO options are managed from the Clerk dashboard.</p>
+	<button onclick={() => void onSignIn()}>Continue with Clerk</button>
 </div>
 
 <style>
@@ -65,26 +62,4 @@
 		color: white;
 	}
 
-	.provider-button {
-		background: white;
-		color: #0f172a;
-		border: 1px solid #dbeafe;
-		box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
-	}
-
-	.divider {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		color: #94a3b8;
-		font-size: 0.85rem;
-	}
-
-	.divider::before,
-	.divider::after {
-		content: '';
-		flex: 1;
-		height: 1px;
-		background: #dbeafe;
-	}
 </style>

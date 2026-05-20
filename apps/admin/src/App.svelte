@@ -116,7 +116,7 @@
 	let eventStreamOrganizationId = '';
 	let eventStreamRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 	let eventStreamReconnectTimer: ReturnType<typeof setTimeout> | undefined;
-	type CliSetupRequest = { callbackURL: string; state: string; name: string };
+	type CliSetupRequest = { callbackURL: string; state: string; name: string; server: string };
 
 	function tr(message: string): string {
 		activeLocale;
@@ -172,11 +172,22 @@
 		try {
 			const callback = new URL(callbackURL);
 			if (callback.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(callback.hostname)) throw new Error('Invalid callback URL');
-			cliSetup = { callbackURL: callback.toString(), state, name: params.get('cli_name')?.trim() || 'Local agent' };
+			cliSetup = {
+				callbackURL: callback.toString(),
+				state,
+				name: params.get('cli_name')?.trim() || 'Local agent',
+				server: normalizeCliSetupServer(params.get('cli_server') ?? window.location.origin)
+			};
 		} catch {
 			cliSetupStatus = 'error';
 			cliSetupError = 'The CLI setup callback URL is invalid. Please retry agent-tick setup --login.';
 		}
+	}
+
+	function normalizeCliSetupServer(value: string): string {
+		const url = new URL(value);
+		if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Invalid CLI server URL');
+		return url.toString().replace(/\/$/, '');
 	}
 
 	function syncInviteTokenFromLocation(): void {
@@ -799,7 +810,7 @@
 			trackPlausibleEvent('setup_completed', { method: 'browser_cli_setup' });
 			postCliSetupCallback(cliSetup.callbackURL, {
 				state: cliSetup.state,
-				server: window.location.origin,
+				server: cliSetup.server,
 				token: credential.token,
 				agentId: credential.agentId
 			});

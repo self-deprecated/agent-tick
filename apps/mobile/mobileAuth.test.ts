@@ -2,8 +2,8 @@ import { agentTickHostedServerURL, clerkTokenCacheKey, fetchRuntimeAuthConfig, h
 
 describe("mobile auth config", () => {
   it("normalizes server URLs", () => {
-    expect(agentTickHostedServerURL).toBe("https://agenttick.sh");
-    expect(hostedServerURL).toBe("https://agenttick.sh");
+    expect(agentTickHostedServerURL).toBe("https://app.agenttick.sh");
+    expect(hostedServerURL).toBe("https://app.agenttick.sh");
     expect(normalizeServerURL(" https://tick.example.com/// ")).toBe("https://tick.example.com");
     expect(normalizeServerURL(" ")).toBe(hostedServerURL);
   });
@@ -34,7 +34,7 @@ describe("mobile auth config", () => {
       updatedAt: "2026-05-10T00:00:00.000Z",
     });
     const second = upsertSavedMobileAccount(first, {
-      serverURL: "https://agenttick.sh",
+      serverURL: "https://app.agenttick.sh",
       authProvider: "clerk",
       userID: "usr_1",
       email: "ada@example.com",
@@ -44,7 +44,7 @@ describe("mobile auth config", () => {
     });
 
     expect(first[0]?.id).toBe(savedMobileAccountID({ serverURL: "https://tick.example.com", authProvider: "local", deviceID: "dev_1" }));
-    expect(second[0]?.id).toBe(savedMobileAccountID({ serverURL: "https://agenttick.sh", authProvider: "clerk", userID: "usr_1" }));
+    expect(second[0]?.id).toBe(savedMobileAccountID({ serverURL: "https://app.agenttick.sh", authProvider: "clerk", userID: "usr_1" }));
     expect(JSON.stringify(second)).not.toContain("agent_");
     expect(normalizeSavedMobileAccounts(JSON.parse(JSON.stringify(second))).map((account) => account.label)).toEqual(["GitHub account", "Example device"]);
   });
@@ -52,8 +52,8 @@ describe("mobile auth config", () => {
   it("deduplicates legacy organization-scoped hosted accounts by user", () => {
     const legacy = normalizeSavedMobileAccounts([
       {
-        id: savedMobileAccountID({ serverURL: "https://agenttick.sh", authProvider: "clerk", organizationID: "org_1" }),
-        serverURL: "https://agenttick.sh",
+        id: savedMobileAccountID({ serverURL: "https://app.agenttick.sh", authProvider: "clerk", organizationID: "org_1" }),
+        serverURL: "https://app.agenttick.sh",
         authProvider: "clerk",
         organizationID: "org_1",
         label: "Platform",
@@ -62,7 +62,7 @@ describe("mobile auth config", () => {
     ]);
 
     const next = upsertSavedMobileAccount(legacy, {
-      serverURL: "https://agenttick.sh",
+      serverURL: "https://app.agenttick.sh",
       authProvider: "clerk",
       userID: "usr_1",
       email: "ada@example.com",
@@ -76,8 +76,8 @@ describe("mobile auth config", () => {
   });
 
   it("namespaces saved Agent Tick account session tokens by account ID", () => {
-    expect(mobileAccountSessionTokenKey("clerk:https://agenttick.sh:usr_1")).toBe(
-      "agent-tick.mobileAccountSession.clerk%3Ahttps%3A%2F%2Fagenttick.sh%3Ausr_1",
+    expect(mobileAccountSessionTokenKey("clerk:https://app.agenttick.sh:usr_1")).toBe(
+      "agent-tick.mobileAccountSession.clerk%3Ahttps%3A%2F%2Fapp.agenttick.sh%3Ausr_1",
     );
   });
 

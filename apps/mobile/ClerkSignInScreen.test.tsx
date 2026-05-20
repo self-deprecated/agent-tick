@@ -22,17 +22,17 @@ describe("ClerkSignInScreen", () => {
   });
 
   it("shows a landing page before the hosted Clerk sign-in", () => {
-    render(<ClerkSignInScreen serverURL="https://agenttick.sh" />);
+    render(<ClerkSignInScreen serverURL="https://app.agenttick.sh" />);
 
     expect(screen.getByText("Agent Tick")).toBeTruthy();
-    expect(screen.getByText("https://agenttick.sh")).toBeTruthy();
+    expect(screen.getByText("https://app.agenttick.sh")).toBeTruthy();
     expect(screen.getByText("Sign in to agenttick.sh")).toBeTruthy();
     expect(screen.getByText("Use a self-hosted server instead")).toBeTruthy();
     expect(screen.queryByText("Native Clerk AuthView signInOrUp false")).toBeNull();
   });
 
   it("opens the hosted Clerk sign-in after tapping the hosted sign-in button", () => {
-    render(<ClerkSignInScreen serverURL="https://agenttick.sh" />);
+    render(<ClerkSignInScreen serverURL="https://app.agenttick.sh" />);
 
     fireEvent.press(screen.getByText("Sign in to agenttick.sh"));
 
@@ -42,7 +42,7 @@ describe("ClerkSignInScreen", () => {
   });
 
   it("can open directly to hosted Clerk sign-in", () => {
-    render(<ClerkSignInScreen serverURL="https://agenttick.sh" initialShowAuthView />);
+    render(<ClerkSignInScreen serverURL="https://app.agenttick.sh" initialShowAuthView />);
 
     expect(screen.getByText("Sign in to Agent Tick")).toBeTruthy();
     expect(screen.getByText("Native Clerk AuthView signInOrUp true")).toBeTruthy();
@@ -50,7 +50,7 @@ describe("ClerkSignInScreen", () => {
   });
 
   it("can leave the hosted Clerk sign-in screen", () => {
-    render(<ClerkSignInScreen serverURL="https://agenttick.sh" initialShowAuthView />);
+    render(<ClerkSignInScreen serverURL="https://app.agenttick.sh" initialShowAuthView />);
 
     fireEvent.press(screen.getByText("‹ Back"));
 
@@ -60,7 +60,7 @@ describe("ClerkSignInScreen", () => {
 
   it("reports a self-hosted server to the app shell", async () => {
     const onServerSelected = jest.fn();
-    render(<ClerkSignInScreen serverURL="https://agenttick.sh" onServerSelected={onServerSelected} />);
+    render(<ClerkSignInScreen serverURL="https://app.agenttick.sh" onServerSelected={onServerSelected} />);
 
     fireEvent.press(screen.getByText("Use a self-hosted server instead"));
     fireEvent.changeText(screen.getByPlaceholderText("https://tick.example.com"), "https://selfhost.example.com/");
@@ -75,9 +75,9 @@ describe("ClerkSignInScreen", () => {
   });
 
   it("can prefill only the self-hosted server field", () => {
-    render(<ClerkSignInScreen serverURL="https://agenttick.sh" selfHostedInitialURL="http://localhost:8787" />);
+    render(<ClerkSignInScreen serverURL="https://app.agenttick.sh" selfHostedInitialURL="http://localhost:8787" />);
 
-    expect(screen.getByText("https://agenttick.sh")).toBeTruthy();
+    expect(screen.getByText("https://app.agenttick.sh")).toBeTruthy();
     fireEvent.press(screen.getByText("Use a self-hosted server instead"));
     expect(screen.getByDisplayValue("http://localhost:8787")).toBeTruthy();
   });

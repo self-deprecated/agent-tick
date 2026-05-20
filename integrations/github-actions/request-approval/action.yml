@@ -6,7 +6,7 @@ branding:
   color: yellow
 inputs:
   server:
-    description: Agent Tick API server URL, for example https://api.agenttick.sh or a self-hosted URL
+    description: Agent Tick app/API server URL, for example https://app.agenttick.sh or a self-hosted URL
     required: true
   token:
     description: Agent Tick agent token stored as a GitHub secret

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, handleMcpRequest, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage } from '../src/index.js';
+import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, handleMcpRequest, hostedAgentTickURL, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -50,7 +50,19 @@ describe('browser setup', () => {
     expect(url.pathname).toBe('/');
     expect(url.searchParams.get('cli_callback')).toBe('http://127.0.0.1:1234/agent-tick/setup/callback');
     expect(url.searchParams.get('cli_state')).toBe('state_123');
+    expect(url.searchParams.get('cli_server')).toBeNull();
     expect(url.searchParams.get('cli_name')).toBe('Claude Code');
+  });
+
+  it('uses the hosted app origin as the hosted setup server', () => {
+    const url = new URL(buildCliSetupURL({
+      server: hostedAgentTickURL,
+      callbackURL: 'http://127.0.0.1:1234/agent-tick/setup/callback',
+      state: 'state_123'
+    }));
+
+    expect(url.origin).toBe(hostedAgentTickURL);
+    expect(url.searchParams.get('cli_server')).toBeNull();
   });
 });
 

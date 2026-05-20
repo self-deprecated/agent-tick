@@ -23,7 +23,7 @@ Store these values as GitHub Actions secrets before enabling the gate:
 
 | Secret | Purpose |
 | --- | --- |
-| `AGENT_TICK_SERVER` | Hosted API or self-hosted Agent Tick server URL, for example `https://api.agenttick.sh` or your own self-hosted URL. |
+| `AGENT_TICK_SERVER` | Hosted app/API or self-hosted Agent Tick server URL, for example `https://app.agenttick.sh` or your own self-hosted URL. |
 | `AGENT_TICK_TOKEN` | Agent Tick agent token scoped for the release workflow. |
 
 Use separate Agent Tick tokens for release workflows when possible so revocation does not affect unrelated CI jobs.

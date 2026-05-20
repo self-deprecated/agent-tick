@@ -480,8 +480,8 @@ describe("SettingsScreen — paired state", () => {
   it("signs out saved accounts without selecting them", () => {
     const onSavedAccountRemove = jest.fn();
     const account = {
-      id: "clerk:https://agenttick.sh:usr_2",
-      serverURL: "https://agenttick.sh",
+      id: "clerk:https://app.agenttick.sh:usr_2",
+      serverURL: "https://app.agenttick.sh",
       authProvider: "clerk",
       label: "Apple account",
       userID: "usr_2",
