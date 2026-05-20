@@ -79,6 +79,9 @@
       "mobile:dev-build:ios": [
         "cd apps/mobile && corepack pnpm dlx --allow-build=dtrace-provider eas-cli build --profile development --platform ios"
       ],
+      "mobile:build:ios:production": [
+        "cd apps/mobile && corepack pnpm dlx --allow-build=dtrace-provider eas-cli@latest build --platform ios --profile production --auto-submit"
+      ],
       "mobile:dev-build:android": [
         "cd apps/mobile && corepack pnpm dlx --allow-build=dtrace-provider eas-cli build --profile development --platform android"
       ],
