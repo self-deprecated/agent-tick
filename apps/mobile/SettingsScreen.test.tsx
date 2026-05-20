@@ -231,15 +231,35 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.getByText(/System/)).toBeTruthy();
   });
 
-  it("reveals hidden diagnostics controls by long-pressing General", () => {
+  it("reveals hidden debug controls by long-pressing General", () => {
     const onDiagnosticsEnabledChange = jest.fn();
-    render(<SettingsScreen {...pairedProps} onDiagnosticsEnabledChange={onDiagnosticsEnabledChange} />);
-    expect(screen.queryByText("Diagnostics")).toBeNull();
+    const onShowHostedExpiryWarning = jest.fn();
+    const onShowNativePaywall = jest.fn();
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        onDiagnosticsEnabledChange={onDiagnosticsEnabledChange}
+        onShowHostedExpiryWarning={onShowHostedExpiryWarning}
+        onShowNativePaywall={onShowNativePaywall}
+      />,
+    );
+    expect(screen.queryByText("Debug")).toBeNull();
     fireEvent(screen.getByText("General"), "longPress");
     expect(screen.getByText("Language")).toBeTruthy();
-    expect(screen.getByText("Diagnostics")).toBeTruthy();
+    expect(screen.getByText("Debug")).toBeTruthy();
+    fireEvent.press(screen.getByText("Show native paywall"));
+    fireEvent.press(screen.getByText("Show hosted expiry warning"));
     fireEvent.press(screen.getAllByText("Enable").at(-1)!);
+    expect(onShowNativePaywall).toHaveBeenCalledTimes(1);
+    expect(onShowHostedExpiryWarning).toHaveBeenCalledTimes(1);
     expect(onDiagnosticsEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("keeps debug controls hidden after restart even when diagnostic logging is enabled", () => {
+    render(<SettingsScreen {...pairedProps} diagnosticsEnabled />);
+    fireEvent.press(screen.getByText("General"));
+    expect(screen.getByText("Language")).toBeTruthy();
+    expect(screen.queryByText("Debug")).toBeNull();
   });
 
   it("shows clear app access and paywall messaging", () => {

@@ -77,10 +77,10 @@
         "cd apps/mobile && EXPO_NO_TELEMETRY=1 corepack pnpm start:dev-client:lan -- --port 8081"
       ],
       "mobile:dev-build:ios": [
-        "cd apps/mobile && corepack pnpm dlx eas-cli build --profile development --platform ios"
+        "cd apps/mobile && corepack pnpm dlx --allow-build=dtrace-provider eas-cli build --profile development --platform ios"
       ],
       "mobile:dev-build:android": [
-        "cd apps/mobile && corepack pnpm dlx eas-cli build --profile development --platform android"
+        "cd apps/mobile && corepack pnpm dlx --allow-build=dtrace-provider eas-cli build --profile development --platform android"
       ],
       "mobile:build:android:local": [
         "bash scripts/mobile-build-android-local.sh"
@@ -89,7 +89,7 @@
         "EAS_BUILD_PROFILE=preview bash scripts/mobile-build-android-local.sh"
       ],
       "mobile:update:development": [
-        "cd apps/mobile && corepack pnpm dlx eas-cli update --channel development"
+        "cd apps/mobile && corepack pnpm dlx --allow-build=dtrace-provider eas-cli update --channel development"
       ]
     }
   }
