@@ -4,7 +4,7 @@ Command-line status update, steering, and sanction interface for Agent Tick.
 
 ## Quickstart
 
-Primary setup is the prompt-based skill at <https://agenttick.sh/skill>. For manual CLI setup, run the published npm installer:
+Primary setup is the prompt-based skill at <https://agenttick.sh/skill.md>. For manual CLI setup, run the published npm installer:
 
 ```sh
 npx @self-deprecated/agent-tick install

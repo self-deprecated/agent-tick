@@ -9,10 +9,16 @@ Agent Tick is a least-permission approval layer for coding agents: status update
 
 ## Public Setup Flow
 
-Default to the hosted quick start unless the user explicitly asks for self-hosting or provides a self-hosted URL/token. The primary setup path is this prompt-based skill, fetched from:
+Default to the hosted quick start unless the user explicitly asks for self-hosting or provides a self-hosted URL/token. The primary setup path is this prompt-based skill. The browser-readable setup page is:
 
 ```text
 https://agenttick.sh/skill
+```
+
+For raw Markdown that can be pasted into a coding agent, use:
+
+```text
+https://agenttick.sh/skill.md
 ```
 
 Use the published npm CLI. If `agent-tick` is missing, prefer `npx` for first run:

@@ -8,7 +8,7 @@ Paste this into the coding agent you want to connect:
 
 ```text
 Fetch and follow the Agent Tick setup skill from:
-https://agenttick.sh/skill
+https://agenttick.sh/skill.md
 
 Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kind of work I want remote approval for. Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
 ```
