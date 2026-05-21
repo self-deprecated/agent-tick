@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, type AddHelpTextContext } from 'commander';
 import { AgentTickClient, type ApprovalRequest, type CreateApprovalResponse } from '@agent-tick/sdk';
 import { ChoiceFlagSchema, EncryptedApprovalPayloadSchema, createEncryptedApprovalPayload, generateApprovalEncryptionKey, type ChoiceFlag, type EncryptedApprovalPayload } from '@agent-tick/shared';
-import { resolveServerAndToken, saveClientConfig } from './config.js';
+import { assertAgentToken, clientConfigPath, loadClientConfig, maskAgentToken, resolveServerAndToken, saveClientConfig } from './config.js';
 
 export const hostedAgentTickURL = 'https://app.agenttick.sh';
 
@@ -35,38 +35,43 @@ export function createProgram(): Command {
 
   program
     .command('login')
-    .description('Sign in to Agent Tick in your browser')
-    .option('--server <url>', 'Agent Tick server URL', hostedAgentTickURL)
+    .description('Configure this machine by signing in to Agent Tick in your browser')
+    .option('--server <url>', `Agent Tick server URL [default: ${hostedAgentTickURL}]`)
     .option('--name <name>', 'agent token name for browser sign-in', defaultAgentName())
     .addHelpText('after', loginHelpText)
-    .action(async (options: SetupOptions) => {
-      const result = await setupWithBrowser({ ...options, login: true });
+    .action(async (options: LoginOptions) => {
+      const result = await setupWithBrowser({ server: await promptForServer(options.server), name: options.name });
       process.stdout.write(`${success('saved')} Agent Tick config to ${result.path}\n`);
     });
 
-  program
-    .command('setup')
-    .description('Sign in or save an Agent Tick server URL and agent token')
-    .option('--server <url>', 'Agent Tick server URL', hostedAgentTickURL)
+  const configCommand = program
+    .command('config')
+    .description('Show or configure the saved Agent Tick server and token')
+    .option('--server <url>', `Agent Tick server URL [default: ${hostedAgentTickURL}]`)
     .option('--token <token>', 'Agent Tick agent token')
     .option('--login', 'open browser sign-in and create an agent token')
     .option('--name <name>', 'agent token name for browser sign-in', defaultAgentName())
-    .addHelpText('after', setupHelpText)
-    .action(async (options: SetupOptions) => {
-      if (options.login) {
-        const result = await setupWithBrowser(options);
-        process.stdout.write(`saved Agent Tick config to ${result.path}\n`);
-        return;
-      }
-      if (!options.token) throw cliUsageError('setup', 'setup requires --login for hosted sign-in, or --token for manual/self-hosted setup');
-      const path = await saveClientConfig({ server: options.server, token: options.token });
-      process.stdout.write(`saved Agent Tick config to ${path}\n`);
+    .addHelpText('after', configHelpText)
+    .action(async (options: ConfigOptions) => {
+      const result = await configureSavedClient(options, { allowInteractive: true });
+      process.stdout.write(`${success('saved')} Agent Tick config to ${result.path}\n`);
     });
+
+  configCommand
+    .command('show')
+    .description('Show the saved Agent Tick server and a masked token')
+    .option('--json', 'print JSON')
+    .action(async (options: { json?: boolean }) => {
+      await showSavedConfig(options);
+    });
+
 
   program
     .command('install')
-    .description('Interactive hosted-service setup for local AI coding agents')
-    .option('--server <url>', 'Agent Tick server URL', hostedAgentTickURL)
+    .description('Install Agent Tick into local AI coding agents')
+    .option('--server <url>', `Agent Tick server URL [default: ${hostedAgentTickURL}]`)
+    .option('--token <token>', 'Agent Tick agent token to save before installing hooks')
+    .option('--login', 'open browser sign-in before installing hooks')
     .option('--target <target>', 'agent to configure, repeatable: claude, codex, gemini, pi, cursor, opencode, agents-md', collectOption, [])
     .option('--all', 'configure every supported target without prompting')
     .option('--yes', 'accept defaults and do not prompt')
@@ -106,7 +111,7 @@ export function createProgram(): Command {
         await runMcpStdioAdapter(options);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`${message}\nRun \`agent-tick setup --login\` or \`agent-tick install\` before starting the MCP adapter.`);
+        throw new Error(`${message}\nRun \`agent-tick login\`, \`agent-tick config --server <url> --token <token>\`, or \`agent-tick install\` before starting the MCP adapter.`);
       }
     });
 
@@ -274,7 +279,87 @@ async function clientFromOptions(options: ClientOptions): Promise<{ client: Agen
   return { server, token, client: new AgentTickClient({ baseUrl: server, tokenProvider: () => token }) };
 }
 
-async function setupWithBrowser(options: SetupOptions): Promise<{ path: string }> {
+type ConfigMethod = 'browser' | 'token';
+type SavedConfigResult = { path: string; method: ConfigMethod; server: string };
+
+async function configureSavedClient(options: ConfigOptions, settings: { allowInteractive: boolean; usageCommand?: UsageCommand; defaultMethod?: ConfigMethod } = { allowInteractive: true }): Promise<SavedConfigResult> {
+  const usageCommand = settings.usageCommand ?? 'config';
+  const server = await promptForServer(options.server);
+  if (options.login) {
+    return { ...(await setupWithBrowser({ server, name: options.name })), method: 'browser', server };
+  }
+  if (options.token) {
+    return { path: await saveConfigWithToken(server, options.token), method: 'token', server };
+  }
+  if (settings.allowInteractive && isInteractiveTerminal()) {
+    const method = await promptConfigMethod(settings.defaultMethod ?? 'browser');
+    if (method === 'browser') return { ...(await setupWithBrowser({ server, name: options.name })), method, server };
+    const token = await promptForToken();
+    return { path: await saveConfigWithToken(server, token), method, server };
+  }
+  if (settings.defaultMethod === 'browser') return { ...(await setupWithBrowser({ server, name: options.name })), method: 'browser', server };
+  throw cliUsageError(usageCommand, 'configuration requires --login, --token, or an interactive terminal. Use `agent-tick login` for browser sign-in.');
+}
+
+async function saveConfigWithToken(server: string, token: string): Promise<string> {
+  return saveClientConfig({ server: normalizeURL(server), token: assertAgentToken(token) });
+}
+
+async function promptForServer(value: string | undefined): Promise<string> {
+  const defaultServer = hostedAgentTickURL;
+  if (value?.trim()) return normalizeURL(value);
+  if (!isInteractiveTerminal()) return defaultServer;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question(`Agent Tick server [${defaultServer}]: `)).trim();
+    return normalizeURL(answer || defaultServer);
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptConfigMethod(defaultMethod: ConfigMethod): Promise<ConfigMethod> {
+  process.stdout.write('How do you want to configure this machine?\n');
+  process.stdout.write('  1. Open browser sign-in\n');
+  process.stdout.write('  2. Paste an agent token\n');
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question(`Choice [${defaultMethod === 'browser' ? '1' : '2'}]: `)).trim().toLowerCase();
+    if (!answer) return defaultMethod;
+    if (answer === '1' || answer === 'browser' || answer === 'login') return 'browser';
+    if (answer === '2' || answer === 'token' || answer === 'paste') return 'token';
+    throw new Error('Expected 1 for browser sign-in or 2 for agent token.');
+  } finally {
+    rl.close();
+  }
+}
+
+async function promptForToken(): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return assertAgentToken(await rl.question('Agent token: '));
+  } finally {
+    rl.close();
+  }
+}
+
+async function showSavedConfig(options: { json?: boolean }): Promise<void> {
+  const configPath = clientConfigPath();
+  const config = await loadClientConfig();
+  const server = config.server || '(not set)';
+  const token = maskAgentToken(config.token);
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify({ path: configPath, server: config.server || null, token })}\n`);
+    return;
+  }
+  process.stdout.write(`Config file: ${configPath}\nServer: ${server}\nToken: ${token}\n`);
+}
+
+function isInteractiveTerminal(): boolean {
+  return process.stdin.isTTY === true && process.stdout.isTTY === true;
+}
+
+async function setupWithBrowser(options: { server: string; name?: string | undefined }): Promise<{ path: string }> {
   const state = randomBytes(24).toString('base64url');
   const callbackServer = await listenForSetupCallback({ expectedState: state, fallbackServer: options.server });
   const loginURL = buildCliSetupURL({
@@ -284,11 +369,11 @@ async function setupWithBrowser(options: SetupOptions): Promise<{ path: string }
     ...(options.name ? { name: options.name } : {})
   });
   process.stdout.write(`Opening ${loginURL}\n`);
-  process.stdout.write('Sign in in your browser. Agent Tick will redirect back here when setup is complete.\n');
+  process.stdout.write('Sign in in your browser. Agent Tick will redirect back here when configuration is complete.\n');
   openBrowser(loginURL);
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error('Timed out waiting for browser sign-in. Run `agent-tick setup --login` again to retry.')), 5 * 60_000);
+    timeout = setTimeout(() => reject(new Error('Timed out waiting for browser sign-in. Run `agent-tick login` again to retry.')), 5 * 60_000);
   });
   try {
     return await Promise.race([callbackServer.result, timedOut]);
@@ -319,16 +404,16 @@ function listenForSetupCallback(options: { expectedState: string; fallbackServer
         const serverURL = params.get('server') ?? options.fallbackServer;
         if (state !== options.expectedState || !token.startsWith('agent_')) {
           response.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
-          response.end('<h1>Agent Tick setup failed</h1><p>Invalid setup callback. You can close this tab and retry <code>agent-tick setup --login</code>.</p>');
+          response.end('<h1>Agent Tick configuration failed</h1><p>Invalid sign-in callback. You can close this tab and retry <code>agent-tick login</code>.</p>');
           return;
         }
         const path = await saveClientConfig({ server: serverURL, token });
         response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        response.end('<h1>Agent Tick setup complete</h1><p>You can close this tab and return to your terminal.</p>');
+        response.end('<h1>Agent Tick configuration complete</h1><p>You can close this tab and return to your terminal.</p>');
         resolve({ path });
       })().catch((error: unknown) => {
         response.writeHead(500, { 'content-type': 'text/html; charset=utf-8' });
-        response.end(`<h1>Agent Tick setup failed</h1><p>${escapeHTML(error instanceof Error ? error.message : String(error))}</p>`);
+        response.end(`<h1>Agent Tick configuration failed</h1><p>${escapeHTML(error instanceof Error ? error.message : String(error))}</p>`);
       });
     });
   });
@@ -403,7 +488,7 @@ function success(value: string): string { return color('32', value); }
 
 function topLevelHelpText(context?: AddHelpTextContext): string {
   if (context?.command.parent) return '';
-  return `${heading('Agent Tick — Status Updates, Steering, and Sanctions for AI agents')}\n\n${heading('Most used')}\n  ${command('agent-tick status-update "Running tests now"')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick sanction --title "Deploy to production?"')}\n  ${command('agent-tick sanction -- npm install')}\n\n${heading('First-time setup')}\n  ${command('agent-tick login')}\n  ${command('agent-tick setup --login')}\n  ${command('agent-tick install --target claude')}\n\n`;
+  return `${heading('Agent Tick — Status Updates, Steering, and Sanctions for AI agents')}\n\n${heading('Most used')}\n  ${command('agent-tick status-update "Running tests now"')}\n  ${command('agent-tick steering --title "Which approach?" --choice "Small fix" --choice "Refactor"')}\n  ${command('agent-tick sanction --title "Deploy to production?"')}\n  ${command('agent-tick sanction -- npm install')}\n\n${heading('First-time setup')}\n  ${command('agent-tick login')}\n  ${command('agent-tick config --server http://localhost:8787 --token agent_...')}\n  ${command('agent-tick install --target claude')}\n\n`;
 }
 
 function rootHelpFooter(context?: AddHelpTextContext): string {
@@ -411,7 +496,7 @@ function rootHelpFooter(context?: AddHelpTextContext): string {
 }
 
 function orderedVisibleCommands(cmd: Command): Command[] {
-  const priority = ['status-update', 'steering', 'sanction', 'mcp', 'login', 'setup', 'install', 'mode', 'abandon'];
+  const priority = ['status-update', 'steering', 'sanction', 'mcp', 'login', 'config', 'install', 'mode', 'abandon'];
   return [...cmd.commands]
     .filter((subcommand) => subcommand.name() !== 'hook' && subcommand.name() !== 'status')
     .sort((left, right) => {
@@ -424,11 +509,11 @@ function orderedVisibleCommands(cmd: Command): Command[] {
     });
 }
 
-const loginHelpText = `\n${heading('Examples')}\n  ${command('agent-tick login')}\n  ${command('agent-tick login --name "Claude Code on laptop"')}\n`;
+const loginHelpText = `\n${heading('Examples')}\n  ${command('agent-tick login')}\n  ${command('agent-tick login --server http://localhost:8787')}\n  ${command('agent-tick login --name "Claude Code on laptop"')}\n`;
 
-const setupHelpText = `\n${heading('Recommended hosted setup')}\n  ${command('agent-tick setup --login')}\n\n${heading('Manual/self-hosted setup')}\n  ${command('agent-tick setup --server http://localhost:8787 --token agent_...')}\n`;
+const configHelpText = `\n${heading('Examples')}\n  ${command('agent-tick config')}\n  ${command('agent-tick config --server http://localhost:8787 --token agent_...')}\n  ${command('agent-tick config show')}\n`;
 
-const installHelpText = `\n${heading('Examples')}\n  ${command('agent-tick install --target claude')}\n  ${command('agent-tick install --target claude --claude-scope local')}\n  ${command('agent-tick install --target claude --claude-sandbox allow')}\n`;
+const installHelpText = `\n${heading('Examples')}\n  ${command('agent-tick install --target claude')}\n  ${command('agent-tick install --server http://localhost:8787 --token agent_... --target claude')}\n  ${command('agent-tick install --target claude --claude-scope local')}\n  ${command('agent-tick install --target claude --claude-sandbox allow')}\n`;
 
 const statusUpdateHelpText = `\n${heading('Examples')}\n  ${command('agent-tick status-update "Finished edits; running tests now"')}\n  ${command('agent-tick status-update --state waiting "Waiting for CI"')}\n  ${command('agent-tick status-update --state blocked --notify --importance high "Need staging access"')}\n  ${command('agent-tick status-update --state done "Implemented and validated"')}\n\n${muted('Recommended states: working, waiting, blocked, done, failed. Use --notify and --importance as explicit hooks for future push behavior; they are recorded as metadata today.')}\n`;
 
@@ -438,7 +523,7 @@ const sanctionHelpText = `\n${heading('Examples')}\n  ${command('agent-tick sanc
 
 const abandonHelpText = `\n${heading('Example')}\n  ${command('agent-tick abandon apr_123')}\n`;
 
-type UsageCommand = 'status-update' | 'steering' | 'sanction' | 'setup' | 'login' | 'install' | 'mode' | 'mcp' | 'abandon' | 'unknown';
+type UsageCommand = 'status-update' | 'steering' | 'sanction' | 'config' | 'login' | 'install' | 'mode' | 'mcp' | 'abandon' | 'unknown';
 
 class CliUsageError extends Error {
   constructor(public usageCommand: UsageCommand, message: string) {
@@ -564,20 +649,23 @@ function normalizeClaudeSandboxPolicy(value: string): ClaudeSandboxPolicy {
 }
 
 async function runInstall(options: InstallOptions): Promise<void> {
-  const server = normalizeURL(options.server ?? hostedAgentTickURL);
+  let server = normalizeURL(options.server ?? hostedAgentTickURL);
   process.stdout.write('Agent Tick installer\n');
-  process.stdout.write(`Hosted server: ${server}\n\n`);
+  if (options.dryRun || options.login === false) process.stdout.write(`Agent Tick server: ${server}\n\n`);
 
   if (options.dryRun) {
     process.stdout.write(options.login === false
-      ? 'Step 1/2: [dry-run] would skip browser sign-in because --no-login was provided.\n\n'
-      : 'Step 1/2: [dry-run] would connect this machine to Agent Tick.\n\n');
+      ? 'Step 1/2: [dry-run] would skip Agent Tick configuration because --no-login was provided.\n\n'
+      : options.token
+        ? 'Step 1/2: [dry-run] would save Agent Tick config with the provided token.\n\n'
+        : 'Step 1/2: [dry-run] would connect this machine to Agent Tick.\n\n');
   } else if (options.login !== false) {
     process.stdout.write('Step 1/2: connect this machine to Agent Tick.\n');
-    const result = await setupWithBrowser({ server, login: true, name: defaultAgentName() });
+    const result = await configureSavedClient({ server: options.server, token: options.token, login: options.login, name: defaultAgentName() }, { allowInteractive: !options.yes, usageCommand: 'install', defaultMethod: 'browser' });
+    server = result.server;
     process.stdout.write(`saved Agent Tick config to ${result.path}\n\n`);
   } else {
-    process.stdout.write('Step 1/2: skipped browser sign-in because --no-login was provided.\n\n');
+    process.stdout.write('Step 1/2: skipped Agent Tick configuration because --no-login was provided.\n\n');
   }
 
   const selected = await selectInstallTargets(options);
@@ -1922,13 +2010,17 @@ interface ClientOptions {
   token?: string;
 }
 
-interface SetupOptions extends ClientOptions {
-  server: string;
-  login?: boolean;
-  name?: string;
+interface LoginOptions {
+  server?: string | undefined;
+  name?: string | undefined;
 }
 
-interface InstallOptions extends SetupOptions {
+interface ConfigOptions extends LoginOptions {
+  token?: string | undefined;
+  login?: boolean | undefined;
+}
+
+interface InstallOptions extends ConfigOptions {
   target?: string[];
   all?: boolean;
   yes?: boolean;
@@ -1986,7 +2078,7 @@ function isDirectExecution(): boolean {
 
 function commandFromArgv(argv: string[]): UsageCommand {
   const commandName = argv.slice(2).find((arg) => !arg.startsWith('-'));
-  if (commandName === 'status-update' || commandName === 'steering' || commandName === 'sanction' || commandName === 'setup' || commandName === 'login' || commandName === 'install' || commandName === 'mode' || commandName === 'mcp' || commandName === 'abandon') return commandName;
+  if (commandName === 'status-update' || commandName === 'steering' || commandName === 'sanction' || commandName === 'config' || commandName === 'login' || commandName === 'install' || commandName === 'mode' || commandName === 'mcp' || commandName === 'abandon') return commandName;
   return 'unknown';
 }
 
@@ -1994,7 +2086,7 @@ function usageHint(name: UsageCommand): string {
   if (name === 'status-update') return `${statusUpdateHelpText}\nRun ${command('agent-tick status-update --help')} for all options.\n`;
   if (name === 'steering') return `${steeringHelpText}\nRun ${command('agent-tick steering --help')} for all options.\n`;
   if (name === 'sanction') return `${sanctionHelpText}\nRun ${command('agent-tick sanction --help')} for all options.\n`;
-  if (name === 'setup') return `${setupHelpText}\nRun ${command('agent-tick setup --help')} for all options.\n`;
+  if (name === 'config') return `${configHelpText}\nRun ${command('agent-tick config --help')} for all options.\n`;
   if (name === 'login') return `${loginHelpText}\nRun ${command('agent-tick login --help')} for all options.\n`;
   if (name === 'install') return `${installHelpText}\nRun ${command('agent-tick install --help')} for all options.\n`;
   if (name === 'mcp') return `\nRun ${command('agent-tick mcp --help')} for all options.\n`;

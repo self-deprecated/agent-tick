@@ -1,12 +1,12 @@
 # CLI
 
-The day-to-day Agent Tick commands are `status-update`, `steering`, and `sanction`. Use `install` when you want Agent Tick to configure supported local coding-agent integrations; use `setup` when you only need to save a server URL and `agent_...` token.
+The day-to-day Agent Tick commands are `status-update`, `steering`, and `sanction`. Use `install` when you want Agent Tick to configure supported local coding-agent integrations; use `config` when you only need to save or inspect the server URL and `agent_...` token.
 
 Examples use the `agent-tick` binary. If it is not on your `PATH`, run one-off commands with `npx @self-deprecated/agent-tick <command>` or install the package globally first.
 
-## Setup
+## Configuration
 
-Primary hosted setup is the prompt-based skill from [Quick Start](./quick-start.md). Manual setup:
+Primary hosted setup is the prompt-based skill from [Quick Start](./quick-start.md). Manual configuration:
 
 ```sh
 npx @self-deprecated/agent-tick install
@@ -18,10 +18,11 @@ Sign in and save a local token without installing hooks:
 npx @self-deprecated/agent-tick login
 ```
 
-For self-hosted servers or CI, create an agent token in the dashboard and save it locally:
+For self-hosted servers or CI, create an agent token in the dashboard and save it locally. Use `config show` to inspect the saved server and masked token:
 
 ```sh
-agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick config --server https://tick.example.com --token agent_...
+agent-tick config show
 ```
 
 ## Status updates
@@ -86,7 +87,7 @@ Run the local stdio MCP adapter from an MCP-capable agent configuration:
 agent-tick mcp
 ```
 
-The adapter uses the same saved CLI setup/token and exposes Agent Tick tools for status updates, steering, and sanctions.
+The adapter uses the same saved CLI config/token and exposes Agent Tick tools for status updates, steering, and sanctions.
 
 ## Abandon a pending request
 

@@ -5,7 +5,7 @@ Codex can use Agent Tick through the local stdio MCP adapter launched with `agen
 Supported launch behavior:
 
 - Codex calls Agent Tick MCP tools for status updates, steering, and sanctions.
-- The adapter uses the same saved Agent Tick setup/token as the CLI.
+- The adapter uses the same saved Agent Tick config/token as the CLI.
 - Sanctions return an approval result; Agent Tick does not run commands from MCP.
 - When Codex supports MCP elicitation, local Codex prompts and remote Agent Tick requests can race so the first valid answer wins.
 
@@ -22,7 +22,7 @@ agent-tick install
 Or configure a server/token manually:
 
 ```sh
-agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick config --server https://tick.example.com --token agent_...
 ```
 
 Verify the CLI can reach your Agent Tick server:
@@ -102,7 +102,7 @@ Expected result: Codex calls `agent_tick_sanction`; Agent Tick asks approve/deny
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `agent-tick mcp` fails with setup guidance | CLI config/token is missing. | Run `agent-tick install`, `agent-tick login`, or `agent-tick setup --server ... --token ...`. |
+| `agent-tick mcp` fails with config guidance | CLI config/token is missing. | Run `agent-tick install`, `agent-tick login`, or `agent-tick config --server ... --token ...`. |
 | Codex asks for approval before every Agent Tick tool call | Agent Tick MCP tools are not pre-approved in Codex. | Approve only the Agent Tick MCP tools, not broad shell or unrelated tools. |
 | Local Codex prompt does not appear | MCP elicitations are disabled or unsupported. | Enable `mcp_elicitations` if available, or use the remote Agent Tick app/web request. |
 | Request times out or is denied | The human did not approve the action. | Stop or choose a safe alternative; do not run the protected action. |

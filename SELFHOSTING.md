@@ -71,7 +71,7 @@ npx @self-deprecated/agent-tick install --server https://tick.example.com
 For CI or non-interactive hosts, create or copy an `agent_...` token from the dashboard, then save it locally with the CLI available on that host:
 
 ```sh
-agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick config --server https://tick.example.com --token agent_...
 ```
 
 The public product surfaces are <https://agenttick.sh> for marketing, <https://app.agenttick.sh> for the hosted app and API, and <https://docs.agenttick.sh> for documentation. Self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
@@ -141,7 +141,7 @@ After the server is running, set up an agent host with the installer:
 npx @self-deprecated/agent-tick install --server https://tick.example.com
 ```
 
-The CLI opens the dashboard, waits while you sign in with Clerk, saves the returned Agent Tick `agent_...` token, and offers to install local coding-agent approval instructions. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick setup --server https://tick.example.com --token agent_...` instead.
+The CLI opens the dashboard, waits while you sign in with Clerk, saves the returned Agent Tick `agent_...` token, and offers to install local coding-agent approval instructions. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick config --server https://tick.example.com --token agent_...` instead.
 
 ## Local image build
 

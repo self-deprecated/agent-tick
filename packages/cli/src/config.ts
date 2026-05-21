@@ -37,13 +37,28 @@ export async function resolveServerAndToken(options: { server?: string; token?: 
   const config = await loadClientConfig(env);
   const server = normalizeServer(options.server ?? env.AGENT_TICK_SERVER ?? config.server ?? 'http://localhost:8787');
   const token = (options.token ?? env.AGENT_TICK_TOKEN ?? config.token ?? '').trim();
-  if (!token) throw new Error('Agent token is required. Run `agent-tick setup --login --server <url>`, run `agent-tick setup --server <url> --token <token>`, or set AGENT_TICK_TOKEN.');
+  if (!token) throw new Error('Agent token is required. Run `agent-tick login`, run `agent-tick config --server <url> --token <token>`, or set AGENT_TICK_TOKEN.');
   return { server, token };
 }
 
 export function clientConfigPath(env: NodeJS.ProcessEnv = process.env): string {
   if (env.AGENT_TICK_CONFIG) return env.AGENT_TICK_CONFIG;
   return path.join(os.homedir(), '.config', 'agent-tick', 'config.json');
+}
+
+export function maskAgentToken(token: string | undefined): string {
+  const trimmed = token?.trim() ?? '';
+  if (!trimmed) return '(not set)';
+  const prefix = trimmed.startsWith('agent_') ? 'agent_' : '';
+  const secret = prefix ? trimmed.slice(prefix.length) : trimmed;
+  if (secret.length <= 4) return `${prefix}…`;
+  return `${prefix}…${secret.slice(-4)}`;
+}
+
+export function assertAgentToken(token: string): string {
+  const trimmed = token.trim();
+  if (!trimmed.startsWith('agent_')) throw new Error('Agent Tick tokens must start with agent_.');
+  return trimmed;
 }
 
 function normalizeServer(server: string): string {

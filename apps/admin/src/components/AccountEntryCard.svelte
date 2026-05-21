@@ -5,7 +5,7 @@
 <div class="auth-copy" data-testid="account-entry">
 	<p class="eyebrow">Agent Tick</p>
 	<h2>Sign in or create account</h2>
-	<p class="subtle">Create your account first. Then Agent Tick will guide you through one agent token, one CLI setup command, and the mobile app.</p>
+	<p class="subtle">Create your account first. Then Agent Tick will guide you through one agent token, one CLI config command, and the mobile app.</p>
 	<p class="subtle">Approvals, rules, and team settings stay hidden until there is something real to configure.</p>
 </div>
 <div class="clerk-card stack" aria-label="Clerk account entry">

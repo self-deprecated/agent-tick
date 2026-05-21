@@ -33,7 +33,7 @@ test('solo dashboard can connect an agent and keeps approvals locked until mobil
 	await page.getByRole('button', { name: 'Create token' }).click();
 	const agentToken = (await page.locator('code', { hasText: /^agent_/ }).last().innerText()).trim();
 	expect(agentToken).toMatch(/^agent_/);
-	await expect(page.getByText(/agent-tick setup --server/)).toBeVisible();
+	await expect(page.getByText(/agent-tick config --server/)).toBeVisible();
 
 	const created = await request.post(`${baseURL}/v1/approval-requests`, {
 		headers: { authorization: `Bearer ${agentToken}` },

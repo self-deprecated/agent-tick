@@ -25,7 +25,7 @@ Use that skill to set up Agent Tick on this machine. Ask me which coding agent I
 
 The linked prompt-based skill flow works even when the target machine does not have this repo cloned. It inspects your agent configuration, chooses the right integration path, runs a dry run, explains exactly what will change, asks for confirmation, installs, and verifies.
 
-If you prefer direct CLI setup, run the installer on the machine where your coding agents run:
+If you prefer direct CLI configuration, run the installer on the machine where your coding agents run:
 
 ```sh
 npx @self-deprecated/agent-tick install
@@ -84,7 +84,7 @@ agent-tick status-update --state working --next "Run the build" "Tests are passi
 
 `agent-tick install` does two things:
 
-1. Runs browser-based CLI setup against hosted Agent Tick by default, or the server passed with `--server`, and saves an Agent Tick `agent_...` token locally in `~/.config/agent-tick/config.json`.
+1. Runs browser-based CLI configuration against hosted Agent Tick by default, or the server passed with `--server`, and saves an Agent Tick `agent_...` token locally in `~/.config/agent-tick/config.json`.
 2. Detects local agent configs and installs supported integrations:
    - Claude Code: Verified Hook + MCP support. Hooks can route `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions; MCP is available through `agent-tick mcp`.
    - Codex: MCP Adapter support through `agent-tick mcp`.
@@ -115,7 +115,7 @@ Self-hosting is not the default onboarding path. If you want it, use [SELFHOSTIN
 - Fastify API server
 - Svelte dashboard served by the server
 - Expo mobile app
-- `agent-tick` CLI with `install`, `setup`, `mode`, `mcp`, `sanction`, `steering`, `abandon`, and `status-update`
+- `agent-tick` CLI with `install`, `config`, `login`, `mode`, `mcp`, `sanction`, `steering`, `abandon`, and `status-update`
 - SQLite persistence
 - optional Clerk human authentication for multi-user mode
 - local Agent Tick organizations, policies, approvals, audit logs, devices, and agent tokens

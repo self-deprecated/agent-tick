@@ -17,7 +17,7 @@ test('solo user moves through token, CLI, mobile, and first approval readiness',
   await page.getByRole('button', { name: 'Create token' }).click();
   const token = (await page.locator('code', { hasText: /^agent_/ }).last().innerText()).trim();
   expect(token).toMatch(/^agent_/);
-  await expect(page.getByText(/agent-tick setup --server/)).toBeVisible();
+  await expect(page.getByText(/agent-tick config --server/)).toBeVisible();
   await expect(page.getByTestId('approvals-locked')).toBeVisible();
 
   let state = await readTestState(request, baseURL);

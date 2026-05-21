@@ -2,14 +2,14 @@
 
 Agent Tick exposes a local stdio MCP adapter through `agent-tick mcp`. MCP-capable agents can use it to send status updates, ask bounded steering questions, and request sanctions before sensitive local work proceeds.
 
-The adapter reuses the normal CLI setup and saved `agent_...` token. Do not commit Agent Tick tokens into MCP host configuration files.
+The adapter reuses the normal CLI config and saved `agent_...` token. Do not commit Agent Tick tokens into MCP host configuration files.
 
 ## Relevant CLI commands
 
 ```sh
 agent-tick install
 agent-tick login
-agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick config --server https://tick.example.com --token agent_...
 agent-tick mcp
 agent-tick status-update "MCP preflight"
 agent-tick steering --title "Which path?" --choice safe="Safe path" --choice stop:deny="Stop"

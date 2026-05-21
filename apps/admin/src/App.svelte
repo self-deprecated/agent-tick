@@ -180,7 +180,7 @@
 			};
 		} catch {
 			cliSetupStatus = 'error';
-			cliSetupError = 'The CLI setup callback URL is invalid. Please retry agent-tick setup --login.';
+			cliSetupError = 'The CLI sign-in callback URL is invalid. Please retry agent-tick login.';
 		}
 	}
 
@@ -950,7 +950,7 @@
 	function onboardingStageTitle(): string {
 		if (!onboardingStatus) return 'Checking setup…';
 		if (onboardingStatus.stage === 'needs_agent_token') return 'Create your first agent token';
-		if (onboardingStatus.stage === 'needs_cli_setup') return 'Run the CLI setup command';
+		if (onboardingStatus.stage === 'needs_cli_setup') return 'Configure the CLI';
 		if (onboardingStatus.stage === 'needs_mobile_app') return 'Install and sign into the mobile app';
 		return 'Ready for your first approval request';
 	}
@@ -958,7 +958,7 @@
 	function agentSetupTitle(): string {
 		if (!isCustomerMode()) return 'Create an agent token';
 		if (onboardingStatus?.hasCliHeartbeat) return 'Agent connected';
-		if (onboardingStatus?.hasAgentToken) return 'Run the setup command';
+		if (onboardingStatus?.hasAgentToken) return 'Run the config command';
 		return 'Create an agent token';
 	}
 
@@ -966,7 +966,7 @@
 		if (!isCustomerMode()) return 'Use one token per machine or agent. You can revoke it any time.';
 		if (onboardingStatus?.hasCliHeartbeat) return 'Your CLI has checked in successfully. Agent setup is complete, so the next step is mobile sign-in.';
 		if (onboardingStatus?.hasAgentToken) return 'Use the one-time token below if it is still visible, or create a replacement token only if you lost it.';
-		return 'Use one token per machine or agent. Agent Tick will reveal the setup command after creation.';
+		return 'Use one token per machine or agent. Agent Tick will reveal the config command after creation.';
 	}
 
 	function showAgentTokenForm(): boolean {
@@ -1047,12 +1047,12 @@
 			{:else if cliSetupStatus === 'authorizing'}
 				<p class="subtle">Creating an agent token for <strong>{cliSetup.name}</strong>…</p>
 			{:else if cliSetupStatus === 'complete'}
-				<p class="success">Setup complete. Redirecting back to your terminal…</p>
+				<p class="success">CLI configured. Redirecting back to your terminal…</p>
 			{:else if cliSetupStatus === 'error'}
 				<p class="error">{cliSetupError}</p>
 			{:else}
 				<p class="subtle">Authorize this browser tab to create an agent token for <strong>{cliSetup.name}</strong> and return it to your terminal.</p>
-				<button onclick={() => void maybeCompleteCliSetup()}>Authorize CLI setup</button>
+				<button onclick={() => void maybeCompleteCliSetup()}>Authorize CLI sign-in</button>
 			{/if}
 		</section>
 	{/if}
@@ -1427,7 +1427,7 @@
 		{#if isCustomerMode() && onboardingStatus?.hasCliHeartbeat}
 			<div class="upgrade-panel" data-testid="agent-connected">
 				<div>
-					<strong>CLI setup complete</strong>
+					<strong>CLI configured</strong>
 					<p class="subtle">Agent Tick received a request from your token. You can create more tokens later from team settings or self-hosted admin mode.</p>
 				</div>
 			</div>
@@ -1470,7 +1470,7 @@
 					<p><strong>{createdCredential.name}</strong> ({createdCredential.agentId})</p>
 					<code>{createdCredential.token}</code>
 					<button onclick={copyToken}>Copy</button>
-					<p class="subtle">Use it with: <code>agent-tick setup --server {window.location.origin} --token {createdCredential.token}</code></p>
+					<p class="subtle">Use it with: <code>agent-tick config --server {window.location.origin} --token {createdCredential.token}</code></p>
 				</div>
 			{/if}
 		{/if}

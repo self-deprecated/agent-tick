@@ -13,10 +13,10 @@
 <div class="setup-steps">
 	<div class="setup-step" data-testid="onboarding-create-token" class:is-complete={hasAgentToken}>
 		<strong>1. Create an agent token</strong>
-		<span>Name your local agent below, copy the setup command, and paste it into the project where your AI agent runs.</span>
+		<span>Name your local agent below, copy the config command, and paste it into the project where your AI agent runs.</span>
 	</div>
 	<div class="setup-step" data-testid="onboarding-cli-setup" class:is-complete={hasCliHeartbeat}>
-		<strong>2. Run the CLI setup command</strong>
+		<strong>2. Configure the CLI</strong>
 		<span>Agent Tick marks the CLI connected after the token is used by your agent or a test request.</span>
 	</div>
 	<div class="setup-step" data-testid="onboarding-mobile-app" class:is-complete={hasMobileDevice}>

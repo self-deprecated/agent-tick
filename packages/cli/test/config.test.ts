@@ -2,8 +2,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { clientConfigPath, loadClientConfig, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, handleMcpRequest, hostedAgentTickURL, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage } from '../src/index.js';
+import { assertAgentToken, clientConfigPath, loadClientConfig, maskAgentToken, resolveServerAndToken, saveClientConfig } from '../src/config.js';
+import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, createProgram, handleMcpRequest, hostedAgentTickURL, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -34,6 +34,20 @@ describe('CLI config', () => {
       { AGENT_TICK_SERVER: 'https://env.example.com', AGENT_TICK_TOKEN: 'agent_env' }
     );
     expect(config).toEqual({ server: 'https://env.example.com', token: 'agent_env' });
+  });
+
+  it('masks and validates agent tokens for config display', () => {
+    expect(maskAgentToken('agent_123456789')).toBe('agent_…6789');
+    expect(maskAgentToken(undefined)).toBe('(not set)');
+    expect(assertAgentToken(' agent_123 ')).toBe('agent_123');
+    expect(() => assertAgentToken('sk_test_123')).toThrow(/must start with agent_/);
+  });
+
+  it('exposes config and login commands without setup', () => {
+    const commands = createProgram().commands.map((command) => command.name());
+    expect(commands).toContain('config');
+    expect(commands).toContain('login');
+    expect(commands).not.toContain('setup');
   });
 });
 

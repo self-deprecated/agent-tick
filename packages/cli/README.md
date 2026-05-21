@@ -96,10 +96,10 @@ Browser sign-in without installing hooks:
 agent-tick login
 ```
 
-Manual setup for CI or self-hosted servers:
+Manual configuration for CI or self-hosted servers:
 
 ```sh
-agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick config --server https://tick.example.com --token agent_...
 ```
 
 Do not put tokens in logs or committed files.

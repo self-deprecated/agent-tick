@@ -149,17 +149,17 @@ corepack pnpm --filter agent-tick build
 Run it from the package during development:
 
 ```sh
-node packages/cli/dist/index.js setup --login --server http://localhost:8787
+node packages/cli/dist/index.js login --server http://localhost:8787
 node packages/cli/dist/index.js request --title "Deploy?"
 ```
 
 For single-mode/manual setup or CI, pass a dashboard-created token directly:
 
 ```sh
-node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
+node packages/cli/dist/index.js config --server http://localhost:8787 --token agent_...
 ```
 
-The browser setup flow opens the dashboard, asks the signed-in user to click **Authorize CLI setup**, and saves the returned `agent_...` token to `~/.config/agent-tick/config.json` unless `AGENT_TICK_CONFIG` is set. The CLI intentionally does not start the server. The official server distribution is Docker. The CLI package is currently private in this repository; update README/SELFHOSTING/docs when public npm publishing is intentionally enabled.
+The browser login flow opens the dashboard, asks the signed-in user to click **Authorize CLI sign-in**, and saves the returned `agent_...` token to `~/.config/agent-tick/config.json` unless `AGENT_TICK_CONFIG` is set. The CLI intentionally does not start the server. The official server distribution is Docker. The CLI package is currently private in this repository; update README/SELFHOSTING/docs when public npm publishing is intentionally enabled.
 
 ## Docker
 

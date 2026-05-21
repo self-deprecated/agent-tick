@@ -57,10 +57,10 @@ npx @self-deprecated/agent-tick install --server https://tick.example.com
 For CI or non-interactive hosts, create or copy an `agent_...` token from the dashboard, then save it locally with the CLI available on that host:
 
 ```sh
-agent-tick setup --server https://tick.example.com --token agent_...
+agent-tick config --server https://tick.example.com --token agent_...
 ```
 
-If the host does not already have a persistent `agent-tick` binary for hooks or MCP, install the package globally before using `agent-tick setup`.
+If the host does not already have a persistent `agent-tick` binary for hooks or MCP, install the package globally before using `agent-tick config`.
 
 Send a safe test request:
 
@@ -138,7 +138,7 @@ After the server is running, use the browser installer from an agent host:
 npx @self-deprecated/agent-tick install --server https://tick.example.com
 ```
 
-For CI or non-interactive hosts, create an agent token in the dashboard and use `agent-tick setup --server ... --token ...` with the CLI available on that host.
+For CI or non-interactive hosts, create an agent token in the dashboard and use `agent-tick config --server ... --token ...` with the CLI available on that host.
 
 ## Backups and security
 

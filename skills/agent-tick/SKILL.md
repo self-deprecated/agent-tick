@@ -54,13 +54,13 @@ npx @self-deprecated/agent-tick install --target claude --claude-scope local --c
 If the user chose global scope, use `--claude-scope global` instead. For direct CLI setup without installing agent integrations:
 
 ```sh
-npx @self-deprecated/agent-tick setup --login --server https://app.agenttick.sh
+npx @self-deprecated/agent-tick login --server https://app.agenttick.sh
 ```
 
 For self-hosted/manual setup, use the user's server URL and token exactly once:
 
 ```sh
-npx @self-deprecated/agent-tick setup --server https://tick.example.com --token agent_...
+npx @self-deprecated/agent-tick config --server https://tick.example.com --token agent_...
 ```
 
 Do not print, log, summarize, or expose token values after setup.
@@ -178,7 +178,7 @@ agent-tick status-update --json --state working "Running server tests"
 
 ## Safety Rules
 
-- Do not use Agent Tick to approve its own setup command.
+- Do not use Agent Tick to approve its own installation or configuration command.
 - Do not include secrets, bearer tokens, private keys, session cookies, or full `.env` contents in sanction titles, steering bodies, status update messages, commands, or metadata.
 - Do not continue a gated action after denial, timeout, CLI failure, or a non-zero `agent-tick` exit.
 - Do not replace Agent Tick with a normal prompt when the user asked for Agent Tick approval.

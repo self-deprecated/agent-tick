@@ -58,7 +58,8 @@ docker build -f apps/server/Dockerfile -t agent-tick:dev .
 Current launch CLI command concepts only:
 
 - `agent-tick install`
-- `agent-tick setup`
+- `agent-tick login`
+- `agent-tick config`
 - `agent-tick mode`
 - `agent-tick mcp`
 - `agent-tick sanction`
@@ -70,7 +71,7 @@ The CLI package is prepared for public npm publishing as `@self-deprecated/agent
 
 ```sh
 corepack pnpm --filter @self-deprecated/agent-tick build
-node packages/cli/dist/index.js setup --server http://localhost:8787 --token agent_...
+node packages/cli/dist/index.js config --server http://localhost:8787 --token agent_...
 ```
 
 Do not document or call missing commands such as `agent-tick adapter` or `agent-tick steer` as current functionality. The progress-update command/API concept is `status-update`, not `status`.
