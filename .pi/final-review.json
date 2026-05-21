@@ -1,0 +1,43 @@
+{
+  "enabled": true,
+  "autoReview": false,
+  "docsOnlyReview": "ask",
+  "defaultMode": "background",
+  "reviewers": ["codex", "glm"],
+  "timeoutMs": 600000,
+  "sendFollowUp": true,
+  "skipDuplicateDiff": true,
+  "finalChecks": {
+    "enabled": true,
+    "commands": [
+      {
+        "name": "docker compose config",
+        "command": "docker compose config",
+        "timeoutMs": 600000
+      },
+      {
+        "name": "workspace typecheck",
+        "command": "corepack pnpm typecheck",
+        "timeoutMs": 600000
+      },
+      {
+        "name": "workspace tests",
+        "command": "corepack pnpm test",
+        "timeoutMs": 600000
+      },
+      {
+        "name": "workspace build",
+        "command": "corepack pnpm build",
+        "timeoutMs": 600000
+      },
+      {
+        "name": "admin Svelte check",
+        "command": "corepack pnpm --filter agent-tick-admin check",
+        "timeoutMs": 600000
+      }
+    ],
+    "timeoutMs": 600000,
+    "continueOnFailure": false,
+    "sendFollowUp": true
+  }
+}

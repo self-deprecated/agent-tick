@@ -1,5 +1,5 @@
 .devbox/
-.pi/
+.pi/extensions
 .mcp.json
 node_modules/
 .pnpm-store/
