@@ -43,7 +43,6 @@ import {
 
 export const DEFAULT_USER_ID = 'usr_default';
 export const DEFAULT_WORKSPACE_ID = 'wsp_default';
-export const DEFAULT_ORGANIZATION_ID = DEFAULT_WORKSPACE_ID;
 
 export interface OpenStoreOptions {
   databaseURL?: string;
@@ -296,7 +295,6 @@ export interface CleanupExpiredSecretsResult {
   eventTickets: number;
   pairingCodes: number;
   requestWaiterTokens: number;
-  approvalWaiterTokens: number;
 }
 
 export interface RetentionPolicy {
@@ -446,7 +444,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
     const eventTickets = this.db.prepare('DELETE FROM event_tickets WHERE expires_at <= ? OR used_at IS NOT NULL').run(now).changes;
     const pairingCodes = this.db.prepare('DELETE FROM device_pairing_codes WHERE expires_at <= ? OR used_at IS NOT NULL').run(now).changes;
     const requestWaiterTokens = this.db.prepare('DELETE FROM request_waiter_tokens WHERE expires_at <= ?').run(now).changes;
-    return { eventTickets, pairingCodes, requestWaiterTokens, approvalWaiterTokens: requestWaiterTokens };
+    return { eventTickets, pairingCodes, requestWaiterTokens };
   }
 
   cleanupRetention(policy: RetentionPolicy = {}, now = new Date().toISOString()): CleanupRetentionResult {
@@ -593,7 +591,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
   addWorkspaceMemberByEmail(workspaceId: string, emailInput: string, role: WorkspaceRole | string = 'member', now = new Date().toISOString()): WorkspaceMemberRecord {
     const workspace = this.workspaceRow(workspaceId);
     if (!workspace) throw new Error('Workspace not found');
-    if (workspace.type === 'personal') throw new Error('Personal Workspace cannot invite members');
+    if (workspace.type === 'personal') throw new Error('Personal Workspace cannot add members');
     const email = normalizeEmail(emailInput);
     if (!email) throw new Error('A member email is required');
     let user = this.db.prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email) as UserRow | undefined;
@@ -1130,27 +1128,6 @@ export class AgentTickStore implements AsyncAgentTickStore {
     this.updatePersonalEntitlement({ userId, hostedDataDeletedAt: now }, now);
   }
 
-  // Temporary compatibility helpers for existing package internals during the hard cutover.
-  listOrganizationsForUser(userId: string): WorkspaceMemberRecord[] { return this.listWorkspacesForUser(userId); }
-  listOrganizationMembers(workspaceId: string): WorkspaceMemberRecord[] { return this.listWorkspaceMembers(workspaceId); }
-  organizationMembershipForUser(userId: string, workspaceId: string): HumanIdentityResult | null { return this.workspaceMembershipForUser(userId, workspaceId); }
-  organizationMembershipForUserAnyStatus(userId: string, workspaceId: string): WorkspaceMemberRecord | null { return this.workspaceMembershipForUserAnyStatus(userId, workspaceId); }
-  createOrganizationForUser(userId: string, name: string, now?: string): WorkspaceMemberRecord { return this.createSharedWorkspaceForUser(userId, name, now); }
-  organizationSeatUsage(workspaceId: string): { activeMembers: number; pendingMembers: number } { return this.workspaceSeatUsage(workspaceId); }
-  deleteOrganizationData(workspaceId: string, now?: string): DeleteWorkspaceDataResult { return this.deleteWorkspaceData(workspaceId, now); }
-  organizationName(workspaceId: string): string | undefined { return this.workspaceRow(workspaceId)?.name; }
-  updateAgentTokenName(agentTokenId: string, workspaceId: string, label: string, now?: string): AgentTokenRecord | null { return this.updateAgentToken(agentTokenId, workspaceId, { label }, now); }
-  createApprovalRequest(input: CreateRequestInput, now?: string): RequestRecord { return this.createRequest(input, now); }
-  listApprovalRequests(workspaceId?: string, userId = DEFAULT_USER_ID, now?: string): RequestRecord[] { return this.listRequestsForUser(userId, workspaceId, now); }
-  getApprovalRequestForOrganization(id: string, workspaceId: string, userId?: string, now?: string): RequestRecord | null { return this.getRequestForWorkspace(id, workspaceId, userId, now); }
-  respondToApprovalRequestForOrganization(id: string, workspaceId: string, response: RespondRequest, userId: string, now?: string): RequestRecord | null { return this.respondToRequestForWorkspace(id, workspaceId, response, userId, now); }
-  abandonApprovalRequestForOrganization(id: string, workspaceId: string, actorId: string, now?: string): RequestRecord | null { return this.abandonRequestForWorkspace(id, workspaceId, actorId, now); }
-  createApprovalWaiterToken(requestId: string, workspaceId: string, agentTokenId: string, deadline?: string, now?: string): RequestWaiterTokenRecord { return this.createRequestWaiterToken(requestId, workspaceId, agentTokenId, deadline, now); }
-  verifyApprovalWaiterToken(token: string, requestId: string, now?: string): RequestWaiterAuth | null { return this.verifyRequestWaiterToken(token, requestId, now); }
-  createAgentStatusUpdate(input: CreateStatusUpdateInput, now?: string): StatusUpdateRecord { return this.createStatusUpdate(input, now); }
-  getAgentStatusUpdate(statusId: string, workspaceId: string): StatusUpdateRecord | null { return this.getStatusUpdate(statusId, workspaceId); }
-  listLatestAgentStatusUpdates(workspaceId: string, limit?: number): StatusUpdateRecord[] { return this.listLatestStatusUpdates(workspaceId, limit); }
-  listPushDevicesForApprovalRecipients(requestId: string): DeviceRecord[] { return this.listPushDevicesForRequestRecipients(requestId); }
 
   private ensurePersonalWorkspaceForUser(userId: string, now: string): void {
     const existing = this.db.prepare(`
@@ -1660,22 +1637,6 @@ function databasePathFromURL(databaseURL: string): string {
 }
 
 const SQLITE_SCHEMA = `
-PRAGMA foreign_keys = OFF;
-DROP TABLE IF EXISTS approval_votes;
-DROP TABLE IF EXISTS approval_recipients;
-DROP TABLE IF EXISTS approval_requests;
-DROP TABLE IF EXISTS approval_waiter_tokens;
-DROP TABLE IF EXISTS organization_invite_teams;
-DROP TABLE IF EXISTS organization_invite_acceptances;
-DROP TABLE IF EXISTS organization_invites;
-DROP TABLE IF EXISTS team_memberships;
-DROP TABLE IF EXISTS teams;
-DROP TABLE IF EXISTS projects;
-DROP TABLE IF EXISTS policies;
-DROP TABLE IF EXISTS organization_memberships;
-DROP TABLE IF EXISTS organizations;
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL DEFAULT '',

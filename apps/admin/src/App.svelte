@@ -462,13 +462,6 @@
 			{#if cliFollowUpURL}<p>Follow-up page: <a href={cliFollowUpURL}>{cliFollowUpURL}</a></p>{/if}
 			{#if cliSetupError}<p class="warning">{cliSetupError}</p>{/if}
 		</section>
-	{:else if activePage === 'invite'}
-		<section class="focused-flow">
-			<p class="eyebrow">Shared Workspace invite</p>
-			<h1>Invite flow unavailable</h1>
-			<p>Shared Workspace membership is managed from Clerk Organizations for hosted Workspaces. Ask the Workspace Owner to resend the invitation from Clerk.</p>
-			<button onclick={() => navigate('setup')}>Go to Setup</button>
-		</section>
 	{:else if runtimeConfig?.authProvider === 'clerk' && !clerkSignedIn}
 		<div class="panel"><p>Redirecting to sign in…</p><button onclick={() => void redirectToClerkAccount()}>Continue to sign in</button></div>
 	{:else if activePage === 'activity'}

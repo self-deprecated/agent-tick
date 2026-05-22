@@ -1,6 +1,6 @@
 name: Agent Tick Sanction
 author: Self-Deprecated
-description: Add a bounded Agent Tick human approval checkpoint to a GitHub Actions workflow.
+description: Add a bounded Agent Tick human Sanction Request checkpoint to a GitHub Actions workflow.
 branding:
   icon: check-circle
   color: yellow
@@ -12,7 +12,7 @@ inputs:
     description: Agent Tick agent token stored as a GitHub secret
     required: true
   title:
-    description: Short reviewer-facing approval title
+    description: Short reviewer-facing request title
     required: true
   body:
     description: Optional reviewer guidance; avoid secrets, raw logs, and full prompts
@@ -57,7 +57,7 @@ runs:
           exit 127
         fi
         npm install -g @self-deprecated/agent-tick
-    - name: Wait for approval
+    - name: Wait for Agent Tick Sanction Response
       id: request
       shell: bash
       env:

@@ -1,6 +1,6 @@
 # Self-Hosting
 
-Run Agent Tick yourself when you want approval routing and history on your own infrastructure. Most users should start with the hosted app; self-hosting is for people who want to operate the server.
+Run Agent Tick yourself when you want Request routing and history on your own infrastructure. Most users should start with the hosted app; self-hosting is for people who want to operate the server.
 
 Agent Tick is source-available under the BSL 1.1 license. Internal commercial self-hosting is allowed. Offering Agent Tick as a hosted or managed service to third parties is prohibited during the BSL period. The BSL conversion date is 2028-05-31.
 
@@ -79,22 +79,18 @@ Add only the pieces you need:
 # Limit active local members. Omit for unlimited self-hosted seats.
 AGENT_TICK_MAX_ACTIVE_MEMBERS=10
 
-# Send invite email payloads to your own mailer/webhook.
-AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
-
-# Notify an external system when a new approval request is created.
-AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/approvals
+# Notify an external system when a new Request is created.
+AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/requests
 
 # Auth-sensitive endpoint rate limits.
 AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
 AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
 
 # Retention cleanup windows. Omit to retain operational history indefinitely.
-AGENT_TICK_APPROVAL_RETENTION_DAYS=180
+AGENT_TICK_REQUEST_RETENTION_DAYS=180
 AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS=180
 AGENT_TICK_AUDIT_RETENTION_DAYS=365
 AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
-AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS=90
 AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
 AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES=60
 ```
@@ -116,7 +112,7 @@ For larger deployments, run database migrations as an explicit deployment step a
 
 ## Clerk mode
 
-Use Clerk mode when you want Clerk-backed human sign-in instead of single-mode admin access. Agent Tick still owns organizations, users, devices, agent tokens, approvals, and authorization.
+Use Clerk mode when you want Clerk-backed human sign-in instead of single-mode admin access. Agent Tick still owns Workspaces, users, Approval Devices, Agent Tokens, Requests, and authorization.
 
 ```env
 AGENT_TICK_MODE=clerk
@@ -142,10 +138,10 @@ For CI or non-interactive hosts, create an agent token in the dashboard and use 
 
 ## Backups and security
 
-- Back up the database. It contains users, organizations, token hashes, approval history, device registrations, and audit events.
+- Back up the database. It contains users, Workspaces, token hashes, Activity history, device registrations, and audit events.
 - Run production deployments behind HTTPS.
 - Set `AGENT_TICK_PUBLIC_URL` to the externally reachable dashboard/server origin.
 - Treat `agent_...` tokens and `AGENT_TICK_ADMIN_TOKEN` as secrets.
-- Do not put approval text, raw prompts, logs, `.env` files, or credentials into request titles, bodies, commands, or metadata.
+- Do not put Request text, raw prompts, logs, `.env` files, or credentials into request titles, bodies, commands, or metadata.
 
 For the full repository-level self-hosting reference, see [`SELFHOSTING.md`](https://github.com/self-deprecated/agent-tick/blob/main/SELFHOSTING.md).

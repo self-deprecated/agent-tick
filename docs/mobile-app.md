@@ -1,13 +1,13 @@
 # iOS and Android app
 
-The iOS and Android app is the primary day-to-day approval surface for Agent Tick.
+The iOS and Android app is the primary day-to-day Request surface for Agent Tick.
 
 ## Install
 
 - [Agent Tick for iOS](https://go.agenttick.sh/ios)
 - [Agent Tick for Android](https://go.agenttick.sh/android)
 
-If a store link is not live yet, continue with the web approval flow and retry after the store listing is published.
+If a store link is not live yet, continue with the web Request flow and retry after the store listing is published.
 
 ## Connect
 
@@ -29,11 +29,11 @@ The app shows bounded Agent Tick requests:
 - steering questions with fixed options
 - sanctions with approve/deny decisions
 
-The phone does not run commands. If a sanction is approved, the local agent or workflow decides whether to continue on the machine where it was already running.
+The phone does not run commands. If a Sanction Request receives an approving Response, the local agent or workflow decides whether to continue on the machine where it was already running.
 
 ## Notifications
 
-Enable notifications if you want approval alerts while the app is closed. Push notifications should stay minimal; review the request details inside Agent Tick before approving or denying.
+Enable notifications if you want Request alerts while the app is closed. Push notifications should stay minimal; review the request details inside Agent Tick before responding.
 
 ## Trial and purchases
 

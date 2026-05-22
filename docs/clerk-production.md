@@ -1,6 +1,6 @@
 # Hosted Clerk production setup
 
-Use this checklist for the managed Agent Tick deployment. It keeps Clerk as the human identity provider while Agent Tick continues to own organizations, agent tokens, devices, approvals, billing state, and audit logs.
+Use this checklist for the managed Agent Tick deployment. It keeps Clerk as the human identity provider while Agent Tick continues to own Workspaces, Agent Tokens, devices, Requests, billing state, and audit logs.
 
 ## Production domains
 

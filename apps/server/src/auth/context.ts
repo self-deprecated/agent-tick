@@ -108,8 +108,6 @@ export async function requireWorkspaceAdmin(request: FastifyRequest, config: Ser
   return auth;
 }
 
-export const requireOrganizationAdmin = requireWorkspaceAdmin;
-
 async function applySelectedWorkspace(request: FastifyRequest, store: AgentTickStore, auth: AuthContext): Promise<AuthContext> {
   if (!auth.isHuman || !auth.userId) return auth;
   const selected = selectedWorkspace(request);

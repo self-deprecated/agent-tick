@@ -86,7 +86,6 @@ export async function createConfiguredWorkspaceEventBus(options: { backend: 'mem
   return createMemoryWorkspaceEventBus();
 }
 
-export const createConfiguredOrganizationEventBus = createConfiguredWorkspaceEventBus;
 
 export function publishAuditWrites<T extends { writeAuditEvent: (...args: any[]) => unknown }>(store: T, eventBus: WorkspaceEventBus): void {
   const marker = '__agentTickEventBusPatched';

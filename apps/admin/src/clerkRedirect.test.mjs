@@ -36,8 +36,8 @@ test('clerkRedirectTarget strips Clerk callback noise but keeps app state', () =
 		'https://tick.example.com/?cli_state=abc'
 	);
 	assert.equal(
-		clerkRedirectTarget('https://tick.example.com/invite/invite_123?rotating_token_nonce=nonce&provider=oauth_github'),
-		'https://tick.example.com/invite/invite_123'
+		clerkRedirectTarget('https://tick.example.com/settings?rotating_token_nonce=nonce&provider=oauth_github'),
+		'https://tick.example.com/settings'
 	);
 });
 

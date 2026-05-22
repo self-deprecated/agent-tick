@@ -2,11 +2,11 @@
 
 ## Project snapshot
 
-Agent Tick is a fresh TypeScript-first least-permission approval layer for coding agents: Status Updates, Steering, and Sanctions.
+Agent Tick is a fresh TypeScript-first least-permission Request layer for coding agents: Status Updates, Steering, and Sanctions.
 
 - `apps/server` — Fastify API server, static dashboard host, Docker runtime entrypoint.
 - `apps/admin` — Svelte 5 + Vite dashboard.
-- `apps/mobile` — Expo React Native mobile approval app.
+- `apps/mobile` — Expo React Native mobile Request app.
 - `packages/cli` — private workspace CLI package exposing `agent-tick`.
 - `packages/sdk` — typed HTTP client.
 - `packages/shared` — shared Zod schemas, API types, constants.
@@ -80,17 +80,17 @@ Do not document or call missing commands such as `agent-tick adapter` or `agent-
 
 - Default self-hosted mode is `single` and should require no Clerk, billing provider, email provider, or notification provider.
 - Clerk mode is for human identity only.
-- Agent Tick owns local users, organizations, memberships, teams, policies, approvals, agent tokens, devices, billing/seat-limit state, and audit logs.
+- Agent Tick owns local users, Workspaces, Workspace Members, Routing Rules, Requests, agent tokens, devices, billing/seat-limit state, and audit logs.
 - Use Clerk session tokens from clients; do not introduce Clerk JWT-template assumptions.
-- Agent Tick organization context is local and selected with `X-Agent-Tick-Organization-ID`.
+- Agent Tick Workspace context is local and selected with `X-Agent-Tick-Workspace-ID`.
 - Agents use Agent Tick `agent_...` tokens, not Clerk tokens.
 
 ## Security expectations
 
 - Do not put bearer tokens in event-stream query strings. The current event stream flow uses short-lived one-use tickets.
 - Management routes should require owner/admin roles where appropriate.
-- Approval responders must be eligible for the relevant org/team/policy.
-- Approval expiration is enforced in list/get/respond/abandon/wait flows.
+- Request responders must be eligible for the relevant Workspace/Routing Rule.
+- Request expiration is enforced in list/get/respond/resolve/wait flows.
 - Treat sanction titles, steering bodies, status messages, commands, metadata, webhooks, logs, and notifications as disclosure surfaces. Do not include secrets.
 
 ## Documentation expectations

@@ -151,7 +151,7 @@ export function createProgram(): Command {
     .option('--title <title>', 'sanction title')
     .option('--body <body>', 'sanction body')
     .option('--command <command>', 'command or action to approve without running it')
-    .option('--project <name>', 'project/repository display name')
+    .option('--client-name <name>', 'client display name')
     .option('--encrypt', 'encrypt title/body/command before sending with AGENT_TICK_E2EE_KEY or --e2ee-key')
     .option('--e2ee-key <key>', 'Request encryption key or passphrase [env: AGENT_TICK_E2EE_KEY]')
     .option('--generate-e2ee-key', 'print a new high-entropy Request encryption key and exit')
@@ -189,7 +189,7 @@ export function createProgram(): Command {
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
     .option('--title <title>', 'steering question title')
     .option('--body <body>', 'additional context for the steering question')
-    .option('--project <name>', 'project/repository display name')
+    .option('--client-name <name>', 'client display name')
     .option('--choice <choice>', 'steering choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
     .option('--choice-flag <choice=flag>', 'choice UI flag, repeatable: choiceId=favorite|production|destructive|...', collectOption, [])
     .option('--choice-tag <choice=tag>', 'choice display tag, repeatable: choiceId=tag', collectOption, [])
@@ -228,7 +228,7 @@ export function createProgram(): Command {
     .option('--thread <id>', 'thread/chat identifier [env: AGENT_TICK_THREAD_ID]')
     .option('--state <state>', 'status update state: working, waiting, blocked, done, failed', 'working')
     .option('--next <text>', 'what the agent expects to do next')
-    .option('--project <name>', 'project/repository display name')
+    .option('--client-name <name>', 'client display name')
     .option('--importance <level>', 'future notification importance hint: low, normal, high, urgent', 'normal')
     .option('--notify', 'future push-notification hint for attention-worthy updates')
     .option('--metadata <key=value>', 'metadata key/value, repeatable', collectOption, [])
@@ -245,7 +245,7 @@ export function createProgram(): Command {
         nextStep: options.next,
         host: os.hostname() || undefined,
         workingDirectory: process.cwd(),
-        clientName: options.project ?? path.basename(process.cwd()),
+        clientName: options.clientName ?? path.basename(process.cwd()),
         metadata: statusUpdateMetadata(options)
       });
       if (options.json) process.stdout.write(`${JSON.stringify({ event: 'status_update', statusUpdate: update })}\n`);
@@ -1335,7 +1335,7 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
         state: { type: 'string', enum: ['working', 'waiting', 'blocked', 'done', 'failed'], default: 'working' },
         nextStep: { type: 'string', description: 'Optional next step.' },
         threadId: { type: 'string', description: 'Optional stable thread/chat identifier.' },
-        projectName: { type: 'string', description: 'Optional project display name.' },
+        clientName: { type: 'string', description: 'Optional client display name.' },
         importance: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], default: 'normal', description: 'Future notification importance hint; recorded as metadata today.' },
         notify: { type: 'boolean', description: 'Future push-notification hint; recorded as metadata today.' },
         metadata: { type: 'object', additionalProperties: { type: 'string' } }
@@ -1353,7 +1353,7 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
         title: { type: 'string', description: 'Request title. Do not include secrets.' },
         body: { type: 'string', description: 'Request context. Do not include secrets.' },
         command: { type: 'string', description: 'Optional command/action being approved.' },
-        projectName: { type: 'string', description: 'Optional project display name.' },
+        clientName: { type: 'string', description: 'Optional client display name.' },
         timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' },
         localElicitation: { type: 'string', enum: ['auto', 'off', 'only'], default: 'auto', description: 'Use MCP elicitation locally when the client supports it.' }
       },
@@ -1384,7 +1384,7 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
             ]
           }
         },
-        projectName: { type: 'string', description: 'Optional project display name.' },
+        clientName: { type: 'string', description: 'Optional client display name.' },
         timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' },
         localElicitation: { type: 'string', enum: ['auto', 'off', 'only'], default: 'auto', description: 'Use MCP elicitation locally when the client supports it.' }
       },
@@ -1500,7 +1500,7 @@ async function callMcpStatusUpdate(args: Record<string, unknown>, client: AgentT
     nextStep: optionalString(args.nextStep),
     host: os.hostname() || undefined,
     workingDirectory: process.cwd(),
-    clientName: optionalString(args.projectName) ?? path.basename(process.cwd()),
+    clientName: optionalString(args.clientName) ?? path.basename(process.cwd()),
     metadata: statusUpdateMetadata({
       metadata: metadataEntriesFromRecord(optionalStringRecord(args.metadata)),
       importance: optionalString(args.importance),
@@ -1522,10 +1522,10 @@ async function callMcpSanction(args: Record<string, unknown>, client: AgentTickC
     choice: [],
     silent: true
   };
-  const project = optionalString(args.projectName);
+  const clientName = optionalString(args.clientName);
   if (body) options.body = body;
   if (command) options.command = command;
-  if (project) options.project = project;
+  if (clientName) options.clientName = clientName;
 
   if (localMode === 'auto' && mcpLocalElicitationAvailable(context)) {
     const result = await raceMcpLocalAndRemote(
@@ -1561,9 +1561,9 @@ async function callMcpSteering(args: Record<string, unknown>, client: AgentTickC
     hookChoices,
     silent: true
   };
-  const project = optionalString(args.projectName);
+  const clientName = optionalString(args.clientName);
   if (body) options.body = body;
-  if (project) options.project = project;
+  if (clientName) options.clientName = clientName;
 
   if (localMode === 'auto' && mcpLocalElicitationAvailable(context)) {
     const result = await raceMcpLocalAndRemote(
@@ -1784,7 +1784,7 @@ async function createRequestFromOptions(client: AgentTickClient, options: Reques
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
       host: os.hostname(),
       workingDirectory: process.cwd(),
-      clientName: options.project ?? path.basename(process.cwd())
+      clientName: options.clientName ?? path.basename(process.cwd())
     },
     title: encryptedPayload ? 'Encrypted request' : options.title,
     ...(encryptedPayload ? { body: 'Open Agent Tick to decrypt this request.' } : options.body ? { body: options.body } : {}),
@@ -2040,7 +2040,7 @@ interface StatusOptions extends ClientOptions {
   thread?: string;
   state?: string;
   next?: string;
-  project?: string;
+  clientName?: string;
   importance?: string;
   notify?: boolean;
   metadata?: string[];
@@ -2059,7 +2059,7 @@ interface RequestOptions extends ClientOptions {
   title: string;
   body?: string;
   command?: string;
-  project?: string;
+  clientName?: string;
   encrypt?: boolean;
   e2eeKey?: string;
   generateE2eeKey?: boolean;

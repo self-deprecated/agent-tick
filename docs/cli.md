@@ -18,7 +18,7 @@ Sign in and save a local token without installing hooks:
 npx @self-deprecated/agent-tick login
 ```
 
-For self-hosted servers or CI, create an agent token in the dashboard and save it locally. Use `config show` to inspect the saved server and masked token:
+For self-hosted servers or CI, create an Agent Token in the Personal Console and save it locally. Use `config show` to inspect the saved server and masked token:
 
 ```sh
 agent-tick config --server https://tick.example.com --token agent_...
@@ -62,7 +62,7 @@ agent-tick steering \
 
 ## Sanctions
 
-Ask for approval before a specific action. This records the command as reviewer context and does not run it:
+Create a Sanction Request before a specific action. This records the command as reviewer context and does not run it:
 
 ```sh
 agent-tick sanction \
@@ -71,13 +71,13 @@ agent-tick sanction \
   --command "./migrate-staging.sh"
 ```
 
-Run a local command only after sanction approval by putting the command after `--`:
+Include a local command in the Sanction Request by putting the command after `--`:
 
 ```sh
 agent-tick sanction --title "Run migration?" -- ./migrate-staging.sh
 ```
 
-Approved actions execute locally in the agent environment, not on Agent Tick servers or phones.
+Authorized actions execute locally in the agent environment, not on Agent Tick servers or phones.
 
 ## MCP adapter
 
@@ -89,10 +89,10 @@ agent-tick mcp
 
 The adapter uses the same saved CLI config/token and exposes Agent Tick tools for status updates, steering, and sanctions.
 
-## Abandon a pending request
+## Resolve a pending Request
 
-If a local caller created a request it no longer needs, abandon it by ID:
+If a local caller created a Request it no longer needs, resolve it by ID:
 
 ```sh
-agent-tick abandon apr_123
+agent-tick abandon req_123
 ```

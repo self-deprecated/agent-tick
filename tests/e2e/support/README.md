@@ -1,13 +1,13 @@
 # E2E support harness plan
 
-This directory contains shared helpers used by the product-flow E2E tests described in `docs/product-flows/`.
+This directory contains shared helpers used by the product-flow E2E tests.
 
 ## Helpers
 
 - `auth.ts` — deterministic test auth / mock-Clerk sign-in helpers.
 - `db.ts` — test-state inspection helpers for Playwright assertions.
-- `fixtures.ts` — user, organization, agent token, device, and approval fixtures.
-- `pages.ts` — common page-object selectors for onboarding and management screens.
+- `fixtures.ts` — Workspace, Agent Token, Routing Rule, device, and Request fixtures.
+- `pages.ts` — common page-object selectors for setup and Activity screens.
 
 ## Constraints
 

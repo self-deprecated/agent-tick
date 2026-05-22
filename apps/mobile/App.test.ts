@@ -379,7 +379,7 @@ describe("request detail metadata helpers", () => {
 });
 
 describe("quorum progress helpers", () => {
-  it("shows current-user quorum waiting state after voting", () => {
+  it("shows current-user quorum waiting state after responding", () => {
     const request = normalizeRequest({
       id: "req_quorum",
       requester: { name: "Agent", agentTokenId: "agent" },

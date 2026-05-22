@@ -2,7 +2,7 @@
 
 const config = {
   title: 'Agent Tick Docs',
-  tagline: 'Least-permission approvals for coding agents',
+  tagline: 'Least-permission request routing for coding agents',
   favicon: 'img/favicon.svg',
   headTags: [
     { tagName: 'link', attributes: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/img/favicon-16x16.png' } },

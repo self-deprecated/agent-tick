@@ -1,4 +1,4 @@
-name: approval-gate-example
+name: sanction-gate-example
 
 on:
   workflow_dispatch:
@@ -9,9 +9,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Wait for Agent Tick approval
-        id: approval
-        uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
+      - name: Wait for Agent Tick Sanction Response
+        id: sanction
+        uses: self-deprecated/agent-tick/integrations/github-actions/sanction-request@v0.1.0
         with:
           server: ${{ secrets.AGENT_TICK_SERVER }}
           token: ${{ secrets.AGENT_TICK_TOKEN }}
@@ -21,5 +21,5 @@ jobs:
           timeout: 10m
 
       - name: Deploy
-        if: ${{ steps.approval.outputs.choice-id == 'approve' }}
+        if: ${{ steps.sanction.outputs.choice-id == 'approve' }}
         run: ./scripts/deploy.sh

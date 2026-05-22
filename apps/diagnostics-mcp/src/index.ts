@@ -30,9 +30,9 @@ function listMobileDiagnostics(args: Record<string, unknown>): unknown[] {
   const limit = clampNumber(args.limit, 100, 1, 1000);
   const filters: string[] = [];
   const params: unknown[] = [];
-  if (typeof args.organizationId === 'string' && args.organizationId.trim()) {
-    filters.push('organization_id = ?');
-    params.push(args.organizationId.trim());
+  if (typeof args.workspaceId === 'string' && args.workspaceId.trim()) {
+    filters.push('workspace_id = ?');
+    params.push(args.workspaceId.trim());
   }
   if (typeof args.userId === 'string' && args.userId.trim()) {
     filters.push('user_id = ?');
@@ -45,7 +45,7 @@ function listMobileDiagnostics(args: Record<string, unknown>): unknown[] {
   params.push(limit);
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   const rows = store.db.prepare(`
-    SELECT diagnostic_id, organization_id, user_id, device_id, level, area, message, metadata_json, created_at
+    SELECT diagnostic_id, workspace_id, user_id, device_id, level, area, message, metadata_json, created_at
     FROM mobile_diagnostics
     ${where}
     ORDER BY created_at DESC
@@ -79,7 +79,7 @@ function countBy(rows: Array<Record<string, unknown>>, key: string): Record<stri
 function mapDiagnosticRow(row: MobileDiagnosticRow): Record<string, unknown> {
   return {
     diagnosticId: row.diagnostic_id,
-    organizationId: row.organization_id,
+    workspaceId: row.workspace_id,
     userId: row.user_id,
     ...(row.device_id ? { deviceId: row.device_id } : {}),
     level: row.level,
@@ -219,7 +219,7 @@ const server = new MinimalMcpServer({
         type: 'object',
         properties: {
           limit: { type: 'number', description: 'Maximum rows to return. Default 100, max 1000.' },
-          organizationId: { type: 'string', description: 'Optional organization id filter.' },
+          workspaceId: { type: 'string', description: 'Optional Workspace id filter.' },
           userId: { type: 'string', description: 'Optional user id filter.' },
           area: { type: 'string', description: 'Optional diagnostic area filter, e.g. auth, button, navigation.' }
         },
@@ -250,7 +250,7 @@ await server.run();
 
 interface MobileDiagnosticRow {
   diagnostic_id: string;
-  organization_id: string;
+  workspace_id: string;
   user_id: string;
   device_id: string | null;
   level: string;

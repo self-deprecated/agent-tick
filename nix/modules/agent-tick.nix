@@ -14,7 +14,7 @@ let
 
 in {
   options.services.agent-tick = {
-    enable = lib.mkEnableOption "Agent Tick approval service";
+    enable = lib.mkEnableOption "Agent Tick request-routing service";
 
     package = lib.mkOption {
       type = lib.types.package;
@@ -82,7 +82,7 @@ in {
     eventBusBackend = lib.mkOption {
       type = lib.types.enum [ "memory" "redis" ];
       default = "memory";
-      description = "Backend used for approval/audit event wakeups.";
+      description = "Backend used for request/audit event wakeups.";
     };
 
     rateLimitBackend = lib.mkOption {
@@ -140,24 +140,17 @@ in {
       description = "Allow test-only manual billing state mutations. Keep disabled for production RevenueCat deployments.";
     };
 
-    inviteEmailWebhookUrl = lib.mkOption {
+    requestNotificationWebhookUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "Optional invite email webhook URL.";
-    };
-
-    approvalNotificationWebhookUrl = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = "Optional approval notification webhook URL.";
+      description = "Optional Request notification webhook URL.";
     };
 
     retention = {
-      approvalDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
+      requestDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       statusUpdateDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       auditDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       unregisteredDeviceDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
-      expiredInviteDays = lib.mkOption { type = lib.types.nullOr lib.types.ints.unsigned; default = null; };
       cleanupEnabled = lib.mkOption { type = lib.types.bool; default = true; };
       cleanupIntervalMinutes = lib.mkOption { type = lib.types.ints.positive; default = 60; };
       cleanupLockBackend = lib.mkOption { type = lib.types.enum [ "none" "redis" ]; default = "none"; };
@@ -185,7 +178,7 @@ in {
     };
 
     systemd.services.agent-tick = {
-      description = "Agent Tick approval service";
+      description = "Agent Tick request-routing service";
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
@@ -207,13 +200,11 @@ in {
       // optionalEnv "AGENT_TICK_BILLING_PROVIDER" cfg.billingProvider
       // optionalEnv "AGENT_TICK_REVENUECAT_PROJECT_ID" cfg.revenueCatProjectId
       // optionalEnv "AGENT_TICK_BILLING_TEST_MODE" cfg.billingTestMode
-      // optionalEnv "AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL" cfg.inviteEmailWebhookUrl
-      // optionalEnv "AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL" cfg.approvalNotificationWebhookUrl
-      // optionalEnv "AGENT_TICK_APPROVAL_RETENTION_DAYS" cfg.retention.approvalDays
+      // optionalEnv "AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL" cfg.requestNotificationWebhookUrl
+      // optionalEnv "AGENT_TICK_REQUEST_RETENTION_DAYS" cfg.retention.requestDays
       // optionalEnv "AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS" cfg.retention.statusUpdateDays
       // optionalEnv "AGENT_TICK_AUDIT_RETENTION_DAYS" cfg.retention.auditDays
       // optionalEnv "AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS" cfg.retention.unregisteredDeviceDays
-      // optionalEnv "AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS" cfg.retention.expiredInviteDays
       // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_ENABLED" cfg.retention.cleanupEnabled
       // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES" cfg.retention.cleanupIntervalMinutes
       // optionalEnv "AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND" cfg.retention.cleanupLockBackend

@@ -1,41 +1,42 @@
 import { expect, test } from '@playwright/test';
-import { signInAsTestUser, testAuthEnabled } from '../support/auth';
+import { authHeaders, signInAsTestUser, testAuthEnabled } from '../support/auth';
 import { readTestState, rowsFor } from '../support/db';
-import { createApprovalRequest } from '../support/fixtures';
-import { expectApprovalsHidden, expectSoloOnboarding } from '../support/pages';
+import { createAgentToken, createRequest, registerMobileDevice } from '../support/fixtures';
 
-test('solo user moves through token, CLI, mobile, and first approval readiness', async ({ page, request, baseURL }) => {
+test('Personal Workspace moves through Agent Token, check-in, device, and first Request readiness', async ({ page, request, baseURL }) => {
   test.skip(!(await testAuthEnabled(request, baseURL)), 'Set AGENT_TICK_TEST_AUTH=1 for deterministic product-flow E2E tests');
   const stamp = Date.now();
   const user = await signInAsTestUser(page, request, baseURL, { subject: `solo_${stamp}`, email: `solo_${stamp}@example.test`, name: 'Solo User' });
 
-  await expectSoloOnboarding(page);
-  await expect(page.getByTestId('approvals-locked')).toBeVisible();
-  await expectApprovalsHidden(page);
+  await expect(page.getByRole('heading', { name: 'Make this Workspace ready' })).toBeVisible();
+  await expect(page.getByText('Personal · Personal')).toBeVisible();
 
-  await page.getByLabel('Agent name').fill(`Solo Agent ${stamp}`);
-  await page.getByRole('button', { name: 'Create token' }).click();
-  const token = (await page.locator('code', { hasText: /^agent_/ }).last().innerText()).trim();
-  expect(token).toMatch(/^agent_/);
-  await expect(page.getByText(/agent-tick config --server/)).toBeVisible();
-  await expect(page.getByTestId('approvals-locked')).toBeVisible();
+  let onboarding = await (await request.get(`${baseURL}/v1/onboarding`, { headers: authHeaders(user) })).json() as Record<string, unknown>;
+  expect(onboarding).toMatchObject({ stage: 'needs_agent_token', hasAgentToken: false });
 
-  let state = await readTestState(request, baseURL);
-  expect(rowsFor(state.agentTokens, 'owner_user_id', user.userId)).toHaveLength(1);
-  expect(JSON.stringify(state.agentTokens)).not.toContain(token);
+  const agent = await createAgentToken(request, baseURL, user, `Solo Agent ${stamp}`);
+  onboarding = await (await request.get(`${baseURL}/v1/onboarding`, { headers: authHeaders(user) })).json() as Record<string, unknown>;
+  expect(onboarding).toMatchObject({ stage: 'needs_agent_check_in', hasAgentToken: true, hasAgentCheckIn: false });
 
-  await createApprovalRequest(request, baseURL, token, `First mobile approval ${stamp}`);
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await expectSoloOnboarding(page);
-  await expect(page.getByTestId('mobile-required')).toBeVisible();
-  await expectApprovalsHidden(page);
+  const created = await createRequest(request, baseURL, agent.token, `First mobile Request ${stamp}`);
+  onboarding = await (await request.get(`${baseURL}/v1/onboarding`, { headers: authHeaders(user) })).json() as Record<string, unknown>;
+  expect(onboarding).toMatchObject({ stage: 'needs_mobile_app', hasAgentCheckIn: true, hasMobileDevice: false });
 
-  await page.getByRole('button', { name: 'I installed the mobile app' }).click();
-  await expect(page.getByTestId('setup-complete')).toBeVisible();
-  await expect(page.getByTestId('approval-requests')).toBeVisible();
-  await expect(page.getByRole('heading', { name: `First mobile approval ${stamp}` })).toBeVisible();
+  await registerMobileDevice(request, baseURL, user, `Solo iPhone ${stamp}`);
+  onboarding = await (await request.get(`${baseURL}/v1/onboarding`, { headers: authHeaders(user) })).json() as Record<string, unknown>;
+  expect(onboarding).toMatchObject({ stage: 'ready', hasMobileDevice: true });
 
-  state = await readTestState(request, baseURL);
-  expect(rowsFor(state.devices, 'user_id', user.userId)).toHaveLength(1);
-  expect(rowsFor(state.approvals, 'title', `First mobile approval ${stamp}`)).toHaveLength(1);
+  const response = await request.post(`${baseURL}/v1/requests/${created.request.id}/responses`, {
+    headers: authHeaders(user),
+    data: { choiceId: 'approve' }
+  });
+  expect(response.ok()).toBeTruthy();
+
+  const state = await readTestState(request, baseURL);
+  expect(rowsFor(state.workspaces, 'workspace_id', user.workspaceId)[0]).toMatchObject({ name: 'Personal', type: 'personal' });
+  expect(rowsFor(state.workspaceMembers, 'user_id', user.userId).some((row) => row.workspace_id === user.workspaceId && row.role === 'owner')).toBeTruthy();
+  expect(rowsFor(state.agentTokens, 'creator_user_id', user.userId)).toHaveLength(1);
+  expect(rowsFor(state.approvalDevices, 'user_id', user.userId)).toHaveLength(1);
+  expect(rowsFor(state.requests, 'title', `First mobile Request ${stamp}`)[0]).toMatchObject({ status: 'responded' });
+  expect(rowsFor(state.responses, 'request_id', created.request.id)[0]).toMatchObject({ choice_id: 'approve', final: 1 });
 });

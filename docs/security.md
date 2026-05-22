@@ -1,6 +1,6 @@
 # Security
 
-Agent Tick is a least-permission approval layer, not a remote shell.
+Agent Tick is a least-permission request/response layer, not a remote shell.
 
 ## Bounded input
 
@@ -16,7 +16,7 @@ Avoid freeform remote instructions when a bounded choice will do.
 
 Approved actions execute in the user's local agent environment. The hosted service, dashboard, and iOS or Android app cannot invent or execute arbitrary commands.
 
-For example, a sanction may include `./deploy.sh` as reviewer context, but Agent Tick only records and returns the human decision. The local agent or workflow decides whether to run the command after approval.
+For example, a sanction may include `./deploy.sh` as reviewer context, but Agent Tick only records and returns the human decision. The local agent or workflow decides whether to run the command after the Response.
 
 ## Push notifications
 
@@ -26,7 +26,7 @@ Hosted push notifications are minimal by default and should not include request 
 
 Do not send secrets in request titles, bodies, commands, choices, metadata, logs, diagnostics, analytics, or notification payloads.
 
-Encrypted approval content exists for callers that intentionally use the SDK/shared helpers and manage keys out of band, but the launch default is still bounded plaintext summaries with no secrets.
+Encrypted Request content exists for callers that intentionally use the SDK/shared helpers and manage keys out of band, but the launch default is still bounded plaintext summaries with no secrets.
 
 ## Retention and deletion
 
@@ -36,4 +36,4 @@ Users should be able to delete hosted personal data from the product surface. Se
 
 ## Analytics and diagnostics
 
-Diagnostics and analytics should exclude approval content. Hosted-product analytics use minimal setup/onboarding/paywall events. Marketing analytics are privacy-friendly aggregate Plausible page analytics without ad tracking pixels.
+Diagnostics and analytics should exclude Request content. Hosted-product analytics use minimal setup/onboarding/paywall events. Marketing analytics are privacy-friendly aggregate Plausible page analytics without ad tracking pixels.

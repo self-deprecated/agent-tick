@@ -24,17 +24,17 @@ import { registerTestActivityRoutes } from './routes/tests.js';
 import { registerTestSupportRoutes } from './routes/testSupport.js';
 import { registerWorkspaceRoutes } from './routes/workspaces.js';
 import { createConfiguredWorkspaceEventBus, publishAuditWrites } from './services/eventBus.js';
-import { createApprovalNotifier, type ApprovalNotifier } from './services/notifications.js';
+import { createRequestNotifier, type RequestNotifier } from './services/notifications.js';
 import { createConfiguredRateLimiter, registerRateLimitHook } from './services/rateLimit.js';
 
 export interface BuildAppOptions {
   config: ServerConfig;
   store: AgentTickStore;
-  notifier?: ApprovalNotifier;
+  notifier?: RequestNotifier;
 
 }
 
-export async function buildApp({ config, store, notifier = createApprovalNotifier({ store, config }) }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, store, notifier = createRequestNotifier({ store, config }) }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: true,
     genReqId: (request) => request.headers['x-request-id']?.toString() ?? crypto.randomUUID()

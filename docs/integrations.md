@@ -4,7 +4,7 @@ Agent Tick integrations are for three things:
 
 - **Status updates** — non-blocking progress from an agent.
 - **Steering** — a human chooses from bounded options.
-- **Sanctions** — a human approves or denies a specific local action before it proceeds.
+- **Sanctions** — a human responds to a specific local action before it proceeds.
 
 The CLI, MCP adapter, hooks, native extensions, and GitHub Action are just ways to deliver those three interaction types. Agent Tick does not run commands on your phone or in the hosted app.
 
@@ -54,7 +54,7 @@ agent-tick sanction \
   --timeout 30m
 ```
 
-Run a local command only after the sanction is approved:
+Include a local command in the Sanction Request:
 
 ```sh
 agent-tick sanction \

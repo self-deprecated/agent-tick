@@ -84,8 +84,6 @@ export function registerRateLimitHook(app: FastifyInstance, config: ServerConfig
 
 export function rateLimitRule(method: string, routePath: string, config: ServerConfig): RateLimitRule | null {
   const rule = (defaultMax: number) => ({ windowMs: config.rateLimitWindowMs, max: config.rateLimitMaxRequests ?? defaultMax });
-  if (method === 'GET' && routePath === '/v1/invites/:token') return rule(30);
-  if (method === 'POST' && routePath === '/v1/invites/:token/accept') return rule(30);
   if (method === 'POST' && routePath === '/v1/devices/pair') return rule(30);
   if (method === 'POST' && routePath === '/v1/auth/mobile-session') return rule(60);
   if (method === 'POST' && routePath === '/v1/mobile-diagnostics') return rule(120);

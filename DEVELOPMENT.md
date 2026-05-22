@@ -59,7 +59,7 @@ Before adding a dependency, document or verify:
 - Whether the package is maintained and has a clear upstream.
 - The size and risk of its transitive dependency graph.
 - Whether it runs install scripts or downloads binaries.
-- Whether it handles secrets, auth, crypto, approvals, notifications, or other sensitive data.
+- Whether it handles secrets, auth, crypto, Requests, Responses, notifications, or other sensitive data.
 - Whether the dependency is needed at runtime or can be dev-only.
 
 Useful commands:
@@ -143,14 +143,14 @@ The build writes to `apps/server/public/admin`, which the server serves in Docke
 Build the workspace CLI:
 
 ```sh
-corepack pnpm --filter agent-tick build
+corepack pnpm --filter @self-deprecated/agent-tick build
 ```
 
 Run it from the package during development:
 
 ```sh
 node packages/cli/dist/index.js login --server http://localhost:8787
-node packages/cli/dist/index.js request --title "Deploy?"
+node packages/cli/dist/index.js sanction --title "Deploy?"
 ```
 
 For single-mode/manual setup or CI, pass a dashboard-created token directly:

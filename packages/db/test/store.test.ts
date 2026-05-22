@@ -37,10 +37,10 @@ describe('AgentTickStore Workspace model', () => {
     const local = freshStore();
     const shared = local.createSharedWorkspaceForUser(DEFAULT_USER_ID, 'Production', '2026-05-08T01:00:00.000Z');
     const bob = local.addWorkspaceMemberByEmail(shared.workspaceId, 'bob@example.com', 'member', '2026-05-08T01:01:00.000Z');
-    const rule = local.createRoutingRule({ workspaceId: shared.workspaceId, name: 'Backend team', recipientUserIds: [DEFAULT_USER_ID, bob.userId], requiredResponseMode: 'exact', requiredResponseCount: 3 }, '2026-05-08T01:02:00.000Z');
+    const rule = local.createRoutingRule({ workspaceId: shared.workspaceId, name: 'Backend routing', recipientUserIds: [DEFAULT_USER_ID, bob.userId], requiredResponseMode: 'exact', requiredResponseCount: 3 }, '2026-05-08T01:02:00.000Z');
 
     expect(shared).toMatchObject({ type: 'shared', role: 'owner' });
-    expect(rule).toMatchObject({ name: 'Backend team', requiredResponseCount: 2 });
+    expect(rule).toMatchObject({ name: 'Backend routing', requiredResponseCount: 2 });
     expect(rule.recipientUserIds).toEqual(expect.arrayContaining([DEFAULT_USER_ID, bob.userId]));
     expect(local.listRoutingRules(shared.workspaceId)).toEqual([expect.objectContaining({ routingRuleId: rule.routingRuleId })]);
   });

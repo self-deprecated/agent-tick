@@ -1,15 +1,15 @@
 # Agent Tick GitHub Action
 
-Add a bounded human approval checkpoint to a GitHub Actions workflow. The action creates an Agent Tick sanction request, waits for the reviewer decision, and returns normalized outputs so later workflow steps can branch safely.
+Add a bounded human Sanction Request checkpoint to a GitHub Actions workflow. The action creates an Agent Tick Sanction Request, waits for the reviewer Response, and returns normalized outputs so later workflow steps can branch safely.
 
-Agent Tick does **not** run your deploy, refund, migration, or release command. GitHub Actions remains the execution environment; Agent Tick only records and routes the approval decision.
+Agent Tick does **not** run your deploy, refund, migration, or release command. GitHub Actions remains the execution environment; Agent Tick only records and routes the Response decision.
 
 ## Marketplace summary
 
 - **Action name:** Agent Tick Sanction
-- **Use case:** pause a workflow until a human approves or denies a bounded action
+- **Use case:** pause a workflow until a human responds to a bounded action
 - **Best fit:** production deploys, database migrations, release gates, high-risk automation, and AI-agent workflow checkpoints
-- **Security model:** use a GitHub secret containing an Agent Tick `agent_...` token; never put tokens in workflow logs or approval text
+- **Security model:** use a GitHub secret containing an Agent Tick `agent_...` token; never put tokens in workflow logs or request text
 
 ## Inputs
 
@@ -17,7 +17,7 @@ Agent Tick does **not** run your deploy, refund, migration, or release command. 
 | --- | --- | --- | --- |
 | `server` | yes | — | Agent Tick app/API server URL, for example `https://app.agenttick.sh` or a self-hosted URL. |
 | `token` | yes | — | Agent Tick agent token stored as a GitHub secret. |
-| `title` | yes | — | Short reviewer-facing approval title. |
+| `title` | yes | — | Short reviewer-facing request title. |
 | `body` | no | `""` | Reviewer guidance. Keep it concise and avoid secrets or raw logs. |
 | `command` | no | `""` | Safe command/action summary for the reviewer. Do not include credentials. |
 | `timeout` | no | `10m` | How long the CLI should wait, such as `30s`, `10m`, or `1h`. |
@@ -27,7 +27,7 @@ Agent Tick does **not** run your deploy, refund, migration, or release command. 
 
 | Output | Description |
 | --- | --- |
-| `request-id` | Agent Tick approval request id. |
+| `request-id` | Agent Tick Request id. |
 | `status` | Final Agent Tick request status returned by the CLI. |
 | `choice-id` | Final selected choice id when present, commonly `approve` or `deny`. |
 
@@ -47,9 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Wait for Agent Tick approval
-        id: approval
-        uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
+      - name: Wait for Agent Tick Sanction Response
+        id: sanction
+        uses: self-deprecated/agent-tick/integrations/github-actions/sanction-request@v0.1.0
         with:
           server: ${{ secrets.AGENT_TICK_SERVER }}
           token: ${{ secrets.AGENT_TICK_TOKEN }}
@@ -59,11 +59,11 @@ jobs:
           timeout: 10m
 
       - name: Deploy
-        if: ${{ steps.approval.outputs.choice-id == 'approve' }}
+        if: ${{ steps.sanction.outputs.choice-id == 'approve' }}
         run: ./scripts/deploy.sh
 ```
 
-## Safe approval text
+## Safe request text
 
 Prefer bounded summaries:
 

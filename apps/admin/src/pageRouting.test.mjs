@@ -29,17 +29,17 @@ test('pageFromPath maps clean console routes', () => {
 	assert.equal(routing.pageFromPath('/setup'), 'setup');
 	assert.equal(routing.pageFromPath('/activity'), 'activity');
 	assert.equal(routing.pageFromPath('/settings'), 'settings');
-	assert.equal(routing.pageFromPath('/invite/token-123'), 'invite');
+	assert.equal(routing.pageFromPath('/unknown/path'), 'setup');
 });
 
 test('pageFromPath detects CLI authorization query flow', () => {
 	assert.equal(routing.pageFromPath('/', '?cli_callback=http%3A%2F%2F127.0.0.1%2Fcb&cli_state=abc'), 'cli-authorize');
 });
 
-test('legacy hashes only map supported focused routes', () => {
+test('legacy hashes only map supported console routes', () => {
 	assert.equal(routing.pageFromHash('#activity'), 'activity');
 	assert.equal(routing.pageFromHash('#settings'), 'settings');
-	assert.equal(routing.pageFromHash('#/invite/token-123'), 'invite');
+	assert.equal(routing.pageFromHash('#/unknown/path'), 'setup');
 	assert.equal(routing.pageFromHash('#unknown'), 'setup');
 	assert.equal(routing.pageFromHash('', true, 'setup'), 'setup');
 });
@@ -53,7 +53,6 @@ test('refreshLoadKeys follows the active page', () => {
 	assert.deepEqual(routing.refreshLoadKeys('setup'), ['setup']);
 	assert.deepEqual(routing.refreshLoadKeys('activity'), ['activity']);
 	assert.deepEqual(routing.refreshLoadKeys('settings'), ['settings']);
-	assert.deepEqual(routing.refreshLoadKeys('invite'), ['setup']);
 });
 
 test('shouldShowEntitlementStatus is scoped to Settings', () => {

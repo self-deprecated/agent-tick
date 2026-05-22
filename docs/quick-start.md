@@ -10,7 +10,7 @@ Paste this into the coding agent you want to connect:
 Fetch and follow the Agent Tick setup skill from:
 https://agenttick.sh/skill.md
 
-Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kind of work I want remote approval for. Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
+Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kind of work I want routed Requests for. Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
 ```
 
 You will sign in to hosted Agent Tick through the browser. The skill works even when this repository is not cloned.
@@ -22,7 +22,7 @@ Install Agent Tick on your phone and sign in with the same account.
 - [Agent Tick for iOS](https://go.agenttick.sh/ios)
 - [Agent Tick for Android](https://go.agenttick.sh/android)
 
-If a store link is not live yet, use the web approval flow and retry the app later.
+If a store link is not live yet, use the web Request flow and retry the app later.
 
 ## 3. Test it with real work
 

@@ -1,4 +1,4 @@
-export type Page = 'setup' | 'activity' | 'settings' | 'cli-authorize' | 'invite';
+export type Page = 'setup' | 'activity' | 'settings' | 'cli-authorize';
 export type ConsoleLoadKey = 'setup' | 'activity' | 'settings';
 
 export interface SetupStatusInput {
@@ -17,7 +17,6 @@ export function pageFromPath(pathname: string, search = ''): Page {
 	if (path === '/' || path === '/setup') return 'setup';
 	if (path === '/activity') return 'activity';
 	if (path === '/settings') return 'settings';
-	if (path.startsWith('/invite/')) return 'invite';
 	return 'setup';
 }
 
@@ -26,7 +25,6 @@ export function pageFromHash(hash: string, _isWorkspaceAdmin = false, defaultPag
 	if (!page) return defaultPage;
 	if (page === 'activity') return 'activity';
 	if (page === 'settings') return 'settings';
-	if (page.startsWith('invite/')) return 'invite';
 	return 'setup';
 }
 

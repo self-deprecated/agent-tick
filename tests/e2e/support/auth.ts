@@ -3,7 +3,7 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 export interface TestUserSession {
   token: string;
   userId: string;
-  organizationId: string;
+  workspaceId: string;
   role: string;
   subject: string;
   email: string;
@@ -30,11 +30,11 @@ export async function signInAsTestUser(page: Page, request: APIRequestContext, b
   return { ...session, token, subject: options.subject, email, name };
 }
 
-export function authHeaders(session: TestUserSession, organizationId?: string): Record<string, string> {
+export function authHeaders(session: TestUserSession, workspaceId?: string): Record<string, string> {
   return {
     authorization: `Bearer ${session.token}`,
     'x-agent-tick-test-email': session.email,
     'x-agent-tick-test-name': session.name,
-    ...(organizationId ? { 'x-agent-tick-organization-id': organizationId } : {})
+    ...(workspaceId ? { 'x-agent-tick-workspace-id': workspaceId } : {})
   };
 }

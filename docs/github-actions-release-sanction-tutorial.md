@@ -77,7 +77,7 @@ jobs:
 
       - name: Wait for Agent Tick release Sanction
         id: sanction
-        uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
+        uses: self-deprecated/agent-tick/integrations/github-actions/request-Response@v0.1.0
         with:
           server: ${{ secrets.AGENT_TICK_SERVER }}
           token: ${{ secrets.AGENT_TICK_TOKEN }}
@@ -109,6 +109,6 @@ Do not put the protected publish command inside Agent Tick. The `command` input 
 
 - The release candidate is already built/tested before the Sanction step.
 - The request body includes tag, SHA, changelog URL, target, timeout, and owner.
-- The approval text contains no secrets, raw logs, prompts, or customer data.
+- The Response text contains no secrets, raw logs, prompts, or customer data.
 - The publish/deploy step runs only when `choice-id == 'approve'`.
 - Denial and timeout block by default or route to a documented manual recovery path.

@@ -34,7 +34,7 @@ async function processClerkEvent(store: AgentTickStore, config: ServerConfig, ty
   if (type === 'organization.created' || type === 'organization.updated') {
     const clerkOrganizationId = stringField(data.id);
     if (!clerkOrganizationId) return;
-    await store.upsertClerkWorkspace(clerkOrganizationId, organizationName(data));
+    await store.upsertClerkWorkspace(clerkOrganizationId, workspaceNameFromClerkOrganization(data));
     return;
   }
   if (type === 'organization.deleted') {
@@ -61,7 +61,7 @@ async function upsertMembership(store: AgentTickStore, config: ServerConfig, dat
   const subject = clerkUserIdFromMembership(data);
   if (!clerkOrganizationId || !subject) return;
   const org = objectField(data.organization) ?? {};
-  await store.upsertClerkWorkspace(clerkOrganizationId, organizationName(org));
+  await store.upsertClerkWorkspace(clerkOrganizationId, workspaceNameFromClerkOrganization(org));
   let userId = await store.userIdForClerkSubject(clerkIssuer(config), subject);
   if (!userId) {
     const publicUser = objectField(data.public_user_data) ?? objectField(data.user) ?? { id: subject };
@@ -115,7 +115,7 @@ function clerkUserIdFromMembership(data: Record<string, unknown>): string | unde
   return stringField(data.user_id) ?? stringField(objectField(data.public_user_data)?.user_id) ?? stringField(objectField(data.user)?.id);
 }
 
-function organizationName(data: Record<string, unknown>): string {
+function workspaceNameFromClerkOrganization(data: Record<string, unknown>): string {
   return stringField(data.name) ?? stringField(data.slug) ?? 'Shared Workspace';
 }
 

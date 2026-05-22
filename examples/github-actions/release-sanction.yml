@@ -42,7 +42,7 @@ jobs:
 
       - name: Wait for Agent Tick release Sanction
         id: sanction
-        uses: self-deprecated/agent-tick/integrations/github-actions/request-approval@v0.1.0
+        uses: self-deprecated/agent-tick/integrations/github-actions/sanction-request@v0.1.0
         with:
           server: ${{ secrets.AGENT_TICK_SERVER }}
           token: ${{ secrets.AGENT_TICK_TOKEN }}

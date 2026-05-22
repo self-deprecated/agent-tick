@@ -26,11 +26,8 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 # Optional local active-member seat guard. Omit for unlimited self-hosted seats.
 # AGENT_TICK_MAX_ACTIVE_MEMBERS=10
 
-# Optional invite email delivery. Agent Tick POSTs invite JSON to this webhook.
-# AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
-
-# Optional approval notification webhook in addition to mobile push.
-# AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/approvals
+# Optional Request notification webhook in addition to mobile push.
+# AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/requests
 
 # Optional rate limit overrides for auth-sensitive token endpoints.
 # AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
@@ -44,12 +41,11 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 # AGENT_TICK_RATE_LIMIT_BACKEND=redis
 
 # Optional retention cleanup windows. Omit to retain operational history indefinitely.
-# Set approval/status update days to 0 to turn Activity History content retention off.
-# AGENT_TICK_APPROVAL_RETENTION_DAYS=180
+# Set Request/status update days to 0 to turn Activity History content retention off.
+# AGENT_TICK_REQUEST_RETENTION_DAYS=180
 # AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS=180
 # AGENT_TICK_AUDIT_RETENTION_DAYS=365
 # AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
-# AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS=90
 # AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
 # AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES=60
 # AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
@@ -93,7 +89,7 @@ For larger deployments, set `AGENT_TICK_DATABASE_MIGRATE_ON_START=false` on regu
 
 ## Clerk multi-user mode
 
-Clerk authenticates dashboard/mobile humans. Agent Tick still owns local users, organizations, devices, agent tokens, approvals, billing seat limits, and audit data.
+Clerk authenticates dashboard/mobile humans. Agent Tick still owns local users, Workspaces, Approval Devices, Agent Tokens, Requests, billing seat limits, and audit data.
 
 Create a Clerk application, configure your dashboard origin in Clerk, then set:
 
@@ -112,17 +108,15 @@ Optional local active-member seat guard, webhooks, rate limits, Redis coordinati
 
 ```env
 AGENT_TICK_MAX_ACTIVE_MEMBERS=10
-AGENT_TICK_INVITE_EMAIL_WEBHOOK_URL=https://mail.example.com/agent-tick/invites
-AGENT_TICK_APPROVAL_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/approvals
+AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/requests
 AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
 AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
 AGENT_TICK_REDIS_URL=redis://redis:6379
 AGENT_TICK_EVENT_BUS_BACKEND=redis
 AGENT_TICK_RATE_LIMIT_BACKEND=redis
-AGENT_TICK_APPROVAL_RETENTION_DAYS=180
+AGENT_TICK_REQUEST_RETENTION_DAYS=180
 AGENT_TICK_AUDIT_RETENTION_DAYS=365
 AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
-AGENT_TICK_EXPIRED_INVITE_RETENTION_DAYS=90
 AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
 AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
 ```
@@ -141,7 +135,7 @@ After the server is running, set up an agent host with the installer:
 npx @self-deprecated/agent-tick install --server https://tick.example.com
 ```
 
-The CLI opens the dashboard, waits while you sign in with Clerk, saves the returned Agent Tick `agent_...` token, and offers to install local coding-agent approval instructions. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick config --server https://tick.example.com --token agent_...` instead.
+The CLI opens the dashboard, waits while you sign in with Clerk, saves the returned Agent Tick `agent_...` token, and offers to install local coding-agent Request instructions. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick config --server https://tick.example.com --token agent_...` instead.
 
 ## Local image build
 
@@ -211,9 +205,9 @@ nix run .
 
 ## Data and backup
 
-SQLite data is in the `agent_tick_data` Docker volume for Docker deployments, or `/var/lib/agent-tick/agent-tick.db` by default for the NixOS module. Back up the database regularly. It contains users, Clerk identity mappings, organizations, agent token hashes, approval history, device registrations, and audit events.
+SQLite data is in the `agent_tick_data` Docker volume for Docker deployments, or `/var/lib/agent-tick/agent-tick.db` by default for the NixOS module. Back up the database regularly. It contains users, Clerk identity mappings, Workspaces, Agent Token hashes, Activity history, device registrations, and audit events.
 
-By default, self-hosted operational history is retained indefinitely except short-lived event tickets, approval waiter tokens, and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired approvals, Status Updates, audit events, unregistered devices, and expired/revoked invites that have no acceptance history. Set approval/status update retention days to `0` to turn Activity History content retention off while keeping minimal operational metadata where the service requires it.
+By default, self-hosted operational history is retained indefinitely except short-lived event tickets, Request waiter tokens, and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired Requests, Status Updates, audit events, and unregistered devices. Set Request/status update retention days to `0` to turn Activity History content retention off while keeping minimal operational metadata where the service requires it.
 
 Do not store or back up Clerk session tokens; Agent Tick only verifies them at request time.
 
@@ -224,11 +218,11 @@ Do not store or back up Clerk session tokens; Agent Tick only verifies them at r
 - Use `AGENT_TICK_ADMIN_TOKEN` for non-local single-mode dashboards.
 - Agent tokens are opaque `agent_...` credentials; store them like secrets.
 - Clerk mode requires verified primary emails for first-pass users.
-- Clerk Organizations are not used for Agent Tick authorization in this pass.
+- Clerk Organizations may back Shared Workspaces, but Agent Tick authorization uses local Workspace Member records.
 - The default installation path remains `single` mode with no third-party identity provider.
 
 ## Current implementation scope
 
-The TypeScript server currently covers the core vertical slice: server health/readiness/config, SQLite schema management, local single-mode admin access, Clerk session verification, agent token creation, approval create/list/respond/wait/abandon, one-use ticketed event streams, dashboard approval UI, workspace-built CLI request/guard flow, Clerk-mode device registration, local organization selection, projects, teams, basic policies, audit logs, organization invites, optional active-member seat enforcement, optional invite email webhooks/resend, Expo push plus optional approval notification webhooks, configurable memory or Redis-backed rate limits/event wakeups, and configurable retention cleanup.
+The TypeScript server currently covers the core vertical slice: server health/readiness/config, SQLite schema management, local single-mode admin access, Clerk session verification, Agent Token creation, Request create/list/respond/wait/resolve, one-use ticketed event streams, Personal Console Activity UI, workspace-built CLI request/guard flow, Clerk-mode device registration, local Workspace selection, Workspace setup, basic Routing Rules, audit logs, manual Shared Workspace member management, optional active-member seat enforcement, Expo push plus optional Request notification webhooks, configurable memory or Redis-backed rate limits/event wakeups, and configurable retention cleanup.
 
 Agent Tick is a fresh TypeScript service; no Go-era CLI/server compatibility or prototype database migration path is supported. Future work should add only product-relevant features for the current architecture.

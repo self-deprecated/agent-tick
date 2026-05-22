@@ -13,6 +13,10 @@ const databasePath = join(tempDir, 'agent-tick.db');
 let server;
 
 try {
+  await run('corepack', ['pnpm', '--filter', '@agent-tick/shared', 'build'], { stdio: 'inherit' });
+  await run('corepack', ['pnpm', '--filter', '@agent-tick/db', 'build'], { stdio: 'inherit' });
+  await run('corepack', ['pnpm', '--filter', '@agent-tick/sdk', 'build'], { stdio: 'inherit' });
+  await run('corepack', ['pnpm', '--filter', '@agent-tick/i18n', 'build'], { stdio: 'inherit' });
   await run('corepack', ['pnpm', '--filter', 'agent-tick-admin', 'build'], { stdio: 'inherit' });
   await run('corepack', ['pnpm', '--filter', '@agent-tick/server', 'build'], { stdio: 'inherit' });
 

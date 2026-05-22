@@ -1,6 +1,6 @@
 # Agent Tick
 
-**Least-permission approvals for coding agents.**
+**Least-permission Request routing for coding agents.**
 
 Agent Tick routes **Status Updates, Steering, and Sanctions** from local coding agents to trusted humans without turning the phone, hosted service, or dashboard into a remote shell.
 
@@ -20,7 +20,7 @@ For the smoothest setup, paste this prompt into your coding agent chat on the ma
 Fetch and follow the Agent Tick setup skill from:
 https://agenttick.sh/skill.md
 
-Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kind of work I want remote approval for. Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
+Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kind of work I want routed Requests for. Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
 ```
 
 The linked prompt-based skill flow works even when the target machine does not have this repo cloned. It inspects your agent configuration, chooses the right integration path, runs a dry run, explains exactly what will change, asks for confirmation, installs, and verifies.
@@ -55,7 +55,7 @@ agent-tick sanction \
   --command "deploy production"
 ```
 
-Or run a command only after sanction approval:
+Or include a local command in a Sanction Request:
 
 ```sh
 agent-tick sanction --title "Run migration?" -- ./migrate.sh
@@ -88,7 +88,7 @@ agent-tick status-update --state working --next "Run the build" "Tests are passi
 2. Detects local agent configs and installs supported integrations:
    - Claude Code: Verified Hook + MCP support. Hooks can route `AskUserQuestion` steering and Claude Code `PermissionRequest` sanctions; MCP is available through `agent-tick mcp`.
    - Codex: MCP Adapter support through `agent-tick mcp`.
-   - Pi: Native Extension support via the repo-maintained extension from `packages/cli/assets/pi/agent-tick-approval.ts`; see [docs/pi.md](./docs/pi.md).
+   - Pi: Native Extension support via the repo-maintained extension from `packages/cli/assets/pi/agent-tick-sanction.ts`; see [docs/pi.md](./docs/pi.md).
    - Gemini, Cursor, OpenCode, generic `AGENTS.md`: detected and shown as disabled scaffolds until their hook/config behavior is verified.
 
 Useful installer options. Omit `--server` for hosted Agent Tick; pass it only for self-hosted or custom deployments.
@@ -106,21 +106,21 @@ agent-tick install --target claude --claude-profile headless --claude-steering a
 
 ## Self-hosting
 
-Agent Tick is source-available and self-hostable. That matters for trust, privacy, and teams that need to operate approvals on their own infrastructure.
+Agent Tick is source-available and self-hostable. That matters for trust, privacy, and Workspaces that need to operate Request routing on their own infrastructure.
 
 Self-hosting is not the default onboarding path. If you want it, use [SELFHOSTING.md](./SELFHOSTING.md).
 
 ## What is in this repo
 
 - Fastify API server
-- Svelte dashboard served by the server
+- Svelte Personal Console served by the server
 - Expo mobile app
 - `agent-tick` CLI with `install`, `config`, `login`, `mode`, `mcp`, `sanction`, `steering`, `abandon`, and `status-update`
 - SQLite persistence
 - optional Clerk human authentication for multi-user mode
-- local Agent Tick organizations, policies, approvals, audit logs, devices, and agent tokens
+- Agent Tick Workspaces, Routing Rules, Activity, audit logs, Approval Devices, and Agent Tokens
 
-Clerk, when enabled, is only the human identity provider. Agent Tick owns authorization and product data.
+Clerk, when enabled, is the human identity provider and may back Shared Workspace membership. Agent Tick owns routing, Activity, Agent Tokens, Approval Devices, and authorization state.
 
 ## Development
 

@@ -26,14 +26,11 @@ export interface RequestNotifierOptions {
 
 export function createRequestNotifier({ store, config, fetch: fetchImpl }: RequestNotifierOptions): RequestNotifier {
   const notifiers = config.mode === 'clerk' ? [createExpoPushNotifier({ store, ...(fetchImpl ? { fetch: fetchImpl } : {}) })] : [];
-  if (config.approvalNotificationWebhookURL) {
-    notifiers.push(createWebhookRequestNotifier({ url: config.approvalNotificationWebhookURL, ...(config.publicURL ? { publicURL: config.publicURL } : {}), ...(fetchImpl ? { fetch: fetchImpl } : {}) }));
+  if (config.requestNotificationWebhookURL) {
+    notifiers.push(createWebhookRequestNotifier({ url: config.requestNotificationWebhookURL, ...(config.publicURL ? { publicURL: config.publicURL } : {}), ...(fetchImpl ? { fetch: fetchImpl } : {}) }));
   }
   return createCompositeRequestNotifier(notifiers);
 }
-
-export const createApprovalNotifier = createRequestNotifier;
-export type ApprovalNotifier = RequestNotifier;
 
 export function createCompositeRequestNotifier(notifiers: RequestNotifier[]): RequestNotifier {
   return {

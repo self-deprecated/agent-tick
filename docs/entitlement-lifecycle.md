@@ -80,7 +80,7 @@ stateDiagram-v2
 
 Use this wording when updating public copy:
 
-- Good: “Agent Tick routes bounded approval requests and responses.”
+- Good: “Agent Tick routes bounded Requests and responses.”
 - Good: “After Trial, Lifetime app unlock keeps first-party app use available with self-hosted servers.”
 - Good: “Hosted service requires Trial, included hosted month, or an active subscription.”
 - Avoid: “The app purchase includes hosted service forever.”

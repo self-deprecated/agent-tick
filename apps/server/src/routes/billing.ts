@@ -82,7 +82,7 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
 
   app.get('/v1/billing', async (request) => {
     const auth = await requirePrivilegedHuman(request, config, store);
-    requireOrganizationAdmin(auth);
+    requireWorkspaceBillingAdmin(auth);
     return {
       workspaceId: auth.workspaceId,
       plan: config.mode === 'clerk' ? 'solo' : 'self-hosted',
@@ -111,7 +111,7 @@ function verifyRevenueCatWebhook(request: FastifyRequest, config: ServerConfig):
   if (!authorization || !accepted.includes(authorization.trim())) throw billingError(401, 'not_authenticated', 'Invalid RevenueCat webhook authorization');
 }
 
-function requireOrganizationAdmin(auth: AuthContext): void {
+function requireWorkspaceBillingAdmin(auth: AuthContext): void {
   if (auth.role === 'owner' || auth.role === 'admin') return;
   const error = new Error('Workspace Admin role required') as Error & { statusCode: number; code: string };
   error.statusCode = 403;
