@@ -1,0 +1,3 @@
+# Default the web admin app to a Personal Console
+
+The hosted web admin app defaults to a Personal Console for the common one-human, one-agent, one-phone setup path instead of presenting a broad administration dashboard or marketing landing page. Setup, connection status, and test routing are primary; Activity and Settings are secondary and lazy-loaded; unavailable shared-workspace/billing administration stays hidden until the current Workspace, membership, or entitlement supports it. This trades immediate visibility of every admin capability for a simpler functional setup surface that matches the product's most common first-run workflow.
