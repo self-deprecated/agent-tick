@@ -328,6 +328,8 @@ export interface AsyncAgentTickStore {
   cleanupExpiredSecrets(now?: string): Awaitable<CleanupExpiredSecretsResult>;
   cleanupRetention(policy?: RetentionPolicy, now?: string): Awaitable<CleanupRetentionResult>;
   loginOrCreateClerkIdentity(profile: ClerkIdentityProfile, now?: string): Awaitable<HumanIdentityResult>;
+  upsertClerkUser(profile: ClerkIdentityProfile, now?: string): Awaitable<string>;
+  userIdForClerkSubject(issuer: string, subject: string): Awaitable<string | null>;
   defaultMembershipForUser(userId: string): Awaitable<HumanIdentityResult>;
   userProfile(userId: string): Awaitable<UserProfileRecord | null>;
   listWorkspacesForUser(userId: string): Awaitable<WorkspaceMemberRecord[]>;
@@ -335,6 +337,11 @@ export interface AsyncAgentTickStore {
   workspaceMembershipForUser(userId: string, workspaceId: string): Awaitable<HumanIdentityResult | null>;
   workspaceMembershipForUserAnyStatus(userId: string, workspaceId: string): Awaitable<WorkspaceMemberRecord | null>;
   createSharedWorkspaceForUser(userId: string, name: string, now?: string, clerkOrganizationId?: string): Awaitable<WorkspaceMemberRecord>;
+  workspaceByClerkOrganizationId(clerkOrganizationId: string): Awaitable<WorkspaceRecord | null>;
+  upsertClerkWorkspace(clerkOrganizationId: string, name: string, ownerUserId?: string, now?: string): Awaitable<WorkspaceRecord>;
+  upsertClerkWorkspaceMember(clerkOrganizationId: string, clerkMembershipId: string | undefined, userId: string, role: WorkspaceRole | string, now?: string): Awaitable<WorkspaceMemberRecord>;
+  removeClerkWorkspaceMember(clerkOrganizationId: string, userIdOrMembershipId: string, now?: string): Awaitable<void>;
+  revokeUserAccess(userId: string, now?: string): Awaitable<void>;
   updateWorkspace(workspaceId: string, name: string, now?: string): Awaitable<WorkspaceRecord | null>;
   addWorkspaceMemberByEmail(workspaceId: string, email: string, role?: WorkspaceRole | string, now?: string): Awaitable<WorkspaceMemberRecord>;
   removeWorkspaceMember(workspaceId: string, userId: string, now?: string): Awaitable<void>;
@@ -451,6 +458,13 @@ export class AgentTickStore implements AsyncAgentTickStore {
   }
 
   loginOrCreateClerkIdentity(profile: ClerkIdentityProfile, now = new Date().toISOString()): HumanIdentityResult {
+    this.upsertClerkUser(profile, now);
+    const userId = this.userIdForClerkSubject(profile.issuer, profile.subject);
+    if (!userId) throw new Error('Clerk identity was not stored');
+    return this.defaultMembershipForUser(userId);
+  }
+
+  upsertClerkUser(profile: ClerkIdentityProfile, now = new Date().toISOString()): string {
     if (!profile.emailVerified) throw new Error('Clerk users must have a verified primary email');
     const email = normalizeEmail(profile.email);
     if (!email) throw new Error('Clerk users must have a verified primary email');
@@ -459,7 +473,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
       this.db.prepare('UPDATE users SET email = ?, email_verified = 1, name = ?, sign_in_method = ?, updated_at = ? WHERE id = ?').run(email, profile.name, profile.authMethod ?? null, now, existingIdentity.user_id);
       this.db.prepare('UPDATE auth_identities SET email = ?, email_verified = 1, name = ?, auth_method = ?, last_seen_at = ?, updated_at = ? WHERE provider = ? AND issuer = ? AND subject = ?').run(email, profile.name, profile.authMethod ?? null, now, now, 'clerk', profile.issuer, profile.subject);
       this.ensurePersonalWorkspaceForUser(existingIdentity.user_id, now);
-      return this.defaultMembershipForUser(existingIdentity.user_id);
+      return existingIdentity.user_id;
     }
 
     const collision = this.db.prepare('SELECT id FROM users WHERE lower(email) = lower(?) AND email <> ?').get(email, '') as { id: string } | undefined;
@@ -469,7 +483,12 @@ export class AgentTickStore implements AsyncAgentTickStore {
     this.db.prepare('INSERT INTO users(id, email, email_verified, name, sign_in_method, created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?)').run(userId, email, profile.name, profile.authMethod ?? null, now, now);
     this.db.prepare('INSERT INTO auth_identities(provider, issuer, subject, user_id, email, email_verified, name, auth_method, first_seen_at, last_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)').run('clerk', profile.issuer, profile.subject, userId, email, profile.name, profile.authMethod ?? null, now, now, now);
     this.ensurePersonalWorkspaceForUser(userId, now);
-    return this.defaultMembershipForUser(userId);
+    return userId;
+  }
+
+  userIdForClerkSubject(issuer: string, subject: string): string | null {
+    const row = this.db.prepare('SELECT user_id FROM auth_identities WHERE provider = ? AND issuer = ? AND subject = ?').get('clerk', issuer, subject) as { user_id: string } | undefined;
+    return row?.user_id ?? null;
   }
 
   defaultMembershipForUser(userId: string): HumanIdentityResult {
@@ -513,8 +532,54 @@ export class AgentTickStore implements AsyncAgentTickStore {
     const workspaceId = id('wsp');
     this.db.prepare('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(workspaceId, 'shared', name.trim(), clerkOrganizationId ?? null, now, now);
     this.db.prepare('INSERT INTO workspace_members(workspace_id, user_id, role, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(workspaceId, userId, 'owner', 'active', now, now);
-    this.writeAuditEvent(workspaceId, userId, 'workspace.created', workspaceId, { name: name.trim(), type: 'shared' }, now);
+    this.writeAuditEvent(workspaceId, userId, 'workspace.created', workspaceId, { name: name.trim(), type: 'shared', clerkOrganizationId }, now);
     return this.workspaceMemberOrThrow(userId, workspaceId);
+  }
+
+  workspaceByClerkOrganizationId(clerkOrganizationId: string): WorkspaceRecord | null {
+    const row = this.db.prepare('SELECT * FROM workspaces WHERE clerk_organization_id = ?').get(clerkOrganizationId) as WorkspaceRow | undefined;
+    return row ? mapWorkspace(row) : null;
+  }
+
+  upsertClerkWorkspace(clerkOrganizationId: string, name: string, ownerUserId?: string, now = new Date().toISOString()): WorkspaceRecord {
+    const existing = this.workspaceByClerkOrganizationId(clerkOrganizationId);
+    if (existing) {
+      this.db.prepare('UPDATE workspaces SET name = ?, updated_at = ? WHERE workspace_id = ?').run(name.trim(), now, existing.workspaceId);
+      return mapWorkspace(this.workspaceRow(existing.workspaceId)!);
+    }
+    const workspaceId = id('wsp');
+    this.db.prepare('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(workspaceId, 'shared', name.trim(), clerkOrganizationId, now, now);
+    if (ownerUserId) {
+      this.ensureUserExists(ownerUserId, now);
+      this.db.prepare('INSERT INTO workspace_members(workspace_id, user_id, role, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(workspaceId, ownerUserId, 'owner', 'active', now, now);
+    }
+    this.writeAuditEvent(workspaceId, ownerUserId ?? 'system', 'workspace.clerk_synced', workspaceId, { clerkOrganizationId, name: name.trim() }, now);
+    return mapWorkspace(this.workspaceRow(workspaceId)!);
+  }
+
+  upsertClerkWorkspaceMember(clerkOrganizationId: string, clerkMembershipId: string | undefined, userId: string, role: WorkspaceRole | string, now = new Date().toISOString()): WorkspaceMemberRecord {
+    const workspace = this.workspaceByClerkOrganizationId(clerkOrganizationId);
+    if (!workspace) throw new Error('Clerk-backed Shared Workspace not found');
+    this.ensureUserExists(userId, now);
+    this.db.prepare(`
+      INSERT INTO workspace_members(workspace_id, user_id, role, status, clerk_membership_id, created_at, updated_at)
+      VALUES (?, ?, ?, 'active', ?, ?, ?)
+      ON CONFLICT(workspace_id, user_id) DO UPDATE SET role = excluded.role, status = 'active', clerk_membership_id = excluded.clerk_membership_id, updated_at = excluded.updated_at
+    `).run(workspace.workspaceId, userId, role, clerkMembershipId ?? null, now, now);
+    return this.workspaceMemberOrThrow(userId, workspace.workspaceId);
+  }
+
+  removeClerkWorkspaceMember(clerkOrganizationId: string, userIdOrMembershipId: string, now = new Date().toISOString()): void {
+    const workspace = this.workspaceByClerkOrganizationId(clerkOrganizationId);
+    if (!workspace) return;
+    const row = this.db.prepare('SELECT user_id FROM workspace_members WHERE workspace_id = ? AND (user_id = ? OR clerk_membership_id = ?)').get(workspace.workspaceId, userIdOrMembershipId, userIdOrMembershipId) as { user_id: string } | undefined;
+    if (row) this.removeWorkspaceMember(workspace.workspaceId, row.user_id, now);
+  }
+
+  revokeUserAccess(userId: string, now = new Date().toISOString()): void {
+    this.db.prepare('UPDATE users SET revoked_at = ?, updated_at = ? WHERE id = ?').run(now, now, userId);
+    this.db.prepare('UPDATE approval_devices SET unregistered_at = COALESCE(unregistered_at, ?), updated_at = ? WHERE user_id = ?').run(now, now, userId);
+    this.revokeAgentTokensForOwner(userId, now);
   }
 
   updateWorkspace(workspaceId: string, name: string, now = new Date().toISOString()): WorkspaceRecord | null {

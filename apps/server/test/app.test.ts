@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { AgentTickStore, DEFAULT_WORKSPACE_ID } from '@agent-tick/db';
@@ -134,6 +135,37 @@ describe('server Workspace routing API', () => {
     expect(detail.json()).toMatchObject({ title: 'Agent Tick steering test', isTest: true, testLabel: 'Agent Tick setup test' });
   });
 
+  it('mirrors Clerk Organization webhooks as Shared Workspaces', async () => {
+    const localStore = testStore();
+    const webhookSecret = `whsec_${Buffer.from('test-webhook-secret').toString('base64')}`;
+    app = await buildApp({
+      config: loadConfig({
+        AGENT_TICK_MODE: 'clerk',
+        AGENT_TICK_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
+        AGENT_TICK_CLERK_SECRET_KEY: 'sk_test_secret',
+        AGENT_TICK_CLERK_WEBHOOK_SECRET: webhookSecret
+      }),
+      store: localStore
+    });
+
+    const userEvent = { type: 'user.created', data: { id: 'user_alice', first_name: 'Alice', last_name: 'Example', primary_email_address_id: 'email_1', email_addresses: [{ id: 'email_1', email_address: 'alice@example.com' }] } };
+    expect((await app.inject({ method: 'POST', url: '/v1/clerk/webhooks', headers: svixHeaders(userEvent, webhookSecret), payload: userEvent })).statusCode).toBe(200);
+    const aliceUserId = (localStore.db.prepare('SELECT user_id FROM auth_identities WHERE subject = ?').get('user_alice') as { user_id: string }).user_id;
+
+    const orgEvent = { type: 'organization.created', data: { id: 'org_clerk_1', name: 'Platform' } };
+    expect((await app.inject({ method: 'POST', url: '/v1/clerk/webhooks', headers: svixHeaders(orgEvent, webhookSecret), payload: orgEvent })).statusCode).toBe(200);
+    const memberEvent = { type: 'organizationMembership.created', data: { id: 'mem_1', role: 'org:admin', organization: { id: 'org_clerk_1', name: 'Platform' }, public_user_data: { user_id: 'user_alice', email_address: 'alice@example.com' } } };
+    expect((await app.inject({ method: 'POST', url: '/v1/clerk/webhooks', headers: svixHeaders(memberEvent, webhookSecret), payload: memberEvent })).statusCode).toBe(200);
+
+    const workspace = localStore.workspaceByClerkOrganizationId('org_clerk_1')!;
+    expect(workspace).toMatchObject({ type: 'shared', name: 'Platform', clerkOrganizationId: 'org_clerk_1' });
+    expect(localStore.workspaceMembershipForUser(aliceUserId, workspace.workspaceId)).toMatchObject({ role: 'admin' });
+
+    const deleted = { type: 'organizationMembership.deleted', data: { id: 'mem_1', organization: { id: 'org_clerk_1' } } };
+    expect((await app.inject({ method: 'POST', url: '/v1/clerk/webhooks', headers: svixHeaders(deleted, webhookSecret), payload: deleted })).statusCode).toBe(200);
+    expect(localStore.workspaceMembershipForUser(aliceUserId, workspace.workspaceId)).toBeNull();
+  });
+
   it('does not expose old approval/team/project/policy API aliases', async () => {
     const server = await buildSingle();
     for (const url of ['/v1/approval-requests', '/v1/organizations', '/v1/teams', '/v1/projects', '/v1/policies']) {
@@ -141,3 +173,12 @@ describe('server Workspace routing API', () => {
     }
   });
 });
+
+function svixHeaders(payload: unknown, secret: string): Record<string, string> {
+  const id = `msg_${crypto.randomUUID()}`;
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const body = JSON.stringify(payload);
+  const key = Buffer.from(secret.replace(/^whsec_/, ''), 'base64');
+  const signature = crypto.createHmac('sha256', key).update(`${id}.${timestamp}.${body}`).digest('base64');
+  return { 'svix-id': id, 'svix-timestamp': timestamp, 'svix-signature': `v1,${signature}` };
+}

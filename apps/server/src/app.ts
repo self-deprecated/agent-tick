@@ -8,6 +8,7 @@ import { registerActivityRoutes } from './routes/activity.js';
 import { registerAgentTokenRoutes } from './routes/agentTokens.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerBillingRoutes } from './routes/billing.js';
+import { registerClerkWebhookRoutes } from './routes/clerkWebhooks.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerEventRoutes } from './routes/events.js';
 import { registerMeRoutes } from './routes/me.js';
@@ -89,6 +90,7 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
   }));
 
   await registerMeRoutes(app, { config, store });
+  await registerClerkWebhookRoutes(app, { config, store });
   await registerMobileSessionRoutes(app, { config, store });
   await registerMobileDiagnosticsRoutes(app, { config, store });
   await registerWorkspaceRoutes(app, { config, store });

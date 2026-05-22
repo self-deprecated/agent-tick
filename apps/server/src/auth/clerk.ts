@@ -107,6 +107,7 @@ async function authContextForClerkUser({
     name: profile.name,
     ...(profile.authMethod ? { authMethod: profile.authMethod } : {})
   });
+  await syncClerkMemberships(subject, identity.userId, config, store).catch(() => undefined);
 
   return {
     source: 'clerk',
@@ -171,6 +172,35 @@ function providerName(provider: unknown): string | undefined {
 function stringClaim(payload: unknown, claim: string): string | null {
   const value = (payload as Record<string, unknown>)[claim];
   return typeof value === 'string' && value.trim() ? value : null;
+}
+
+async function syncClerkMemberships(userId: string, localUserId: string, config: ServerConfig, store: AgentTickStore): Promise<void> {
+  if (!config.clerkSecretKey) return;
+  const clerk = createClerkClient({ secretKey: config.clerkSecretKey });
+  const maybeList = (clerk.users as unknown as { getOrganizationMembershipList?: (input: { userId: string }) => Promise<unknown> }).getOrganizationMembershipList;
+  if (!maybeList) return;
+  const result = await maybeList.call(clerk.users, { userId });
+  const memberships = Array.isArray((result as { data?: unknown }).data) ? (result as { data: unknown[] }).data : Array.isArray(result) ? result as unknown[] : [];
+  for (const entry of memberships) {
+    const record = entry as Record<string, unknown>;
+    const organization = record.organization as Record<string, unknown> | undefined;
+    const clerkOrganizationId = stringValue(record.organizationId) ?? stringValue(record.organization_id) ?? stringValue(organization?.id);
+    if (!clerkOrganizationId) continue;
+    const name = stringValue(organization?.name) ?? stringValue(organization?.slug) ?? 'Shared Workspace';
+    await store.upsertClerkWorkspace(clerkOrganizationId, name);
+    await store.upsertClerkWorkspaceMember(clerkOrganizationId, stringValue(record.id), localUserId, clerkRoleToWorkspaceRole(stringValue(record.role)));
+  }
+}
+
+function clerkRoleToWorkspaceRole(role: string | undefined): 'owner' | 'admin' | 'member' {
+  const normalized = role?.replace(/^org:/, '').toLowerCase();
+  if (normalized === 'owner') return 'owner';
+  if (normalized === 'admin') return 'admin';
+  return 'member';
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function clerkIssuer(config: ServerConfig): string {
