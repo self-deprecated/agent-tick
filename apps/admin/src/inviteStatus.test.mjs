@@ -24,11 +24,11 @@ async function loadModule() {
 
 const { inviteAcceptedMessage } = await loadModule();
 
-test('inviteAcceptedMessage distinguishes approved and pending states', () => {
-	assert.equal(inviteAcceptedMessage('approved'), 'Invite accepted. You now have access to this organization.');
-	assert.equal(inviteAcceptedMessage('joined'), 'Invite accepted. You now have access to this organization.');
-	assert.equal(inviteAcceptedMessage('already_member'), 'Invite accepted. You now have access to this organization.');
-	assert.equal(inviteAcceptedMessage('pending_approval'), 'Request sent. An organization admin needs to approve your access before you can use this organization.');
-	assert.equal(inviteAcceptedMessage('rejected'), 'Your request to join this organization was rejected.');
+test('inviteAcceptedMessage distinguishes accepted and pending states', () => {
+	assert.equal(inviteAcceptedMessage('approved'), 'Invite accepted. You now have access to this Workspace.');
+	assert.equal(inviteAcceptedMessage('joined'), 'Invite accepted. You now have access to this Workspace.');
+	assert.equal(inviteAcceptedMessage('already_member'), 'Invite accepted. You now have access to this Workspace.');
+	assert.equal(inviteAcceptedMessage('pending'), 'Request sent. A Workspace Owner needs to accept your access before you can use this Workspace.');
+	assert.equal(inviteAcceptedMessage('rejected'), 'Your request to join this Workspace was rejected.');
 	assert.equal(inviteAcceptedMessage('removed'), 'Invite status changed. Refresh your dashboard for the latest access state.');
 });

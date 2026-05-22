@@ -1,46 +1,48 @@
-export type Page = 'setup' | 'approvals' | 'organization' | 'admin' | 'invite';
-export type DashboardLoadKey = 'approvals' | 'devices' | 'agents' | 'organizations';
-export type BillingPanelStatus = 'idle' | 'loading' | 'ready' | 'error';
-
-export interface BillingPanelInput {
-	activePage: Page;
-	isOrgAdmin: boolean;
-	isUserMode: boolean;
-	billingStatus: BillingPanelStatus;
-	billingError: string;
-	billingPlan?: string;
-}
+export type Page = 'setup' | 'activity' | 'settings' | 'cli-authorize' | 'invite';
+export type ConsoleLoadKey = 'setup' | 'activity' | 'settings';
 
 export interface SetupStatusInput {
 	hasActiveDevice: boolean;
 	hasActiveAgent: boolean;
 }
 
-export function defaultPageForSetupStatus(input: SetupStatusInput): Page {
-	return input.hasActiveDevice && input.hasActiveAgent ? 'approvals' : 'setup';
-}
-
-export function pageFromHash(hash: string, isOrgAdmin: boolean, defaultPage: Page = 'setup'): Page {
-	const page = hash.replace(/^#/, '');
-	if (page === '') return defaultPage;
-	if (page === 'admin') return isOrgAdmin ? 'admin' : 'setup';
-	if (page.startsWith('/invite/') || page.startsWith('invite/')) return 'invite';
-	if (page === 'organization') return 'organization';
-	if (page === 'approvals') return 'approvals';
+export function defaultPageForSetupStatus(_input: SetupStatusInput): Page {
 	return 'setup';
 }
 
-export function refreshLoadKeys(activePage: Page): DashboardLoadKey[] {
-	if (activePage === 'invite') return ['organizations'];
-	const loads: DashboardLoadKey[] = ['devices', 'agents'];
-	if (activePage !== 'approvals') loads.push('approvals');
-	if (activePage !== 'organization' && activePage !== 'admin') loads.push('organizations');
-	return loads;
+export function pageFromPath(pathname: string, search = ''): Page {
+	const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+	if (params.has('cli_callback') && params.has('cli_state')) return 'cli-authorize';
+	const path = pathname.replace(/\/+$/, '') || '/';
+	if (path === '/' || path === '/setup') return 'setup';
+	if (path === '/activity') return 'activity';
+	if (path === '/settings') return 'settings';
+	if (path.startsWith('/invite/')) return 'invite';
+	return 'setup';
 }
 
-export function shouldShowBillingPanel(input: BillingPanelInput): boolean {
-	if (input.activePage !== 'admin' || !input.isOrgAdmin || !input.isUserMode) return false;
-	if (input.billingStatus === 'loading') return true;
-	if (input.billingError !== '') return true;
-	return input.billingPlan !== undefined && input.billingPlan !== 'self-hosted';
+export function pageFromHash(hash: string, _isWorkspaceAdmin = false, defaultPage: Page = 'setup'): Page {
+	const page = hash.replace(/^#\/?/, '');
+	if (!page) return defaultPage;
+	if (page === 'activity') return 'activity';
+	if (page === 'settings') return 'settings';
+	if (page.startsWith('invite/')) return 'invite';
+	return 'setup';
+}
+
+export function refreshLoadKeys(activePage: Page): ConsoleLoadKey[] {
+	if (activePage === 'activity') return ['activity'];
+	if (activePage === 'settings') return ['settings'];
+	return ['setup'];
+}
+
+export interface EntitlementPanelInput {
+	activePage: Page;
+	isWorkspaceOwner: boolean;
+	billingPlan?: string;
+	billingError?: string;
+}
+
+export function shouldShowEntitlementStatus(input: EntitlementPanelInput): boolean {
+	return input.activePage === 'settings' && (input.isWorkspaceOwner || Boolean(input.billingPlan) || Boolean(input.billingError?.trim()));
 }

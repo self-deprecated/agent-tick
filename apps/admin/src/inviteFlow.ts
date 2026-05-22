@@ -1,7 +1,10 @@
-import type { MembershipRequestRecord } from './api';
+export interface FocusedInviteRecord {
+	requestId: string;
+	status: string;
+}
 
 export interface InviteAcceptState {
-	inviteAccepted: MembershipRequestRecord | null;
+	inviteAccepted: FocusedInviteRecord | null;
 	inviteAcceptStatus: 'idle' | 'loading' | 'ready' | 'error';
 	inviteFlowError: string;
 }

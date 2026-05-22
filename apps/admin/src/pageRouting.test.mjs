@@ -9,19 +9,12 @@ import * as ts from 'typescript';
 const tempDirectories = [];
 
 after(() => {
-	for (const directory of tempDirectories) {
-		rmSync(directory, { recursive: true, force: true });
-	}
+	for (const directory of tempDirectories) rmSync(directory, { recursive: true, force: true });
 });
 
 async function loadRoutingModule() {
 	const source = readFileSync(new URL('./pageRouting.ts', import.meta.url), 'utf8');
-	const { outputText } = ts.transpileModule(source, {
-		compilerOptions: {
-			module: ts.ModuleKind.ES2022,
-			target: ts.ScriptTarget.ES2022
-		}
-	});
+	const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
 	const directory = mkdtempSync(path.join(tmpdir(), 'agent-tick-admin-routing-'));
 	tempDirectories.push(directory);
 	const modulePath = path.join(directory, 'pageRouting.mjs');
@@ -31,85 +24,40 @@ async function loadRoutingModule() {
 
 const routing = await loadRoutingModule();
 
-test('pageFromHash maps known pages', () => {
-	assert.equal(routing.pageFromHash('#setup', true), 'setup');
-	assert.equal(routing.pageFromHash('#approvals', true), 'approvals');
-	assert.equal(routing.pageFromHash('#organization', true), 'organization');
-	assert.equal(routing.pageFromHash('#/invite/token-123', true), 'invite');
-	assert.equal(routing.pageFromHash('#invite/token-123', false), 'invite');
+test('pageFromPath maps clean console routes', () => {
+	assert.equal(routing.pageFromPath('/'), 'setup');
+	assert.equal(routing.pageFromPath('/setup'), 'setup');
+	assert.equal(routing.pageFromPath('/activity'), 'activity');
+	assert.equal(routing.pageFromPath('/settings'), 'settings');
+	assert.equal(routing.pageFromPath('/invite/token-123'), 'invite');
 });
 
-test('pageFromHash gates direct admin hashes for non-admin users', () => {
-	assert.equal(routing.pageFromHash('#admin', true), 'admin');
-	assert.equal(routing.pageFromHash('#admin', false), 'setup');
+test('pageFromPath detects CLI authorization query flow', () => {
+	assert.equal(routing.pageFromPath('/', '?cli_callback=http%3A%2F%2F127.0.0.1%2Fcb&cli_state=abc'), 'cli-authorize');
 });
 
-test('pageFromHash keeps setup anchors on the setup page', () => {
-	assert.equal(routing.pageFromHash('#setup', true, 'approvals'), 'setup');
-	assert.equal(routing.pageFromHash('#devices', true, 'approvals'), 'setup');
-	assert.equal(routing.pageFromHash('#agents', true, 'approvals'), 'setup');
-	assert.equal(routing.pageFromHash('', true), 'setup');
-	assert.equal(routing.pageFromHash('', true, 'approvals'), 'approvals');
+test('legacy hashes only map supported focused routes', () => {
+	assert.equal(routing.pageFromHash('#activity'), 'activity');
+	assert.equal(routing.pageFromHash('#settings'), 'settings');
+	assert.equal(routing.pageFromHash('#/invite/token-123'), 'invite');
+	assert.equal(routing.pageFromHash('#unknown'), 'setup');
+	assert.equal(routing.pageFromHash('', true, 'setup'), 'setup');
 });
 
-test('defaultPageForSetupStatus sends complete setups to approvals', () => {
+test('defaultPageForSetupStatus keeps root on Setup', () => {
 	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: false, hasActiveAgent: false }), 'setup');
-	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: true, hasActiveAgent: false }), 'setup');
-	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: false, hasActiveAgent: true }), 'setup');
-	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: true, hasActiveAgent: true }), 'approvals');
+	assert.equal(routing.defaultPageForSetupStatus({ hasActiveDevice: true, hasActiveAgent: true }), 'setup');
 });
 
-test('refreshLoadKeys avoids duplicate page-specific fetches', () => {
-	assert.deepEqual(routing.refreshLoadKeys('setup'), ['devices', 'agents', 'approvals', 'organizations']);
-	assert.deepEqual(routing.refreshLoadKeys('approvals'), ['devices', 'agents', 'organizations']);
-	assert.deepEqual(routing.refreshLoadKeys('organization'), ['devices', 'agents', 'approvals']);
-	assert.deepEqual(routing.refreshLoadKeys('admin'), ['devices', 'agents', 'approvals']);
-	assert.deepEqual(routing.refreshLoadKeys('invite'), ['organizations']);
+test('refreshLoadKeys follows the active page', () => {
+	assert.deepEqual(routing.refreshLoadKeys('setup'), ['setup']);
+	assert.deepEqual(routing.refreshLoadKeys('activity'), ['activity']);
+	assert.deepEqual(routing.refreshLoadKeys('settings'), ['settings']);
+	assert.deepEqual(routing.refreshLoadKeys('invite'), ['setup']);
 });
 
-test('shouldShowBillingPanel shows hosted loading and error states', () => {
-	assert.equal(
-		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'loading', billingError: '', billingPlan: undefined }),
-		true
-	);
-	assert.equal(
-		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'error', billingError: 'billing unavailable', billingPlan: undefined }),
-		true
-	);
-	for (const billingError of ['   ', '\n\t']) {
-		assert.equal(
-			routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'error', billingError, billingPlan: undefined }),
-			true
-		);
-	}
-});
-
-test('shouldShowBillingPanel preserves hosted-plan display semantics', () => {
-	assert.equal(
-		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'ready', billingError: '', billingPlan: 'team' }),
-		true
-	);
-	assert.equal(
-		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'ready', billingError: '', billingPlan: '' }),
-		true
-	);
-});
-
-test('shouldShowBillingPanel hides self-hosted, unauthorized, and idle hosted states', () => {
-	assert.equal(
-		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'ready', billingError: '', billingPlan: 'self-hosted' }),
-		false
-	);
-	assert.equal(
-		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: true, billingStatus: 'idle', billingError: '', billingPlan: undefined }),
-		false
-	);
-	assert.equal(
-		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: false, isUserMode: true, billingStatus: 'error', billingError: 'billing unavailable' }),
-		false
-	);
-	assert.equal(
-		routing.shouldShowBillingPanel({ activePage: 'admin', isOrgAdmin: true, isUserMode: false, billingStatus: 'loading', billingError: '' }),
-		false
-	);
+test('shouldShowEntitlementStatus is scoped to Settings', () => {
+	assert.equal(routing.shouldShowEntitlementStatus({ activePage: 'settings', isWorkspaceOwner: true, billingPlan: 'shared' }), true);
+	assert.equal(routing.shouldShowEntitlementStatus({ activePage: 'settings', isWorkspaceOwner: false, billingError: 'billing unavailable' }), true);
+	assert.equal(routing.shouldShowEntitlementStatus({ activePage: 'setup', isWorkspaceOwner: true, billingPlan: 'shared' }), false);
 });
