@@ -10,7 +10,7 @@ The self-hosted server includes:
 
 - the Agent Tick API server
 - the web dashboard served by the server
-- SQLite by default, with PostgreSQL supported for production-style deployments
+- SQLite for durable data in this cutover; PostgreSQL runtime support is not implemented yet
 - optional Redis for multi-process event/rate-limit coordination
 - optional Clerk auth for multi-user deployments
 
@@ -95,12 +95,12 @@ AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
 AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES=60
 ```
 
-## PostgreSQL and Redis
+## SQLite and Redis
 
-SQLite is the simplest default. For a production-style deployment, use PostgreSQL for durable data and Redis for cross-process coordination:
+SQLite is the supported durable store for this cutover. PostgreSQL schema files exist as a reset baseline for future work, but PostgreSQL runtime URLs are rejected until the Postgres repository is implemented. For a production-style single-instance deployment, keep a SQLite `file:` database and use Redis for cross-process coordination where needed:
 
 ```env
-AGENT_TICK_DATABASE_URL=postgres://agent_tick:change-me@postgres:5432/agent_tick
+AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db
 AGENT_TICK_DATABASE_MIGRATE_ON_START=true
 AGENT_TICK_REDIS_URL=redis://redis:6379
 AGENT_TICK_EVENT_BUS_BACKEND=redis
@@ -108,7 +108,7 @@ AGENT_TICK_RATE_LIMIT_BACKEND=redis
 AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
 ```
 
-For larger deployments, run database migrations as an explicit deployment step and set `AGENT_TICK_DATABASE_MIGRATE_ON_START=false` on normal server processes.
+Keep migrations enabled on startup for SQLite deployments so the fresh schema is created before the server accepts traffic.
 
 ## Clerk mode
 

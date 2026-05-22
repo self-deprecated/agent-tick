@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
-import { isPostgresDatabaseURL, PostgresStoreConnection } from './postgres.js';
-import { PostgresAgentTickStore } from './postgresStore.js';
+import { isPostgresDatabaseURL } from './postgres.js';
 export { isPostgresDatabaseURL, PostgresStoreConnection } from './postgres.js';
 export { PostgresAgentTickStore } from './postgresStore.js';
 import {
@@ -404,7 +403,11 @@ export interface AsyncAgentTickStore {
 
 export function openAgentTickStore(options: OpenStoreOptions = {}): AsyncAgentTickStore {
   const databaseURL = options.databaseURL;
-  if (isPostgresDatabaseURL(databaseURL)) return PostgresAgentTickStore.open({ databaseURL: databaseURL! }) as unknown as AsyncAgentTickStore;
+  if (isPostgresDatabaseURL(databaseURL)) {
+    const error = new Error('PostgreSQL database URLs are not supported by the Agent Tick store in this cutover. Use a SQLite file: URL until the Postgres repository is implemented.') as Error & { code?: string };
+    error.code = 'postgres_store_unsupported';
+    throw error;
+  }
   return AgentTickStore.open(options);
 }
 
@@ -474,8 +477,14 @@ export class AgentTickStore implements AsyncAgentTickStore {
       return existingIdentity.user_id;
     }
 
-    const collision = this.db.prepare('SELECT id FROM users WHERE lower(email) = lower(?) AND email <> ?').get(email, '') as { id: string } | undefined;
-    if (collision) throw new Error('A local user with this verified email already exists; identity linking is required');
+    const collision = this.db.prepare('SELECT id, email_verified FROM users WHERE lower(email) = lower(?) AND email <> ?').get(email, '') as { id: string; email_verified: number | boolean } | undefined;
+    if (collision) {
+      if (Boolean(collision.email_verified)) throw new Error('A local user with this verified email already exists; identity linking is required');
+      this.db.prepare('UPDATE users SET email = ?, email_verified = 1, name = ?, sign_in_method = ?, updated_at = ? WHERE id = ?').run(email, profile.name, profile.authMethod ?? null, now, collision.id);
+      this.db.prepare('INSERT INTO auth_identities(provider, issuer, subject, user_id, email, email_verified, name, auth_method, first_seen_at, last_seen_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)').run('clerk', profile.issuer, profile.subject, collision.id, email, profile.name, profile.authMethod ?? null, now, now, now);
+      this.ensurePersonalWorkspaceForUser(collision.id, now);
+      return collision.id;
+    }
 
     const userId = id('usr');
     this.db.prepare('INSERT INTO users(id, email, email_verified, name, sign_in_method, created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?)').run(userId, email, profile.name, profile.authMethod ?? null, now, now);
@@ -827,7 +836,12 @@ export class AgentTickStore implements AsyncAgentTickStore {
     if (!existing) return null;
     if (existing.status !== 'pending') return existing;
     const recipient = this.db.prepare('SELECT * FROM request_recipients WHERE request_id = ? AND user_id = ?').get(idValue, responderUserId) as RequestRecipientRow | undefined;
-    if (!recipient) throw new Error('User is not a routed recipient for this Request');
+    if (!recipient) {
+      const error = new Error('User is not a routed recipient for this Request') as Error & { code?: string; statusCode?: number };
+      error.code = 'not_routed_recipient';
+      error.statusCode = 403;
+      throw error;
+    }
     const oldResponse = this.db.prepare('SELECT * FROM responses WHERE request_id = ? AND user_id = ?').get(idValue, responderUserId) as ResponseRow | undefined;
     if (oldResponse) return this.mapRequest(this.requestRow(idValue)!, responderUserId);
     const choice = existing.choices.find((candidate) => candidate.id === parsed.choiceId);

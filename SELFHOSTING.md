@@ -4,7 +4,7 @@ Use this guide when you want to run Agent Tick yourself. If you want the managed
 
 Agent Tick is source-available under BSL 1.1. Internal commercial self-hosting is allowed, including use by a business on its own infrastructure. Offering Agent Tick as a hosted or managed service to third parties is prohibited. The BSL change date is 2028-05-31.
 
-Agent Tick can run either as the published Docker image or as the Nix flake package/NixOS module. The server runs the TypeScript API server, serves the built Svelte dashboard, and stores durable data in either local SQLite or PostgreSQL.
+Agent Tick can run either as the published Docker image or as the Nix flake package/NixOS module. The server runs the TypeScript API server, serves the built Svelte dashboard, and stores durable data in local SQLite for this cutover.
 
 ## Single-user local mode
 
@@ -72,12 +72,12 @@ agent-tick config --server https://tick.example.com --token agent_...
 
 The public product surfaces are <https://agenttick.sh> for marketing, <https://app.agenttick.sh> for the hosted app and API, and <https://docs.agenttick.sh> for documentation. Self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
 
-## PostgreSQL and Redis production mode
+## SQLite and Redis production mode
 
-SQLite remains the simplest self-hosting default. For production-style multi-instance deployments, use PostgreSQL for durable data and Redis for cross-process coordination:
+SQLite is the supported durable store for this cutover. PostgreSQL schema files exist as a reset baseline for future work, but PostgreSQL runtime URLs are rejected until the Postgres repository is implemented. For production-style single-instance deployments, keep a SQLite `file:` database and use Redis for cross-process coordination where needed:
 
 ```env
-AGENT_TICK_DATABASE_URL=postgres://agent_tick:change-me@postgres:5432/agent_tick
+AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db
 AGENT_TICK_DATABASE_MIGRATE_ON_START=true
 AGENT_TICK_REDIS_URL=redis://redis:6379
 AGENT_TICK_EVENT_BUS_BACKEND=redis
@@ -85,7 +85,7 @@ AGENT_TICK_RATE_LIMIT_BACKEND=redis
 AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
 ```
 
-For larger deployments, set `AGENT_TICK_DATABASE_MIGRATE_ON_START=false` on regular server tasks and run migrations as a separate one-off deployment step. With Redis configured, retention cleanup uses a Redis lock by default so duplicate cleanup workers do not run concurrently. Keep `/readyz` as the traffic readiness check so load balancers only route to tasks that can reach configured dependencies.
+With Redis configured, retention cleanup uses a Redis lock by default so duplicate cleanup workers do not run concurrently. Keep `/readyz` as the traffic readiness check so load balancers only route to tasks that can reach configured dependencies.
 
 ## Clerk multi-user mode
 

@@ -42,19 +42,19 @@ command = "agent-tick"
 args = ["mcp"]
 startup_timeout_sec = 10
 tool_timeout_sec = 1800
-default_tools_Response_mode = "approve"
+default_tools_approval_mode = "approve"
 
 [mcp_servers.agent_tick.tools.agent_tick_status_update]
-Response_mode = "approve"
+approval_mode = "approve"
 
 [mcp_servers.agent_tick.tools.agent_tick_steering]
-Response_mode = "approve"
+approval_mode = "approve"
 
 [mcp_servers.agent_tick.tools.agent_tick_sanction]
-Response_mode = "approve"
+approval_mode = "approve"
 ```
 
-If your Codex config uses granular Response settings, allow MCP elicitations so Codex can show the local prompt:
+If your Codex config uses granular approval settings, allow MCP elicitations so Codex can show the local prompt:
 
 ```toml
 [tools]
@@ -103,6 +103,6 @@ Expected result: Codex calls `agent_tick_sanction`; Agent Tick asks approve/deny
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `agent-tick mcp` fails with config guidance | CLI config/token is missing. | Run `agent-tick install`, `agent-tick login`, or `agent-tick config --server ... --token ...`. |
-| Codex asks for Response before every Agent Tick tool call | Agent Tick MCP tools are not pre-approved in Codex. | Approve only the Agent Tick MCP tools, not broad shell or unrelated tools. |
+| Codex asks for approval before every Agent Tick tool call | Agent Tick MCP tools are not pre-approved in Codex. | Approve only the Agent Tick MCP tools, not broad shell or unrelated tools. |
 | Local Codex prompt does not appear | MCP elicitations are disabled or unsupported. | Enable `mcp_elicitations` if available, or use the remote Agent Tick app/web request. |
 | Request times out or is denied | The human did not approve the action. | Stop or choose a safe alternative; do not run the protected action. |

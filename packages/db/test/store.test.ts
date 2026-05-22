@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentTickStore, DEFAULT_USER_ID, DEFAULT_WORKSPACE_ID } from '../src/index.js';
+import { AgentTickStore, DEFAULT_USER_ID, DEFAULT_WORKSPACE_ID, openAgentTickStore } from '../src/index.js';
 
 let store: AgentTickStore | undefined;
 
@@ -17,6 +17,10 @@ function freshStore(): AgentTickStore {
 }
 
 describe('AgentTickStore Workspace model', () => {
+  it('fails fast for PostgreSQL URLs until the Postgres store is implemented', () => {
+    expect(() => openAgentTickStore({ databaseURL: 'postgres://agent_tick:secret@localhost:5432/agent_tick' })).toThrow(/PostgreSQL database URLs are not supported/);
+  });
+
   it('runs a fresh Workspace schema with Personal defaults', () => {
     const local = freshStore();
     const workspace = local.db.prepare('SELECT workspace_id, type, name FROM workspaces WHERE workspace_id = ?').get(DEFAULT_WORKSPACE_ID);
@@ -43,6 +47,18 @@ describe('AgentTickStore Workspace model', () => {
     expect(rule).toMatchObject({ name: 'Backend routing', requiredResponseCount: 2 });
     expect(rule.recipientUserIds).toEqual(expect.arrayContaining([DEFAULT_USER_ID, bob.userId]));
     expect(local.listRoutingRules(shared.workspaceId)).toEqual([expect.objectContaining({ routingRuleId: rule.routingRuleId })]);
+  });
+
+  it('links Clerk sign-in to a manually added Shared Workspace member', () => {
+    const local = freshStore();
+    const shared = local.createSharedWorkspaceForUser(DEFAULT_USER_ID, 'Production', '2026-05-08T01:00:00.000Z');
+    const invited = local.addWorkspaceMemberByEmail(shared.workspaceId, 'bob@example.com', 'member', '2026-05-08T01:01:00.000Z');
+
+    const identity = local.loginOrCreateClerkIdentity({ issuer: 'https://clerk.example', subject: 'user_bob', email: 'bob@example.com', emailVerified: true, name: 'Bob', authMethod: 'oauth_google' }, '2026-05-08T01:02:00.000Z');
+
+    expect(identity).toMatchObject({ userId: invited.userId, role: 'owner' });
+    expect(local.workspaceMembershipForUser(invited.userId, shared.workspaceId)).toMatchObject({ role: 'member' });
+    expect(local.userProfile(invited.userId)).toMatchObject({ email: 'bob@example.com', name: 'Bob', signInMethod: 'oauth_google' });
   });
 
   it('routes Personal Workspace activity to the sole member', () => {

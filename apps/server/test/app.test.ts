@@ -103,6 +103,7 @@ describe('server Workspace routing API', () => {
     const localStore = testStore();
     const shared = localStore.createSharedWorkspaceForUser('usr_default', 'Production');
     const bob = localStore.addWorkspaceMemberByEmail(shared.workspaceId, 'bob@example.com');
+    const charlie = localStore.addWorkspaceMemberByEmail(shared.workspaceId, 'charlie@example.com');
     const rule = localStore.createRoutingRule({ workspaceId: shared.workspaceId, name: 'Two humans', recipientUserIds: ['usr_default', bob.userId], requiredResponseMode: 'exact', requiredResponseCount: 2 });
     const credential = localStore.createAgentToken({ workspaceId: shared.workspaceId, label: 'Deploy bot', routingRuleId: rule.routingRuleId });
     const server = await buildSingle(localStore);
@@ -110,6 +111,12 @@ describe('server Workspace routing API', () => {
     const created = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: { requester: { name: 'Deploy bot' }, requestType: 'sanction', title: 'Deploy?' } });
     expect(created.statusCode).toBe(200);
     const requestId = created.json().request.id as string;
+
+    const charlieDevice = localStore.createPairingToken(charlie.userId, shared.workspaceId);
+    const charliePaired = localStore.pairDeviceWithCode(charlieDevice.token, 'Charlie phone', 'ios')!;
+    const notRouted = await server.inject({ method: 'POST', url: `/v1/requests/${requestId}/responses`, headers: { authorization: `Bearer ${charliePaired.token}`, 'x-agent-tick-workspace-id': shared.workspaceId }, payload: { choiceId: 'approve' } });
+    expect(notRouted.statusCode).toBe(403);
+    expect(notRouted.json()).toMatchObject({ error: { code: 'not_routed_recipient' } });
 
     const first = await server.inject({ method: 'POST', url: `/v1/requests/${requestId}/responses`, headers: { 'x-agent-tick-workspace-id': shared.workspaceId }, payload: { choiceId: 'approve' } });
     expect(first.json()).toMatchObject({ status: 'pending', quorum: { receivedResponseCount: 1, waitingFor: 1 } });

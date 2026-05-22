@@ -21,4 +21,4 @@ run(corepack, ['enable']);
 run(corepack, ['pnpm', 'install', '--frozen-lockfile']);
 run(corepack, ['pnpm', '--filter', '@self-deprecated/agent-tick', 'build']);
 
-process.stdout.write(`\nAgent Tick local setup is ready.\n\nNext steps:\n  1. Start the server: docker compose up --build\n  2. Configure the CLI: corepack pnpm --filter @self-deprecated/agent-tick exec agent-tick setup --login --server http://localhost:8787\n  3. Send a test Request: corepack pnpm --filter @self-deprecated/agent-tick exec agent-tick request --title "Test Request"\n\n`);
+process.stdout.write(`\nAgent Tick local setup is ready.\n\nNext steps:\n  1. Start the server: docker compose up --build\n  2. Configure the CLI: corepack pnpm --filter @self-deprecated/agent-tick exec agent-tick install --login --server http://localhost:8787\n  3. Send a test Request: corepack pnpm --filter @self-deprecated/agent-tick exec agent-tick sanction --title "Test Request"\n\n`);

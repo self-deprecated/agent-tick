@@ -184,4 +184,4 @@ corepack pnpm --filter @agent-tick/mobile typecheck
 corepack pnpm --filter @agent-tick/mobile test --runInBand
 ```
 
-The mobile app discovers runtime auth config, namespaces local session state by server URL, signs in with Clerk in hosted/Clerk mode, exchanges that login for an Agent Tick mobile session, and registers/unregisters devices for push flows. For the happy path, set up the CLI with `agent-tick setup --login`, then sign in to mobile with the same Clerk account before sending the first request.
+The mobile app discovers runtime auth config, namespaces local session state by server URL, signs in with Clerk in hosted/Clerk mode, exchanges that login for an Agent Tick mobile session, and registers/unregisters devices for push flows. For the happy path, set up the CLI with `agent-tick install --login`, then sign in to mobile with the same Clerk account before sending the first request.
