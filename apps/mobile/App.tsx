@@ -118,6 +118,7 @@ import {
   setDiagnosticContext,
   setDiagnosticsEnabled as saveDiagnosticsEnabled,
 } from "./diagnostics";
+import { MarkdownInlineText, MarkdownText } from "./MarkdownText";
 
 type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
 type AccountPendingState =
@@ -2968,8 +2969,8 @@ function LatestStatusCard({ statusUpdates, compact = false, dismissedStatusID, o
           ) : null}
         </View>
       </View>
-      <Text style={styles.statusMessage}>{message}</Text>
-      {nextLine ? <Text style={styles.statusNext}>{nextLine}</Text> : null}
+      <MarkdownInlineText text={message} style={styles.statusMessage} />
+      {nextLine ? <MarkdownInlineText text={nextLine} style={styles.statusNext} /> : null}
       <Text numberOfLines={1} style={styles.statusMeta}>
         {latest.agentName} · {project} · {formatRequestTime(latest.createdAt)}
       </Text>
@@ -3132,6 +3133,9 @@ export function ApprovalsScreen({
   const encrypted = isEncryptedApprovalRequest(selected);
   const decrypted = useMemo(() => decryptedApprovalPlaintext(selected, e2eeKey), [e2eeKey, selected.id, selected.encryptedPayload]);
   const encryptedLocked = encrypted && !decrypted;
+  const title = decrypted?.title ?? selected.title;
+  const body = decrypted?.body ?? selected.body;
+  const command = decrypted?.command ?? selected.command;
   const canRespond = !readOnly && !encryptedLocked && (encrypted ? true : canRespondToRequest(selected));
   const dismissChoice = encryptedDismissChoice(selected);
   const submitChoice = (choice: Choice) => {
@@ -3248,7 +3252,7 @@ export function ApprovalsScreen({
         style={styles.approvalScroll}
       >
         <LatestStatusCard statusUpdates={statusUpdates} dismissedStatusID={dismissedStatusID} onDismiss={onDismissStatus} />
-        <Text style={styles.detailTitle}>{decrypted?.title ?? selected.title}</Text>
+        <MarkdownInlineText text={title} style={styles.detailTitle} />
         {responsibility ? (
           <Text style={styles.responsibilityBadge}>{responsibility}</Text>
         ) : null}
@@ -3272,10 +3276,10 @@ export function ApprovalsScreen({
           ) : null}
         </View>
         {encryptedLocked ? <Text style={styles.errorText}>{encryptedLockMessage(selected, e2eeKey)}</Text> : null}
-        {encryptedLocked ? null : (decrypted?.body ?? selected.body) ? <Text style={styles.bodyText}>{decrypted?.body ?? selected.body}</Text> : null}
-        {(decrypted?.command ?? selected.command) ? (
+        {encryptedLocked ? null : body ? <MarkdownText selectable style={styles.markdownBody} text={body} /> : null}
+        {command ? (
           <Text selectable style={styles.commandText}>
-            {decrypted?.command ?? selected.command}
+            {command}
           </Text>
         ) : null}
         <RequestContextPanel request={selected} />
@@ -3616,12 +3620,12 @@ function HistoryDetailScreen({
       </View>
       <ScrollView contentContainerStyle={styles.historyDetailContent}>
         <Text style={styles.historyDetailType}>{historyKindLabel(request)}</Text>
-        <Text selectable style={styles.detailTitle}>{title}</Text>
+        <MarkdownInlineText selectable text={title} style={styles.detailTitle} />
         <Text style={styles.detailMeta}>
           {requestRequesterLabel(request)} · {formatRequestTime(request.createdAt)}
         </Text>
         {encryptedLocked ? <Text style={styles.errorText}>{encryptedLockMessage(request, e2eeKey)}</Text> : null}
-        {!encryptedLocked && body ? <Text selectable style={styles.bodyText}>{body}</Text> : null}
+        {!encryptedLocked && body ? <MarkdownText selectable style={styles.markdownBody} text={body} /> : null}
         {!encryptedLocked && command ? (
           <Text selectable style={styles.commandText}>{command}</Text>
         ) : null}
@@ -4356,6 +4360,9 @@ const styles = StyleSheet.create({
     color: "#202124",
     fontSize: 17,
     lineHeight: 25,
+    marginTop: 22,
+  },
+  markdownBody: {
     marginTop: 22,
   },
   commandText: {
