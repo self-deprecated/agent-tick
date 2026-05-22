@@ -3,18 +3,18 @@
 ## App metadata
 
 - App name: Agent Tick
-- Subtitle: Phone approvals for coding agents.
+- Subtitle: Phone Requests for coding agents.
 - Privacy Policy URL: https://agenttick.sh/privacy
 - Terms URL: https://agenttick.sh/terms
 - Category: Developer Tools / Productivity
 
 ## Short promotional copy
 
-Phone approvals for coding agents. Route status updates, steering, and sanctions from your local agent to your phone without turning the app into a remote shell.
+Phone Requests for coding agents. Route status updates, steering, and sanctions from your local agent to your phone without turning the app into a remote shell.
 
 ## Description
 
-Agent Tick is a least-permission approval layer for coding agents.
+Agent Tick is a least-permission Request routing layer for coding agents.
 
 Use the Agent Tick app when your local coding agent needs a bounded human response while you are away from your desk:
 
@@ -44,7 +44,7 @@ corepack pnpm --filter @agent-tick/mobile screenshots:store
 
 The export script writes generated SVGs for each scene/size and PNGs when ImageMagick `magick` is available.
 
-1. Approval request — show a Sanction with exact action context and minimal lock-screen disclosure posture.
+1. Request — show a Sanction with exact action context and minimal lock-screen disclosure posture.
 2. Steering choices — show bounded options with a recommended/favorite choice and a decline/stop option.
 3. Status Update / Activity History — show recent agent progress and session history.
 4. Hosted/self-hosted account setup — show account switcher or setup screen with hosted and self-hosted paths.
@@ -52,6 +52,6 @@ The export script writes generated SVGs for each scene/size and PNGs when ImageM
 
 ## Review notes
 
-Agent Tick routes approval decisions for local developer tools. It does not provide remote desktop, remote shell, or general device control. Push notifications are minimal by default; full request details are reviewed inside the app.
+Agent Tick routes Responses for local developer tools. It does not provide remote desktop, remote shell, or general device control. Push notifications are minimal by default; full request details are reviewed inside the app.
 
 Trial includes hosted and self-hosted app use. Lifetime app unlock is a non-consumable in-app purchase for first-party app use with self-hosted servers after trial. Hosted service is an optional auto-renewable subscription for routing, push, updates, and uptime. The MVP app does not include external payment links.

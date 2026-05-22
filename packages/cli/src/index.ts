@@ -10,8 +10,8 @@ import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, type AddHelpTextContext } from 'commander';
-import { AgentTickClient, type ApprovalRequest, type CreateApprovalResponse } from '@agent-tick/sdk';
-import { ChoiceFlagSchema, EncryptedApprovalPayloadSchema, createEncryptedApprovalPayload, generateApprovalEncryptionKey, type ChoiceFlag, type EncryptedApprovalPayload } from '@agent-tick/shared';
+import { AgentTickClient, type RequestRecord, type CreateRequestResponse } from '@agent-tick/sdk';
+import { ChoiceFlagSchema, EncryptedRequestPayloadSchema, createEncryptedRequestPayload, generateRequestEncryptionKey, type ChoiceFlag, type EncryptedRequestPayload } from '@agent-tick/shared';
 import { assertAgentToken, clientConfigPath, loadClientConfig, maskAgentToken, resolveServerAndToken, saveClientConfig } from './config.js';
 
 export const hostedAgentTickURL = 'https://app.agenttick.sh';
@@ -120,7 +120,7 @@ export function createProgram(): Command {
   hook
     .command('claude-pre-tool-use')
     .description('Claude Code PreToolUse hook for Agent Tick steering')
-    .option('--timeout <duration>', 'approval wait timeout', '30m')
+    .option('--timeout <duration>', 'Request wait timeout', '30m')
     .action(async (options: { timeout?: string }) => {
       try {
         await runClaudePreToolUseHook(options);
@@ -132,7 +132,7 @@ export function createProgram(): Command {
   hook
     .command('claude-permission-request')
     .description('Claude Code PermissionRequest hook for Agent Tick sanctions')
-    .option('--timeout <duration>', 'approval wait timeout', '30m')
+    .option('--timeout <duration>', 'Request wait timeout', '30m')
     .action(async (options: { timeout?: string }) => {
       try {
         await runClaudePermissionRequestHook(options);
@@ -143,9 +143,9 @@ export function createProgram(): Command {
 
   program
     .command('sanction')
-    .description('Create a human sanction/approval request and wait for a response')
+    .description('Create a human Sanction Request and wait for a Response')
     .allowUnknownOption(true)
-    .argument('[command...]', 'optional command to run after sanction approval')
+    .argument('[command...]', 'optional command to include in the Sanction Request')
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
     .option('--title <title>', 'sanction title')
@@ -153,8 +153,8 @@ export function createProgram(): Command {
     .option('--command <command>', 'command or action to approve without running it')
     .option('--project <name>', 'project/repository display name')
     .option('--encrypt', 'encrypt title/body/command before sending with AGENT_TICK_E2EE_KEY or --e2ee-key')
-    .option('--e2ee-key <key>', 'approval encryption key or passphrase [env: AGENT_TICK_E2EE_KEY]')
-    .option('--generate-e2ee-key', 'print a new high-entropy approval encryption key and exit')
+    .option('--e2ee-key <key>', 'Request encryption key or passphrase [env: AGENT_TICK_E2EE_KEY]')
+    .option('--generate-e2ee-key', 'print a new high-entropy Request encryption key and exit')
     .option('--encrypted-payload-json <json>', 'opaque end-to-end encrypted request envelope JSON')
     .option('--encrypted-payload-file <path>', 'read opaque end-to-end encrypted request envelope JSON from a file')
     .option('--choice-flag <choice=flag>', 'default sanction choice UI flag, repeatable: approve=production|reject=favorite|...', collectOption, [])
@@ -164,7 +164,7 @@ export function createProgram(): Command {
     .addHelpText('after', sanctionHelpText)
     .action(async (commandParts: string[], options: RequestOptions) => {
       if (options.generateE2eeKey) {
-        process.stdout.write(`${generateApprovalEncryptionKey()}\n`);
+        process.stdout.write(`${generateRequestEncryptionKey()}\n`);
         return;
       }
       const commandText = commandParts.length ? commandParts.join(' ') : options.command;
@@ -206,7 +206,7 @@ export function createProgram(): Command {
         throw cliUsageError('steering', error instanceof Error ? error.message : String(error));
       }
       const { client, server } = await clientFromOptions(options);
-      const created = await createAndMaybeWait(client, server, { ...options, hookChoices: choices });
+      const created = await createAndMaybeWait(client, server, { ...options, requestType: 'steering', hookChoices: choices });
       process.exitCode = exitCodeForRequest(created);
     });
 
@@ -245,7 +245,7 @@ export function createProgram(): Command {
         nextStep: options.next,
         host: os.hostname() || undefined,
         workingDirectory: process.cwd(),
-        projectName: options.project ?? path.basename(process.cwd()),
+        clientName: options.project ?? path.basename(process.cwd()),
         metadata: statusUpdateMetadata(options)
       });
       if (options.json) process.stdout.write(`${JSON.stringify({ event: 'status_update', statusUpdate: update })}\n`);
@@ -254,19 +254,19 @@ export function createProgram(): Command {
 
   program
     .command('abandon')
-    .description('Abandon a pending approval request')
-    .argument('<request-id>', 'approval request ID')
+    .description('Resolve a pending Request')
+    .argument('<request-id>', 'Request ID')
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
     .option('--json', 'print machine-readable JSON')
     .addHelpText('after', abandonHelpText)
     .action(async (requestId: string, options: ClientOptions & { json?: boolean }) => {
       const { client } = await clientFromOptions(options);
-      const abandoned = await client.abandonApproval(requestId);
+      const abandoned = await client.abandonRequest(requestId);
       if (options.json) {
         process.stdout.write(`${JSON.stringify({ event: 'abandoned', request: abandoned })}\n`);
       } else {
-        process.stdout.write(`abandoned approval request ${abandoned.id}\n`);
+        process.stdout.write(`resolved request ${abandoned.id}\n`);
       }
     });
 
@@ -875,11 +875,11 @@ function installPlanForTarget(target: InstallTarget, claudeConfig?: ClaudeInstal
     };
   }
   if (target === 'pi') {
-    const extensionPath = path.join(os.homedir(), '.pi', 'agent', 'extensions', 'agent-tick-approval.ts');
+    const extensionPath = path.join(os.homedir(), '.pi', 'agent', 'extensions', 'agent-tick-sanction.ts');
     return {
       target,
       status: 'enabled',
-      description: `install Pi tool_call approval extension in ${extensionPath}`,
+      description: `install Pi tool_call Sanction Request extension in ${extensionPath}`,
       apply: () => installPackagedPiExtension(extensionPath)
     };
   }
@@ -1049,7 +1049,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 async function installPackagedPiExtension(extensionPath: string): Promise<void> {
-  const source = await fs.readFile(packagedAssetPath('pi/agent-tick-approval.ts'), 'utf8');
+  const source = await fs.readFile(packagedAssetPath('pi/agent-tick-sanction.ts'), 'utf8');
   await writeFileEnsuringDir(extensionPath, source);
 }
 
@@ -1059,7 +1059,7 @@ function packagedAssetPath(relativePath: string): string {
 
 export function agentInstructionBlock(target: string = 'agent'): string {
   const title = target === 'pi' ? '---\nname: agent-tick\ndescription: Use Agent Tick for status updates, steering, and sanctions.\n---\n\n# Agent Tick human loop' : '# Agent Tick human loop';
-  return `${title}\n\nThis machine is connected to Agent Tick. Use the product language directly: status updates, steering, and sanctions.\n\nFor sanctions before risky, destructive, expensive, production, data-accessing, or dependency-installing actions:\n\n\`\`\`sh\nagent-tick sanction --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nFor a command that should run only after sanction approval:\n\n\`\`\`sh\nagent-tick sanction -- <command and args>\n\`\`\`\n\nFor structured choices that steer the work:\n\n\`\`\`sh\nagent-tick steering --title "Which approach?" --choice option_a="Option A" --choice cancel:deny="Cancel"\n\`\`\`\n\nFor non-blocking progress updates:\n\n\`\`\`sh\nagent-tick status-update --state working "Finished edits; validating now"\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in titles, bodies, commands, or status update messages.\n`;
+  return `${title}\n\nThis machine is connected to Agent Tick. Use the product language directly: status updates, steering, and sanctions.\n\nFor sanctions before risky, destructive, expensive, production, data-accessing, or dependency-installing actions:\n\n\`\`\`sh\nagent-tick sanction --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nFor a command that should run only after a granted Sanction Request:\n\n\`\`\`sh\nagent-tick sanction -- <command and args>\n\`\`\`\n\nFor structured choices that steer the work:\n\n\`\`\`sh\nagent-tick steering --title "Which approach?" --choice option_a="Option A" --choice cancel:deny="Cancel"\n\`\`\`\n\nFor non-blocking progress updates:\n\n\`\`\`sh\nagent-tick status-update --state working "Finished edits; validating now"\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in titles, bodies, commands, or status update messages.\n`;
 }
 
 async function appendInstallBlock(filePath: string, block: string): Promise<void> {
@@ -1122,7 +1122,7 @@ async function runClaudePermissionRequestHook(options: { timeout?: string }): Pr
     }
   }
   const command = claudePermissionRequestCommand(input);
-  const finalRequest = await createHookApproval({
+  const finalRequest = await createHookRequest({
     title: `Approve Claude Code ${toolName}?`,
     body: claudePermissionRequestBody(input),
     ...(command ? { command } : {}),
@@ -1156,7 +1156,7 @@ async function answerClaudeQuestion(question: Record<string, unknown>, questionT
   const optionsList = Array.isArray(question.options) ? question.options.filter(isPlainObject) : [];
   const multiSelect = question.multiSelect === true;
   const choices = multiSelect ? multiSelectChoices(optionsList) : singleSelectChoices(optionsList);
-  const finalRequest = await createHookApproval({
+  const finalRequest = await createHookRequest({
     title: questionText,
     body: claudeQuestionBody([question]),
     choices: choices.choices,
@@ -1201,7 +1201,7 @@ async function shouldRouteClaudeCapability(capability: 'steering' | 'sanctions')
   return state.mode === 'afk';
 }
 
-async function createHookApproval(options: { title: string; body?: string; command?: string; timeout?: string; choices?: Array<{ id: string; label: string; kind: string }> }): Promise<ApprovalRequest> {
+async function createHookRequest(options: { title: string; body?: string; command?: string; timeout?: string; choices?: Array<{ id: string; label: string; kind: string }> }): Promise<RequestRecord> {
   const { client, server } = await clientFromOptions({});
   return createAndMaybeWait(client, server, {
     title: options.title,
@@ -1346,12 +1346,12 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
   },
   {
     name: 'agent_tick_sanction',
-    description: 'Create a sanction/approval request and wait for the human response by default.',
+    description: 'Create a Sanction Request and wait for the human Response by default.',
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'Approval title. Do not include secrets.' },
-        body: { type: 'string', description: 'Approval context. Do not include secrets.' },
+        title: { type: 'string', description: 'Request title. Do not include secrets.' },
+        body: { type: 'string', description: 'Request context. Do not include secrets.' },
         command: { type: 'string', description: 'Optional command/action being approved.' },
         projectName: { type: 'string', description: 'Optional project display name.' },
         timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' },
@@ -1500,7 +1500,7 @@ async function callMcpStatusUpdate(args: Record<string, unknown>, client: AgentT
     nextStep: optionalString(args.nextStep),
     host: os.hostname() || undefined,
     workingDirectory: process.cwd(),
-    projectName: optionalString(args.projectName) ?? path.basename(process.cwd()),
+    clientName: optionalString(args.projectName) ?? path.basename(process.cwd()),
     metadata: statusUpdateMetadata({
       metadata: metadataEntriesFromRecord(optionalStringRecord(args.metadata)),
       importance: optionalString(args.importance),
@@ -1518,6 +1518,7 @@ async function callMcpSanction(args: Record<string, unknown>, client: AgentTickC
   const options: RequestOptions = {
     title,
     timeout: optionalString(args.timeout) ?? '30m',
+    requestType: 'sanction',
     choice: [],
     silent: true
   };
@@ -1541,7 +1542,7 @@ async function callMcpSanction(args: Record<string, unknown>, client: AgentTickC
   if (localMode === 'only') return mcpTextResult('Local MCP elicitation is not available or was rejected by the client.', true);
 
   const request = await createAndMaybeWait(client, server, options);
-  return mcpTextResult(mcpApprovalSummary(request), exitCodeForRequest(request) !== 0);
+  return mcpTextResult(mcpRequestSummary(request), exitCodeForRequest(request) !== 0);
 }
 
 async function callMcpSteering(args: Record<string, unknown>, client: AgentTickClient, server: string, context: McpRequestContext): Promise<unknown> {
@@ -1555,6 +1556,7 @@ async function callMcpSteering(args: Record<string, unknown>, client: AgentTickC
   const options: RequestOptions = {
     title,
     timeout: optionalString(args.timeout) ?? '30m',
+    requestType: 'steering',
     choice: [],
     hookChoices,
     silent: true
@@ -1578,7 +1580,7 @@ async function callMcpSteering(args: Record<string, unknown>, client: AgentTickC
   if (localMode === 'only') return mcpTextResult('Local MCP elicitation is not available or was rejected by the client.', true);
 
   const request = await createAndMaybeWait(client, server, options);
-  return mcpTextResult(mcpApprovalSummary(request), exitCodeForRequest(request) !== 0);
+  return mcpTextResult(mcpRequestSummary(request), exitCodeForRequest(request) !== 0);
 }
 
 async function raceMcpLocalAndRemote(
@@ -1587,8 +1589,8 @@ async function raceMcpLocalAndRemote(
   server: string,
   options: RequestOptions
 ): Promise<{ text: string; isError?: boolean }> {
-  const created = await createApprovalRequestFromOptions(client, options);
-  const remotePromise = waitForCreatedApproval(client, server, created, options)
+  const created = await createRequestFromOptions(client, options);
+  const remotePromise = waitForCreatedRequest(client, server, created, options)
     .then((request) => ({ source: 'remote' as const, request }))
     .catch((error: unknown) => ({ source: 'remote_error' as const, error }));
   const localPromise = localRequest()
@@ -1596,16 +1598,16 @@ async function raceMcpLocalAndRemote(
     .catch(() => ({ source: 'local' as const, local: undefined }));
 
   const winner = await Promise.race([remotePromise, localPromise]);
-  if (winner.source === 'remote') return { text: mcpApprovalSummary(winner.request), isError: exitCodeForRequest(winner.request) !== 0 };
+  if (winner.source === 'remote') return { text: mcpRequestSummary(winner.request), isError: exitCodeForRequest(winner.request) !== 0 };
   if (winner.source === 'remote_error') throw winner.error instanceof Error ? winner.error : new Error(String(winner.error));
   if (!winner.local) {
     const result = await remotePromise;
     if (result.source === 'remote_error') throw result.error instanceof Error ? result.error : new Error(String(result.error));
     const request = result.request;
-    return { text: mcpApprovalSummary(request), isError: exitCodeForRequest(request) !== 0 };
+    return { text: mcpRequestSummary(request), isError: exitCodeForRequest(request) !== 0 };
   }
 
-  await client.abandonApproval(created.request.id).catch(() => undefined);
+  await client.abandonRequest(created.request.id).catch(() => undefined);
   return winner.local;
 }
 
@@ -1678,9 +1680,9 @@ function localElicitationMode(value: unknown): 'auto' | 'off' | 'only' {
   return 'auto';
 }
 
-function mcpApprovalSummary(request: ApprovalRequest): string {
+function mcpRequestSummary(request: RequestRecord): string {
   const choice = request.response?.choiceId ?? request.response?.message ?? request.status;
-  return `Approval request ${request.id} is ${request.status}: ${choice}`;
+  return `Request ${request.id} is ${request.status}: ${choice}`;
 }
 
 function mcpTextResult(text: string, isError?: boolean): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
@@ -1769,42 +1771,43 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8') || '{}';
 }
 
-async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<ApprovalRequest> {
-  const created = await createApprovalRequestFromOptions(client, options);
-  return waitForCreatedApproval(client, server, created, options);
+async function createAndMaybeWait(client: AgentTickClient, server: string, options: RequestOptions): Promise<RequestRecord> {
+  const created = await createRequestFromOptions(client, options);
+  return waitForCreatedRequest(client, server, created, options);
 }
 
-async function createApprovalRequestFromOptions(client: AgentTickClient, options: RequestOptions): Promise<CreateApprovalResponse> {
+async function createRequestFromOptions(client: AgentTickClient, options: RequestOptions): Promise<CreateRequestResponse> {
   const choices = options.hookChoices ?? parseRequestChoices(options);
   const encryptedPayload = await encryptedPayloadFromOptions(options);
-  const created = await client.createApprovalRequest({
+  const created = await client.createRequest({
     requester: {
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
       host: os.hostname(),
       workingDirectory: process.cwd(),
-      projectName: options.project ?? path.basename(process.cwd())
+      clientName: options.project ?? path.basename(process.cwd())
     },
-    title: encryptedPayload ? 'Encrypted approval request' : options.title,
+    title: encryptedPayload ? 'Encrypted request' : options.title,
     ...(encryptedPayload ? { body: 'Open Agent Tick to decrypt this request.' } : options.body ? { body: options.body } : {}),
     ...(encryptedPayload || !options.command ? {} : { command: options.command }),
     ...(encryptedPayload ? { encryptedPayload } : {}),
+    requestType: options.requestType ?? 'sanction',
     ...(choices.length ? { choices } : {})
   });
   const request = created.request;
   if (encryptedPayload && !request.encryptedPayload) {
-    await client.abandonApproval(request.id).catch(() => undefined);
+    await client.abandonRequest(request.id).catch(() => undefined);
     throw new Error('Server did not preserve encryptedPayload. Upgrade/restart the Agent Tick server before using --encrypt. The placeholder request was abandoned.');
   }
   return created;
 }
 
-async function waitForCreatedApproval(client: AgentTickClient, server: string, created: CreateApprovalResponse, options: RequestOptions): Promise<ApprovalRequest> {
+async function waitForCreatedRequest(client: AgentTickClient, server: string, created: CreateRequestResponse, options: RequestOptions): Promise<RequestRecord> {
   const request = created.request;
   if (!options.silent) {
     if (options.json) {
       process.stdout.write(`${JSON.stringify({ event: 'created', request, waiter: created.waiter })}\n`);
     } else {
-      process.stdout.write(`created approval request ${request.id}: ${request.title}\n`);
+      process.stdout.write(`created request ${request.id}: ${request.title}\n`);
     }
   }
 
@@ -1812,26 +1815,26 @@ async function waitForCreatedApproval(client: AgentTickClient, server: string, c
   if (timeoutMs === 0) return request;
 
   const waitClient = created.waiter ? new AgentTickClient({ baseUrl: server, tokenProvider: () => created.waiter?.token }) : client;
-  const waited = await waitClient.waitForApproval(request.id, { timeoutMs });
+  const waited = await waitClient.waitForRequest(request.id, { timeoutMs });
   if (!options.silent) {
     if (options.json) {
       process.stdout.write(`${JSON.stringify({ event: waited.terminal ? 'terminal' : 'timeout', ...waited })}\n`);
     } else if (!waited.terminal) {
-      process.stderr.write(`timed out waiting for approval request ${request.id}\n`);
+      process.stderr.write(`timed out waiting for request ${request.id}\n`);
     } else {
       const choice = waited.request.response?.choiceId ?? waited.request.response?.message ?? waited.request.status;
-      process.stdout.write(`approval request ${request.id} completed: ${choice}\n`);
+      process.stdout.write(`request ${request.id} completed: ${choice}\n`);
     }
   }
   return waited.request;
 }
 
-async function encryptedPayloadFromOptions(options: RequestOptions): Promise<EncryptedApprovalPayload | undefined> {
+async function encryptedPayloadFromOptions(options: RequestOptions): Promise<EncryptedRequestPayload | undefined> {
   if (options.encrypt) {
     if (options.encryptedPayloadJson || options.encryptedPayloadFile) throw new Error('use either --encrypt or an existing encrypted payload, not both');
     const key = options.e2eeKey ?? process.env.AGENT_TICK_E2EE_KEY;
     if (!key) throw new Error('--encrypt requires --e2ee-key/--e2ee-passphrase or AGENT_TICK_E2EE_KEY');
-    return createEncryptedApprovalPayload({
+    return createEncryptedRequestPayload({
       title: options.title,
       ...(options.body ? { body: options.body } : {}),
       ...(options.command ? { command: options.command } : {})
@@ -1840,20 +1843,20 @@ async function encryptedPayloadFromOptions(options: RequestOptions): Promise<Enc
   return readEncryptedPayloadOption(options);
 }
 
-async function readEncryptedPayloadOption(options: RequestOptions): Promise<EncryptedApprovalPayload | undefined> {
+async function readEncryptedPayloadOption(options: RequestOptions): Promise<EncryptedRequestPayload | undefined> {
   if (options.encryptedPayloadJson && options.encryptedPayloadFile) {
     throw new Error('use either --encrypted-payload-json or --encrypted-payload-file, not both');
   }
   const raw = options.encryptedPayloadJson ?? (options.encryptedPayloadFile ? await fs.readFile(options.encryptedPayloadFile, 'utf8') : undefined);
   if (!raw) return undefined;
   try {
-    return EncryptedApprovalPayloadSchema.parse(JSON.parse(raw));
+    return EncryptedRequestPayloadSchema.parse(JSON.parse(raw));
   } catch (error) {
     throw new Error(`invalid encrypted payload JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function exitCodeForRequest(request: ApprovalRequest): number {
+function exitCodeForRequest(request: RequestRecord): number {
   if (request.status === 'pending') return 0;
   if (request.status !== 'responded') return 1;
   const choiceId = request.response?.choiceId;
@@ -2066,6 +2069,7 @@ interface RequestOptions extends ClientOptions {
   choiceFlag?: string[];
   choiceTag?: string[];
   hookChoices?: ChoiceInput[];
+  requestType?: 'steering' | 'sanction';
   timeout?: string;
   json?: boolean;
   silent?: boolean;

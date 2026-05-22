@@ -19,7 +19,7 @@ describe("mobile event streams", () => {
     const client = {
       pollEvents: jest.fn(async () => {
         if (client.pollEvents.mock.calls.length === 1) {
-          return { events: [{ eventId: 6, type: "approval.created", targetId: "req_123", createdAt: "2026-01-01T00:00:00.000Z" }], nextEventId: 6 };
+          return { events: [{ eventId: 6, type: "request.created", targetId: "req_123", createdAt: "2026-01-01T00:00:00.000Z" }], nextEventId: 6 };
         }
         secondPollStarted = true;
         return pendingPoll;
@@ -41,7 +41,7 @@ describe("mobile event streams", () => {
     expect(subscription.supported).toBe(true);
     expect(client.pollEvents).toHaveBeenCalledWith(expect.objectContaining({ lastEventId: 5, timeoutMs: 25000, signal: expect.any(AbortSignal) }));
     expect(client.pollEvents).toHaveBeenLastCalledWith(expect.objectContaining({ lastEventId: 6, timeoutMs: 25000, signal: expect.any(AbortSignal) }));
-    expect(auditEvents).toEqual([{ eventId: 6, type: "approval.created", targetId: "req_123", createdAt: "2026-01-01T00:00:00.000Z" }]);
+    expect(auditEvents).toEqual([{ eventId: 6, type: "request.created", targetId: "req_123", createdAt: "2026-01-01T00:00:00.000Z" }]);
     expect(statuses).toContain("connecting");
     expect(statuses).toContain("open");
     expect(secondPollStarted).toBe(true);

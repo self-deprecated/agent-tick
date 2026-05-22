@@ -1,13 +1,13 @@
 {
   "product": "Agent Tick",
-  "subtitle": "Phone approvals for coding agents",
+  "subtitle": "Phone Requests for coding agents",
   "scenes": [
     {
       "id": "01-sanction",
       "headline": "Approve risky actions from your phone",
       "kicker": "Sanction",
       "screenTitle": "Production deploy",
-      "body": "Deploy api@6f57b86 to production? Rollback plan and runbook are linked before approval.",
+      "body": "Deploy api@6f57b86 to production? Rollback plan and runbook are linked before Response.",
       "primaryAction": "Approve deploy",
       "secondaryAction": "Deny",
       "badges": ["production", "time sensitive", "audit relevant"],
@@ -29,7 +29,7 @@
       "headline": "See progress while you are AFK",
       "kicker": "Activity History",
       "screenTitle": "Agent progress",
-      "body": "Tests finished. Waiting on approval before publishing the release. Previous updates stay easy to review.",
+      "body": "Tests finished. Waiting on Response before publishing the release. Previous updates stay easy to review.",
       "primaryAction": "Open request",
       "secondaryAction": "Archive",
       "badges": ["status update", "history", "local context"],
@@ -44,7 +44,7 @@
       "primaryAction": "Use agenttick.sh",
       "secondaryAction": "Use self-hosted server",
       "badges": ["source available", "self-hostable", "mobile first"],
-      "footer": "One app supports hosted and self-hosted teams."
+      "footer": "One app supports hosted and self-hosted Workspaces."
     },
     {
       "id": "05-paywall",

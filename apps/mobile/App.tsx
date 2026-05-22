@@ -50,34 +50,34 @@ import {
 import {
   buildQuestionnaireAnswers,
   canRespondToRequest,
-  groupRequestsByProject,
-  isEncryptedApprovalRequest,
+  groupRequestsBySource,
+  isEncryptedRequest,
   isQuestionnaireRequest,
-  normalizeApproval,
-  normalizeApprovals,
-  policyProgressMessage,
+  normalizeRequest,
+  normalizeRequests,
+  quorumProgressMessage,
   questionnaireReady,
   requestCommandDetails,
   requestAgentLabel,
   requestOwnerLabel,
-  requestPolicySummary,
-  requestProjectID,
-  requestProjectLabel,
+  requestQuorumSummary,
+  requestSourceID,
+  requestSourceLabel,
   requestRequesterLabel,
   requestResponsibilityLabel,
   requestStatusLabel,
-  requestTargetTeamLabel,
-  requestVoteHistory,
+  requestRoutingLabel,
+  requestResponseHistory,
   updateQuestionnaireAnswers,
   shouldScheduleLocalNotifications,
-  type ApprovalRequest,
-  type Choice,
-} from "./approvalRequests";
+  type MobileRequest,
+  type RequestChoice as Choice,
+} from "./requests";
 import { NativePaywall } from "./NativePaywall";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ChoiceInteractionMode, ConnectionStatus, NotificationStatus, OptionPlacement, PushStatus } from "./SettingsScreen";
-import { AgentTickClient, type AgentStatusUpdate, type MeResponse, type OrganizationMembership } from "@agent-tick/sdk";
-import { decryptApprovalPayload, type PersonalBillingStatus } from "@agent-tick/shared";
+import { AgentTickClient, type StatusUpdateRecord, type MeResponse, type WorkspaceMemberRecord } from "@agent-tick/sdk";
+import { decryptRequestPayload, type PersonalBillingStatus } from "@agent-tick/shared";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
   fetchRuntimeAuthConfig,
@@ -129,17 +129,17 @@ type AccountPendingState =
 
 const defaultServer = hostedServerURL;
 const LinguiText = ({ children }: TransRenderProps) => <Text>{children}</Text>;
-const approvalCategoryID = "approval-request";
-const approvalChannelID = "approval-requests";
+const requestCategoryID = "agent-tick-request";
+const requestChannelID = "agent-tick-requests";
 const agentTickMobileSessionJwtKey = "__agent_tick_mobile_session_jwt";
 const mobileInstallationIDStorageKey = "agent-tick.mobileInstallationID";
-const approvalChoiceInteractionModeStorageKey = "agent-tick.approvalChoiceInteractionMode";
-const approvalOptionPlacementStorageKey = "agent-tick.approvalOptionPlacement";
-const approvalConfirmBeforeSubmitStorageKey = "agent-tick.approvalConfirmBeforeSubmit";
+const requestChoiceInteractionModeStorageKey = "agent-tick.requestChoiceInteractionMode";
+const requestOptionPlacementStorageKey = "agent-tick.requestOptionPlacement";
+const requestConfirmBeforeSubmitStorageKey = "agent-tick.requestConfirmBeforeSubmit";
 const nativeAppFirstOpenedAtStorageKey = "agent-tick.nativeApp.firstOpenedAt";
 
-function dismissedAgentStatusStorageKey(serverURL: string, organizationID: string): string {
-  const orgScope = organizationID.trim() || "default";
+function dismissedAgentStatusStorageKey(serverURL: string, workspaceID: string): string {
+  const orgScope = workspaceID.trim() || "default";
   return `agent-tick.dismissedStatusID.${encodeURIComponent(normalizeServerURL(serverURL))}.${encodeURIComponent(orgScope)}`;
 }
 
@@ -449,7 +449,7 @@ function ClerkBoundApp(props: AgentTickAppProps) {
       recordDiagnostic("info", "auth", "create_mobile_session_start", { addingClerkAccount });
       const session = await client.createMobileSession({ clerkToken: clerkLoginToken });
       if (cancelled) return;
-      recordDiagnostic("info", "auth", "create_mobile_session_success", { userID: session.userId, organizationID: session.organizationId, role: session.role, addingClerkAccount });
+      recordDiagnostic("info", "auth", "create_mobile_session_success", { userID: session.userId, workspaceID: session.workspaceId, role: session.role, addingClerkAccount });
       refreshedMobileSessionFromClerk.current = true;
       setUsingSavedMobileAccount(false);
       setAddingClerkAccount(false);
@@ -750,7 +750,7 @@ function AgentTickApp({
   onForgetClerkSession?: (options?: { reopenSignIn?: boolean }) => void;
   onSelectSavedClerkAccount?: (account: SavedMobileAccount) => Promise<"selected" | "reauth_started" | "missing">;
 }) {
-  const [screen, setScreen] = useState<Screen>("approvals");
+  const [screen, setScreen] = useState<Screen>("requests");
   const [menuOpen, setMenuOpen] = useState(false);
   const [serverURL, setServerURL] = useState(initialServerURL ?? defaultServer);
   const [runtimeAuthConfig, setRuntimeAuthConfig] = useState<RuntimeAuthConfig | null>(initialAuthConfig ?? null);
@@ -759,18 +759,18 @@ function AgentTickApp({
   const [e2eeKey, setE2eeKey] = useState("");
   const [e2eeFocusToken, setE2eeFocusToken] = useState(0);
   const [pairingCode, setPairingCode] = useState("");
-  const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceMemberRecord[]>([]);
   const [currentAccountProfile, setCurrentAccountProfile] = useState<MeResponse | null>(null);
-  const [selectedOrganizationID, setSelectedOrganizationID] = useState("");
+  const [selectedWorkspaceID, setSelectedWorkspaceID] = useState("");
   const [savedAccounts, setSavedAccounts] = useState<SavedMobileAccount[]>([]);
-  const [requests, setRequests] = useState<ApprovalRequest[]>([]);
-  const [statusUpdates, setStatusUpdates] = useState<AgentStatusUpdate[]>([]);
+  const [requests, setRequests] = useState<MobileRequest[]>([]);
+  const [statusUpdates, setStatusUpdates] = useState<StatusUpdateRecord[]>([]);
   const [dismissedStatusID, setDismissedStatusID] = useState<string | null>(null);
   const [dismissedStatusScope, setDismissedStatusScope] = useState("");
-  const [history, setHistory] = useState<ApprovalRequest[]>([]);
+  const [history, setHistory] = useState<MobileRequest[]>([]);
   const [accountPending, setAccountPending] = useState<Record<string, AccountPendingState>>({});
   const [selectedID, setSelectedID] = useState<string | null>(null);
-  const [selectedProjectID, setSelectedProjectID] = useState<string | null>(null);
+  const [selectedSourceID, setSelectedSourceID] = useState<string | null>(null);
   const [notificationTargetID, setNotificationTargetID] = useState<string | null>(
     null,
   );
@@ -811,21 +811,21 @@ function AgentTickApp({
   const lastClerkPushRegistrationKey = useRef("");
   const lastHostedExpiryAlertKey = useRef("");
 
-  const dismissedStatusScopeKey = `${normalizeServerURL(serverURL)}:${selectedOrganizationID || "default"}`;
+  const dismissedStatusScopeKey = `${normalizeServerURL(serverURL)}:${selectedWorkspaceID || "default"}`;
   const visibleDismissedStatusID = dismissedStatusScope === dismissedStatusScopeKey ? dismissedStatusID : statusUpdates[0]?.statusId ?? null;
-  const projectGroups = useMemo(() => groupRequestsByProject(requests), [requests]);
+  const sourceGroups = useMemo(() => groupRequestsBySource(requests), [requests]);
   const visibleRequests = useMemo(
-    () => filterRequestsByProject(requests, selectedProjectID),
-    [requests, selectedProjectID],
+    () => filterRequestsBySource(requests, selectedSourceID),
+    [requests, selectedSourceID],
   );
-  const selectedOrganization = organizations.find((organization) => organization.organizationId === selectedOrganizationID);
+  const selectedWorkspace = workspaces.find((workspace) => workspace.workspaceId === selectedWorkspaceID);
   const currentAccountContext = useMemo(() => ({
     authProvider: runtimeAuthConfig?.authProvider,
     currentAccountProfile,
     deviceID,
-    selectedOrganizationID,
+    selectedWorkspaceID,
     serverURL,
-  }), [currentAccountProfile, deviceID, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL]);
+  }), [currentAccountProfile, deviceID, runtimeAuthConfig?.authProvider, selectedWorkspaceID, serverURL]);
   const otherAccounts = useMemo(
     () => savedAccounts.filter((account) => !isCurrentSavedAccount(account, currentAccountContext)),
     [currentAccountContext, savedAccounts],
@@ -884,15 +884,15 @@ function AgentTickApp({
       new AgentTickClient({
         baseUrl: serverURL,
         tokenProvider: async () => (await currentAuthToken()) || null,
-        organizationIdProvider: () => selectedOrganizationID || null,
+        workspaceIdProvider: () => selectedWorkspaceID || null,
       }),
-    [currentAuthToken, selectedOrganizationID, serverURL],
+    [currentAuthToken, selectedWorkspaceID, serverURL],
   );
-  const hasRequestAuth = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(selectedOrganizationID) : Boolean(token);
+  const hasRequestAuth = runtimeAuthConfig?.authProvider === "clerk" ? Boolean(selectedWorkspaceID) : Boolean(token);
 
   useEffect(() => {
     setRealtimeUnavailable(false);
-  }, [selectedOrganizationID, serverURL]);
+  }, [selectedWorkspaceID, serverURL]);
 
   useEffect(() => {
     setDiagnosticContext({
@@ -907,7 +907,7 @@ function AgentTickApp({
       hasToken: Boolean(token),
       hasDeviceID: Boolean(deviceID),
       deviceID: deviceID || undefined,
-      selectedOrganizationID: selectedOrganizationID || undefined,
+      selectedWorkspaceID: selectedWorkspaceID || undefined,
       currentUserID: currentAccountProfile?.userId,
       currentUserEmail: currentAccountProfile?.email,
       currentSignInMethod: currentAccountProfile?.signInMethod,
@@ -915,14 +915,14 @@ function AgentTickApp({
       savedAccountCount: savedAccounts.length,
       savedAccountIDs: savedAccounts.map((account) => account.id),
       ...(clerkDebugState ?? {}),
-      organizationCount: organizations.length,
+      workspaceCount: workspaces.length,
       requestCount: requests.length,
       pendingRequestCount: requests.filter((request) => request.status === "pending").length,
       selectedRequestID: selectedID || undefined,
-      selectedProjectID: selectedProjectID || undefined,
+      selectedSourceID: selectedSourceID || undefined,
       errorMessage: error ?? undefined,
     });
-  }, [clerkDebugState, connectionStatus, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.source, currentAccountProfile?.userId, deviceID, error, hasRequestAuth, notificationStatus, notificationsEnabled, organizations.length, pushStatus, requests, runtimeAuthConfig?.authProvider, savedAccounts, screen, selectedID, selectedOrganizationID, selectedProjectID, settingsLoaded, token]);
+  }, [clerkDebugState, connectionStatus, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.source, currentAccountProfile?.userId, deviceID, error, hasRequestAuth, notificationStatus, notificationsEnabled, workspaces.length, pushStatus, requests, runtimeAuthConfig?.authProvider, savedAccounts, screen, selectedID, selectedWorkspaceID, selectedSourceID, settingsLoaded, token]);
 
   useEffect(() => {
     const previousScreen = previousScreenRef.current;
@@ -933,12 +933,12 @@ function AgentTickApp({
       to: screen,
       pendingRequestCount: requests.length,
       hasSelectedRequest: Boolean(selectedID),
-      hasSelectedProject: Boolean(selectedProjectID),
-      hasSelectedOrganization: Boolean(selectedOrganizationID),
+      hasSelectedSource: Boolean(selectedSourceID),
+      hasSelectedWorkspace: Boolean(selectedWorkspaceID),
       connectionStatus,
     });
     setDiagnosticsEventCount(diagnosticEvents().length);
-  }, [connectionStatus, requests.length, screen, selectedID, selectedOrganizationID, selectedProjectID]);
+  }, [connectionStatus, requests.length, screen, selectedID, selectedWorkspaceID, selectedSourceID]);
 
   useEffect(() => {
     let cancelled = false;
@@ -948,9 +948,9 @@ function AgentTickApp({
         const savedServerURL = (await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer;
         const savedAccountJSON = await AsyncStorage.getItem(mobileAccountsStorageKey);
         const savedE2EEKey = await AsyncStorage.getItem("agent-tick.e2eeKey");
-        const savedChoiceInteractionMode = await AsyncStorage.getItem(approvalChoiceInteractionModeStorageKey);
-        const savedOptionPlacement = await AsyncStorage.getItem(approvalOptionPlacementStorageKey);
-        const savedConfirmBeforeSubmit = await AsyncStorage.getItem(approvalConfirmBeforeSubmitStorageKey);
+        const savedChoiceInteractionMode = await AsyncStorage.getItem(requestChoiceInteractionModeStorageKey);
+        const savedOptionPlacement = await AsyncStorage.getItem(requestOptionPlacementStorageKey);
+        const savedConfirmBeforeSubmit = await AsyncStorage.getItem(requestConfirmBeforeSubmitStorageKey);
         let firstOpenedAt = await AsyncStorage.getItem(nativeAppFirstOpenedAtStorageKey);
         if (!firstOpenedAt) {
           firstOpenedAt = new Date().toISOString();
@@ -1002,7 +1002,7 @@ function AgentTickApp({
       const entries = await AsyncStorage.multiGet([
         scopedKeys.token,
         scopedKeys.deviceID,
-        scopedKeys.organizationID,
+        scopedKeys.workspaceID,
         scopedKeys.pushStatus,
         scopedKeys.notificationsEnabled,
       ]);
@@ -1012,7 +1012,7 @@ function AgentTickApp({
       const entryValue = (key: string) => entries.find(([entryKey]) => entryKey === key)?.[1];
       setToken(entryValue(scopedKeys.token) ?? "");
       setDeviceID(entryValue(scopedKeys.deviceID) ?? "");
-      setSelectedOrganizationID(runtimeAuthConfig?.authProvider === "clerk" ? "" : entryValue(scopedKeys.organizationID) ?? "");
+      setSelectedWorkspaceID(runtimeAuthConfig?.authProvider === "clerk" ? "" : entryValue(scopedKeys.workspaceID) ?? "");
       const savedPushStatus = entryValue(scopedKeys.pushStatus);
       setPushStatus(isPushStatus(savedPushStatus) ? savedPushStatus : "idle");
       setNotificationsEnabled(entryValue(scopedKeys.notificationsEnabled) !== "false");
@@ -1035,14 +1035,14 @@ function AgentTickApp({
     });
     void refreshNotificationStatus(setNotificationStatus);
     if (Platform.OS === "android") {
-      void Notifications.setNotificationChannelAsync(approvalChannelID, {
-        name: "Approval requests",
+      void Notifications.setNotificationChannelAsync(requestChannelID, {
+        name: "Requests",
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         sound: "default",
       }).catch(() => undefined);
     }
-    void Notifications.setNotificationCategoryAsync(approvalCategoryID, []).catch(() => undefined);
+    void Notifications.setNotificationCategoryAsync(requestCategoryID, []).catch(() => undefined);
   }, []);
 
   const loadRef = useRef<((options?: { visible?: boolean }) => Promise<void>) | null>(null);
@@ -1086,9 +1086,9 @@ function AgentTickApp({
             return "";
           });
         } else {
-          setOrganizations([]);
+          setWorkspaces([]);
           setCurrentAccountProfile(null);
-          setSelectedOrganizationID("");
+          setSelectedWorkspaceID("");
         }
       } catch {
         if (!cancelled) {
@@ -1114,7 +1114,7 @@ function AgentTickApp({
       [serverURLStorageKey, activeServerURL],
       [scopedKeys.token, token],
       [scopedKeys.deviceID, deviceID],
-      [scopedKeys.organizationID, runtimeAuthConfig?.authProvider === "clerk" ? "" : selectedOrganizationID],
+      [scopedKeys.workspaceID, runtimeAuthConfig?.authProvider === "clerk" ? "" : selectedWorkspaceID],
       [scopedKeys.pushStatus, pushStatus],
       [scopedKeys.notificationsEnabled, notificationsEnabled ? "true" : "false"],
     ]);
@@ -1127,7 +1127,7 @@ function AgentTickApp({
           userID: currentAccountProfile?.userId,
           email: currentAccountProfile?.email,
           signInMethod: currentAccountProfile?.signInMethod,
-          organizationID: runtimeAuthConfig?.authProvider === "clerk" ? undefined : selectedOrganizationID || undefined,
+          workspaceID: runtimeAuthConfig?.authProvider === "clerk" ? undefined : selectedWorkspaceID || undefined,
           deviceID: deviceID || undefined,
           label: runtimeAuthConfig?.authProvider === "clerk" && currentAccountProfile?.signInMethod ? `${currentAccountProfile.signInMethod} account` : "",
         });
@@ -1139,12 +1139,12 @@ function AgentTickApp({
         return next;
       });
     }
-  }, [clerkSessionToken, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.userId, deviceID, loadedSessionServerURL, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded, token]);
+  }, [clerkSessionToken, currentAccountProfile?.email, currentAccountProfile?.signInMethod, currentAccountProfile?.userId, deviceID, loadedSessionServerURL, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, selectedWorkspaceID, serverURL, settingsLoaded, token]);
 
   useEffect(() => {
     if (runtimeAuthConfig?.authProvider !== "clerk" || !clerkSessionToken) return;
     setCurrentAccountProfile((current) => (current?.source === "mobile-saved-account" ? current : null));
-    setSelectedOrganizationID("");
+    setSelectedWorkspaceID("");
     setDeviceID("");
     setPushStatus("idle");
     lastClerkPushRegistrationKey.current = "";
@@ -1164,7 +1164,7 @@ function AgentTickApp({
     let cancelled = false;
     const scope = dismissedStatusScopeKey;
     const restoreDismissedStatus = async () => {
-      const stored = await AsyncStorage.getItem(dismissedAgentStatusStorageKey(serverURL, selectedOrganizationID));
+      const stored = await AsyncStorage.getItem(dismissedAgentStatusStorageKey(serverURL, selectedWorkspaceID));
       if (cancelled || dismissedStatusScopeKey !== scope) return;
       setDismissedStatusID(stored || null);
       setDismissedStatusScope(scope);
@@ -1173,14 +1173,14 @@ function AgentTickApp({
     return () => {
       cancelled = true;
     };
-  }, [dismissedStatusScopeKey, selectedOrganizationID, serverURL, settingsLoaded]);
+  }, [dismissedStatusScopeKey, selectedWorkspaceID, serverURL, settingsLoaded]);
 
   const dismissStatusUpdate = useCallback((statusID: string) => {
     const scope = dismissedStatusScopeKey;
     setDismissedStatusID(statusID);
     setDismissedStatusScope(scope);
-    void AsyncStorage.setItem(dismissedAgentStatusStorageKey(serverURL, selectedOrganizationID), statusID);
-  }, [dismissedStatusScopeKey, selectedOrganizationID, serverURL]);
+    void AsyncStorage.setItem(dismissedAgentStatusStorageKey(serverURL, selectedWorkspaceID), statusID);
+  }, [dismissedStatusScopeKey, selectedWorkspaceID, serverURL]);
 
   const removeSavedAccount = useCallback((account: SavedMobileAccount) => {
     setSavedAccounts((current) => {
@@ -1219,7 +1219,7 @@ function AgentTickApp({
         setDeviceID("");
         setPushStatus("idle");
         lastClerkPushRegistrationKey.current = "";
-        setSelectedOrganizationID("");
+        setSelectedWorkspaceID("");
         setRequests([]);
         setHistory([]);
         setSelectedID(null);
@@ -1235,9 +1235,9 @@ function AgentTickApp({
         setCurrentAccountProfile(null);
       }
       setServerURL(account.serverURL);
-      if (account.authProvider !== "clerk") setSelectedOrganizationID(account.organizationID ?? "");
+      if (account.authProvider !== "clerk") setSelectedWorkspaceID(account.workspaceID ?? "");
       setLoadedSessionServerURL("");
-      setScreen("approvals");
+      setScreen("requests");
     };
     void switchAccount();
   }, [interruptRealtime, onSelectSavedClerkAccount]);
@@ -1254,28 +1254,28 @@ function AgentTickApp({
           baseUrl: account.serverURL,
           tokenProvider: () => token,
         });
-        const memberships = await accountClient.listOrganizations();
+        const memberships = await accountClient.listWorkspaces();
         const counts = await Promise.all(memberships.map(async (membership) => {
-          const organizationClient = new AgentTickClient({
+          const workspaceClient = new AgentTickClient({
             baseUrl: account.serverURL,
             tokenProvider: () => token,
-            organizationIdProvider: () => membership.organizationId,
+            workspaceIdProvider: () => membership.workspaceId,
           });
-          const approvals = await organizationClient.listApprovalRequests();
-          return normalizeApprovals(approvals).filter((request) => request.status === "pending").length;
+          const requests = await workspaceClient.listRequests();
+          return normalizeRequests(requests).filter((request) => request.status === "pending").length;
         }));
         return { status: "ready", count: counts.reduce((total, count) => total + count, 0) };
       }
 
       const scopedKeys = mobileSessionStorageKeys(account.serverURL);
-      const organizationID = account.organizationID || (await AsyncStorage.getItem(scopedKeys.organizationID)) || "";
+      const workspaceID = account.workspaceID || (await AsyncStorage.getItem(scopedKeys.workspaceID)) || "";
       const accountClient = new AgentTickClient({
         baseUrl: account.serverURL,
         tokenProvider: () => token,
-        organizationIdProvider: () => organizationID || null,
+        workspaceIdProvider: () => workspaceID || null,
       });
-      const approvals = await accountClient.listApprovalRequests();
-      return { status: "ready", count: normalizeApprovals(approvals).filter((request) => request.status === "pending").length };
+      const requests = await accountClient.listRequests();
+      return { status: "ready", count: normalizeRequests(requests).filter((request) => request.status === "pending").length };
     } catch {
       return { status: "error", count: 0 };
     }
@@ -1314,32 +1314,32 @@ function AgentTickApp({
     return () => clearInterval(timer);
   }, [refreshOtherAccountPending, savedAccounts.length, settingsLoaded]);
 
-  const refreshOrganizations = useCallback(async () => {
+  const refreshWorkspaces = useCallback(async () => {
     if (runtimeAuthConfig?.authProvider !== "clerk") {
       setCurrentAccountProfile(null);
-      setOrganizations([]);
+      setWorkspaces([]);
       return;
     }
     try {
-      const organizationClient = new AgentTickClient({
+      const workspaceClient = new AgentTickClient({
         baseUrl: serverURL,
         tokenProvider: async () => (await currentAuthToken()) || null,
       });
       const [me, memberships] = await Promise.all([
-        organizationClient.getMe(),
-        organizationClient.listOrganizations(),
+        workspaceClient.getMe(),
+        workspaceClient.listWorkspaces(),
       ]);
       setCurrentAccountProfile(me);
-      setOrganizations(memberships);
-      setSelectedOrganizationID((current) => {
-        if (current && memberships.some((membership) => membership.organizationId === current)) {
+      setWorkspaces(memberships);
+      setSelectedWorkspaceID((current) => {
+        if (current && memberships.some((membership) => membership.workspaceId === current)) {
           return current;
         }
-        return memberships[0]?.organizationId ?? "";
+        return memberships[0]?.workspaceId ?? "";
       });
     } catch {
       setCurrentAccountProfile(null);
-      setOrganizations([]);
+      setWorkspaces([]);
     }
   }, [clerkSessionToken, currentAuthToken, runtimeAuthConfig?.authProvider, serverURL]);
 
@@ -1347,8 +1347,8 @@ function AgentTickApp({
     if (!settingsLoaded || runtimeAuthConfig?.authProvider !== "clerk") {
       return;
     }
-    void refreshOrganizations();
-  }, [clerkSessionToken, refreshOrganizations, runtimeAuthConfig?.authProvider, settingsLoaded]);
+    void refreshWorkspaces();
+  }, [clerkSessionToken, refreshWorkspaces, runtimeAuthConfig?.authProvider, settingsLoaded]);
 
   const refreshPersonalBilling = useCallback(async (options?: { configureStore?: boolean }): Promise<PersonalBillingStatus | null> => {
     if (!hasRequestAuth) {
@@ -1427,7 +1427,7 @@ function AgentTickApp({
   }, [personalBillingStatus, showHostedExpiryAlert]);
 
   const load = useCallback(async (options?: { visible?: boolean }) => {
-    if (runtimeAuthConfig?.authProvider === "clerk" && !selectedOrganizationID) {
+    if (runtimeAuthConfig?.authProvider === "clerk" && !selectedWorkspaceID) {
       setConnectionStatus("checking");
       return;
     }
@@ -1437,16 +1437,18 @@ function AgentTickApp({
     }
     setError(null);
     try {
-      const [pending, latestStatuses] = await Promise.all([
-        sdk.listApprovalRequests(),
-        sdk.listStatusUpdates({ limit: 5 }).catch(() => [] as AgentStatusUpdate[]),
-      ]);
-      const pendingRequests = normalizeApprovals(pending).filter((request) => request.status === "pending");
+      const activity = await sdk.listActivity({ limit: 50 });
+      const activityRequests = normalizeRequests(activity.filter((item) => item.kind === "request").map((item) => item.request));
+      const latestStatuses = activity
+        .filter((item) => item.kind === "status_update")
+        .map((item) => item.statusUpdate)
+        .slice(0, 5);
+      const pendingRequests = activityRequests.filter((request) => request.status === "pending");
       recordDiagnostic("info", "requests", "loaded", {
         pendingRequestCount: pendingRequests.length,
-        encryptedRequestCount: pendingRequests.filter(isEncryptedApprovalRequest).length,
+        encryptedRequestCount: pendingRequests.filter(isEncryptedRequest).length,
         encryptedPayloadCount: pendingRequests.filter((request) => Boolean(request.encryptedPayload)).length,
-        selectedRequestIsEncrypted: pendingRequests.some((request) => request.id === selectedID && isEncryptedApprovalRequest(request)),
+        selectedRequestIsEncrypted: pendingRequests.some((request) => request.id === selectedID && isEncryptedRequest(request)),
       });
       setDiagnosticsEventCount(diagnosticEvents().length);
       setStatusUpdates(latestStatuses);
@@ -1458,17 +1460,17 @@ function AgentTickApp({
       );
       setRequests(pendingRequests);
       setConnectionStatus("connected");
-      const activeProjectID = pendingRequests.some(
-        (request) => selectedProjectID && requestProjectID(request) === selectedProjectID,
+      const activeSourceID = pendingRequests.some(
+        (request) => selectedSourceID && requestSourceID(request) === selectedSourceID,
       )
-        ? selectedProjectID
+        ? selectedSourceID
         : null;
-      if (selectedProjectID && !activeProjectID) {
-        setSelectedProjectID(null);
+      if (selectedSourceID && !activeSourceID) {
+        setSelectedSourceID(null);
       }
-      const selectableRequests = filterRequestsByProject(pendingRequests, activeProjectID);
+      const selectableRequests = filterRequestsBySource(pendingRequests, activeSourceID);
       setSelectedID((current) =>
-        selectApprovalID(selectableRequests, notificationTargetID, current),
+        selectRequestID(selectableRequests, notificationTargetID, current),
       );
       if (
         notificationTargetID &&
@@ -1487,7 +1489,7 @@ function AgentTickApp({
         setLoading(false);
       }
     }
-  }, [notificationTargetID, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, sdk, selectedOrganizationID, selectedProjectID]);
+  }, [notificationTargetID, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, sdk, selectedWorkspaceID, selectedSourceID]);
 
   useEffect(() => {
     loadRef.current = load;
@@ -1600,8 +1602,8 @@ function AgentTickApp({
     setHistoryLoading(true);
     setError(null);
     try {
-      const allRequests = await sdk.listApprovalRequests();
-      setHistory(normalizeApprovals(allRequests));
+      const activity = await sdk.listActivity({ limit: 100 });
+      setHistory(normalizeRequests(activity.filter((item) => item.kind === "request").map((item) => item.request)));
       setConnectionStatus("connected");
     } catch (err) {
       setConnectionStatus("disconnected");
@@ -1628,7 +1630,7 @@ function AgentTickApp({
     });
   }, []);
 
-  const updatePendingRequest = useCallback((updated: ApprovalRequest) => {
+  const updatePendingRequest = useCallback((updated: MobileRequest) => {
     setRequests((current) => {
       const exists = current.some((request) => request.id === updated.id);
       if (!exists) {
@@ -1640,7 +1642,7 @@ function AgentTickApp({
   }, []);
 
   const applyResponseResult = useCallback(
-    (requestID: string, updated: ApprovalRequest) => {
+    (requestID: string, updated: MobileRequest) => {
       if (updated.status === "pending" && !updated.response) {
         updatePendingRequest(updated);
         return;
@@ -1651,7 +1653,7 @@ function AgentTickApp({
   );
 
   const submitResponse = async (
-    request: ApprovalRequest,
+    request: MobileRequest,
     payload: { choiceId?: string; message?: string; answers?: Record<string, string[]>; encryptedPayloadAcknowledged?: boolean },
   ) => {
     if (appResponsesReadOnly || hostedReadOnly) {
@@ -1664,7 +1666,7 @@ function AgentTickApp({
     }
     interruptRealtime();
     try {
-      const updated = normalizeApproval(await sdk.respondToApproval(request.id, payload));
+      const updated = normalizeRequest(await sdk.respondToRequest(request.id, payload));
       applyResponseResult(request.id, updated);
       setReply("");
       setQuestionnaireAnswers({});
@@ -1683,10 +1685,10 @@ function AgentTickApp({
     }
   };
 
-  const respond = async (request: ApprovalRequest, choice: Choice) =>
+  const respond = async (request: MobileRequest, choice: Choice) =>
     submitResponse(request, { choiceId: choice.id, message: reply, ...(request.encryptedPayload ? { encryptedPayloadAcknowledged: true } : {}) });
 
-  const submitQuestionnaire = async (request: ApprovalRequest) =>
+  const submitQuestionnaire = async (request: MobileRequest) =>
     submitResponse(request, { answers: questionnaireAnswers, ...(request.encryptedPayload ? { encryptedPayloadAcknowledged: true } : {}) });
 
   useEffect(() => {
@@ -1947,8 +1949,8 @@ function AgentTickApp({
       setPushStatus("idle");
       setPairingCode("");
       await loadWithCredentials(activeServerURL, credential.token);
-      Alert.alert("Paired", "This device can now receive approval requests.");
-      setScreen("approvals");
+      Alert.alert("Paired", "This device can now receive Requests.");
+      setScreen("requests");
     } catch (err) {
       Alert.alert(
         "Pairing failed",
@@ -1965,7 +1967,7 @@ function AgentTickApp({
       baseUrl: activeServerURL,
       tokenProvider: () => activeToken,
     });
-    const pending = normalizeApprovals(await credentialClient.listApprovalRequests()).filter(
+    const pending = normalizeRequests(await credentialClient.listRequests()).filter(
       (request) => request.status === "pending",
     );
     await notifyForNewRequests(
@@ -1977,7 +1979,7 @@ function AgentTickApp({
     setRequests(pending);
     setConnectionStatus("connected");
     setSelectedID((current) =>
-      selectApprovalID(pending, notificationTargetID, current),
+      selectRequestID(pending, notificationTargetID, current),
     );
   };
 
@@ -2015,8 +2017,8 @@ function AgentTickApp({
       }
 
       if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync(approvalChannelID, {
-          name: "Approval requests",
+        await Notifications.setNotificationChannelAsync(requestChannelID, {
+          name: "Requests",
           importance: Notifications.AndroidImportance.HIGH,
           vibrationPattern: [0, 250, 250, 250],
           sound: "default",
@@ -2074,7 +2076,7 @@ function AgentTickApp({
 
   useEffect(() => {
     if (runtimeAuthConfig?.authProvider !== "clerk") return;
-    if (!settingsLoaded || !notificationsEnabled || !currentAccountProfile?.userId || !selectedOrganizationID) return;
+    if (!settingsLoaded || !notificationsEnabled || !currentAccountProfile?.userId || !selectedWorkspaceID) return;
     if (notificationStatus !== "granted" && pushStatus !== "registered") return;
     if (pushStatus === "failed" || pushStatus === "unsupported") return;
     const registrationKey = `${normalizeServerURL(serverURL)}:${currentAccountProfile.userId}`;
@@ -2083,7 +2085,7 @@ function AgentTickApp({
     void registerPushToken().catch(() => {
       lastClerkPushRegistrationKey.current = "";
     });
-  }, [currentAccountProfile?.userId, notificationStatus, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, selectedOrganizationID, serverURL, settingsLoaded]);
+  }, [currentAccountProfile?.userId, notificationStatus, notificationsEnabled, pushStatus, runtimeAuthConfig?.authProvider, selectedWorkspaceID, serverURL, settingsLoaded]);
 
   const clearStoredSessionForServer = useCallback(async (activeServerURL = serverURL) => {
     await AsyncStorage.multiRemove(mobileSessionStorageKeyList(activeServerURL));
@@ -2118,9 +2120,9 @@ function AgentTickApp({
     setDeviceID("");
     setToken("");
     setPushStatus("idle");
-    setOrganizations([]);
+    setWorkspaces([]);
     setCurrentAccountProfile(null);
-    setSelectedOrganizationID("");
+    setSelectedWorkspaceID("");
     setRequests([]);
     setHistory([]);
     setConnectionStatus("disconnected");
@@ -2136,9 +2138,9 @@ function AgentTickApp({
     setDeviceID("");
     setToken("");
     setPushStatus("idle");
-    setOrganizations([]);
+    setWorkspaces([]);
     setCurrentAccountProfile(null);
-    setSelectedOrganizationID("");
+    setSelectedWorkspaceID("");
     setRequests([]);
     setHistory([]);
     setSelectedID(null);
@@ -2147,13 +2149,13 @@ function AgentTickApp({
     onRuntimeAuthConfig?.(defaultServer, config);
   }, [bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, onRuntimeAuthConfig]);
 
-  const selectOrganization = useCallback((organizationID: string) => {
-    if (organizationID === selectedOrganizationID) return;
-    setSelectedOrganizationID(organizationID);
+  const selectWorkspace = useCallback((workspaceID: string) => {
+    if (workspaceID === selectedWorkspaceID) return;
+    setSelectedWorkspaceID(workspaceID);
     setRequests([]);
     setHistory([]);
     setSelectedID(null);
-  }, [selectedOrganizationID]);
+  }, [selectedWorkspaceID]);
 
   const handleServerURLChange = useCallback((value: string) => {
     const previousServerURL = normalizeServerURL(serverURL);
@@ -2172,9 +2174,9 @@ function AgentTickApp({
       setDeviceID("");
       setToken("");
       setPushStatus("idle");
-      setOrganizations([]);
+      setWorkspaces([]);
       setCurrentAccountProfile(null);
-      setSelectedOrganizationID("");
+      setSelectedWorkspaceID("");
       setRequests([]);
       setHistory([]);
       setSelectedID(null);
@@ -2192,17 +2194,17 @@ function AgentTickApp({
 
   const updateChoiceInteractionMode = useCallback((mode: ChoiceInteractionMode) => {
     setChoiceInteractionMode(mode);
-    void AsyncStorage.setItem(approvalChoiceInteractionModeStorageKey, mode);
+    void AsyncStorage.setItem(requestChoiceInteractionModeStorageKey, mode);
   }, []);
 
   const updateOptionPlacement = useCallback((placement: OptionPlacement) => {
     setOptionPlacement(placement);
-    void AsyncStorage.setItem(approvalOptionPlacementStorageKey, placement);
+    void AsyncStorage.setItem(requestOptionPlacementStorageKey, placement);
   }, []);
 
   const updateConfirmBeforeSubmit = useCallback((enabled: boolean) => {
     setConfirmBeforeSubmit(enabled);
-    void AsyncStorage.setItem(approvalConfirmBeforeSubmitStorageKey, String(enabled));
+    void AsyncStorage.setItem(requestConfirmBeforeSubmitStorageKey, String(enabled));
   }, []);
 
   const sendDiagnostics = useCallback(async () => {
@@ -2235,8 +2237,8 @@ function AgentTickApp({
     if (payload.serverURL) {
       handleServerURLChange(payload.serverURL);
     }
-    if (payload.organizationId) {
-      setSelectedOrganizationID(payload.organizationId);
+    if (payload.workspaceId) {
+      setSelectedWorkspaceID(payload.workspaceId);
     }
     if (payload.pairingCode) {
       setPairingCode(payload.pairingCode);
@@ -2248,9 +2250,9 @@ function AgentTickApp({
         const config = await fetchRuntimeAuthConfig(payload.serverURL);
         setRuntimeAuthConfig(config);
         onRuntimeAuthConfig?.(payload.serverURL, config);
-        if (payload.organizationId) setSelectedOrganizationID(payload.organizationId);
+        if (payload.workspaceId) setSelectedWorkspaceID(payload.workspaceId);
         Alert.alert("Server saved", "Sign in with Clerk to use this Agent Tick server.");
-        setScreen("approvals");
+        setScreen("requests");
       } catch (err) {
         Alert.alert("Server discovery failed", err instanceof Error ? err.message : "Could not read server auth config");
       } finally {
@@ -2273,8 +2275,8 @@ function AgentTickApp({
             accessibilityLabel={translateSource("Go to dashboard")}
             accessibilityRole="button"
             onPress={() => {
-              recordDiagnostic("info", "navigation", "brand_pressed", { from: screen, to: "approvals" });
-              setScreen("approvals");
+              recordDiagnostic("info", "navigation", "brand_pressed", { from: screen, to: "requests" });
+              setScreen("requests");
               setMenuOpen(false);
             }}
             style={styles.brandButton}
@@ -2314,7 +2316,7 @@ function AgentTickApp({
           setScreen(nextScreen);
           setMenuOpen(false);
         }}
-        organizationName={selectedOrganization?.name ?? selectedOrganizationID}
+        workspaceName={selectedWorkspace?.name ?? selectedWorkspaceID}
         otherAccounts={otherAccounts}
         serverURL={serverURL}
         visible={menuOpen}
@@ -2380,11 +2382,11 @@ function AgentTickApp({
           authProvider={runtimeAuthConfig?.authProvider}
           currentAccountProfile={currentAccountProfile}
           deviceID={deviceID}
-          organizations={organizations}
-          selectedOrganizationID={selectedOrganizationID}
+          workspaces={workspaces}
+          selectedWorkspaceID={selectedWorkspaceID}
           serverURL={serverURL}
           setPairingCode={setPairingCode}
-          setSelectedOrganizationID={selectOrganization}
+          setSelectedWorkspaceID={selectWorkspace}
           setE2eeKey={setE2eeKey}
           setServerURL={handleServerURLChange}
           setToken={setToken}
@@ -2407,7 +2409,7 @@ function AgentTickApp({
           onRefresh={() => void loadHistory()}
         />
       ) : (
-        <ApprovalsScreen
+        <RequestsScreen
           error={error}
           loading={loading}
           onOpenSettings={() => {
@@ -2422,18 +2424,18 @@ function AgentTickApp({
           choiceInteractionMode={choiceInteractionMode}
           optionPlacement={optionPlacement}
           confirmBeforeSubmit={confirmBeforeSubmit}
-          projectGroups={projectGroups}
+          sourceGroups={sourceGroups}
           e2eeKey={e2eeKey}
           questionnaireAnswers={questionnaireAnswers}
           reply={reply}
           requests={visibleRequests}
-          selectedProjectID={selectedProjectID}
+          selectedSourceID={selectedSourceID}
           statusUpdates={statusUpdates}
           dismissedStatusID={visibleDismissedStatusID}
           onDismissStatus={dismissStatusUpdate}
-          setProjectID={(projectID) => {
-            setSelectedProjectID(projectID);
-            setSelectedID(filterRequestsByProject(requests, projectID)[0]?.id ?? null);
+          setSourceID={(sourceID) => {
+            setSelectedSourceID(sourceID);
+            setSelectedID(filterRequestsBySource(requests, sourceID)[0]?.id ?? null);
           }}
           setQuestionnaireAnswer={(question, option, multiSelect) =>
             setQuestionnaireAnswers((current) =>
@@ -2487,7 +2489,7 @@ type SideMenuProps = {
   onAccountSelect: (account: SavedMobileAccount) => void;
   onClose: () => void;
   onNavigate: (screen: Screen) => void;
-  organizationName?: string;
+  workspaceName?: string;
   otherAccounts: SavedMobileAccount[];
   serverURL: string;
   visible: boolean;
@@ -2501,7 +2503,7 @@ function SideMenu({
   onAccountSelect,
   onClose,
   onNavigate,
-  organizationName,
+  workspaceName,
   otherAccounts,
   serverURL,
   visible,
@@ -2558,9 +2560,9 @@ function SideMenu({
                 active
                 colorKey={accountProfile?.userId || accountProfile?.email || accountLabel}
                 label={accountLabel}
-                meta={[signInLabel, organizationName ? `Org: ${organizationName}` : undefined].filter(Boolean).join(" · ")}
+                meta={[signInLabel, workspaceName ? `Workspace: ${workspaceName}` : undefined].filter(Boolean).join(" · ")}
                 onPress={() => {
-                  onNavigate("approvals");
+                  onNavigate("requests");
                 }}
               />
               {otherAccounts.map((account) => (
@@ -2579,10 +2581,10 @@ function SideMenu({
 
           <View style={styles.menuItems}>
             <SideMenuItem
-              active={currentScreen === "approvals"}
+              active={currentScreen === "requests"}
               icon="✓"
-              label={translateSource("Approvals")}
-              onPress={() => onNavigate("approvals")}
+              label={translateSource("Requests")}
+              onPress={() => onNavigate("requests")}
             />
             <SideMenuItem
               active={currentScreen === "history"}
@@ -2673,11 +2675,11 @@ function AccountMenuItem({
 }
 
 function accountPendingLabel(pending?: AccountPendingState) {
-  if (!pending || pending.status === "checking") return translateSource("Checking pending approvals…");
+  if (!pending || pending.status === "checking") return translateSource("Checking pending requests…");
   if (pending.status === "needs-sign-in") return translateSource("Needs sign-in");
   if (pending.status === "error") return translateSource("Unable to check");
-  if (pending.count === 0) return translateSource("No pending approvals");
-  return `${pending.count} pending approval${pending.count === 1 ? "" : "s"}`;
+  if (pending.count === 0) return translateSource("No pending requests");
+  return `${pending.count} pending request${pending.count === 1 ? "" : "s"}`;
 }
 
 function savedAccountMenuLabel(account: SavedMobileAccount) {
@@ -2705,7 +2707,7 @@ function isCurrentSavedAccount(
     authProvider?: string;
     currentAccountProfile?: Pick<MeResponse, "userId" | "email"> | null;
     deviceID: string;
-    selectedOrganizationID?: string;
+    selectedWorkspaceID?: string;
     serverURL: string;
   },
 ) {
@@ -2716,7 +2718,7 @@ function isCurrentSavedAccount(
     return false;
   }
   if (account.deviceID && current.deviceID) return account.deviceID === current.deviceID;
-  return Boolean(account.organizationID && account.organizationID === current.selectedOrganizationID);
+  return Boolean(account.workspaceID && account.workspaceID === current.selectedWorkspaceID);
 }
 
 function hostLabel(serverURL: string) {
@@ -2727,18 +2729,18 @@ function hostLabel(serverURL: string) {
   }
 }
 
-function filterRequestsByProject(
-  requests: ApprovalRequest[],
-  projectID: string | null,
+function filterRequestsBySource(
+  requests: MobileRequest[],
+  sourceID: string | null,
 ) {
-  if (!projectID) {
+  if (!sourceID) {
     return requests;
   }
-  return requests.filter((request) => requestProjectID(request) === projectID);
+  return requests.filter((request) => requestSourceID(request) === sourceID);
 }
 
-function selectApprovalID(
-  requests: ApprovalRequest[],
+function selectRequestID(
+  requests: MobileRequest[],
   notificationTargetID: string | null,
   currentID: string | null,
 ) {
@@ -2870,7 +2872,7 @@ function isPushStatus(value: unknown): value is PushStatus {
 }
 
 async function notifyForNewRequests(
-  pending: ApprovalRequest[],
+  pending: MobileRequest[],
   seenRequestIDs: React.MutableRefObject<Set<string>>,
   didPrimeNotifications: React.MutableRefObject<boolean>,
   useLocalNotifications: boolean,
@@ -2909,10 +2911,10 @@ async function notifyForNewRequests(
           title: "Agent Tick",
           body: "Agent Tick needs your attention.",
           categoryIdentifier: undefined,
-          data: { approvalRequestID: request.id },
+          data: { requestRequestID: request.id },
           sound: true,
         },
-        ...(Platform.OS === "android" ? { channelId: approvalChannelID } : {}),
+        ...(Platform.OS === "android" ? { channelId: requestChannelID } : {}),
         trigger: null,
       });
     } catch {
@@ -2943,15 +2945,15 @@ function formatRelativeAge(value?: string) {
   return `${elapsedDays} day${elapsedDays === 1 ? "" : "s"} ago`;
 }
 
-function isTurnStatusUpdate(status: AgentStatusUpdate) {
+function isTurnStatusUpdate(status: StatusUpdateRecord) {
   return status.metadata?.event === "turn_end";
 }
 
-function LatestStatusCard({ statusUpdates, compact = false, dismissedStatusID, onDismiss }: { statusUpdates: AgentStatusUpdate[]; compact?: boolean; dismissedStatusID?: string | null; onDismiss?: (statusID: string) => void }) {
+function LatestStatusCard({ statusUpdates, compact = false, dismissedStatusID, onDismiss }: { statusUpdates: StatusUpdateRecord[]; compact?: boolean; dismissedStatusID?: string | null; onDismiss?: (statusID: string) => void }) {
   const latest = statusUpdates[0];
   if (!latest || latest.statusId === dismissedStatusID) return null;
   const isTurnHeartbeat = isTurnStatusUpdate(latest);
-  const project = latest.projectName || latest.workingDirectory || latest.threadId;
+  const source = latest.clientName || latest.workingDirectory || latest.threadId;
   const title = isTurnHeartbeat ? "Agent activity" : "Latest agent status";
   const state = isTurnHeartbeat ? "working" : latest.state;
   const message = isTurnHeartbeat ? "Pi is still working" : latest.message;
@@ -2972,7 +2974,7 @@ function LatestStatusCard({ statusUpdates, compact = false, dismissedStatusID, o
       <MarkdownInlineText text={message} style={styles.statusMessage} />
       {nextLine ? <MarkdownInlineText text={nextLine} style={styles.statusNext} /> : null}
       <Text numberOfLines={1} style={styles.statusMeta}>
-        {latest.agentName} · {project} · {formatRequestTime(latest.createdAt)}
+        {latest.agentTokenLabel} · {source} · {formatRequestTime(latest.createdAt)}
       </Text>
     </View>
   );
@@ -3057,7 +3059,7 @@ function ChoiceActions({
   );
 }
 
-export function ApprovalsScreen({
+export function RequestsScreen({
   e2eeKey,
   error,
   loading,
@@ -3068,17 +3070,17 @@ export function ApprovalsScreen({
   choiceInteractionMode = "click-to-submit",
   optionPlacement = "inline-after-content",
   confirmBeforeSubmit = true,
-  projectGroups,
+  sourceGroups,
   questionnaireAnswers,
   reply,
   requests,
-  selectedProjectID,
+  selectedSourceID,
   statusUpdates,
   readOnly = false,
   readOnlyReason,
   dismissedStatusID,
   onDismissStatus,
-  setProjectID,
+  setSourceID,
   setQuestionnaireAnswer,
   selected,
   selectedID,
@@ -3090,28 +3092,28 @@ export function ApprovalsScreen({
   loading: boolean;
   onOpenSettings?: () => void;
   onRefresh: () => void;
-  onRespond: (request: ApprovalRequest, choice: Choice) => void;
-  onSubmitQuestionnaire: (request: ApprovalRequest) => void;
+  onRespond: (request: MobileRequest, choice: Choice) => void;
+  onSubmitQuestionnaire: (request: MobileRequest) => void;
   choiceInteractionMode?: ChoiceInteractionMode;
   optionPlacement?: OptionPlacement;
   confirmBeforeSubmit?: boolean;
-  projectGroups: ReturnType<typeof groupRequestsByProject>;
+  sourceGroups: ReturnType<typeof groupRequestsBySource>;
   questionnaireAnswers: Record<string, string[]>;
   reply: string;
-  requests: ApprovalRequest[];
-  selectedProjectID: string | null;
-  statusUpdates: AgentStatusUpdate[];
+  requests: MobileRequest[];
+  selectedSourceID: string | null;
+  statusUpdates: StatusUpdateRecord[];
   readOnly?: boolean;
   readOnlyReason?: string;
   dismissedStatusID?: string | null;
   onDismissStatus?: (statusID: string) => void;
-  setProjectID: (projectID: string | null) => void;
+  setSourceID: (sourceID: string | null) => void;
   setQuestionnaireAnswer: (
     question: string,
     option: string,
     multiSelect: boolean,
   ) => void;
-  selected?: ApprovalRequest;
+  selected?: MobileRequest;
   selectedID: string | null;
   setReply: (value: string) => void;
   setSelectedID: (value: string) => void;
@@ -3130,8 +3132,8 @@ export function ApprovalsScreen({
   }
 
   const responsibility = requestResponsibilityLabel(selected);
-  const encrypted = isEncryptedApprovalRequest(selected);
-  const decrypted = useMemo(() => decryptedApprovalPlaintext(selected, e2eeKey), [e2eeKey, selected.id, selected.encryptedPayload]);
+  const encrypted = isEncryptedRequest(selected);
+  const decrypted = useMemo(() => decryptedRequestPlaintext(selected, e2eeKey), [e2eeKey, selected.id, selected.encryptedPayload]);
   const encryptedLocked = encrypted && !decrypted;
   const title = decrypted?.title ?? selected.title;
   const body = decrypted?.body ?? selected.body;
@@ -3151,7 +3153,7 @@ export function ApprovalsScreen({
   const actionPanel = encryptedLocked ? (
     <View style={styles.encryptedActions}>
       <View style={styles.encryptedActionPanel}>
-        <Text style={styles.actionHint}>{translateSource("Decrypt this request before approving or rejecting it.")}</Text>
+        <Text style={styles.actionHint}>{translateSource("Decrypt this request before responding.")}</Text>
         <Pressable onPress={() => onRespond(selected, dismissChoice)} style={[styles.choiceButton, styles.denyButton]}>
           <Text style={styles.choiceText}>{translateSource("Dismiss encrypted request")}</Text>
         </Pressable>
@@ -3190,34 +3192,34 @@ export function ApprovalsScreen({
         />
       ) : (
         <Text style={styles.actionHint}>
-          {policyProgressMessage(selected) || "This request is read-only."}
+          {quorumProgressMessage(selected) || "This request is read-only."}
         </Text>
       )}
     </View>
   );
 
   return (
-    <View style={styles.approvalsPane}>
-      {projectGroups.length > 1 ? (
+    <View style={styles.requestsPane}>
+      {sourceGroups.length > 1 ? (
         <View style={styles.requestStrip}>
           <Pressable
-            onPress={() => setProjectID(null)}
+            onPress={() => setSourceID(null)}
             style={[
               styles.requestPill,
-              selectedProjectID === null ? styles.requestPillActive : null,
+              selectedSourceID === null ? styles.requestPillActive : null,
             ]}
           >
             <Text numberOfLines={1} style={styles.requestPillText}>
-              All ({projectGroups.reduce((sum, group) => sum + group.requests.length, 0)})
+              All ({sourceGroups.reduce((sum, group) => sum + group.requests.length, 0)})
             </Text>
           </Pressable>
-          {projectGroups.map((group) => (
+          {sourceGroups.map((group) => (
             <Pressable
               key={group.id}
-              onPress={() => setProjectID(group.id)}
+              onPress={() => setSourceID(group.id)}
               style={[
                 styles.requestPill,
-                selectedProjectID === group.id ? styles.requestPillActive : null,
+                selectedSourceID === group.id ? styles.requestPillActive : null,
               ]}
             >
               <Text numberOfLines={1} style={styles.requestPillText}>
@@ -3248,8 +3250,8 @@ export function ApprovalsScreen({
       ) : null}
 
       <ScrollView
-        contentContainerStyle={styles.approvalContent}
-        style={styles.approvalScroll}
+        contentContainerStyle={styles.requestContent}
+        style={styles.requestScroll}
       >
         <LatestStatusCard statusUpdates={statusUpdates} dismissedStatusID={dismissedStatusID} onDismiss={onDismissStatus} />
         <MarkdownInlineText text={title} style={styles.detailTitle} />
@@ -3269,9 +3271,9 @@ export function ApprovalsScreen({
               {selected.risk}
             </Text>
           ) : null}
-          {selected.expiresAt ? (
+          {selected.deadline ? (
             <Text style={styles.factText}>
-              Expires {formatRequestTime(selected.expiresAt)}
+              Expires {formatRequestTime(selected.deadline)}
             </Text>
           ) : null}
         </View>
@@ -3283,7 +3285,7 @@ export function ApprovalsScreen({
           </Text>
         ) : null}
         <RequestContextPanel request={selected} />
-        <PolicyProgressPanel request={selected} />
+        <QuorumProgressPanel request={selected} />
         {selected.requester.workingDirectory ? (
           <Text selectable numberOfLines={2} style={styles.cwdText}>
             {selected.requester.workingDirectory}
@@ -3393,64 +3395,64 @@ function choiceFlagLabel(flag: string): string {
   return flag.replace(/_/g, " ");
 }
 
-function encryptedDismissChoice(request: ApprovalRequest): Choice {
+function encryptedDismissChoice(request: MobileRequest): Choice {
   return (request.choices ?? []).find((choice) => choice.kind === "deny" || choice.id === "reject" || choice.id === "deny") ?? { id: "reject", label: "Dismiss", kind: "deny" };
 }
 
-function encryptedLockMessage(request: ApprovalRequest, key?: string) {
+function encryptedLockMessage(request: MobileRequest, key?: string) {
   if (!request.encryptedPayload) return "Encrypted request metadata is present, but this server response did not include ciphertext. Refresh after the server is upgraded, or ask the requester to resend.";
   if (!key?.trim()) return "Encrypted request. Add your E2EE key in Settings to decrypt.";
   return "Encrypted request. The configured E2EE key could not decrypt this request.";
 }
 
-function decryptedApprovalPlaintext(request: ApprovalRequest, key?: string) {
+function decryptedRequestPlaintext(request: MobileRequest, key?: string) {
   if (!request.encryptedPayload || !key?.trim()) return null;
   try {
-    return decryptApprovalPayload(request.encryptedPayload, key);
+    return decryptRequestPayload(request.encryptedPayload, key);
   } catch {
     return null;
   }
 }
 
-function RequestContextPanel({ request }: { request: ApprovalRequest }) {
-  const team = requestTargetTeamLabel(request);
+function RequestContextPanel({ request }: { request: MobileRequest }) {
+  const routing = requestRoutingLabel(request);
   const owner = requestOwnerLabel(request);
-  const policy = requestPolicySummary(request);
+  const quorum = requestQuorumSummary(request);
   return (
     <View style={styles.contextSummaryPanel}>
       <Text style={styles.contextSummaryTitle}>{translateSource("Routing")}</Text>
-      <ContextRow label={translateSource("Agent")} value={requestAgentLabel(request)} />
+      <ContextRow label={translateSource("Agent token")} value={requestAgentLabel(request)} />
       <ContextRow label={translateSource("Requester")} value={requestRequesterLabel(request)} />
-      <ContextRow label={translateSource("Project")} value={requestProjectLabel(request)} />
+      <ContextRow label={translateSource("Source")} value={requestSourceLabel(request)} />
       {owner ? <ContextRow label={translateSource("Owner")} value={owner} /> : null}
-      {team ? <ContextRow label={translateSource("Team")} value={team} /> : null}
-      {policy ? <ContextRow label={translateSource("Policy")} value={policy} /> : null}
+      {routing ? <ContextRow label={translateSource("Routing Rule")} value={routing} /> : null}
+      {quorum ? <ContextRow label={translateSource("Required Responses")} value={quorum} /> : null}
     </View>
   );
 }
 
-function PolicyProgressPanel({ request }: { request: ApprovalRequest }) {
-  const progress = request.policyProgress;
-  const message = policyProgressMessage(request);
-  const votes = requestVoteHistory(request);
-  if (!progress && votes.length === 0) {
+function QuorumProgressPanel({ request }: { request: MobileRequest }) {
+  const quorum = request.quorum;
+  const message = quorumProgressMessage(request);
+  const responses = requestResponseHistory(request);
+  if (!quorum && responses.length === 0) {
     return null;
   }
   return (
-    <View style={styles.policyPanel}>
-      <Text style={styles.policyTitle}>{translateSource("Approval progress")}</Text>
-      {message ? <Text style={styles.policyMessage}>{message}</Text> : null}
-      {progress ? (
-        <Text style={styles.policyMeta}>
-          {progress.receivedApprovals}/{progress.requiredApprovals} approvals · step {progress.currentStep}/{progress.totalSteps}
+    <View style={styles.responsePanel}>
+      <Text style={styles.responseTitle}>{translateSource("Response progress")}</Text>
+      {message ? <Text style={styles.responseMessage}>{message}</Text> : null}
+      {quorum ? (
+        <Text style={styles.responseMeta}>
+          {quorum.receivedResponseCount}/{quorum.requiredResponseCount} responses
         </Text>
       ) : null}
-      {votes.length > 0 ? (
-        <View style={styles.voteList}>
-          {votes.map((vote) => (
-            <View key={vote.id} style={styles.voteRow}>
-              <Text style={styles.voteText}>{vote.label}</Text>
-              {vote.message ? <Text style={styles.voteMessage}>{vote.message}</Text> : null}
+      {responses.length > 0 ? (
+        <View style={styles.responseList}>
+          {responses.map((response) => (
+            <View key={response.id} style={styles.responseRow}>
+              <Text style={styles.responseText}>{response.label}</Text>
+              {response.message ? <Text style={styles.responseEntryMessage}>{response.message}</Text> : null}
             </View>
           ))}
         </View>
@@ -3477,7 +3479,7 @@ export function HistoryScreen({
 }: {
   e2eeKey?: string;
   error: string | null;
-  history: ApprovalRequest[];
+  history: MobileRequest[];
   loading: boolean;
   onRefresh: () => void;
 }) {
@@ -3510,7 +3512,7 @@ export function HistoryScreen({
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <ScrollView contentContainerStyle={styles.historyList}>
         {history.length === 0 ? (
-          <Text style={styles.emptyText}>{translateSource("No approval history yet.")}</Text>
+          <Text style={styles.emptyText}>{translateSource("No request history yet.")}</Text>
         ) : (
           history.map((request) => (
             <Pressable
@@ -3553,11 +3555,11 @@ export function HistoryScreen({
                   ))}
                 </View>
               ) : null}
-              {requestVoteHistory(request).length > 0 ? (
-                <View style={styles.historyVotes}>
-                  {requestVoteHistory(request).slice(0, 2).map((vote) => (
-                    <Text key={vote.id} style={styles.historyVoteText}>
-                      {vote.label}
+              {requestResponseHistory(request).length > 0 ? (
+                <View style={styles.historyResponses}>
+                  {requestResponseHistory(request).slice(0, 2).map((response) => (
+                    <Text key={response.id} style={styles.historyResponseText}>
+                      {response.label}
                     </Text>
                   ))}
                 </View>
@@ -3581,14 +3583,14 @@ function HistoryDetailScreen({
   onBack: () => void;
   onNext?: () => void;
   onPrevious?: () => void;
-  request: ApprovalRequest;
+  request: MobileRequest;
 }) {
-  const decrypted = decryptedApprovalPlaintext(request, e2eeKey);
-  const encryptedLocked = isEncryptedApprovalRequest(request) && !decrypted;
+  const decrypted = decryptedRequestPlaintext(request, e2eeKey);
+  const encryptedLocked = isEncryptedRequest(request) && !decrypted;
   const title = decrypted?.title ?? request.title;
   const body = decrypted?.body ?? request.body;
   const command = decrypted?.command ?? request.command;
-  const responseAnswers = request.response?.answers ?? request.policyProgress?.currentUserVote?.answers;
+  const responseAnswers = request.response?.answers ?? request.responses?.find((response) => response.userId)?.answers;
 
   return (
     <View style={styles.historyPane}>
@@ -3630,7 +3632,7 @@ function HistoryDetailScreen({
           <Text selectable style={styles.commandText}>{command}</Text>
         ) : null}
         <RequestContextPanel request={request} />
-        <PolicyProgressPanel request={request} />
+        <QuorumProgressPanel request={request} />
         {request.questions && request.questions.length > 0 ? (
           <View style={styles.questionnairePanel}>
             <Text style={styles.contextSummaryTitle}>{translateSource("Questions")}</Text>
@@ -3675,10 +3677,11 @@ function HistoryDetailScreen({
   );
 }
 
-function historyKindLabel(request: ApprovalRequest) {
+function historyKindLabel(request: MobileRequest) {
   if (isQuestionnaireRequest(request)) return translateSource("Question");
-  if (request.requestType === "steer") return translateSource("Steering");
-  return translateSource("Approval request");
+  if (request.requestType === "steering") return translateSource("Steering");
+  if (request.requestType === "sanction") return translateSource("Sanction Request");
+  return translateSource("Request");
 }
 
 function ScannerScreen({
@@ -4055,7 +4058,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 12,
   },
-  approvalsPane: {
+  requestsPane: {
     flex: 1,
   },
   historyPane: {
@@ -4187,14 +4190,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
-  historyVotes: {
+  historyResponses: {
     borderTopColor: "#e3dbc9",
     borderTopWidth: 1,
     gap: 4,
     marginTop: 4,
     paddingTop: 8,
   },
-  historyVoteText: {
+  historyResponseText: {
     color: "#5f5a4f",
     fontSize: 12,
     fontWeight: "800",
@@ -4227,10 +4230,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
   },
-  approvalScroll: {
+  requestScroll: {
     flex: 1,
   },
-  approvalContent: {
+  requestContent: {
     paddingHorizontal: 20,
     paddingBottom: 22,
   },
@@ -4409,7 +4412,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "right",
   },
-  policyPanel: {
+  responsePanel: {
     backgroundColor: "#fffaf0",
     borderColor: "#d8c391",
     borderRadius: 8,
@@ -4418,38 +4421,38 @@ const styles = StyleSheet.create({
     marginTop: 14,
     padding: 12,
   },
-  policyTitle: {
+  responseTitle: {
     color: "#5f4724",
     fontSize: 13,
     fontWeight: "900",
     textTransform: "uppercase",
   },
-  policyMessage: {
+  responseMessage: {
     color: "#202124",
     fontSize: 16,
     fontWeight: "800",
     lineHeight: 22,
   },
-  policyMeta: {
+  responseMeta: {
     color: "#6d6657",
     fontSize: 13,
     fontWeight: "800",
   },
-  voteList: {
+  responseList: {
     gap: 6,
     marginTop: 2,
   },
-  voteRow: {
+  responseRow: {
     backgroundColor: "#ffffff",
     borderRadius: 6,
     padding: 8,
   },
-  voteText: {
+  responseText: {
     color: "#202124",
     fontSize: 13,
     fontWeight: "800",
   },
-  voteMessage: {
+  responseEntryMessage: {
     color: "#6d6657",
     fontSize: 13,
     marginTop: 3,

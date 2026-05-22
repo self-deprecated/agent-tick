@@ -21,7 +21,7 @@ The installer opens Agent Tick in your browser, saves a local Agent Tick token, 
 
 ## Use
 
-Ask for a sanction and wait for approval:
+Create a Sanction Request and wait for a Response:
 
 ```sh
 agent-tick sanction \
@@ -30,7 +30,7 @@ agent-tick sanction \
   --command "deploy production"
 ```
 
-Run a command only after sanction approval:
+Create a Sanction Request that includes a command:
 
 ```sh
 agent-tick sanction --title "Run migration?" -- ./migrate.sh
@@ -48,7 +48,7 @@ agent-tick steering \
 
 Use `--choice-flag choiceId=favorite` for a mobile-visible recommendation star, or warning flags such as `production`, `destructive`, and `security_sensitive` on sanction approve choices.
 
-Send a status update without requesting approval:
+Send a Status Update without creating a Request:
 
 ```sh
 agent-tick status-update --state working "Checking test failures"
@@ -62,7 +62,7 @@ agent-tick mcp
 
 Codex can use the adapter as a stdio MCP server, and steering/sanction tools support local MCP form elicitation when Codex is configured to allow MCP elicitations.
 
-For Codex, configure the MCP server and pre-approve the Agent Tick tools so Agent Tick can ask the human without an extra local tool approval:
+For Codex, configure the MCP server and pre-authorize the Agent Tick tools so Agent Tick can ask the human without an extra local tool confirmation:
 
 ```toml
 [mcp_servers.agent_tick]
@@ -82,7 +82,7 @@ approval_mode = "approve"
 approval_mode = "approve"
 ```
 
-Codex local elicitation also requires an approval policy that allows MCP elicitations. `localElicitation: "auto"` is the default and recommended mode: it shows both the local Codex dialog and a remote Agent Tick mobile/web request, with the first answer winning. Use `localElicitation: "only"` only when testing the local Codex dialog, and `localElicitation: "off"` only when testing remote Agent Tick mobile/web approval.
+Codex local elicitation also requires Codex settings that allow MCP elicitations. `localElicitation: "auto"` is the default and recommended mode: it shows both the local Codex dialog and a remote Agent Tick mobile/web Request, with the first answer winning. Use `localElicitation: "only"` only when testing the local Codex dialog, and `localElicitation: "off"` only when testing remote Agent Tick mobile/web Requests.
 
 For Claude Code, the installer can route steering and permission prompts through Agent Tick. For unattended Claude Code runs, install with the headless profile:
 

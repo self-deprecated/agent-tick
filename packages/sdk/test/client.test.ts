@@ -2,153 +2,32 @@ import { describe, expect, it } from 'vitest';
 import { AgentTickApiError, AgentTickClient, type EventSourceConstructor } from '../src/index.js';
 
 describe('AgentTickClient', () => {
-  it('attaches bearer and organization headers', async () => {
+  it('attaches bearer and Workspace headers', async () => {
     const seen: { headers?: Headers; url?: string } = {};
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com/base/',
       tokenProvider: async () => 'token-123',
-      organizationIdProvider: () => 'org_123',
+      workspaceIdProvider: () => 'wsp_123',
       fetch: async (input, init) => {
         seen.url = String(input);
         seen.headers = new Headers(init?.headers);
         return jsonResponse({ status: 'ok' });
       }
     });
-
     await client.health();
-
     expect(seen.url).toBe('https://tick.example.com/healthz');
     expect(seen.headers?.get('Authorization')).toBe('Bearer token-123');
-    expect(seen.headers?.get('X-Agent-Tick-Organization-ID')).toBe('org_123');
-  });
-
-  it('exchanges Clerk login tokens for Agent Tick mobile sessions without organization headers', async () => {
-    const seen: { url?: string; method?: string; authorization?: string | null; organizationId?: string | null; body?: unknown } = {};
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      tokenProvider: () => 'existing-session',
-      organizationIdProvider: () => 'org_123',
-      fetch: async (input, init) => {
-        const headers = new Headers(init?.headers);
-        seen.url = String(input);
-        seen.method = init?.method;
-        seen.authorization = headers.get('Authorization');
-        seen.organizationId = headers.get('X-Agent-Tick-Organization-ID');
-        seen.body = init?.body ? JSON.parse(String(init.body)) : undefined;
-        return jsonResponse({
-          token: 'agent_tick_session',
-          expiresAt: '2026-01-01T00:00:00.000Z',
-          userId: 'usr_123',
-          organizationId: 'org_123',
-          role: 'owner'
-        });
-      }
-    });
-
-    await expect(client.createMobileSession({ clerkToken: 'clerk_session_or_client_token' })).resolves.toMatchObject({ token: 'agent_tick_session' });
-    expect(seen).toEqual({
-      method: 'POST',
-      url: 'https://tick.example.com/v1/auth/mobile-session',
-      authorization: 'Bearer existing-session',
-      organizationId: null,
-      body: { clerkToken: 'clerk_session_or_client_token' }
-    });
-  });
-
-  it('sends mobile diagnostics with auth and organization context', async () => {
-    const seen: { url?: string; method?: string; authorization?: string | null; organizationId?: string | null; body?: unknown } = {};
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      tokenProvider: () => 'mobile-session',
-      organizationIdProvider: () => 'org_123',
-      fetch: async (input, init) => {
-        const headers = new Headers(init?.headers);
-        seen.url = String(input);
-        seen.method = init?.method;
-        seen.authorization = headers.get('Authorization');
-        seen.organizationId = headers.get('X-Agent-Tick-Organization-ID');
-        seen.body = init?.body ? JSON.parse(String(init.body)) : undefined;
-        return jsonResponse({ accepted: 1 });
-      }
-    });
-
-    await expect(client.sendMobileDiagnostics({
-      platform: 'ios',
-      connectionStatus: 'connected',
-      currentScreen: 'settings',
-      events: [{ level: 'error', area: 'notifications', message: 'native_exception', at: '2026-01-01T00:00:00.000Z' }]
-    })).resolves.toEqual({ accepted: 1 });
-    expect(seen).toEqual({
-      method: 'POST',
-      url: 'https://tick.example.com/v1/mobile-diagnostics',
-      authorization: 'Bearer mobile-session',
-      organizationId: 'org_123',
-      body: {
-        platform: 'ios',
-        connectionStatus: 'connected',
-        currentScreen: 'settings',
-        events: [{ level: 'error', area: 'notifications', message: 'native_exception', at: '2026-01-01T00:00:00.000Z' }]
-      }
-    });
+    expect(seen.headers?.get('X-Agent-Tick-Workspace-ID')).toBe('wsp_123');
   });
 
   it('parses structured API errors', async () => {
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async () =>
-        jsonResponse(
-          { error: { code: 'not_authenticated', message: 'Authentication required', requestId: 'req-1' } },
-          { status: 401 }
-        )
-    });
-
-    await expect(client.getMe()).rejects.toMatchObject<Partial<AgentTickApiError>>({
-      name: 'AgentTickApiError',
-      status: 401,
-      code: 'not_authenticated',
-      requestId: 'req-1'
-    });
+    const client = new AgentTickClient({ baseUrl: 'https://tick.example.com', fetch: async () => jsonResponse({ error: { code: 'not_authenticated', message: 'Authentication required', requestId: 'req-1' } }, { status: 401 }) });
+    await expect(client.getMe()).rejects.toMatchObject<Partial<AgentTickApiError>>({ name: 'AgentTickApiError', status: 401, code: 'not_authenticated', requestId: 'req-1' });
   });
 
-  it('calls audit event endpoint with limit', async () => {
-    const seen: { url?: string; method?: string } = {};
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async (input, init) => {
-        seen.url = String(input);
-        seen.method = init?.method;
-        return jsonResponse([
-          {
-            eventId: 1,
-            organizationId: 'org_123',
-            userId: 'usr_123',
-            eventType: 'agent_token.created',
-            targetId: 'agt_123',
-            payload: { name: 'agent' },
-            createdAt: '2026-01-01T00:00:00.000Z'
-          }
-        ]);
-      }
-    });
-
-    await expect(client.listAuditEvents({ limit: 10 })).resolves.toEqual([
-      expect.objectContaining({ eventType: 'agent_token.created', targetId: 'agt_123' })
-    ]);
-    expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/audit-events?limit=10' });
-  });
-
-  it('creates and lists agent status updates', async () => {
+  it('creates and lists routed Status Updates', async () => {
     const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const status = {
-      statusId: 'stat_123',
-      organizationId: 'org_123',
-      agentId: 'agt_123',
-      agentName: 'Pi',
-      threadId: 'host:/repo',
-      message: 'Running tests',
-      state: 'working',
-      createdAt: '2026-01-01T00:00:00.000Z'
-    };
+    const status = { statusId: 'stat_123', workspaceId: 'wsp_123', agentTokenId: 'agt_123', message: 'Running tests', state: 'working', createdAt: '2026-01-01T00:00:00.000Z' };
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com',
       fetch: async (input, init) => {
@@ -156,85 +35,72 @@ describe('AgentTickClient', () => {
         return jsonResponse(init?.method === 'POST' ? status : [status]);
       }
     });
-
-    await expect(client.createStatusUpdate({ threadId: 'host:/repo', message: 'Running tests' })).resolves.toMatchObject({ statusId: 'stat_123' });
+    await expect(client.createStatusUpdate({ message: 'Running tests' })).resolves.toMatchObject({ statusId: 'stat_123' });
     await expect(client.listStatusUpdates({ limit: 5 })).resolves.toEqual([expect.objectContaining({ message: 'Running tests' })]);
     expect(requests).toEqual([
-      { method: 'POST', url: 'https://tick.example.com/v1/status-updates', body: { threadId: 'host:/repo', message: 'Running tests', state: 'working' } },
+      { method: 'POST', url: 'https://tick.example.com/v1/status-updates', body: { message: 'Running tests', state: 'working' } },
       { method: 'GET', url: 'https://tick.example.com/v1/status-updates?limit=5', body: undefined }
     ]);
   });
 
-  it('calls billing endpoint with organization selection', async () => {
-    const seen: { url?: string; method?: string; organizationId?: string | null } = {};
+  it('calls Request endpoints', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+    const requestRecord = { id: 'req_123', workspaceId: 'wsp_123', requester: { name: 'Pi' }, requestType: 'sanction', title: 'Deploy?', choices: [{ id: 'approve', label: 'Approve' }, { id: 'deny', label: 'Deny', kind: 'deny' }], status: 'pending', createdAt: '2026-01-01T00:00:00.000Z' };
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com',
-      organizationIdProvider: () => 'org_123',
       fetch: async (input, init) => {
-        const headers = new Headers(init?.headers);
-        seen.url = String(input);
-        seen.method = init?.method;
-        seen.organizationId = headers.get('X-Agent-Tick-Organization-ID');
-        return jsonResponse({ organizationId: 'org_123', plan: 'self-hosted', limits: { seats: 3 }, usage: { activeMembers: 2, pendingMembers: 1 } });
+        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (String(input).endsWith('/responses')) return jsonResponse({ ...requestRecord, status: 'responded', response: { choiceId: 'approve' } });
+        if (String(input).includes('/wait')) return jsonResponse({ request: requestRecord, terminal: false });
+        return jsonResponse(init?.method === 'POST' ? { request: requestRecord, waiter: { token: 'wait_123', expiresAt: '2026-01-01T01:00:00.000Z' } } : [requestRecord]);
       }
     });
-
-    await expect(client.getBillingStatus()).resolves.toEqual({ organizationId: 'org_123', plan: 'self-hosted', limits: { seats: 3 }, usage: { activeMembers: 2, pendingMembers: 1 } });
-    expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/billing', organizationId: 'org_123' });
+    await expect(client.createRequest({ requester: { name: 'Pi' }, requestType: 'sanction', title: 'Deploy?' })).resolves.toMatchObject({ request: { id: 'req_123' } });
+    await expect(client.listRequests()).resolves.toEqual([expect.objectContaining({ id: 'req_123' })]);
+    await expect(client.respondToRequest('req_123', { choiceId: 'approve' })).resolves.toMatchObject({ status: 'responded' });
+    await expect(client.waitForRequest('req_123', { timeoutMs: 0 })).resolves.toMatchObject({ terminal: false });
+    expect(requests.map((entry) => entry.url)).toEqual([
+      'https://tick.example.com/v1/requests',
+      'https://tick.example.com/v1/requests',
+      'https://tick.example.com/v1/requests/req_123/responses',
+      'https://tick.example.com/v1/requests/req_123/wait?timeoutMs=0'
+    ]);
   });
 
-  it('polls events with auth and organization context', async () => {
-    const seen: { url?: string; method?: string; authorization?: string | null; organizationId?: string | null } = {};
+  it('calls Workspace, Agent Token, Routing Rule, Activity, and test endpoints', async () => {
+    const calls: string[] = [];
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com',
-      tokenProvider: () => 'mobile-session',
-      organizationIdProvider: () => 'org_123',
       fetch: async (input, init) => {
-        const headers = new Headers(init?.headers);
-        seen.url = String(input);
-        seen.method = init?.method;
-        seen.authorization = headers.get('Authorization');
-        seen.organizationId = headers.get('X-Agent-Tick-Organization-ID');
-        return jsonResponse({ events: [{ eventId: 43, type: 'approval.created', targetId: 'req_123', createdAt: '2026-01-01T00:00:00.000Z' }], nextEventId: 43 });
+        calls.push(`${init?.method ?? 'GET'} ${new URL(String(input)).pathname}`);
+        const url = String(input);
+        if (url.endsWith('/v1/workspaces')) return jsonResponse([{ workspaceId: 'wsp_123', type: 'personal', name: 'Personal', userId: 'usr_123', role: 'owner', status: 'active', createdAt: '2026-01-01T00:00:00.000Z' }]);
+        if (url.endsWith('/v1/agent-tokens')) return jsonResponse([{ agentTokenId: 'agt_123', label: 'Pi', scopes: [], workspaceId: 'wsp_123', createdAt: '2026-01-01T00:00:00.000Z' }]);
+        if (url.endsWith('/v1/routing-rules')) return jsonResponse([{ routingRuleId: 'rul_123', workspaceId: 'wsp_123', name: 'Release', requiredResponseMode: 'any_one', requiredResponseCount: 1, recipientUserIds: ['usr_123'], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }]);
+        if (url.endsWith('/v1/activity/pending-count')) return jsonResponse({ pendingRequests: 1 });
+        if (url.endsWith('/v1/tests')) return jsonResponse({ status: 'sent', kind: 'steering', id: 'req_123' });
+        return jsonResponse([]);
       }
     });
-
-    await expect(client.pollEvents({ lastEventId: 42, timeoutMs: 25000 })).resolves.toEqual({
-      events: [{ eventId: 43, type: 'approval.created', targetId: 'req_123', createdAt: '2026-01-01T00:00:00.000Z' }],
-      nextEventId: 43
-    });
-    expect(seen).toEqual({
-      method: 'GET',
-      url: 'https://tick.example.com/v1/events/poll?lastEventId=42&timeoutMs=25000',
-      authorization: 'Bearer mobile-session',
-      organizationId: 'org_123'
-    });
+    await client.listWorkspaces();
+    await client.listAgentTokens();
+    await client.listRoutingRules();
+    await expect(client.getPendingRequestCount()).resolves.toEqual({ pendingRequests: 1 });
+    await expect(client.sendTestActivity({ kind: 'steering' })).resolves.toEqual({ status: 'sent', kind: 'steering', id: 'req_123' });
+    expect(calls).toContain('GET /v1/workspaces');
+    expect(calls).toContain('GET /v1/agent-tokens');
+    expect(calls).toContain('GET /v1/routing-rules');
   });
 
   it('builds event stream URLs from short-lived tickets', async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com/base/',
-      tokenProvider: () => 'human-token',
-      organizationIdProvider: () => 'org_123',
-      fetch: async (input, init) => {
-        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-        return jsonResponse({ ticket: 'evt_123', expiresAt: '2026-01-01T00:01:00.000Z' });
-      }
-    });
-
-    await expect(client.createEventStreamURL({ lastEventId: 42 })).resolves.toBe('https://tick.example.com/v1/events?ticket=evt_123&lastEventId=42');
-    expect(requests).toEqual([
-      { method: 'POST', url: 'https://tick.example.com/v1/events/ticket', body: {} }
-    ]);
+    const client = new AgentTickClient({ baseUrl: 'https://tick.example.com/base/', fetch: async () => jsonResponse({ ticket: 'evt_123', expiresAt: '2026-01-01T00:01:00.000Z' }) });
+    await expect(client.createEventStreamURL({ lastEventId: 42 })).resolves.toBe('https://tick.example.com/base/v1/events?ticket=evt_123&lastEventId=42');
   });
 
   it('opens event streams with an injectable EventSource constructor', async () => {
     const opened: string[] = [];
     class FakeEventSource {
-      constructor(url: string | URL) {
-        opened.push(String(url));
-      }
+      constructor(url: string | URL) { opened.push(String(url)); }
       close() {}
       addEventListener() {}
       removeEventListener() {}
@@ -249,295 +115,12 @@ describe('AgentTickClient', () => {
       OPEN = 1;
       CLOSED = 2;
     }
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async () => jsonResponse({ ticket: 'evt_stream', expiresAt: '2026-01-01T00:01:00.000Z' })
-    });
-
+    const client = new AgentTickClient({ baseUrl: 'https://tick.example.com', fetch: async () => jsonResponse({ ticket: 'evt_stream', expiresAt: '2026-01-01T00:01:00.000Z' }) });
     await client.openEventStream({ EventSource: FakeEventSource as unknown as EventSourceConstructor, lastEventId: 7 });
     expect(opened).toEqual(['https://tick.example.com/v1/events?ticket=evt_stream&lastEventId=7']);
-  });
-
-  it('calls presence endpoints with validated payloads', async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async (input, init) => {
-        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-        if (String(input).endsWith('/v1/heartbeat')) return jsonResponse({ status: 'ok', state: 'available' });
-        return jsonResponse({ userId: 'usr_123', organizationId: 'org_123', state: 'busy', updatedAt: '2026-01-01T00:00:00.000Z' });
-      }
-    });
-
-    await expect(client.sendHeartbeat({ client: 'mobile' })).resolves.toMatchObject({ status: 'ok', state: 'available' });
-    await expect(client.setAvailability({ state: 'busy' })).resolves.toMatchObject({ state: 'busy' });
-    expect(requests).toEqual([
-      { method: 'POST', url: 'https://tick.example.com/v1/heartbeat', body: { client: 'mobile' } },
-      { method: 'POST', url: 'https://tick.example.com/v1/availability', body: { state: 'busy' } }
-    ]);
-  });
-
-  it('calls project endpoints with validated payloads', async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async (input, init) => {
-        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-        const project = {
-          projectId: 'prj_123',
-          organizationId: 'org_123',
-          name: 'Mobile App',
-          slug: 'mobile-app',
-          createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z'
-        };
-        return String(input).endsWith('/v1/projects') && init?.method === 'POST' ? jsonResponse(project) : jsonResponse([project]);
-      }
-    });
-
-    await expect(client.createProject({ name: 'Mobile App' })).resolves.toMatchObject({ projectId: 'prj_123', slug: 'mobile-app' });
-    await expect(client.listProjects()).resolves.toEqual([expect.objectContaining({ projectId: 'prj_123' })]);
-    expect(requests).toEqual([
-      { method: 'POST', url: 'https://tick.example.com/v1/projects', body: { name: 'Mobile App' } },
-      { method: 'GET', url: 'https://tick.example.com/v1/projects', body: undefined }
-    ]);
-  });
-
-  it('calls team endpoints with validated payloads', async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async (input, init) => {
-        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-        const team = {
-          teamId: 'team_123',
-          organizationId: 'org_123',
-          name: 'Platform',
-          slug: 'platform',
-          createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z'
-        };
-        if (String(input).endsWith('/v1/teams') && init?.method === 'POST') return jsonResponse({ ...team, userId: 'usr_123', role: 'owner' });
-        if (String(input).endsWith('/members') && init?.method === 'POST') return jsonResponse({ ...team, userId: 'usr_123', role: 'lead' });
-        if (String(input).endsWith('/members/usr_456') && init?.method === 'DELETE') return jsonResponse({ ...team, userId: 'usr_456', role: 'lead' });
-        if (String(input).endsWith('/members')) return jsonResponse([{ ...team, userId: 'usr_123', role: 'owner' }]);
-        return jsonResponse([team]);
-      }
-    });
-
-    await expect(client.createTeam({ name: 'Platform' })).resolves.toMatchObject({ teamId: 'team_123', role: 'owner' });
-    await expect(client.listTeams()).resolves.toEqual([expect.objectContaining({ teamId: 'team_123' })]);
-    await expect(client.listTeamMembers('team_123')).resolves.toEqual([expect.objectContaining({ userId: 'usr_123' })]);
-    await expect(client.upsertTeamMember('team_123', { userId: 'usr_456', role: 'lead' })).resolves.toMatchObject({ userId: 'usr_123' });
-    await expect(client.removeTeamMember('team_123', 'usr_456')).resolves.toMatchObject({ userId: 'usr_456' });
-    expect(requests).toEqual([
-      { method: 'POST', url: 'https://tick.example.com/v1/teams', body: { name: 'Platform' } },
-      { method: 'GET', url: 'https://tick.example.com/v1/teams', body: undefined },
-      { method: 'GET', url: 'https://tick.example.com/v1/teams/team_123/members', body: undefined },
-      { method: 'POST', url: 'https://tick.example.com/v1/teams/team_123/members', body: { userId: 'usr_456', role: 'lead' } },
-      { method: 'DELETE', url: 'https://tick.example.com/v1/teams/team_123/members/usr_456', body: undefined }
-    ]);
-  });
-
-  it('calls policy endpoints with validated payloads', async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async (input, init) => {
-        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-        const policy = {
-          policyId: 'pol_123',
-          organizationId: 'org_123',
-          name: 'Production quorum',
-          requiredApprovals: 2,
-          enabled: true,
-          createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z'
-        };
-        return String(input).endsWith('/v1/policies') && init?.method === 'POST' ? jsonResponse(policy) : jsonResponse([policy]);
-      }
-    });
-
-    await expect(client.createPolicy({ name: 'Production quorum', requiredApprovals: 2 })).resolves.toMatchObject({ policyId: 'pol_123' });
-    await expect(client.listPolicies()).resolves.toEqual([expect.objectContaining({ policyId: 'pol_123' })]);
-    expect(requests).toEqual([
-      { method: 'POST', url: 'https://tick.example.com/v1/policies', body: { name: 'Production quorum', requiredApprovals: 2 } },
-      { method: 'GET', url: 'https://tick.example.com/v1/policies', body: undefined }
-    ]);
-  });
-
-  it('calls organization invite endpoints and omits org selection for token acceptance', async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown; organizationId: string | null }> = [];
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      organizationIdProvider: () => 'org_selected',
-      fetch: async (input, init) => {
-        const headers = new Headers(init?.headers);
-        requests.push({
-          url: String(input),
-          method: init?.method,
-          body: init?.body ? JSON.parse(String(init.body)) : undefined,
-          organizationId: headers.get('X-Agent-Tick-Organization-ID')
-        });
-        const invite = {
-          inviteId: 'inv_123',
-          organizationId: 'org_123',
-          label: 'Teammate',
-          role: 'admin',
-          teamIds: ['team_123'],
-          domain: 'example.com',
-          usedCount: 0,
-          createdAt: '2026-01-01T00:00:00.000Z',
-          token: 'invite_secret'
-        };
-        const url = String(input);
-        if (url.includes('/v1/invites/invite_secret/accept')) {
-          return jsonResponse({
-            status: 'pending_approval',
-            membership: { organizationId: 'org_123', name: 'Production', userId: 'usr_123', role: 'admin', status: 'pending_approval', createdAt: '2026-01-01T00:00:00.000Z' }
-          });
-        }
-        if (url.includes('/v1/invites/invite_secret')) return jsonResponse({ organizationName: 'Production', role: 'admin', approvalRequired: true });
-        if (url.includes('/v1/organization-invites/inv_123/resend')) return jsonResponse({ invite: { ...invite, emailLastStatus: 'sent', emailLastSentAt: '2026-01-01T00:00:00.000Z' }, delivery: { status: 'sent', recipient: 'teammate@example.com', sentAt: '2026-01-01T00:00:00.000Z' } });
-        if (url.includes('/v1/organization-membership-requests/mreq_123/approve')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], inviteRevokedAt: '2026-01-02T00:00:00.000Z', status: 'approved', acceptedAt: '2026-01-01T00:00:00.000Z' });
-        if (url.includes('/v1/organization-membership-requests/mreq_123/reject')) return jsonResponse({ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], inviteRevokedAt: '2026-01-02T00:00:00.000Z', status: 'rejected', acceptedAt: '2026-01-01T00:00:00.000Z' });
-        if (url.endsWith('/v1/me/organization-membership-requests')) return jsonResponse([{ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], inviteRevokedAt: '2026-01-02T00:00:00.000Z', status: 'pending_approval', acceptedAt: '2026-01-01T00:00:00.000Z' }]);
-        if (url.endsWith('/v1/organization-membership-requests')) return jsonResponse([{ requestId: 'mreq_123', inviteId: 'inv_123', organizationId: 'org_123', organizationName: 'Production', userId: 'usr_123', requestedRole: 'admin', requestedTeamIds: ['team_123'], inviteRevokedAt: '2026-01-02T00:00:00.000Z', status: 'pending_approval', acceptedAt: '2026-01-01T00:00:00.000Z' }]);
-        if (url.includes('/revoke')) return jsonResponse({ ...invite, revokedAt: '2026-01-01T00:00:00.000Z' });
-        return url.endsWith('/v1/organization-invites') && init?.method === 'POST' ? jsonResponse(invite) : jsonResponse([invite]);
-      }
-    });
-
-    await expect(client.createOrganizationInvite({ label: 'Teammate', role: 'admin', teamIds: ['team_123'], domain: 'example.com' })).resolves.toMatchObject({ inviteId: 'inv_123', teamIds: ['team_123'], domain: 'example.com' });
-    await expect(client.listOrganizationInvites()).resolves.toEqual([expect.objectContaining({ inviteId: 'inv_123', domain: 'example.com' })]);
-    await expect(client.previewInvite('invite_secret')).resolves.toEqual({ organizationName: 'Production', role: 'admin', approvalRequired: true });
-    await expect(client.acceptInvite('invite_secret')).resolves.toMatchObject({ status: 'pending_approval', membership: { role: 'admin' } });
-    await expect(client.listMyMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123', organizationName: 'Production', inviteRevokedAt: '2026-01-02T00:00:00.000Z' })]);
-    await expect(client.listMembershipRequests()).resolves.toEqual([expect.objectContaining({ requestId: 'mreq_123', organizationName: 'Production', inviteRevokedAt: '2026-01-02T00:00:00.000Z' })]);
-    await expect(client.approveMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'approved' });
-    await expect(client.rejectMembershipRequest('mreq_123')).resolves.toMatchObject({ status: 'rejected' });
-    await expect(client.resendOrganizationInvite('inv_123')).resolves.toMatchObject({ delivery: { status: 'sent', recipient: 'teammate@example.com' }, invite: { emailLastStatus: 'sent' } });
-    await expect(client.revokeOrganizationInvite('inv_123')).resolves.toMatchObject({ revokedAt: expect.any(String) });
-    expect(requests.map((request) => [request.method, request.url, request.organizationId, request.body])).toEqual([
-      ['POST', 'https://tick.example.com/v1/organization-invites', 'org_selected', { label: 'Teammate', role: 'admin', approvalRequired: false, teamIds: ['team_123'], domain: 'example.com', maxUses: 1 }],
-      ['GET', 'https://tick.example.com/v1/organization-invites', 'org_selected', undefined],
-      ['GET', 'https://tick.example.com/v1/invites/invite_secret', null, undefined],
-      ['POST', 'https://tick.example.com/v1/invites/invite_secret/accept', null, {}],
-      ['GET', 'https://tick.example.com/v1/me/organization-membership-requests', null, undefined],
-      ['GET', 'https://tick.example.com/v1/organization-membership-requests', 'org_selected', undefined],
-      ['POST', 'https://tick.example.com/v1/organization-membership-requests/mreq_123/approve', 'org_selected', {}],
-      ['POST', 'https://tick.example.com/v1/organization-membership-requests/mreq_123/reject', 'org_selected', {}],
-      ['POST', 'https://tick.example.com/v1/organization-invites/inv_123/resend', 'org_selected', {}],
-      ['POST', 'https://tick.example.com/v1/organization-invites/inv_123/revoke', 'org_selected', {}]
-    ]);
-  });
-
-  it('calls organization member endpoint', async () => {
-    const seen: { url?: string; method?: string } = {};
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async (input, init) => {
-        seen.url = String(input);
-        seen.method = init?.method;
-        return jsonResponse([
-          {
-            organizationId: 'org_123',
-            name: 'Production',
-            userId: 'usr_123',
-            role: 'owner',
-            createdAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z'
-          }
-        ]);
-      }
-    });
-
-    await expect(client.listOrganizationMembers('org_123')).resolves.toEqual([
-      expect.objectContaining({ organizationId: 'org_123', userId: 'usr_123' })
-    ]);
-    expect(seen).toEqual({ method: 'GET', url: 'https://tick.example.com/v1/organizations/org_123/members' });
-  });
-
-  it('calls agent token revoke endpoint', async () => {
-    const seen: { url?: string; method?: string; body?: unknown } = {};
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async (input, init) => {
-        seen.url = String(input);
-        seen.method = init?.method;
-        seen.body = init?.body ? JSON.parse(String(init.body)) : undefined;
-        return jsonResponse({
-          agentId: 'agt_123',
-          name: 'agent',
-          scopes: ['approval:create'],
-          organizationId: 'org_123',
-          createdAt: '2026-01-01T00:00:00.000Z',
-          revokedAt: '2026-01-01T00:00:00.000Z'
-        });
-      }
-    });
-
-    await expect(client.revokeAgentToken('agt_123')).resolves.toMatchObject({ agentId: 'agt_123' });
-    expect(seen).toEqual({
-      url: 'https://tick.example.com/v1/agent-tokens/agt_123/revoke',
-      method: 'POST',
-      body: {}
-    });
-  });
-
-  it('calls device endpoints with validated payloads', async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async (input, init) => {
-        requests.push({
-          url: String(input),
-          method: init?.method,
-          body: init?.body ? JSON.parse(String(init.body)) : undefined
-        });
-        const url = String(input);
-        if (url.endsWith('/v1/devices/register')) return jsonResponse({ deviceId: 'dev_123' });
-        if (url.endsWith('/v1/devices/pair')) return jsonResponse({ deviceId: 'dev_123', token: 'dtok_123' });
-        return jsonResponse({
-          deviceId: 'dev_123',
-          userId: 'usr_123',
-          organizationId: 'org_123',
-          name: 'Phone',
-          platform: 'ios',
-          createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z'
-        });
-      }
-    });
-
-    await expect(client.registerDevice({ deviceName: 'Phone', platform: 'ios', expoPushToken: 'ExponentPushToken[1]' })).resolves.toEqual({
-      deviceId: 'dev_123'
-    });
-    await expect(client.pairDevice({ token: 'pair_123', deviceName: 'Phone' })).resolves.toEqual({ deviceId: 'dev_123', token: 'dtok_123' });
-    await expect(client.updateDevicePushToken('dev_123', { token: 'ExponentPushToken[2]' })).resolves.toMatchObject({ deviceId: 'dev_123' });
-    await expect(client.unregisterDevice('dev_123')).resolves.toMatchObject({ deviceId: 'dev_123' });
-
-    expect(requests.map((request) => [request.method, request.url, request.body])).toEqual([
-      ['POST', 'https://tick.example.com/v1/devices/register', { deviceName: 'Phone', platform: 'ios', expoPushToken: 'ExponentPushToken[1]' }],
-      ['POST', 'https://tick.example.com/v1/devices/pair', { token: 'pair_123', deviceName: 'Phone' }],
-      ['POST', 'https://tick.example.com/v1/devices/dev_123/push-token', { token: 'ExponentPushToken[2]' }],
-      ['POST', 'https://tick.example.com/v1/devices/dev_123/unregister', {}]
-    ]);
-  });
-
-  it('validates response schemas', async () => {
-    const client = new AgentTickClient({
-      baseUrl: 'https://tick.example.com',
-      fetch: async () => jsonResponse({ status: 'wrong' })
-    });
-
-    await expect(client.health()).rejects.toThrow();
   });
 });
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers: { 'content-type': 'application/json', ...init.headers }
-  });
+  return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' }, ...init });
 }

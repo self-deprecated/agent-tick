@@ -44,7 +44,7 @@ export function NativePaywall({
           <Text style={styles.body}>{tr("Buy Lifetime app unlock to keep responding from this app and use self-hosted Agent Tick forever.")}</Text>
 
           <View style={styles.featureList}>
-            <Text style={styles.feature}>{tr("• Respond to approval requests again")}</Text>
+            <Text style={styles.feature}>{tr("• Respond to Requests again")}</Text>
             <Text style={styles.feature}>{tr("• Use self-hosted Agent Tick servers forever")}</Text>
             <Text style={styles.feature}>{tr("• Restore app access on your signed-in devices")}</Text>
           </View>

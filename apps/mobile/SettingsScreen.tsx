@@ -22,12 +22,12 @@ export type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-c
 export type ChoiceInteractionMode = "click-to-submit" | "select-then-submit";
 export type OptionPlacement = "sticky-bottom" | "inline-after-content";
 
-type SettingsView = "home" | "account" | "accounts" | "access" | "general" | "notifications" | "approval-display" | "security" | "self-hosted";
+type SettingsView = "home" | "account" | "accounts" | "access" | "general" | "notifications" | "request-display" | "security" | "self-hosted";
 
 const AVAILABILITY_SETTINGS_ENABLED = false;
 
-type OrganizationMembership = {
-  organizationId: string;
+type WorkspaceMembership = {
+  workspaceId: string;
   name: string;
   role?: string;
 };
@@ -109,11 +109,11 @@ export function SettingsScreen({
   diagnosticsEventCount = 0,
   diagnosticsLastSentAt,
   deviceID,
-  organizations = [],
-  selectedOrganizationID = "",
+  workspaces = [],
+  selectedWorkspaceID = "",
   serverURL,
   setPairingCode,
-  setSelectedOrganizationID,
+  setSelectedWorkspaceID,
   setE2eeKey,
   setServerURL,
   setToken,
@@ -173,11 +173,11 @@ export function SettingsScreen({
   diagnosticsEventCount?: number;
   diagnosticsLastSentAt?: string;
   deviceID: string;
-  organizations?: OrganizationMembership[];
-  selectedOrganizationID?: string;
+  workspaces?: WorkspaceMembership[];
+  selectedWorkspaceID?: string;
   serverURL: string;
   setPairingCode: (value: string) => void;
-  setSelectedOrganizationID?: (value: string) => void;
+  setSelectedWorkspaceID?: (value: string) => void;
   setE2eeKey?: (value: string) => void;
   setServerURL: (value: string) => void;
   setToken: (value: string) => void;
@@ -216,7 +216,7 @@ export function SettingsScreen({
   };
 
   const currentAccountTitle = currentAccountLabel({ authProvider, currentAccountProfile, deviceID, serverURL });
-  const currentAccountMeta = currentAccountDetails({ authProvider, currentAccountProfile, selectedOrganizationID, serverURL });
+  const currentAccountMeta = currentAccountDetails({ authProvider, currentAccountProfile, selectedWorkspaceID, serverURL });
 
   const selectedLanguageLabel = localePreference === "system"
     ? `${tr("System")} (${localeName(activeLocale)})`
@@ -251,16 +251,16 @@ export function SettingsScreen({
     <View style={styles.settingsSection}>
       <Text style={styles.sectionHeading}>{tr("App access")}</Text>
       <View style={styles.purchaseCard}>
-        <Text style={styles.organizationName}>{tr(entitlementCopy.title)}</Text>
-        <Text style={styles.organizationMeta}>{entitlementSummary ? tr(entitlementSummary) : tr("Trial status unavailable")}</Text>
+        <Text style={styles.workspaceName}>{tr(entitlementCopy.title)}</Text>
+        <Text style={styles.workspaceMeta}>{entitlementSummary ? tr(entitlementSummary) : tr("Trial status unavailable")}</Text>
         <Text style={styles.pairingHint}>{tr(entitlementCopy.appAccess)}</Text>
         <Text style={styles.pairingHint}>{tr(entitlementCopy.hostedAccess)}</Text>
         <Text style={nativeAppEntitlement.readOnly ? styles.errorText : styles.pairingHint}>{tr(entitlementCopy.paywall)}</Text>
         {!billingStatusLoaded ? <Text style={styles.pairingHint}>{tr("Sign in or connect to Agent Tick to load server purchase status before buying.")}</Text> : null}
       </View>
       <View style={styles.purchaseCard}>
-        <Text style={styles.organizationName}>{tr("Lifetime app unlock")}</Text>
-        <Text style={styles.organizationMeta}>{tr("Use the Agent Tick app with self-hosted servers forever.")}</Text>
+        <Text style={styles.workspaceName}>{tr("Lifetime app unlock")}</Text>
+        <Text style={styles.workspaceMeta}>{tr("Use the Agent Tick app with self-hosted servers forever.")}</Text>
         <Text style={styles.priceText}>{priceForProduct(storeProducts, "lifetime_unlock") ?? "$19.99"}</Text>
         {lifetimeAvailability?.reason && !nativeAppEntitlement.lifetimeUnlocked ? <Text style={styles.pairingHint}>{purchaseAvailabilityCopy(lifetimeAvailability.reason)}</Text> : null}
         <Pressable disabled={lifetimeBlocked} onPress={() => onPurchaseLifetimeUnlock?.()} style={[styles.primaryButton, lifetimeBlocked ? styles.disabledButton : null]}>
@@ -268,8 +268,8 @@ export function SettingsScreen({
         </Pressable>
       </View>
       <View style={styles.purchaseCard}>
-        <Text style={styles.organizationName}>{tr("Hosted service")}</Text>
-        <Text style={styles.organizationMeta}>{tr("Let us run the approval routing, push, updates, and uptime for you.")}</Text>
+        <Text style={styles.workspaceName}>{tr("Hosted service")}</Text>
+        <Text style={styles.workspaceMeta}>{tr("Let us run Request routing, push, updates, and uptime for you.")}</Text>
         <Text style={styles.pairingHint}>{hostedPersonalActive ? tr("Hosted service is active.") : tr("The included hosted month starts when hosted service is first activated after purchase.")}</Text>
         {hostedExpiry ? <Text style={styles.pairingHint}>{hostedExpiryCopy(hostedExpiry, tr)}</Text> : null}
         {crossPlatformHostedCopy ? <Text style={styles.pairingHint}>{crossPlatformHostedCopy}</Text> : null}
@@ -347,9 +347,9 @@ export function SettingsScreen({
       <Text style={styles.label}>{tr("Notifications")}</Text>
       {shouldRemindNotifications ? (
         <View style={styles.notificationReminder}>
-          <Text style={styles.notificationReminderTitle}>{tr("Enable approval alerts")}</Text>
+          <Text style={styles.notificationReminderTitle}>{tr("Enable Request alerts")}</Text>
           <Text style={styles.notificationReminderText}>
-            {tr("Agent Tick works best when notifications are on, so urgent approval requests can reach you even when the app is closed.")}
+            {tr("Agent Tick works best when notifications are on, so urgent Requests can reach you even when the app is closed.")}
           </Text>
           <Pressable onPress={() => { trackButton("enable_notifications_reminder"); onRequestNotifications(); }} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>{tr("Enable Notifications")}</Text>
@@ -411,7 +411,7 @@ export function SettingsScreen({
     <View style={styles.settingsSection}>
       <Text style={styles.sectionHeading}>{tr("Debug")}</Text>
       <Text style={styles.pairingHint}>
-        {tr("Debug tools for testing paywalls, hosted expiry warnings, diagnostics, and mobile state. Agent Tick avoids sending approval text, commands, bearer tokens, or Clerk secrets.")}
+        {tr("Debug tools for testing paywalls, hosted expiry warnings, diagnostics, and mobile state. Agent Tick avoids sending Request text, commands, bearer tokens, or Clerk secrets.")}
       </Text>
       <View style={styles.notificationActions}>
         <Pressable onPress={() => { trackButton("debug_show_native_paywall"); onShowNativePaywall?.(); }} style={styles.secondaryActionButton}>
@@ -466,24 +466,24 @@ export function SettingsScreen({
     </Pressable>
   );
 
-  const showWorkspaceSelector = isClerkMode && organizations.length > 1;
+  const showWorkspaceSelector = isClerkMode && workspaces.length > 1;
   const workspaceSection = showWorkspaceSelector ? (
     <View style={styles.settingsSection}>
       <Text style={styles.sectionHeading}>{tr("Workspace")}</Text>
       <Text style={styles.pairingHint}>
-        {tr("Choose which workspace this phone should show approvals for. Team and policy access is managed on the Agent Tick dashboard.")}
+        {tr("Choose which Workspace this phone should show Requests for. Routing Rule access is managed on the Agent Tick console.")}
       </Text>
-      <View style={styles.organizationList}>
-        {organizations.map((membership) => {
-          const active = membership.organizationId === selectedOrganizationID;
+      <View style={styles.workspaceList}>
+        {workspaces.map((membership) => {
+          const active = membership.workspaceId === selectedWorkspaceID;
           return (
             <Pressable
-              key={membership.organizationId}
-              onPress={() => { trackButton("select_organization", { organizationID: membership.organizationId, organizationRole: membership.role }); setSelectedOrganizationID?.(membership.organizationId); }}
-              style={[styles.organizationButton, active ? styles.organizationButtonActive : null]}
+              key={membership.workspaceId}
+              onPress={() => { trackButton("select_workspace", { workspaceID: membership.workspaceId, workspaceRole: membership.role }); setSelectedWorkspaceID?.(membership.workspaceId); }}
+              style={[styles.workspaceButton, active ? styles.workspaceButtonActive : null]}
             >
-              <Text style={[styles.organizationName, active ? styles.organizationNameActive : null]}>{membership.name}</Text>
-              <Text style={[styles.organizationMeta, active ? styles.organizationNameActive : null]}>{membership.role ? translateSource(membership.role) : tr("member")}</Text>
+              <Text style={[styles.workspaceName, active ? styles.workspaceNameActive : null]}>{membership.name}</Text>
+              <Text style={[styles.workspaceMeta, active ? styles.workspaceNameActive : null]}>{membership.role ? translateSource(membership.role) : tr("member")}</Text>
             </Pressable>
           );
         })}
@@ -495,7 +495,7 @@ export function SettingsScreen({
     <View style={styles.settingsSection}>
       <Text style={styles.sectionHeading}>{tr("Availability")}</Text>
       <Text style={styles.pairingHint}>
-        {tr("Agent Tick shares coarse last-seen and availability with your team so on-call and recently-active policies can route approvals. Use Do Not Disturb or Off-call when you should not be interrupted.")}
+        {tr("Agent Tick shares coarse last-seen and availability with your Workspaces so Routing Rules can route Requests. Use Do Not Disturb or Off-call when you should not be interrupted.")}
       </Text>
       <View style={styles.availabilityGrid}>
         {(["available", "busy", "do-not-disturb", "off-call"] as AvailabilityState[]).map((state) => (
@@ -529,7 +529,7 @@ export function SettingsScreen({
       style={[styles.settingsSection, e2eeFocusToken ? styles.focusedSettingsSection : null]}
     >
       <Text style={styles.sectionHeading}>{tr("End-to-end encryption")}</Text>
-      <Text style={styles.pairingHint}>{tr("Paste the shared approval encryption key or passphrase for this device to decrypt encrypted request details locally.")}</Text>
+      <Text style={styles.pairingHint}>{tr("Paste the shared Request encryption key or passphrase for this device to decrypt encrypted Request details locally.")}</Text>
       <TextInput
         autoCapitalize="none"
         autoCorrect={false}
@@ -542,10 +542,10 @@ export function SettingsScreen({
     </View>
   );
 
-  const approvalDisplaySection = (
+  const requestDisplaySection = (
     <View style={styles.settingsSection}>
-      <Text style={styles.sectionHeading}>{tr("Approval display")}</Text>
-      <Text style={styles.pairingHint}>{tr("Tune how long approval requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding.")}</Text>
+      <Text style={styles.sectionHeading}>{tr("Request display")}</Text>
+      <Text style={styles.pairingHint}>{tr("Tune how long Requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding.")}</Text>
       <View style={styles.fieldGroup}>
         <Text style={styles.label}>{tr("Choice behavior")}</Text>
         <View style={styles.segmentedControl}>
@@ -555,7 +555,7 @@ export function SettingsScreen({
           ] as const).map(([mode, label]) => (
             <Pressable
               key={mode}
-              onPress={() => { trackButton("approval_choice_mode", { mode }); onChoiceInteractionModeChange?.(mode); }}
+              onPress={() => { trackButton("request_choice_mode", { mode }); onChoiceInteractionModeChange?.(mode); }}
               style={[styles.segmentButton, choiceInteractionMode === mode ? styles.segmentButtonActive : null]}
             >
               <Text style={[styles.segmentButtonText, choiceInteractionMode === mode ? styles.segmentButtonTextActive : null]}>{label}</Text>
@@ -572,7 +572,7 @@ export function SettingsScreen({
           ] as const).map(([placement, label]) => (
             <Pressable
               key={placement}
-              onPress={() => { trackButton("approval_option_placement", { placement }); onOptionPlacementChange?.(placement); }}
+              onPress={() => { trackButton("request_option_placement", { placement }); onOptionPlacementChange?.(placement); }}
               style={[styles.segmentButton, optionPlacement === placement ? styles.segmentButtonActive : null]}
             >
               <Text style={[styles.segmentButtonText, optionPlacement === placement ? styles.segmentButtonTextActive : null]}>{label}</Text>
@@ -581,7 +581,7 @@ export function SettingsScreen({
         </View>
       </View>
       <Pressable
-        onPress={() => { trackButton("approval_confirm_before_submit", { enabled: !confirmBeforeSubmit }); onConfirmBeforeSubmitChange?.(!confirmBeforeSubmit); }}
+        onPress={() => { trackButton("request_confirm_before_submit", { enabled: !confirmBeforeSubmit }); onConfirmBeforeSubmitChange?.(!confirmBeforeSubmit); }}
         style={styles.toggleRow}
       >
         <Text style={styles.toggleLabel}>{tr("Confirm clickable submissions")}</Text>
@@ -683,19 +683,19 @@ export function SettingsScreen({
           <Text style={styles.pairingHint}>{tr("Choose a saved account or add another Agent Tick account on this device.")}</Text>
         </View>
         <View style={styles.settingsSection}>
-          <View style={styles.organizationList}>
-            <View style={[styles.organizationButton, styles.organizationButtonActive]}>
+          <View style={styles.workspaceList}>
+            <View style={[styles.workspaceButton, styles.workspaceButtonActive]}>
               <Pressable onPress={() => { trackButton("current_account_selected"); setSettingsView("account"); }} style={styles.accountSelectArea}>
-                <Text style={[styles.label, styles.organizationNameActive]}>{tr("Current")}</Text>
-                <Text style={[styles.organizationName, styles.organizationNameActive]}>{currentAccountTitle}</Text>
-                <Text style={[styles.organizationMeta, styles.organizationNameActive]}>{currentAccountMeta}</Text>
+                <Text style={[styles.label, styles.workspaceNameActive]}>{tr("Current")}</Text>
+                <Text style={[styles.workspaceName, styles.workspaceNameActive]}>{currentAccountTitle}</Text>
+                <Text style={[styles.workspaceMeta, styles.workspaceNameActive]}>{currentAccountMeta}</Text>
               </Pressable>
               <Pressable onPress={() => { trackButton(isClerkMode ? "sign_out_current_account" : "forget_current_device"); setSettingsView("home"); onForgetDevice(); }} style={styles.signOutAccountButton}>
                 <Text style={styles.signOutAccountText}>{tr("Sign Out")}</Text>
               </Pressable>
             </View>
-            {accounts.filter((account) => !isCurrentSavedAccount(account, { authProvider, currentAccountProfile, deviceID, selectedOrganizationID, serverURL })).map((account) => (
-              <View key={account.id} style={styles.organizationButton}>
+            {accounts.filter((account) => !isCurrentSavedAccount(account, { authProvider, currentAccountProfile, deviceID, selectedWorkspaceID, serverURL })).map((account) => (
+              <View key={account.id} style={styles.workspaceButton}>
                 <Pressable
                   onPress={() => {
                     trackButton("saved_account_select", { targetAccountID: account.id, targetAuthProvider: account.authProvider, targetUserID: account.userID, targetEmail: account.email, targetSignInMethod: account.signInMethod });
@@ -704,8 +704,8 @@ export function SettingsScreen({
                   }}
                   style={styles.accountSelectArea}
                 >
-                  <Text style={styles.organizationName}>{account.label}</Text>
-                  <Text style={styles.organizationMeta}>{savedAccountDetails(account)}</Text>
+                  <Text style={styles.workspaceName}>{account.label}</Text>
+                  <Text style={styles.workspaceMeta}>{savedAccountDetails(account)}</Text>
                 </Pressable>
                 {onSavedAccountRemove ? (
                   <Pressable onPress={() => { trackButton("saved_account_remove", { targetAccountID: account.id, targetAuthProvider: account.authProvider, targetUserID: account.userID, targetEmail: account.email, targetSignInMethod: account.signInMethod }); onSavedAccountRemove(account); }} style={styles.removeAccountButton}>
@@ -765,11 +765,11 @@ export function SettingsScreen({
     );
   }
 
-  if (isPaired && settingsView === "approval-display") {
+  if (isPaired && settingsView === "request-display") {
     return (
       <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
         {renderBackButton()}
-        {approvalDisplaySection}
+        {requestDisplaySection}
       </ScrollView>
     );
   }
@@ -844,9 +844,9 @@ export function SettingsScreen({
         </View>
         <View style={styles.settingsSection}>
           {appAccessSection ? renderNavItem("App access", entitlementSummary || "Trial, purchases, and hosted service", "access", "open_app_access") : null}
-          {renderNavItem("Notifications", notificationsEnabled ? "Approval alerts and push status" : "Approval alerts are off in Agent Tick", "notifications", "open_notifications_settings")}
-          {renderNavItem("Security", "End-to-end approval decryption key", "security", "open_security_settings")}
-          {renderNavItem("Approval display", "Choice behavior, action placement, and confirmation", "approval-display", "open_approval_display_settings")}
+          {renderNavItem("Notifications", notificationsEnabled ? "Request alerts and push status" : "Request alerts are off in Agent Tick", "notifications", "open_notifications_settings")}
+          {renderNavItem("Security", "End-to-end Request decryption key", "security", "open_security_settings")}
+          {renderNavItem("Request display", "Choice behavior, action placement, and confirmation", "request-display", "open_request_display_settings")}
           {renderNavItem("General", selectedLanguageLabel, "general", "open_general_settings", revealDiagnostics)}
         </View>
       </ScrollView>
@@ -867,16 +867,16 @@ export function SettingsScreen({
       <View style={styles.settingsSection}>
         {onUseHosted ? (
           <View style={styles.purchaseCard}>
-            <Text style={styles.organizationName}>{tr("Agent Tick Hosted")}</Text>
-            <Text style={styles.organizationMeta}>{tr("Sign in to agenttick.sh for hosted routing, push, updates, and uptime.")}</Text>
+            <Text style={styles.workspaceName}>{tr("Agent Tick Hosted")}</Text>
+            <Text style={styles.workspaceMeta}>{tr("Sign in to agenttick.sh for hosted routing, push, updates, and uptime.")}</Text>
             <Pressable onPress={() => { trackButton("use_hosted_unpaired"); onUseHosted(); }} style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>{tr("Sign in to agenttick.sh")}</Text>
             </Pressable>
           </View>
         ) : null}
         <View style={styles.purchaseCard}>
-          <Text style={styles.organizationName}>{tr("Self-hosted server")}</Text>
-          <Text style={styles.organizationMeta}>{tr("Connect to an Agent Tick server that you or your team runs.")}</Text>
+          <Text style={styles.workspaceName}>{tr("Self-hosted server")}</Text>
+          <Text style={styles.workspaceMeta}>{tr("Connect to an Agent Tick server that you or your Workspace runs.")}</Text>
           <Pressable onPress={() => { trackButton("scan_pairing_qr"); onScanPairing(); }} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>{tr("Scan Pairing QR")}</Text>
           </Pressable>
@@ -889,7 +889,7 @@ export function SettingsScreen({
       <View style={styles.settingsSection}>
         {appAccessSection ? renderNavItem("App access", entitlementSummary || "Trial, purchases, and hosted service", "access", "open_app_access") : null}
         {renderNavItem("General", selectedLanguageLabel, "general", "open_general_settings", revealDiagnostics)}
-        {renderNavItem("Notifications", notificationsEnabled ? "Approval alerts and push status" : "Approval alerts are off in Agent Tick", "notifications", "open_notifications_settings")}
+        {renderNavItem("Notifications", notificationsEnabled ? "Request alerts and push status" : "Request alerts are off in Agent Tick", "notifications", "open_notifications_settings")}
       </View>
     </ScrollView>
   );
@@ -917,7 +917,7 @@ function currentAccountDetails({
 }: {
   authProvider?: string;
   currentAccountProfile?: Pick<MeResponse, "email" | "signInMethod"> | null;
-  selectedOrganizationID?: string;
+  selectedWorkspaceID?: string;
   serverURL: string;
 }) {
   const serverHost = hostLabel(serverURL);
@@ -978,7 +978,7 @@ function isCurrentSavedAccount(
     authProvider?: string;
     currentAccountProfile?: Pick<MeResponse, "userId" | "email"> | null;
     deviceID: string;
-    selectedOrganizationID?: string;
+    selectedWorkspaceID?: string;
     serverURL: string;
   },
 ) {
@@ -989,7 +989,7 @@ function isCurrentSavedAccount(
     return false;
   }
   if (account.deviceID && current.deviceID) return account.deviceID === current.deviceID;
-  return Boolean(account.organizationID && account.organizationID === current.selectedOrganizationID);
+  return Boolean(account.workspaceID && account.workspaceID === current.selectedWorkspaceID);
 }
 
 function normalizeServerURL(serverURL: string) {
@@ -1329,10 +1329,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "900",
   },
-  organizationList: {
+  workspaceList: {
     gap: 8,
   },
-  organizationButton: {
+  workspaceButton: {
     borderColor: "#ded6c6",
     borderRadius: 8,
     borderWidth: 1,
@@ -1368,21 +1368,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
   },
-  organizationButtonActive: {
+  workspaceButtonActive: {
     backgroundColor: "#202124",
     borderColor: "#202124",
   },
-  organizationName: {
+  workspaceName: {
     color: "#202124",
     fontSize: 16,
     fontWeight: "900",
   },
-  organizationMeta: {
+  workspaceMeta: {
     color: "#5f5a4f",
     fontSize: 13,
     fontWeight: "700",
   },
-  organizationNameActive: {
+  workspaceNameActive: {
     color: "#ffffff",
   },
   secondaryActionButton: {

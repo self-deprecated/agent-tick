@@ -25,7 +25,7 @@ The current export set covers:
 
 The first five launch scenes mirror [`store-listing.md`](../../store-listing.md):
 
-1. Approval request / Sanction
+1. Request / Sanction
 2. Steering choices
 3. Status Update / Activity History
 4. Hosted/self-hosted setup
@@ -35,6 +35,6 @@ The first five launch scenes mirror [`store-listing.md`](../../store-listing.md)
 
 Keep screenshots bounded and store-review-safe:
 
-- Show approval summaries, commit SHAs, links, and action labels.
+- Show Request summaries, commit SHAs, links, and action labels.
 - Do not include secrets, private keys, bearer tokens, cookies, raw logs, `.env` files, customer data, or full AI prompts/transcripts.
-- Keep Agent Tick positioned as the approval layer; the local agent or workflow still executes the approved action.
+- Keep Agent Tick positioned as the Request routing layer; the local agent or workflow still executes authorized actions.

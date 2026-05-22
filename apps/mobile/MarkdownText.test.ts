@@ -2,14 +2,14 @@ import { parseInlineMarkdown, parseMarkdownBlocks } from "./MarkdownText";
 
 describe("MarkdownText", () => {
   it("parses bold, italic, and inline code", () => {
-    expect(parseInlineMarkdown("Use **Shared Workspace**, *not* `Organization Workspace`."))
+    expect(parseInlineMarkdown("Use **Shared Workspace**, *not* `Workspace Workspace`."))
       .toEqual([
         { type: "text", text: "Use " },
         { type: "strong", children: [{ type: "text", text: "Shared Workspace" }] },
         { type: "text", text: ", " },
         { type: "emphasis", children: [{ type: "text", text: "not" }] },
         { type: "text", text: " " },
-        { type: "code", text: "Organization Workspace" },
+        { type: "code", text: "Workspace Workspace" },
         { type: "text", text: "." },
       ]);
   });
@@ -25,12 +25,12 @@ describe("MarkdownText", () => {
       "- check the diff",
       "- run tests",
       "",
-      "> Ship only after approval",
+      "> Ship only after Response",
     ].join("\n"))).toEqual([
       { type: "paragraph", text: "Review this command:" },
       { type: "code", language: "sh", text: "agent-tick sanction --title 'Deploy'" },
       { type: "list", ordered: false, items: ["check the diff", "run tests"] },
-      { type: "quote", text: "Ship only after approval" },
+      { type: "quote", text: "Ship only after Response" },
     ]);
   });
 

@@ -3,7 +3,7 @@
     "name": "Agent Tick",
     "slug": "agenttick",
     "version": "0.1.0",
-    "description": "Phone approvals for coding agents.",
+    "description": "Phone Requests for coding agents.",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "scheme": "agenttick",

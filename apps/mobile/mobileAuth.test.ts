@@ -12,14 +12,14 @@ describe("mobile auth config", () => {
     expect(mobileSessionStorageKeys("https://tick.example.com/")).toEqual({
       token: "agent-tick.session.https%3A%2F%2Ftick.example.com.token",
       deviceID: "agent-tick.session.https%3A%2F%2Ftick.example.com.deviceID",
-      organizationID: "agent-tick.session.https%3A%2F%2Ftick.example.com.organizationID",
+      workspaceID: "agent-tick.session.https%3A%2F%2Ftick.example.com.workspaceID",
       pushStatus: "agent-tick.session.https%3A%2F%2Ftick.example.com.pushStatus",
       notificationsEnabled: "agent-tick.session.https%3A%2F%2Ftick.example.com.notificationsEnabled",
     });
     expect(mobileSessionStorageKeyList("https://tick.example.com/")).toEqual([
       "agent-tick.session.https%3A%2F%2Ftick.example.com.token",
       "agent-tick.session.https%3A%2F%2Ftick.example.com.deviceID",
-      "agent-tick.session.https%3A%2F%2Ftick.example.com.organizationID",
+      "agent-tick.session.https%3A%2F%2Ftick.example.com.workspaceID",
       "agent-tick.session.https%3A%2F%2Ftick.example.com.pushStatus",
       "agent-tick.session.https%3A%2F%2Ftick.example.com.notificationsEnabled",
     ]);
@@ -38,7 +38,7 @@ describe("mobile auth config", () => {
       authProvider: "clerk",
       userID: "usr_1",
       email: "ada@example.com",
-      organizationID: "org_1",
+      workspaceID: "org_1",
       label: "GitHub account",
       updatedAt: "2026-05-10T00:01:00.000Z",
     });
@@ -49,13 +49,13 @@ describe("mobile auth config", () => {
     expect(normalizeSavedMobileAccounts(JSON.parse(JSON.stringify(second))).map((account) => account.label)).toEqual(["GitHub account", "Example device"]);
   });
 
-  it("deduplicates legacy organization-scoped hosted accounts by user", () => {
+  it("deduplicates legacy workspace-scoped hosted accounts by user", () => {
     const legacy = normalizeSavedMobileAccounts([
       {
-        id: savedMobileAccountID({ serverURL: "https://app.agenttick.sh", authProvider: "clerk", organizationID: "org_1" }),
+        id: savedMobileAccountID({ serverURL: "https://app.agenttick.sh", authProvider: "clerk", workspaceID: "org_1" }),
         serverURL: "https://app.agenttick.sh",
         authProvider: "clerk",
-        organizationID: "org_1",
+        workspaceID: "org_1",
         label: "Platform",
         updatedAt: "2026-05-10T00:00:00.000Z",
       },
@@ -72,7 +72,7 @@ describe("mobile auth config", () => {
 
     expect(next).toHaveLength(1);
     expect(next[0]).toMatchObject({ userID: "usr_1", email: "ada@example.com", signInMethod: "GitHub" });
-    expect(next[0]?.organizationID).toBeUndefined();
+    expect(next[0]?.workspaceID).toBeUndefined();
   });
 
   it("namespaces saved Agent Tick account session tokens by account ID", () => {

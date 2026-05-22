@@ -1,23 +1,23 @@
 import {
   buildQuestionnaireAnswers,
   canRespondToRequest,
-  groupRequestsByProject,
-  isEncryptedApprovalRequest,
-  normalizeApproval,
-  policyProgressMessage,
+  groupRequestsBySource,
+  isEncryptedRequest,
+  normalizeRequest,
+  quorumProgressMessage,
   questionnaireReady,
   requestCommandDetails,
-  requestPolicySummary,
+  requestQuorumSummary,
   requestResponsibilityLabel,
   requestStatusLabel,
-  requestVoteHistory,
+  requestResponseHistory,
   supportsNotificationActions,
   updateQuestionnaireAnswers,
-  requestProjectID,
-  requestProjectLabel,
+  requestSourceID,
+  requestSourceLabel,
   requestRequesterLabel,
   shouldScheduleLocalNotifications,
-} from "./approvalRequests";
+} from "./requests";
 import {
   entitlementStatusCopy,
   formatHostedDate,
@@ -32,13 +32,13 @@ import {
   trialRemainingLabel,
 } from "./AppLogic";
 
-function notificationResponse(actionIdentifier: string, approvalRequestID?: unknown) {
+function notificationResponse(actionIdentifier: string, requestID?: unknown) {
   return {
     actionIdentifier,
     notification: {
       request: {
         content: {
-          data: { approvalRequestID },
+          data: { requestID },
         },
       },
     },
@@ -180,14 +180,14 @@ describe("parsePairingPayload", () => {
           serverURL: "https://tick.example.com",
           mode: "clerk",
           authProvider: "clerk",
-          organizationId: "org_123",
+          workspaceId: "org_123",
         }),
       ),
     ).toEqual({
       serverURL: "https://tick.example.com",
       mode: "clerk",
       authProvider: "clerk",
-      organizationId: "org_123",
+      workspaceId: "org_123",
     });
   });
 
@@ -203,7 +203,7 @@ describe("parsePairingPayload", () => {
 });
 
 describe("notificationDecision", () => {
-  it("opens the approval for notification action payloads without responding", () => {
+  it("opens the Request for notification action payloads without responding", () => {
     expect(notificationDecision(notificationResponse("approve", "req_123"))).toEqual({
       kind: "open",
       requestID: "req_123",
@@ -214,19 +214,19 @@ describe("notificationDecision", () => {
     });
   });
 
-  it("opens the approval for normal notification taps", () => {
+  it("opens the Request for normal notification taps", () => {
     expect(notificationDecision(notificationResponse("default", "req_123"))).toEqual({
       kind: "open",
       requestID: "req_123",
     });
   });
 
-  it("accepts team/quorum push payload aliases", () => {
+  it("accepts quorum push payloads", () => {
     expect(notificationRequestID({ requestId: "req_step" })).toBe("req_step");
     expect(
       notificationDecision({
         actionIdentifier: "default",
-        notification: { request: { content: { data: { approvalRequestId: "req_quorum" } } } },
+        notification: { request: { content: { data: { requestId: "req_quorum" } } } },
       }),
     ).toEqual({ kind: "open", requestID: "req_quorum" });
   });
@@ -239,24 +239,25 @@ describe("notificationDecision", () => {
     expect(notificationDecision({ actionIdentifier: "approve", notification: { request: { content: { data: null } } } })).toBeNull();
   });
 
-  it("ignores notifications without approval ids", () => {
+  it("ignores notifications without Request ids", () => {
     expect(notificationDecision(notificationResponse("approve"))).toBeNull();
   });
 });
 
 describe("notificationFallbackState", () => {
-  it("selects and opens an approval after action response failure", () => {
+  it("selects and opens an request after action response failure", () => {
     expect(notificationFallbackState("req_123")).toEqual({
       notificationTargetID: "req_123",
       selectedID: "req_123",
-      screen: "approvals",
+      screen: "requests",
     });
   });
 });
 
 const questionnaireRequest = {
   id: "req_questions",
-  requester: { name: "Claude", agentId: "claude-code" },
+  workspaceId: "wsp_personal",
+  requester: { name: "Claude", agentTokenId: "claude-code" },
   requestType: "questionnaire",
   title: "Pre-flight questions",
   choices: [],
@@ -279,30 +280,30 @@ const questionnaireRequest = {
   createdAt: "2026-04-19T12:00:00Z",
 };
 
-describe("project grouping helpers", () => {
-  it("groups requests by explicit project id", () => {
+describe("source grouping helpers", () => {
+  it("groups requests by source context", () => {
     const requests = [
-      normalizeApproval({
+      normalizeRequest({
         id: "req_a",
-        requester: { name: "Agent", agentId: "agent", host: "box", workingDirectory: "/work/a", projectName: "Alpha", projectId: "box:/work/a" },
+        requester: { name: "Agent", agentTokenId: "agent", host: "box", workingDirectory: "/work/a", clientName: "Alpha", clientId: "box:/work/a" },
         title: "A",
         choices: [],
         allowFreeformReply: false,
         status: "pending",
         createdAt: "2026-04-19T12:00:00Z",
       }),
-      normalizeApproval({
+      normalizeRequest({
         id: "req_b",
-        requester: { name: "Agent", agentId: "agent", host: "box", workingDirectory: "/work/a", projectName: "Alpha", projectId: "box:/work/a" },
+        requester: { name: "Agent", agentTokenId: "agent", host: "box", workingDirectory: "/work/a", clientName: "Alpha", clientId: "box:/work/a" },
         title: "B",
         choices: [],
         allowFreeformReply: false,
         status: "pending",
         createdAt: "2026-04-19T12:00:00Z",
       }),
-      normalizeApproval({
+      normalizeRequest({
         id: "req_c",
-        requester: { name: "Agent", agentId: "agent", host: "box", workingDirectory: "/work/c" },
+        requester: { name: "Agent", agentTokenId: "agent", host: "box", workingDirectory: "/work/c" },
         title: "C",
         choices: [],
         allowFreeformReply: false,
@@ -315,25 +316,25 @@ describe("project grouping helpers", () => {
     expect(first).toBeDefined();
     expect(second).toBeDefined();
     expect(third).toBeDefined();
-    expect(requestProjectID(first!)).toBe("box:/work/a");
-    expect(requestProjectLabel(third!)).toBe("c");
-    expect(groupRequestsByProject(requests)).toEqual([
-      { id: "box:/work/a", label: "Alpha", requests: [first!, second!] },
+    expect(requestSourceID(first!)).toBe("box:Alpha");
+    expect(requestSourceLabel(third!)).toBe("c");
+    expect(groupRequestsBySource(requests)).toEqual([
+      { id: "box:Alpha", label: "Alpha", requests: [first!, second!] },
       { id: "box:/work/c", label: "c", requests: [third!] },
     ]);
   });
 });
 
-describe("approval detail metadata helpers", () => {
+describe("request detail metadata helpers", () => {
   it("builds detailed command history rows", () => {
-    const request = normalizeApproval({
+    const request = normalizeRequest({
       id: "req_cmd",
       requester: {
         name: "agent-tick",
-        agentId: "agent",
+        agentTokenId: "agent",
         host: "lattice",
         workingDirectory: "/work/agent-tick",
-        projectName: "agent-tick",
+        clientName: "agent-tick",
       },
       title: "Run tests?",
       command: "corepack pnpm test -- --runInBand",
@@ -346,7 +347,7 @@ describe("approval detail metadata helpers", () => {
 
     expect(requestCommandDetails(request)).toEqual([
       { label: "Command", value: "corepack pnpm test -- --runInBand" },
-      { label: "Project", value: "agent-tick" },
+      { label: "Source", value: "agent-tick" },
       { label: "Directory", value: "/work/agent-tick" },
       { label: "Host", value: "lattice" },
       { label: "Requested", value: "2026-04-19T12:00:00Z" },
@@ -356,14 +357,14 @@ describe("approval detail metadata helpers", () => {
   });
 
   it("keeps requester and project context separate to avoid duplicate host text", () => {
-    const request = normalizeApproval({
+    const request = normalizeRequest({
       id: "req_project",
       requester: {
         name: "agent-tick",
-        agentId: "agent",
+        agentTokenId: "agent",
         host: "lattice",
         workingDirectory: "/work/agent-tick",
-        projectName: "agent-tick",
+        clientName: "agent-tick",
       },
       title: "Approve?",
       choices: [{ id: "approve", label: "Approve", kind: "approve" }],
@@ -373,16 +374,16 @@ describe("approval detail metadata helpers", () => {
     });
 
     expect(requestRequesterLabel(request)).toBe("agent-tick");
-    expect(requestProjectLabel(request)).toBe("agent-tick");
+    expect(requestSourceLabel(request)).toBe("agent-tick");
   });
 });
 
-describe("policy progress helpers", () => {
+describe("quorum progress helpers", () => {
   it("shows current-user quorum waiting state after voting", () => {
-    const request = normalizeApproval({
+    const request = normalizeRequest({
       id: "req_quorum",
-      requester: { name: "Agent", agentId: "agent" },
-      requestType: "approval",
+      requester: { name: "Agent", agentTokenId: "agent" },
+      requestType: "sanction",
       title: "Deploy?",
       choices: [
         { id: "approve", label: "Approve", kind: "approve" },
@@ -391,32 +392,26 @@ describe("policy progress helpers", () => {
       allowFreeformReply: false,
       status: "pending",
       createdAt: "2026-04-19T12:00:00Z",
-      metadata: { teamName: "Backend", approvalPolicySummary: "Requires 2 approvals from Backend" },
-      policyProgress: {
-        policyId: "pol_backend",
-        state: "pending",
-        currentStep: 1,
-        totalSteps: 1,
-        requiredApprovals: 2,
-        receivedApprovals: 1,
-        currentUserHasVoted: true,
+      metadata: { routingRuleName: "Backend", routingRuleSummary: "Requires 2 responses from Backend" },
+      quorum: {
+        requiredResponseCount: 2,
+        receivedResponseCount: 1,
+        currentUserResponded: true,
         currentUserEligible: true,
-        currentUserVote: {
-          voteId: "vote_a",
+        currentUserResponse: {
+          responseId: "resp_a",
           requestId: "req_quorum",
-          step: 1,
-          approverUserId: "usr_a",
+          userId: "usr_a",
           source: "device",
           choiceId: "approve",
           createdAt: "2026-04-19T12:01:00Z",
         },
         waitingFor: 1,
-        votes: [
+        responses: [
           {
-            voteId: "vote_a",
+            responseId: "resp_a",
             requestId: "req_quorum",
-            step: 1,
-            approverUserId: "usr_a",
+            userId: "usr_a",
             source: "device",
             choiceId: "approve",
             createdAt: "2026-04-19T12:01:00Z",
@@ -425,19 +420,19 @@ describe("policy progress helpers", () => {
       },
     });
 
-    expect(requestPolicySummary(request)).toBe("Requires 2 approvals from Backend");
+    expect(requestQuorumSummary(request)).toBe("Requires 2 responses from Backend");
     expect(requestResponsibilityLabel(request)).toBe("Waiting for others");
-    expect(policyProgressMessage(request)).toBe("You approved. Waiting for 1 more approval.");
+    expect(quorumProgressMessage(request)).toBe("You responded. Waiting for 1 more response.");
     expect(canRespondToRequest(request)).toBe(false);
     expect(supportsNotificationActions(request)).toBe(false);
-    expect(requestVoteHistory(request)[0]?.label).toBe("Step 1: usr_a approved via device");
+    expect(requestResponseHistory(request)[0]?.label).toBe("usr_a approved via device");
   });
 
-  it("distinguishes eligible and ineligible team approval views", () => {
-    const eligible = normalizeApproval({
-      id: "req_team",
-      requester: { name: "Agent", agentId: "agent" },
-      requestType: "approval",
+  it("distinguishes eligible and ineligible routed Request views", () => {
+    const eligible = normalizeRequest({
+      id: "req_routed",
+      requester: { name: "Agent", agentTokenId: "agent" },
+      requestType: "sanction",
       title: "Restart?",
       choices: [
         { id: "approve", label: "Approve", kind: "approve" },
@@ -446,39 +441,36 @@ describe("policy progress helpers", () => {
       allowFreeformReply: false,
       status: "pending",
       createdAt: "2026-04-19T12:00:00Z",
-      policyProgress: {
-        state: "pending",
-        currentStep: 1,
-        totalSteps: 2,
-        requiredApprovals: 1,
-        receivedApprovals: 0,
-        currentUserHasVoted: false,
+      quorum: {
+        requiredResponseCount: 1,
+        receivedResponseCount: 0,
+        currentUserResponded: false,
         currentUserEligible: true,
         waitingFor: 1,
       },
     });
-    const ineligible = normalizeApproval({
+    const ineligible = normalizeRequest({
       ...eligible,
       id: "req_readonly",
-      policyProgress: { ...eligible.policyProgress!, currentUserEligible: false },
+      quorum: { ...eligible.quorum!, currentUserEligible: false },
     });
 
-    expect(requestResponsibilityLabel(eligible)).toBe("Your approval is needed");
-    expect(policyProgressMessage(eligible)).toContain("Step 1 of 2. Your approval is needed");
+    expect(requestResponsibilityLabel(eligible)).toBe("Your response is needed");
+    expect(quorumProgressMessage(eligible)).toContain("Your response is needed");
     expect(canRespondToRequest(eligible)).toBe(true);
     expect(requestResponsibilityLabel(ineligible)).toBe("Read-only");
-    expect(policyProgressMessage(ineligible)).toContain("You are not an eligible approver");
+    expect(quorumProgressMessage(ineligible)).toContain("You are not a routed recipient");
     expect(canRespondToRequest(ineligible)).toBe(false);
   });
 });
 
 describe("request normalization and notification helpers", () => {
   it("treats encrypted placeholders as encrypted even if ciphertext is missing", () => {
-    const request = normalizeApproval({
+    const request = normalizeRequest({
       id: "req_encrypted_placeholder",
-      requester: { name: "Agent", agentId: "agent" },
-      requestType: "approval",
-      title: "Encrypted approval request",
+      requester: { name: "Agent", agentTokenId: "agent" },
+      requestType: "sanction",
+      title: "Encrypted request",
       body: "Open Agent Tick to decrypt this request.",
       choices: [
         { id: "approve", label: "Approve", kind: "approve" },
@@ -489,16 +481,16 @@ describe("request normalization and notification helpers", () => {
       createdAt: "2026-04-19T12:00:00Z",
     });
 
-    expect(isEncryptedApprovalRequest(request)).toBe(true);
+    expect(isEncryptedRequest(request)).toBe(true);
     expect(canRespondToRequest(request)).toBe(false);
     expect(supportsNotificationActions(request)).toBe(false);
   });
 
-  it("preserves steer request type and disables approve/deny notification actions", () => {
-    const steer = normalizeApproval({
+  it("preserves steering request type and disables notification actions", () => {
+    const steer = normalizeRequest({
       id: "req_steer",
-      requester: { name: "Agent", agentId: "agent" },
-      requestType: "steer",
+      requester: { name: "Agent", agentTokenId: "agent" },
+      requestType: "steering",
       title: "Choose next step",
       choices: [
         { id: "run-tests", label: "Run tests", kind: "steer" },
@@ -509,7 +501,7 @@ describe("request normalization and notification helpers", () => {
       createdAt: "2026-04-19T12:00:00Z",
     });
 
-    expect(steer.requestType).toBe("steer");
+    expect(steer.requestType).toBe("steering");
     expect(supportsNotificationActions(steer)).toBe(false);
   });
 
@@ -517,8 +509,9 @@ describe("request normalization and notification helpers", () => {
     expect(
       supportsNotificationActions({
         id: "req_approve",
-        requester: { name: "Agent", agentId: "agent" },
-        requestType: "approval",
+        workspaceId: "wsp_personal",
+        requester: { name: "Agent", agentTokenId: "agent" },
+        requestType: "sanction",
         title: "Run?",
         choices: [
           { id: "approve", label: "Approve", kind: "approve" },
@@ -592,6 +585,6 @@ describe("questionnaire helpers", () => {
         ...questionnaireRequest,
         response: { answers: { "Which environment?": ["prod"] } },
       }),
-    ).toBe("Answered");
+    ).toBe("Responded");
   });
 });

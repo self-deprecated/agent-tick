@@ -19,7 +19,7 @@ export type SavedMobileAccount = {
   userID?: string;
   email?: string;
   signInMethod?: string;
-  organizationID?: string;
+  workspaceID?: string;
   deviceID?: string;
   updatedAt: string;
 };
@@ -60,7 +60,7 @@ export function mobileSessionStorageKeys(serverURL: string) {
   return {
     token: `${namespace}.token`,
     deviceID: `${namespace}.deviceID`,
-    organizationID: `${namespace}.organizationID`,
+    workspaceID: `${namespace}.workspaceID`,
     pushStatus: `${namespace}.pushStatus`,
     notificationsEnabled: `${namespace}.notificationsEnabled`,
   };
@@ -68,14 +68,14 @@ export function mobileSessionStorageKeys(serverURL: string) {
 
 export function mobileSessionStorageKeyList(serverURL: string): string[] {
   const keys = mobileSessionStorageKeys(serverURL);
-  return [keys.token, keys.deviceID, keys.organizationID, keys.pushStatus, keys.notificationsEnabled];
+  return [keys.token, keys.deviceID, keys.workspaceID, keys.pushStatus, keys.notificationsEnabled];
 }
 
-export function savedMobileAccountID(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { userID?: string; email?: string; organizationID?: string; deviceID?: string }) {
+export function savedMobileAccountID(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { userID?: string; email?: string; workspaceID?: string; deviceID?: string }) {
   const serverURL = normalizeServerURL(input.serverURL);
   const scope = input.authProvider === "clerk"
     ? input.userID?.trim() || input.email?.trim().toLowerCase() || "default"
-    : input.userID?.trim() || input.email?.trim().toLowerCase() || input.organizationID?.trim() || input.deviceID?.trim() || "default";
+    : input.userID?.trim() || input.email?.trim().toLowerCase() || input.workspaceID?.trim() || input.deviceID?.trim() || "default";
   return `${input.authProvider}:${serverURL}:${scope}`;
 }
 
@@ -88,15 +88,15 @@ export function normalizeSavedMobileAccounts(value: unknown): SavedMobileAccount
     const authProvider = typeof account.authProvider === "string" ? account.authProvider : "";
     if (!serverURL || !authProvider) return [];
     const normalized: SavedMobileAccount = {
-      id: typeof account.id === "string" && account.id ? account.id : savedMobileAccountID({ serverURL, authProvider, userID: account.userID, email: account.email, organizationID: account.organizationID, deviceID: account.deviceID }),
+      id: typeof account.id === "string" && account.id ? account.id : savedMobileAccountID({ serverURL, authProvider, userID: account.userID, email: account.email, workspaceID: account.workspaceID, deviceID: account.deviceID }),
       serverURL,
       authProvider,
-      label: typeof account.label === "string" && account.label ? account.label : accountLabel({ serverURL, authProvider, email: account.email, signInMethod: account.signInMethod, organizationID: account.organizationID, deviceID: account.deviceID }),
+      label: typeof account.label === "string" && account.label ? account.label : accountLabel({ serverURL, authProvider, email: account.email, signInMethod: account.signInMethod, workspaceID: account.workspaceID, deviceID: account.deviceID }),
       updatedAt: typeof account.updatedAt === "string" && account.updatedAt ? account.updatedAt : new Date(0).toISOString(),
       ...(typeof account.userID === "string" && account.userID ? { userID: account.userID } : {}),
       ...(typeof account.email === "string" && account.email ? { email: account.email } : {}),
       ...(typeof account.signInMethod === "string" && account.signInMethod ? { signInMethod: account.signInMethod } : {}),
-      ...(typeof account.organizationID === "string" && account.organizationID ? { organizationID: account.organizationID } : {}),
+      ...(typeof account.workspaceID === "string" && account.workspaceID ? { workspaceID: account.workspaceID } : {}),
       ...(typeof account.deviceID === "string" && account.deviceID ? { deviceID: account.deviceID } : {}),
     };
     return [normalized];
@@ -127,13 +127,13 @@ function sameSavedAccount(candidate: SavedMobileAccount, account: SavedMobileAcc
   const accountEmail = account.email?.trim().toLowerCase();
   if (candidateEmail && accountEmail) return candidateEmail === accountEmail;
 
-  // Older mobile builds used organization-scoped Clerk saved accounts. Treat those
-  // as duplicates once we have a real user-scoped account so organizations do not
+  // Older mobile builds used workspace-scoped Clerk saved accounts. Treat those
+  // as duplicates once we have a real user-scoped account so workspaces do not
   // appear as separate accounts in the switcher.
-  return Boolean((accountUser || accountEmail) && candidate.organizationID && !candidateUser && !candidateEmail);
+  return Boolean((accountUser || accountEmail) && candidate.workspaceID && !candidateUser && !candidateEmail);
 }
 
-function accountLabel(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { email?: string; signInMethod?: string; organizationID?: string; deviceID?: string }) {
+function accountLabel(input: Pick<SavedMobileAccount, "serverURL" | "authProvider"> & { email?: string; signInMethod?: string; workspaceID?: string; deviceID?: string }) {
   if (input.authProvider === "clerk") return input.signInMethod ? `${input.signInMethod} account` : input.email ? "Account" : "agenttick.sh";
   return input.deviceID ? `${normalizeServerURL(input.serverURL)} · ${input.deviceID}` : normalizeServerURL(input.serverURL);
 }

@@ -23,7 +23,7 @@ export default function (pi: ExtensionAPI) {
       [
         'sanction',
         '--title',
-        'Approve Pi command?',
+        'Authorize Pi command?',
         '--body',
         'Pi wants to run a risky command.',
         '--command',
@@ -35,6 +35,6 @@ export default function (pi: ExtensionAPI) {
     );
 
     if (result.status === 0) return undefined;
-    return { block: true, reason: 'Agent Tick approval denied, timed out, or failed' };
+    return { block: true, reason: 'Agent Tick Sanction denied, timed out, or failed' };
   });
 }

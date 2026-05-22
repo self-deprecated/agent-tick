@@ -173,8 +173,8 @@ describe("SettingsScreen — paired state", () => {
     const onRequestNotifications = jest.fn();
     render(<SettingsScreen {...pairedProps} onRequestNotifications={onRequestNotifications} notificationStatus="undetermined" />);
     fireEvent.press(screen.getByText("Notifications"));
-    expect(screen.getByText("Enable approval alerts")).toBeTruthy();
-    expect(screen.getByText(/urgent approval requests/)).toBeTruthy();
+    expect(screen.getByText("Enable Request alerts")).toBeTruthy();
+    expect(screen.getByText(/urgent Requests/)).toBeTruthy();
     fireEvent.press(screen.getByText("Enable Notifications"));
     expect(onRequestNotifications).toHaveBeenCalled();
   });
@@ -182,7 +182,7 @@ describe("SettingsScreen — paired state", () => {
   it("does not show the notification reminder after notifications are enabled", () => {
     render(<SettingsScreen {...pairedProps} notificationStatus="granted" />);
     fireEvent.press(screen.getByText("Notifications"));
-    expect(screen.queryByText("Enable approval alerts")).toBeNull();
+    expect(screen.queryByText("Enable Request alerts")).toBeNull();
   });
 
   it("disables push registration when push is already registered", () => {
@@ -536,15 +536,15 @@ describe("SettingsScreen — paired state", () => {
     expect(onSignInAnotherClerkAccount).toHaveBeenCalled();
   });
 
-  it("hides workspace choices when a Clerk account has only one organization", () => {
-    const onSelectOrganization = jest.fn();
+  it("hides workspace choices when a Clerk account has only one Workspace", () => {
+    const onSelectWorkspace = jest.fn();
     render(
       <SettingsScreen
         {...unpairedProps}
         authProvider="clerk"
-        organizations={[{ organizationId: "org_1", name: "Platform", role: "owner" }]}
-        selectedOrganizationID="org_1"
-        setSelectedOrganizationID={onSelectOrganization}
+        workspaces={[{ workspaceId: "org_1", name: "Platform", role: "owner" }]}
+        selectedWorkspaceID="org_1"
+        setSelectedWorkspaceID={onSelectWorkspace}
       />,
     );
     expect(screen.getByText("Account")).toBeTruthy();
@@ -552,18 +552,18 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByText("Platform")).toBeNull();
   });
 
-  it("shows Clerk workspace choices only when there are multiple organizations", () => {
-    const onSelectOrganization = jest.fn();
+  it("shows Clerk workspace choices only when there are multiple Workspaces", () => {
+    const onSelectWorkspace = jest.fn();
     render(
       <SettingsScreen
         {...unpairedProps}
         authProvider="clerk"
-        organizations={[
-          { organizationId: "org_1", name: "Platform", role: "owner" },
-          { organizationId: "org_2", name: "Research", role: "member" },
+        workspaces={[
+          { workspaceId: "org_1", name: "Platform", role: "owner" },
+          { workspaceId: "org_2", name: "Research", role: "member" },
         ]}
-        selectedOrganizationID="org_1"
-        setSelectedOrganizationID={onSelectOrganization}
+        selectedWorkspaceID="org_1"
+        setSelectedWorkspaceID={onSelectWorkspace}
       />,
     );
     fireEvent.press(screen.getByText("Manage account ›"));
@@ -571,6 +571,6 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByText(/org_1/)).toBeNull();
     expect(screen.getByText("Platform")).toBeTruthy();
     fireEvent.press(screen.getByText("Research"));
-    expect(onSelectOrganization).toHaveBeenCalledWith("org_2");
+    expect(onSelectWorkspace).toHaveBeenCalledWith("org_2");
   });
 });

@@ -164,14 +164,14 @@ describe('MCP stdio adapter', () => {
     let createdTitle = '';
     let abandonedId = '';
     const client = {
-      createApprovalRequest: async (input: { title: string }) => {
+      createRequest: async (input: { title: string }) => {
         createdTitle = input.title;
         return { request: { id: 'req_1', title: input.title, status: 'pending' } };
       },
-      waitForApproval: async () => new Promise(() => undefined),
-      abandonApproval: async (id: string) => {
+      waitForRequest: async () => new Promise(() => undefined),
+      abandonRequest: async (id: string) => {
         abandonedId = id;
-        return { id, status: 'abandoned' };
+        return { id, status: 'resolved' };
       }
     };
     const context = {

@@ -1,6 +1,6 @@
 import type { PersonalBillingStatus } from "@agent-tick/shared";
 
-export type Screen = "approvals" | "history" | "settings" | "scanner";
+export type Screen = "requests" | "history" | "settings" | "scanner";
 
 export const NATIVE_APP_TRIAL_DAYS = 7;
 export const INCLUDED_HOSTED_MONTH_DAYS = 31;
@@ -125,7 +125,7 @@ export function entitlementStatusCopy(state: Pick<NativeAppEntitlementState, "tr
     return {
       title: "Hosted service active",
       summary: "Your Lifetime app unlock and hosted service are active.",
-      appAccess: "You can respond to approvals from hosted or self-hosted Agent Tick servers.",
+      appAccess: "You can respond to Requests from hosted or self-hosted Agent Tick servers.",
       hostedAccess: "agenttick.sh routing, push, updates, and uptime are covered by your hosted subscription.",
       paywall: "Manage or cancel the hosted subscription from the app store when needed.",
     };
@@ -171,7 +171,7 @@ export type PairingPayload = {
   pairingCode?: string;
   mode?: "single" | "clerk" | string;
   authProvider?: "local" | "clerk" | string;
-  organizationId?: string;
+  workspaceId?: string;
 };
 
 type NotificationResponseLike = {
@@ -201,7 +201,7 @@ export function parsePairingPayload(value: string): PairingPayload {
       pairingCode: parsed.pairingCode,
       mode: parsed.mode,
       authProvider: parsed.authProvider,
-      organizationId: parsed.organizationId,
+      workspaceId: parsed.workspaceId,
     });
   } catch {
     return value.startsWith("pair_") ? { pairingCode: value } : {};
@@ -229,7 +229,7 @@ export function notificationRequestID(data: unknown) {
     return "";
   }
   const fields = data as Record<string, unknown>;
-  for (const key of ["approvalRequestID", "approvalRequestId", "requestId"]) {
+  for (const key of ["requestId", "requestID"]) {
     const value = fields[key];
     if (typeof value === "string" && value.trim()) {
       return value;
@@ -244,6 +244,6 @@ export function notificationFallbackState(
   return {
     notificationTargetID: requestID,
     selectedID: requestID,
-    screen: "approvals",
+    screen: "requests",
   };
 }
