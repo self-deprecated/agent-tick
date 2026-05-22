@@ -16,6 +16,8 @@ export const ApiErrorCodeSchema = z.enum([
   'not_found',
   'conflict',
   'validation_failed',
+  'rate_limited',
+  'routing_required',
   'internal_error'
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;
@@ -45,16 +47,14 @@ export const AuthConfigSchema = z.object({
 });
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 
-export const CreateMobileSessionSchema = z.object({
-  clerkToken: z.string().min(1)
-});
+export const CreateMobileSessionSchema = z.object({ clerkToken: z.string().min(1) });
 export type CreateMobileSession = z.input<typeof CreateMobileSessionSchema>;
 
 export const MobileSessionResponseSchema = z.object({
   token: z.string().min(1),
   expiresAt: z.string().datetime(),
   userId: z.string(),
-  organizationId: z.string(),
+  workspaceId: z.string(),
   role: z.string()
 });
 export type MobileSessionResponse = z.infer<typeof MobileSessionResponseSchema>;
@@ -86,388 +86,120 @@ export const CreateMobileDiagnosticsSchema = z.object({
 });
 export type CreateMobileDiagnostics = z.input<typeof CreateMobileDiagnosticsSchema>;
 
-export const MobileDiagnosticsResponseSchema = z.object({
-  accepted: z.number().int().min(0)
-});
+export const MobileDiagnosticsResponseSchema = z.object({ accepted: z.number().int().min(0) });
 export type MobileDiagnosticsResponse = z.infer<typeof MobileDiagnosticsResponseSchema>;
 
+export const WorkspaceTypeSchema = z.enum(['personal', 'shared']);
+export type WorkspaceType = z.infer<typeof WorkspaceTypeSchema>;
 
-export const OrganizationRoleSchema = z.enum(['owner', 'admin', 'member']);
-export type OrganizationRole = z.infer<typeof OrganizationRoleSchema>;
+export const WorkspaceRoleSchema = z.enum(['owner', 'admin', 'member']);
+export type WorkspaceRole = z.infer<typeof WorkspaceRoleSchema>;
 
-export const OrganizationRecordSchema = z.object({
-  organizationId: z.string(),
+export const WorkspaceMemberStatusSchema = z.enum(['active', 'removed']).or(z.string().min(1));
+export type WorkspaceMemberStatus = z.infer<typeof WorkspaceMemberStatusSchema>;
+
+export const WorkspaceRecordSchema = z.object({
+  workspaceId: z.string(),
+  type: WorkspaceTypeSchema,
   name: z.string(),
+  clerkOrganizationId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string().optional()
 });
-export type OrganizationRecord = z.infer<typeof OrganizationRecordSchema>;
+export type WorkspaceRecord = z.infer<typeof WorkspaceRecordSchema>;
 
-export const OrganizationMembershipStatusSchema = z.enum(['active', 'pending_approval', 'rejected', 'removed']).or(z.string().min(1));
-export type OrganizationMembershipStatus = z.infer<typeof OrganizationMembershipStatusSchema>;
-
-export const OrganizationMembershipSchema = OrganizationRecordSchema.extend({
+export const WorkspaceMemberRecordSchema = WorkspaceRecordSchema.extend({
   userId: z.string(),
-  role: OrganizationRoleSchema.or(z.string()),
-  status: OrganizationMembershipStatusSchema.default('active')
-});
-export type OrganizationMembership = z.infer<typeof OrganizationMembershipSchema>;
-
-export const CreateOrganizationSchema = z.object({
-  name: z.string().min(1)
-});
-export type CreateOrganization = z.input<typeof CreateOrganizationSchema>;
-
-export const InviteEmailDeliveryStatusSchema = z.enum(['sent', 'skipped', 'failed']);
-export type InviteEmailDeliveryStatus = z.infer<typeof InviteEmailDeliveryStatusSchema>;
-
-export const InviteEmailDeliverySchema = z.object({
-  status: InviteEmailDeliveryStatusSchema,
-  recipient: z.string().email().optional(),
-  sentAt: z.string().optional(),
-  message: z.string().optional()
-});
-export type InviteEmailDelivery = z.infer<typeof InviteEmailDeliverySchema>;
-
-export const OrganizationInviteRecordSchema = z.object({
-  inviteId: z.string(),
-  organizationId: z.string(),
-  label: z.string().optional(),
-  role: OrganizationRoleSchema.or(z.string()),
-  approvalRequired: z.boolean().default(true),
-  teamIds: z.array(z.string()).optional(),
+  role: WorkspaceRoleSchema.or(z.string()),
+  status: WorkspaceMemberStatusSchema.default('active'),
   email: z.string().email().optional(),
-  domain: z.string().min(1).optional(),
-  expiresAt: z.string().optional(),
-  maxUses: z.number().int().positive().optional(),
-  usedCount: z.number().int().min(0),
-  emailLastStatus: InviteEmailDeliveryStatusSchema.or(z.string()).optional(),
-  emailLastSentAt: z.string().optional(),
-  emailLastError: z.string().optional(),
-  emailDelivery: InviteEmailDeliverySchema.optional(),
-  revokedAt: z.string().optional(),
-  createdAt: z.string(),
-  url: z.string().optional(),
-  token: z.string().optional()
+  displayName: z.string().optional(),
+  clerkMembershipId: z.string().optional()
 });
-export type OrganizationInviteRecord = z.infer<typeof OrganizationInviteRecordSchema>;
+export type WorkspaceMemberRecord = z.infer<typeof WorkspaceMemberRecordSchema>;
 
-export const OrganizationInviteEmailResultSchema = z.object({
-  invite: OrganizationInviteRecordSchema,
-  delivery: InviteEmailDeliverySchema
+export const CreateSharedWorkspaceSchema = z.object({ name: z.string().min(1).max(120) });
+export type CreateSharedWorkspace = z.input<typeof CreateSharedWorkspaceSchema>;
+
+export const UpdateWorkspaceSchema = z.object({ name: z.string().min(1).max(120) });
+export type UpdateWorkspace = z.input<typeof UpdateWorkspaceSchema>;
+
+export const AddWorkspaceMemberSchema = z.object({
+  email: z.string().email(),
+  role: WorkspaceRoleSchema.default('member')
 });
-export type OrganizationInviteEmailResult = z.infer<typeof OrganizationInviteEmailResultSchema>;
+export type AddWorkspaceMember = z.input<typeof AddWorkspaceMemberSchema>;
 
-export const CreateOrganizationInviteSchema = z.object({
-  label: z.string().optional(),
-  role: OrganizationRoleSchema.default('member'),
-  approvalRequired: z.boolean().default(false),
-  teamIds: z.array(z.string()).optional(),
-  email: z.string().email().optional(),
-  domain: z.string().min(1).optional(),
-  expiresAt: z.string().optional(),
-  maxUses: z.number().int().positive().max(100).default(1)
-});
-export type CreateOrganizationInvite = z.input<typeof CreateOrganizationInviteSchema>;
+export const RequiredResponseModeSchema = z.enum(['any_one', 'all', 'exact']);
+export type RequiredResponseMode = z.infer<typeof RequiredResponseModeSchema>;
 
-export const InvitePreviewSchema = z.object({
-  organizationName: z.string(),
-  role: OrganizationRoleSchema.or(z.string()),
-  approvalRequired: z.boolean().default(false),
-  expiresAt: z.string().optional()
-});
-export type InvitePreview = z.infer<typeof InvitePreviewSchema>;
-
-export const AcceptInviteResponseSchema = z.object({
-  status: z.enum(['joined', 'already_member', 'pending_approval']),
-  membership: OrganizationMembershipSchema
-});
-export type AcceptInviteResponse = z.infer<typeof AcceptInviteResponseSchema>;
-
-export const OrganizationMembershipRequestRecordSchema = z.object({
-  requestId: z.string(),
-  inviteId: z.string(),
-  organizationId: z.string(),
-  organizationName: z.string().optional(),
-  userId: z.string(),
-  userEmail: z.string().email().optional(),
-  userName: z.string().optional(),
-  inviteLabel: z.string().optional(),
-  inviteRevokedAt: z.string().optional(),
-  requestedRole: OrganizationRoleSchema.or(z.string()),
-  requestedTeamIds: z.array(z.string()).optional(),
-  status: z.enum(['pending_approval', 'approved', 'rejected']).or(z.string()),
-  acceptedAt: z.string(),
-  decidedByUserId: z.string().optional(),
-  decidedAt: z.string().optional()
-});
-export type OrganizationMembershipRequestRecord = z.infer<typeof OrganizationMembershipRequestRecordSchema>;
-
-export const BillingLimitsSchema = z.object({
-  seats: z.number().int().positive().optional()
-});
-export type BillingLimits = z.infer<typeof BillingLimitsSchema>;
-
-export const BillingUsageSchema = z.object({
-  activeMembers: z.number().int().min(0),
-  pendingMembers: z.number().int().min(0)
-});
-export type BillingUsage = z.infer<typeof BillingUsageSchema>;
-
-export const BillingStatusSchema = z.object({
-  organizationId: z.string(),
-  plan: z.string(),
-  limits: BillingLimitsSchema,
-  usage: BillingUsageSchema
-});
-export type BillingStatus = z.infer<typeof BillingStatusSchema>;
-
-export const BillingProductKeySchema = z.enum(['lifetime_unlock', 'hosted_personal_monthly', 'hosted_personal_yearly']);
-export type BillingProductKey = z.infer<typeof BillingProductKeySchema>;
-
-export const BillingPlatformSchema = z.enum(['ios', 'android']);
-export type BillingPlatform = z.infer<typeof BillingPlatformSchema>;
-
-export const BillingProductSchema = z.object({
-  id: z.string().optional(),
-  productKey: BillingProductKeySchema,
-  kind: z.enum(['non_consumable', 'subscription']).or(z.string()),
-  entitlementKey: z.enum(['lifetime_app_unlock', 'hosted_personal']).or(z.string()),
-  appleProductId: z.string().optional(),
-  googleProductId: z.string().optional(),
-  googleBasePlanId: z.string().optional(),
-  active: z.boolean().default(true),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional()
-});
-export type BillingProduct = z.infer<typeof BillingProductSchema>;
-
-export const BillingProductsResponseSchema = z.object({
-  products: z.array(BillingProductSchema)
-});
-export type BillingProductsResponse = z.infer<typeof BillingProductsResponseSchema>;
-
-export const PersonalEntitlementSchema = z.object({
-  userId: z.string(),
-  trialStartedAt: z.string(),
-  appUnlockedAt: z.string().optional(),
-  includedHostedActivatedAt: z.string().optional(),
-  hostedSubscriptionEndsAt: z.string().optional(),
-  hostedSubscriptionCanceledAt: z.string().optional(),
-  hostedDataDeletedAt: z.string().optional(),
+export const RoutingRuleRecordSchema = z.object({
+  routingRuleId: z.string(),
+  workspaceId: z.string(),
+  name: z.string(),
+  requiredResponseMode: RequiredResponseModeSchema,
+  requiredResponseCount: z.number().int().min(1),
+  recipientUserIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string()
 });
-export type PersonalEntitlement = z.infer<typeof PersonalEntitlementSchema>;
+export type RoutingRuleRecord = z.infer<typeof RoutingRuleRecordSchema>;
 
-export const HostedPersonalStatusSchema = z.object({
-  lifecycle: z.enum(['active', 'read_only_grace', 'expired', 'deleted']).or(z.string()),
-  trialEndsAt: z.string(),
-  includedHostedEndsAt: z.string().optional(),
-  hostedSubscriptionEndsAt: z.string().optional(),
-  readOnlyGraceEndsAt: z.string().optional(),
-  responsesEnabled: z.boolean(),
-  routingEnabled: z.boolean(),
-  pushEnabled: z.boolean(),
-  historyRetentionDays: z.number().int().min(0)
+export const CreateRoutingRuleSchema = z.object({
+  workspaceId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  recipientUserIds: z.array(z.string().min(1)).min(1),
+  requiredResponseMode: RequiredResponseModeSchema.default('any_one'),
+  requiredResponseCount: z.number().int().min(1).max(100).default(1)
 });
-export type HostedPersonalStatus = z.infer<typeof HostedPersonalStatusSchema>;
+export type CreateRoutingRule = z.input<typeof CreateRoutingRuleSchema>;
 
-export const BillingActiveEntitlementSchema = z.object({
-  active: z.boolean(),
-  originProvider: z.string().optional(),
-  originPlatform: z.enum(['ios', 'android', 'unknown']).or(z.string()).optional(),
-  purchasedAt: z.string().optional(),
-  expiresAt: z.string().optional(),
-  willRenew: z.boolean().optional()
+export const UpdateRoutingRuleSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  recipientUserIds: z.array(z.string().min(1)).min(1).optional(),
+  requiredResponseMode: RequiredResponseModeSchema.optional(),
+  requiredResponseCount: z.number().int().min(1).max(100).optional()
 });
-export type BillingActiveEntitlement = z.infer<typeof BillingActiveEntitlementSchema>;
+export type UpdateRoutingRule = z.input<typeof UpdateRoutingRuleSchema>;
 
-export const BillingPurchaseAvailabilitySchema = z.object({
-  allowed: z.boolean(),
-  reason: z.string().optional(),
-  originProvider: z.string().optional(),
-  originPlatform: z.enum(['ios', 'android', 'unknown']).or(z.string()).optional()
-});
-export type BillingPurchaseAvailability = z.infer<typeof BillingPurchaseAvailabilitySchema>;
-
-export const PersonalBillingStatusSchema = z.object({
-  entitlement: PersonalEntitlementSchema,
-  hostedPersonal: HostedPersonalStatusSchema,
-  products: z.array(BillingProductSchema),
-  activeEntitlements: z.object({
-    lifetimeUnlock: BillingActiveEntitlementSchema,
-    hostedPersonal: BillingActiveEntitlementSchema
-  }),
-  purchaseAvailability: z.record(BillingProductKeySchema, BillingPurchaseAvailabilitySchema)
-});
-export type PersonalBillingStatus = z.infer<typeof PersonalBillingStatusSchema>;
-
-export const BillingPurchasePreflightRequestSchema = z.object({
-  productKey: BillingProductKeySchema,
-  platform: BillingPlatformSchema
-});
-export type BillingPurchasePreflightRequest = z.input<typeof BillingPurchasePreflightRequestSchema>;
-
-export const BillingPurchasePreflightResponseSchema = z.object({
-  purchaseAttemptId: z.string().optional(),
-  providerUserId: z.string(),
-  allowed: z.boolean(),
-  reason: z.string().optional()
-});
-export type BillingPurchasePreflightResponse = z.infer<typeof BillingPurchasePreflightResponseSchema>;
-
-export const ProjectRecordSchema = z.object({
-  projectId: z.string(),
-  organizationId: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  description: z.string().optional(),
+export const AgentTokenRecordSchema = z.object({
+  agentTokenId: z.string(),
+  label: z.string(),
+  scopes: z.array(z.string()),
+  workspaceId: z.string(),
+  workspaceType: WorkspaceTypeSchema.optional(),
+  routingRuleId: z.string().optional(),
+  creatorUserId: z.string().optional(),
+  lastActivityAt: z.string().optional(),
+  lastCheckInAt: z.string().optional(),
   createdAt: z.string(),
-  updatedAt: z.string(),
-  archivedAt: z.string().optional()
+  revokedAt: z.string().optional()
 });
-export type ProjectRecord = z.infer<typeof ProjectRecordSchema>;
+export type AgentTokenRecord = z.infer<typeof AgentTokenRecordSchema>;
 
-export const CreateProjectSchema = z.object({
-  name: z.string().min(1),
-  slug: z.string().min(1).optional(),
-  description: z.string().optional()
+export const CreateAgentTokenSchema = z.object({
+  label: z.string().min(1).max(120),
+  scopes: z.array(z.string()).optional(),
+  workspaceId: z.string().optional(),
+  routingRuleId: z.string().nullable().optional()
 });
-export type CreateProject = z.input<typeof CreateProjectSchema>;
+export type CreateAgentToken = z.input<typeof CreateAgentTokenSchema>;
 
-export const TeamRoleSchema = z.enum(['owner', 'lead', 'member', 'viewer']);
-export type TeamRole = z.infer<typeof TeamRoleSchema>;
-
-export const TeamRecordSchema = z.object({
-  teamId: z.string(),
-  organizationId: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  description: z.string().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  archivedAt: z.string().optional()
+export const UpdateAgentTokenSchema = z.object({
+  label: z.string().min(1).max(120).optional(),
+  routingRuleId: z.string().nullable().optional()
 });
-export type TeamRecord = z.infer<typeof TeamRecordSchema>;
+export type UpdateAgentToken = z.input<typeof UpdateAgentTokenSchema>;
 
-export const TeamMembershipSchema = TeamRecordSchema.extend({
-  userId: z.string(),
-  role: TeamRoleSchema.or(z.string())
-});
-export type TeamMembership = z.infer<typeof TeamMembershipSchema>;
-
-export const UpsertTeamMemberSchema = z.object({
-  userId: z.string().min(1),
-  role: TeamRoleSchema.default('member')
-});
-export type UpsertTeamMember = z.input<typeof UpsertTeamMemberSchema>;
-
-export const CreateTeamSchema = z.object({
-  name: z.string().min(1),
-  slug: z.string().min(1).optional(),
-  description: z.string().optional()
-});
-export type CreateTeam = z.input<typeof CreateTeamSchema>;
-
-export const PolicyRecordSchema = z.object({
-  policyId: z.string(),
-  organizationId: z.string(),
-  name: z.string(),
-  description: z.string().optional(),
-  projectId: z.string().optional(),
-  teamId: z.string().optional(),
-  requiredApprovals: z.number().int().min(1),
-  enabled: z.boolean(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  archivedAt: z.string().optional()
-});
-export type PolicyRecord = z.infer<typeof PolicyRecordSchema>;
-
-export const CreatePolicySchema = z.object({
-  name: z.string().min(1),
-  description: z.string().optional(),
-  projectId: z.string().optional(),
-  teamId: z.string().optional(),
-  requiredApprovals: z.number().int().min(1).max(10).default(1)
-});
-export type CreatePolicy = z.input<typeof CreatePolicySchema>;
-
-export const UpdatePolicySchema = z.object({
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-  projectId: z.string().nullable().optional(),
-  teamId: z.string().nullable().optional(),
-  requiredApprovals: z.number().int().min(1).max(10).optional(),
-  enabled: z.boolean().optional(),
-  archived: z.boolean().optional()
-});
-export type UpdatePolicy = z.input<typeof UpdatePolicySchema>;
-
-export const MeResponseSchema = z.object({
-  userId: z.string(),
-  email: z.string().email().optional(),
-  name: z.string().optional(),
-  signInMethod: z.string().optional(),
-  authProvider: AuthProviderSchema,
-  source: z.string(),
-  organizationId: z.string().optional(),
-  role: OrganizationRoleSchema.or(z.string()).optional(),
-  memberships: z.array(OrganizationMembershipSchema).optional()
-});
-export type MeResponse = z.infer<typeof MeResponseSchema>;
-
-export const AuditEventRecordSchema = z.object({
-  eventId: z.number(),
-  organizationId: z.string(),
-  userId: z.string(),
-  eventType: z.string(),
-  targetId: z.string(),
-  payload: z.unknown(),
-  createdAt: z.string()
-});
-export type AuditEventRecord = z.infer<typeof AuditEventRecordSchema>;
-
-export const AgentStatusStateSchema = z.enum(['working', 'waiting', 'blocked', 'done', 'failed']).or(z.string().min(1).max(40));
-export type AgentStatusState = z.infer<typeof AgentStatusStateSchema>;
-
-export const AgentStatusUpdateSchema = z.object({
-  statusId: z.string(),
-  organizationId: z.string(),
-  agentId: z.string(),
-  agentName: z.string(),
-  threadId: z.string(),
-  message: z.string(),
-  state: AgentStatusStateSchema,
-  nextStep: z.string().optional(),
-  host: z.string().optional(),
-  workingDirectory: z.string().optional(),
-  projectName: z.string().optional(),
-  metadata: z.record(z.string(), z.string()).optional(),
-  createdAt: z.string()
-});
-export type AgentStatusUpdate = z.infer<typeof AgentStatusUpdateSchema>;
-
-export const CreateAgentStatusUpdateSchema = z.object({
-  threadId: z.string().min(1).max(200),
-  message: z.string().min(1).max(500),
-  state: AgentStatusStateSchema.default('working'),
-  nextStep: z.string().max(500).optional(),
-  host: z.string().max(200).optional(),
-  workingDirectory: z.string().max(500).optional(),
-  projectName: z.string().max(200).optional(),
-  metadata: z.record(z.string(), z.string()).optional()
-});
-export type CreateAgentStatusUpdate = z.input<typeof CreateAgentStatusUpdateSchema>;
+export const AgentCredentialSchema = AgentTokenRecordSchema.extend({ token: z.string() });
+export type AgentCredential = z.infer<typeof AgentCredentialSchema>;
 
 export const RequesterSchema = z.object({
   name: z.string().min(1),
-  agentId: z.string().min(1),
+  agentTokenId: z.string().min(1).optional(),
   host: z.string().optional(),
   workingDirectory: z.string().optional(),
-  projectName: z.string().optional(),
-  projectId: z.string().optional()
+  clientName: z.string().optional()
 });
 export type Requester = z.infer<typeof RequesterSchema>;
 
@@ -531,48 +263,21 @@ export const ResponsePayloadSchema = z.object({
 });
 export type ResponsePayload = z.infer<typeof ResponsePayloadSchema>;
 
-export const ApprovalStatusSchema = z.enum(['pending', 'responded', 'expired', 'abandoned']);
-export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>;
+export const RequestStatusSchema = z.enum(['pending', 'responded', 'expired', 'resolved', 'abandoned']).or(z.string().min(1));
+export type RequestStatus = z.infer<typeof RequestStatusSchema>;
 
-export const ApprovalVoteRecordSchema = z.object({
-  voteId: z.string(),
-  requestId: z.string(),
-  policyId: z.string().optional(),
-  step: z.number().int().min(1),
-  approverUserId: z.string(),
-  source: z.string(),
-  choiceId: z.string(),
-  message: z.string().optional(),
-  answers: z.record(z.string(), z.array(z.string())).optional(),
-  createdAt: z.string()
-});
-export type ApprovalVoteRecord = z.infer<typeof ApprovalVoteRecordSchema>;
+export const RequestTypeSchema = z.enum(['steering', 'sanction']).or(z.string().min(1));
+export type RequestType = z.infer<typeof RequestTypeSchema>;
 
-export const ApprovalPolicyProgressSchema = z.object({
-  policyId: z.string().optional(),
-  state: z.string(),
-  currentStep: z.number().int().min(1),
-  totalSteps: z.number().int().min(1),
-  requiredApprovals: z.number().int().min(1),
-  receivedApprovals: z.number().int().min(0),
-  currentUserHasVoted: z.boolean(),
-  currentUserEligible: z.boolean().optional(),
-  currentUserVote: ApprovalVoteRecordSchema.optional(),
-  waitingFor: z.number().int().min(0),
-  eligibleApproverIds: z.array(z.string()).optional(),
-  votes: z.array(ApprovalVoteRecordSchema).optional()
-});
-export type ApprovalPolicyProgress = z.infer<typeof ApprovalPolicyProgressSchema>;
-
-export const EncryptedApprovalPlaintextSchema = z.object({
+export const EncryptedRequestPlaintextSchema = z.object({
   title: z.string().min(1),
   body: z.string().optional(),
   command: z.string().optional(),
   metadata: z.record(z.string(), z.string()).optional()
 });
-export type EncryptedApprovalPlaintext = z.infer<typeof EncryptedApprovalPlaintextSchema>;
+export type EncryptedRequestPlaintext = z.infer<typeof EncryptedRequestPlaintextSchema>;
 
-export const EncryptedApprovalPayloadSchema = z.object({
+export const EncryptedRequestPayloadSchema = z.object({
   version: z.number().int().positive().default(1),
   algorithm: z.string().min(1).max(80),
   keyId: z.string().min(1).max(200).optional(),
@@ -580,18 +285,407 @@ export const EncryptedApprovalPayloadSchema = z.object({
   ciphertext: z.string().min(1).max(200_000),
   aad: z.string().max(5_000).optional()
 });
-export type EncryptedApprovalPayload = z.infer<typeof EncryptedApprovalPayloadSchema>;
+export type EncryptedRequestPayload = z.infer<typeof EncryptedRequestPayloadSchema>;
 
-export function generateApprovalEncryptionKey(): string {
+export const ResponseRecordSchema = z.object({
+  responseId: z.string(),
+  requestId: z.string(),
+  userId: z.string(),
+  source: z.string(),
+  choiceId: z.string().optional(),
+  message: z.string().optional(),
+  answers: z.record(z.string(), z.array(z.string())).optional(),
+  final: z.boolean().default(false),
+  createdAt: z.string()
+});
+export type ResponseRecord = z.infer<typeof ResponseRecordSchema>;
+
+export const RequestRecipientSchema = z.object({
+  userId: z.string(),
+  hasActiveDevice: z.boolean().default(false),
+  respondedAt: z.string().optional()
+});
+export type RequestRecipient = z.infer<typeof RequestRecipientSchema>;
+
+export const RequestQuorumSchema = z.object({
+  requiredResponseCount: z.number().int().min(1),
+  receivedResponseCount: z.number().int().min(0),
+  waitingFor: z.number().int().min(0),
+  currentUserEligible: z.boolean().optional(),
+  currentUserResponded: z.boolean().optional(),
+  recipients: z.array(RequestRecipientSchema),
+  responses: z.array(ResponseRecordSchema)
+});
+export type RequestQuorum = z.infer<typeof RequestQuorumSchema>;
+
+export const RequestRecordSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  agentTokenId: z.string().optional(),
+  routingRuleId: z.string().optional(),
+  requester: RequesterSchema,
+  requestType: RequestTypeSchema.default('sanction'),
+  title: z.string(),
+  body: z.string().optional(),
+  command: z.string().optional(),
+  encryptedPayload: EncryptedRequestPayloadSchema.optional(),
+  choices: ChoiceListSchema,
+  questions: z.array(QuestionSchema).max(20).optional(),
+  defaultChoice: z.string().optional(),
+  allowFreeformReply: z.boolean().default(false),
+  deadline: z.string().optional(),
+  risk: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+  status: RequestStatusSchema,
+  createdAt: z.string(),
+  respondedAt: z.string().optional(),
+  response: ResponsePayloadSchema.optional(),
+  recipients: z.array(RequestRecipientSchema).optional(),
+  responses: z.array(ResponseRecordSchema).optional(),
+  quorum: RequestQuorumSchema.optional(),
+  isTest: z.boolean().optional(),
+  testLabel: z.string().optional()
+});
+export type RequestRecord = z.infer<typeof RequestRecordSchema>;
+
+export const CreateRequestSchema = z.object({
+  requester: RequesterSchema.partial({ agentTokenId: true }).extend({
+    name: z.string().min(1),
+    agentTokenId: z.string().min(1).optional()
+  }),
+  requestType: RequestTypeSchema.default('sanction'),
+  title: z.string().min(1),
+  body: z.string().optional(),
+  command: z.string().optional(),
+  encryptedPayload: EncryptedRequestPayloadSchema.optional(),
+  choices: ChoiceListSchema.optional(),
+  questions: z.array(QuestionSchema).max(20).optional(),
+  defaultChoice: z.string().optional(),
+  allowFreeformReply: z.boolean().optional(),
+  deadline: z.string().optional(),
+  risk: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional()
+}).refine((value) => !value.choices?.length || value.choices.some((choice) => choice.kind === 'deny'), {
+  path: ['choices'],
+  message: 'custom request choices must include at least one choice with kind "deny"'
+});
+export type CreateRequest = z.input<typeof CreateRequestSchema>;
+
+export const RequestWaiterCredentialSchema = z.object({ token: z.string(), expiresAt: z.string() });
+export type RequestWaiterCredential = z.infer<typeof RequestWaiterCredentialSchema>;
+
+export const CreateRequestResponseSchema = z.object({
+  request: RequestRecordSchema,
+  waiter: RequestWaiterCredentialSchema.optional()
+});
+export type CreateRequestResponse = z.infer<typeof CreateRequestResponseSchema>;
+
+export const RespondRequestSchema = z.object({
+  choiceId: z.string().optional(),
+  message: z.string().optional(),
+  answers: z.record(z.string(), z.array(z.string())).optional(),
+  encryptedPayloadAcknowledged: z.boolean().optional()
+}).refine((value) => Boolean(value.choiceId || value.message || value.answers), {
+  message: 'response must include a choiceId, message, or answers'
+});
+export type RespondRequest = z.input<typeof RespondRequestSchema>;
+
+export const WaitRequestResponseSchema = z.object({ request: RequestRecordSchema, terminal: z.boolean() });
+export type WaitRequestResponse = z.infer<typeof WaitRequestResponseSchema>;
+
+export const StatusUpdateStateSchema = z.enum(['working', 'waiting', 'blocked', 'done', 'failed']).or(z.string().min(1).max(40));
+export type StatusUpdateState = z.infer<typeof StatusUpdateStateSchema>;
+
+export const StatusUpdateRecordSchema = z.object({
+  statusId: z.string(),
+  workspaceId: z.string(),
+  agentTokenId: z.string().optional(),
+  agentTokenLabel: z.string().optional(),
+  routingRuleId: z.string().optional(),
+  threadId: z.string().optional(),
+  message: z.string(),
+  state: StatusUpdateStateSchema,
+  nextStep: z.string().optional(),
+  host: z.string().optional(),
+  workingDirectory: z.string().optional(),
+  clientName: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+  recipientUserIds: z.array(z.string()).optional(),
+  createdAt: z.string(),
+  isTest: z.boolean().optional(),
+  testLabel: z.string().optional()
+});
+export type StatusUpdateRecord = z.infer<typeof StatusUpdateRecordSchema>;
+
+export const CreateStatusUpdateSchema = z.object({
+  threadId: z.string().min(1).max(200).optional(),
+  message: z.string().min(1).max(500),
+  state: StatusUpdateStateSchema.default('working'),
+  nextStep: z.string().max(500).optional(),
+  host: z.string().max(200).optional(),
+  workingDirectory: z.string().max(500).optional(),
+  clientName: z.string().max(200).optional(),
+  metadata: z.record(z.string(), z.string()).optional()
+});
+export type CreateStatusUpdate = z.input<typeof CreateStatusUpdateSchema>;
+
+export const ActivityItemSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('status_update'), id: z.string(), workspaceId: z.string(), createdAt: z.string(), statusUpdate: StatusUpdateRecordSchema }),
+  z.object({ kind: z.literal('request'), id: z.string(), workspaceId: z.string(), createdAt: z.string(), request: RequestRecordSchema })
+]);
+export type ActivityItem = z.infer<typeof ActivityItemSchema>;
+
+export const PendingActivityCountSchema = z.object({ pendingRequests: z.number().int().min(0) });
+export type PendingActivityCount = z.infer<typeof PendingActivityCountSchema>;
+
+export const TestActivityKindSchema = z.enum(['status', 'steering', 'sanction']);
+export type TestActivityKind = z.infer<typeof TestActivityKindSchema>;
+
+export const SendTestActivitySchema = z.object({
+  kind: TestActivityKindSchema,
+  context: z.enum(['setup', 'routing_rule', 'agent_token']).default('setup'),
+  workspaceId: z.string().optional(),
+  routingRuleId: z.string().optional(),
+  agentTokenId: z.string().optional()
+});
+export type SendTestActivity = z.input<typeof SendTestActivitySchema>;
+
+export const SendTestActivityResponseSchema = z.object({
+  status: z.literal('sent'),
+  kind: TestActivityKindSchema,
+  id: z.string()
+});
+export type SendTestActivityResponse = z.infer<typeof SendTestActivityResponseSchema>;
+
+export const PairingTokenSchema = z.object({ token: z.string(), expiresAt: z.string() });
+export type PairingToken = z.infer<typeof PairingTokenSchema>;
+
+export const PairDeviceRequestSchema = z.object({
+  token: z.string().min(1),
+  deviceName: z.string().min(1),
+  platform: z.string().optional()
+});
+export type PairDeviceRequest = z.input<typeof PairDeviceRequestSchema>;
+
+export const DeviceCredentialSchema = z.object({ deviceId: z.string(), token: z.string() });
+export type DeviceCredential = z.infer<typeof DeviceCredentialSchema>;
+
+export const RegisterDeviceSchema = z.object({
+  deviceName: z.string().min(1),
+  platform: z.string().optional(),
+  installationId: z.string().optional(),
+  expoPushToken: z.string().optional()
+});
+export type RegisterDevice = z.input<typeof RegisterDeviceSchema>;
+
+export const RegisterDeviceResponseSchema = z.object({ deviceId: z.string() });
+export type RegisterDeviceResponse = z.infer<typeof RegisterDeviceResponseSchema>;
+
+export const DeviceRecordSchema = z.object({
+  deviceId: z.string(),
+  userId: z.string(),
+  name: z.string(),
+  platform: z.string().optional(),
+  installationId: z.string().optional(),
+  expoPushToken: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  unregisteredAt: z.string().optional()
+});
+export type DeviceRecord = z.infer<typeof DeviceRecordSchema>;
+
+export const UpdateDevicePushTokenSchema = z.object({
+  expoPushToken: z.string().optional(),
+  token: z.string().optional()
+}).refine((value) => Object.prototype.hasOwnProperty.call(value, 'expoPushToken') || Object.prototype.hasOwnProperty.call(value, 'token'), { message: 'expoPushToken is required' });
+export type UpdateDevicePushToken = z.input<typeof UpdateDevicePushTokenSchema>;
+
+export const EventTicketResponseSchema = z.object({ ticket: z.string(), expiresAt: z.string() });
+export type EventTicketResponse = z.infer<typeof EventTicketResponseSchema>;
+
+export const EventPollEventSchema = z.object({
+  eventId: z.number().int().min(0),
+  type: z.string().min(1),
+  targetId: z.string().min(1),
+  createdAt: z.string()
+});
+export type EventPollEvent = z.infer<typeof EventPollEventSchema>;
+
+export const EventPollResponseSchema = z.object({ events: z.array(EventPollEventSchema), nextEventId: z.number().int().min(0) });
+export type EventPollResponse = z.infer<typeof EventPollResponseSchema>;
+
+export const HeartbeatRequestSchema = z.record(z.string(), z.unknown()).default({});
+export type HeartbeatRequest = z.input<typeof HeartbeatRequestSchema>;
+
+export const HeartbeatResponseSchema = z.object({
+  status: z.literal('ok'),
+  userId: z.string().optional(),
+  workspaceId: z.string().optional(),
+  state: z.string().optional(),
+  lastSeenAt: z.string().optional(),
+  updatedAt: z.string().optional()
+});
+export type HeartbeatResponse = z.infer<typeof HeartbeatResponseSchema>;
+
+export const AvailabilityStateSchema = z.enum(['available', 'busy', 'do-not-disturb', 'off-call']).or(z.string().min(1));
+export type AvailabilityState = z.infer<typeof AvailabilityStateSchema>;
+
+export const SetAvailabilitySchema = z.object({ state: AvailabilityStateSchema });
+export type SetAvailability = z.input<typeof SetAvailabilitySchema>;
+
+export const AvailabilityRecordSchema = z.object({
+  userId: z.string(),
+  workspaceId: z.string(),
+  state: z.string(),
+  lastSeenAt: z.string().optional(),
+  updatedAt: z.string()
+});
+export type AvailabilityRecord = z.infer<typeof AvailabilityRecordSchema>;
+
+export const OnboardingStageSchema = z.enum(['needs_agent_token', 'needs_agent_check_in', 'needs_mobile_app', 'ready']);
+export type OnboardingStage = z.infer<typeof OnboardingStageSchema>;
+
+export const OnboardingStatusSchema = z.object({
+  stage: OnboardingStageSchema,
+  hasAgentToken: z.boolean(),
+  hasAgentCheckIn: z.boolean(),
+  hasMobileDevice: z.boolean(),
+  activeAgentTokenCount: z.number().int().min(0),
+  connectedAgentCount: z.number().int().min(0),
+  activeMobileDeviceCount: z.number().int().min(0)
+});
+export type OnboardingStatus = z.infer<typeof OnboardingStatusSchema>;
+
+export const AuditEventRecordSchema = z.object({
+  eventId: z.number(),
+  workspaceId: z.string(),
+  userId: z.string(),
+  eventType: z.string(),
+  targetId: z.string(),
+  payload: z.unknown(),
+  createdAt: z.string()
+});
+export type AuditEventRecord = z.infer<typeof AuditEventRecordSchema>;
+
+export const BillingLimitsSchema = z.object({ seats: z.number().int().positive().optional() });
+export type BillingLimits = z.infer<typeof BillingLimitsSchema>;
+
+export const BillingUsageSchema = z.object({ activeMembers: z.number().int().min(0), pendingMembers: z.number().int().min(0) });
+export type BillingUsage = z.infer<typeof BillingUsageSchema>;
+
+export const BillingStatusSchema = z.object({ workspaceId: z.string(), plan: z.string(), limits: BillingLimitsSchema, usage: BillingUsageSchema });
+export type BillingStatus = z.infer<typeof BillingStatusSchema>;
+
+export const BillingProductKeySchema = z.enum(['lifetime_unlock', 'hosted_personal_monthly', 'hosted_personal_yearly']);
+export type BillingProductKey = z.infer<typeof BillingProductKeySchema>;
+
+export const BillingPlatformSchema = z.enum(['ios', 'android']);
+export type BillingPlatform = z.infer<typeof BillingPlatformSchema>;
+
+export const BillingProductSchema = z.object({
+  id: z.string().optional(),
+  productKey: BillingProductKeySchema,
+  kind: z.enum(['non_consumable', 'subscription']).or(z.string()),
+  entitlementKey: z.enum(['lifetime_app_unlock', 'hosted_personal']).or(z.string()),
+  appleProductId: z.string().optional(),
+  googleProductId: z.string().optional(),
+  googleBasePlanId: z.string().optional(),
+  active: z.boolean().default(true),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional()
+});
+export type BillingProduct = z.infer<typeof BillingProductSchema>;
+
+export const BillingProductsResponseSchema = z.object({ products: z.array(BillingProductSchema) });
+export type BillingProductsResponse = z.infer<typeof BillingProductsResponseSchema>;
+
+export const PersonalEntitlementSchema = z.object({
+  userId: z.string(),
+  trialStartedAt: z.string(),
+  appUnlockedAt: z.string().optional(),
+  includedHostedActivatedAt: z.string().optional(),
+  hostedSubscriptionEndsAt: z.string().optional(),
+  hostedSubscriptionCanceledAt: z.string().optional(),
+  hostedDataDeletedAt: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+export type PersonalEntitlement = z.infer<typeof PersonalEntitlementSchema>;
+
+export const HostedPersonalStatusSchema = z.object({
+  lifecycle: z.enum(['active', 'read_only_grace', 'expired', 'deleted']).or(z.string()),
+  trialEndsAt: z.string(),
+  includedHostedEndsAt: z.string().optional(),
+  hostedSubscriptionEndsAt: z.string().optional(),
+  readOnlyGraceEndsAt: z.string().optional(),
+  responsesEnabled: z.boolean(),
+  routingEnabled: z.boolean(),
+  pushEnabled: z.boolean(),
+  historyRetentionDays: z.number().int().min(0)
+});
+export type HostedPersonalStatus = z.infer<typeof HostedPersonalStatusSchema>;
+
+export const BillingActiveEntitlementSchema = z.object({
+  active: z.boolean(),
+  originProvider: z.string().optional(),
+  originPlatform: z.enum(['ios', 'android', 'unknown']).or(z.string()).optional(),
+  purchasedAt: z.string().optional(),
+  expiresAt: z.string().optional(),
+  willRenew: z.boolean().optional()
+});
+export type BillingActiveEntitlement = z.infer<typeof BillingActiveEntitlementSchema>;
+
+export const BillingPurchaseAvailabilitySchema = z.object({
+  allowed: z.boolean(),
+  reason: z.string().optional(),
+  originProvider: z.string().optional(),
+  originPlatform: z.enum(['ios', 'android', 'unknown']).or(z.string()).optional()
+});
+export type BillingPurchaseAvailability = z.infer<typeof BillingPurchaseAvailabilitySchema>;
+
+export const PersonalBillingStatusSchema = z.object({
+  entitlement: PersonalEntitlementSchema,
+  hostedPersonal: HostedPersonalStatusSchema,
+  products: z.array(BillingProductSchema),
+  activeEntitlements: z.object({ lifetimeUnlock: BillingActiveEntitlementSchema, hostedPersonal: BillingActiveEntitlementSchema }),
+  purchaseAvailability: z.record(BillingProductKeySchema, BillingPurchaseAvailabilitySchema)
+});
+export type PersonalBillingStatus = z.infer<typeof PersonalBillingStatusSchema>;
+
+export const BillingPurchasePreflightRequestSchema = z.object({ productKey: BillingProductKeySchema, platform: BillingPlatformSchema });
+export type BillingPurchasePreflightRequest = z.input<typeof BillingPurchasePreflightRequestSchema>;
+
+export const BillingPurchasePreflightResponseSchema = z.object({
+  purchaseAttemptId: z.string().optional(),
+  providerUserId: z.string(),
+  allowed: z.boolean(),
+  reason: z.string().optional()
+});
+export type BillingPurchasePreflightResponse = z.infer<typeof BillingPurchasePreflightResponseSchema>;
+
+export const MeResponseSchema = z.object({
+  userId: z.string(),
+  email: z.string().email().optional(),
+  name: z.string().optional(),
+  signInMethod: z.string().optional(),
+  authProvider: AuthProviderSchema,
+  source: z.string(),
+  workspaceId: z.string().optional(),
+  role: WorkspaceRoleSchema.or(z.string()).optional(),
+  memberships: z.array(WorkspaceMemberRecordSchema).optional()
+});
+export type MeResponse = z.infer<typeof MeResponseSchema>;
+
+export function generateRequestEncryptionKey(): string {
   return encodeBase64URL(randomBytes(32));
 }
 
-export function createEncryptedApprovalPayload(input: EncryptedApprovalPlaintext, key: string, options: { keyId?: string; aad?: string; nonce?: Uint8Array } = {}): EncryptedApprovalPayload {
-  const plaintext = new TextEncoder().encode(JSON.stringify(EncryptedApprovalPlaintextSchema.parse(input)));
+export function createEncryptedRequestPayload(input: EncryptedRequestPlaintext, key: string, options: { keyId?: string; aad?: string; nonce?: Uint8Array } = {}): EncryptedRequestPayload {
+  const plaintext = new TextEncoder().encode(JSON.stringify(EncryptedRequestPlaintextSchema.parse(input)));
   const keyBytes = decodeEncryptionKey(key);
   const nonce = options.nonce ?? randomBytes(12);
   const ciphertext = gcm(keyBytes, nonce).encrypt(plaintext);
-  return EncryptedApprovalPayloadSchema.parse({
+  return EncryptedRequestPayloadSchema.parse({
     version: 1,
     algorithm: 'agent-tick-aes-256-gcm-v1',
     keyId: options.keyId,
@@ -601,16 +695,16 @@ export function createEncryptedApprovalPayload(input: EncryptedApprovalPlaintext
   });
 }
 
-export function decryptApprovalPayload(payload: EncryptedApprovalPayload, key: string): EncryptedApprovalPlaintext {
-  const parsed = EncryptedApprovalPayloadSchema.parse(payload);
-  if (parsed.algorithm !== 'agent-tick-aes-256-gcm-v1') throw new Error(`Unsupported encrypted approval algorithm: ${parsed.algorithm}`);
+export function decryptRequestPayload(payload: EncryptedRequestPayload, key: string): EncryptedRequestPlaintext {
+  const parsed = EncryptedRequestPayloadSchema.parse(payload);
+  if (parsed.algorithm !== 'agent-tick-aes-256-gcm-v1') throw new Error(`Unsupported encrypted request algorithm: ${parsed.algorithm}`);
   const plaintext = gcm(decodeEncryptionKey(key), decodeBase64URL(parsed.nonce)).decrypt(decodeBase64URL(parsed.ciphertext));
-  return EncryptedApprovalPlaintextSchema.parse(JSON.parse(new TextDecoder().decode(plaintext)));
+  return EncryptedRequestPlaintextSchema.parse(JSON.parse(new TextDecoder().decode(plaintext)));
 }
 
 function decodeEncryptionKey(key: string): Uint8Array {
   const trimmed = key.trim();
-  if (!trimmed) throw new Error('Approval encryption key or passphrase is required');
+  if (!trimmed) throw new Error('Request encryption key or passphrase is required');
   if (/^[A-Za-z0-9_-]+$/.test(trimmed)) {
     try {
       const bytes = decodeBase64URL(trimmed);
@@ -637,227 +731,3 @@ function decodeBase64URL(value: string): Uint8Array {
     : (globalThis as unknown as { Buffer: { from(input: string, encoding: string): Uint8Array } }).Buffer.from(base64, 'base64');
   return typeof binary === 'string' ? Uint8Array.from(binary, (char) => char.charCodeAt(0)) : new Uint8Array(binary);
 }
-
-export const ApprovalRequestSchema = z.object({
-  id: z.string(),
-  organizationId: z.string().optional(),
-  userId: z.string().optional(),
-  requester: RequesterSchema,
-  requestType: z.string().default('approval'),
-  title: z.string(),
-  body: z.string().optional(),
-  command: z.string().optional(),
-  encryptedPayload: EncryptedApprovalPayloadSchema.optional(),
-  choices: ChoiceListSchema,
-  questions: z.array(QuestionSchema).max(20).optional(),
-  defaultChoice: z.string().optional(),
-  allowFreeformReply: z.boolean().default(false),
-  expiresAt: z.string().optional(),
-  risk: z.string().optional(),
-  metadata: z.record(z.string(), z.string()).optional(),
-  status: ApprovalStatusSchema.or(z.string()),
-  createdAt: z.string(),
-  respondedAt: z.string().optional(),
-  response: ResponsePayloadSchema.optional(),
-  policyProgress: ApprovalPolicyProgressSchema.optional()
-});
-export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
-
-export const CreateApprovalRequestSchema = z.object({
-  requester: RequesterSchema.partial({ agentId: true }).extend({
-    name: z.string().min(1),
-    agentId: z.string().min(1).optional()
-  }),
-  requestType: z.string().default('approval'),
-  title: z.string().min(1),
-  body: z.string().optional(),
-  command: z.string().optional(),
-  encryptedPayload: EncryptedApprovalPayloadSchema.optional(),
-  choices: ChoiceListSchema.optional(),
-  questions: z.array(QuestionSchema).max(20).optional(),
-  defaultChoice: z.string().optional(),
-  allowFreeformReply: z.boolean().optional(),
-  expiresAt: z.string().optional(),
-  risk: z.string().optional(),
-  metadata: z.record(z.string(), z.string()).optional()
-}).refine((value) => !value.choices?.length || value.choices.some((choice) => choice.kind === 'deny'), {
-  path: ['choices'],
-  message: 'custom approval choices must include at least one choice with kind "deny"'
-});
-export type CreateApprovalRequest = z.input<typeof CreateApprovalRequestSchema>;
-
-export const ApprovalWaiterCredentialSchema = z.object({
-  token: z.string(),
-  expiresAt: z.string()
-});
-export type ApprovalWaiterCredential = z.infer<typeof ApprovalWaiterCredentialSchema>;
-
-export const CreateApprovalResponseSchema = z.object({
-  request: ApprovalRequestSchema,
-  waiter: ApprovalWaiterCredentialSchema.optional()
-});
-export type CreateApprovalResponse = z.infer<typeof CreateApprovalResponseSchema>;
-
-export const RespondApprovalRequestSchema = z.object({
-  choiceId: z.string().optional(),
-  message: z.string().optional(),
-  answers: z.record(z.string(), z.array(z.string())).optional(),
-  encryptedPayloadAcknowledged: z.boolean().optional()
-}).refine((value) => Boolean(value.choiceId || value.message || value.answers), {
-  message: 'response must include a choiceId, message, or answers'
-});
-export type RespondApprovalRequest = z.input<typeof RespondApprovalRequestSchema>;
-
-export const WaitApprovalResponseSchema = z.object({
-  request: ApprovalRequestSchema,
-  terminal: z.boolean()
-});
-export type WaitApprovalResponse = z.infer<typeof WaitApprovalResponseSchema>;
-
-export const CreateAgentTokenSchema = z.object({
-  name: z.string().min(1),
-  scopes: z.array(z.string()).optional(),
-  projectId: z.string().optional(),
-  teamId: z.string().optional(),
-  defaultApprovalPolicy: z.string().optional()
-});
-export type CreateAgentToken = z.input<typeof CreateAgentTokenSchema>;
-
-export const AgentTokenRecordSchema = z.object({
-  agentId: z.string(),
-  name: z.string(),
-  scopes: z.array(z.string()),
-  organizationId: z.string(),
-  ownerUserId: z.string().optional(),
-  projectId: z.string().optional(),
-  teamId: z.string().optional(),
-  defaultApprovalPolicy: z.string().optional(),
-  lastRequestAt: z.string().optional(),
-  createdAt: z.string(),
-  revokedAt: z.string().optional()
-});
-export type AgentTokenRecord = z.infer<typeof AgentTokenRecordSchema>;
-
-export const AgentCredentialSchema = AgentTokenRecordSchema.extend({
-  token: z.string()
-});
-export type AgentCredential = z.infer<typeof AgentCredentialSchema>;
-
-export const AbandonApprovalResponseSchema = ApprovalRequestSchema;
-export type AbandonApprovalResponse = z.infer<typeof AbandonApprovalResponseSchema>;
-
-export const PairingTokenSchema = z.object({
-  token: z.string(),
-  expiresAt: z.string()
-});
-export type PairingToken = z.infer<typeof PairingTokenSchema>;
-
-export const PairDeviceRequestSchema = z.object({
-  token: z.string().min(1),
-  deviceName: z.string().min(1),
-  platform: z.string().optional()
-});
-export type PairDeviceRequest = z.input<typeof PairDeviceRequestSchema>;
-
-export const DeviceCredentialSchema = z.object({
-  deviceId: z.string(),
-  token: z.string()
-});
-export type DeviceCredential = z.infer<typeof DeviceCredentialSchema>;
-
-export const RegisterDeviceSchema = z.object({
-  deviceName: z.string().min(1),
-  platform: z.string().optional(),
-  installationId: z.string().optional(),
-  expoPushToken: z.string().optional()
-});
-export type RegisterDevice = z.input<typeof RegisterDeviceSchema>;
-
-export const RegisterDeviceResponseSchema = z.object({
-  deviceId: z.string()
-});
-export type RegisterDeviceResponse = z.infer<typeof RegisterDeviceResponseSchema>;
-
-export const DeviceRecordSchema = z.object({
-  deviceId: z.string(),
-  userId: z.string(),
-  name: z.string(),
-  platform: z.string().optional(),
-  installationId: z.string().optional(),
-  expoPushToken: z.string().optional(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  unregisteredAt: z.string().optional()
-});
-export type DeviceRecord = z.infer<typeof DeviceRecordSchema>;
-
-export const UpdateDevicePushTokenSchema = z.object({
-  expoPushToken: z.string().optional(),
-  token: z.string().optional()
-}).refine((value) => Object.prototype.hasOwnProperty.call(value, 'expoPushToken') || Object.prototype.hasOwnProperty.call(value, 'token'), { message: 'expoPushToken is required' });
-export type UpdateDevicePushToken = z.input<typeof UpdateDevicePushTokenSchema>;
-
-export const EventTicketResponseSchema = z.object({
-  ticket: z.string(),
-  expiresAt: z.string()
-});
-export type EventTicketResponse = z.infer<typeof EventTicketResponseSchema>;
-
-export const EventPollEventSchema = z.object({
-  eventId: z.number().int().min(0),
-  type: z.string().min(1),
-  targetId: z.string().min(1),
-  createdAt: z.string()
-});
-export type EventPollEvent = z.infer<typeof EventPollEventSchema>;
-
-export const EventPollResponseSchema = z.object({
-  events: z.array(EventPollEventSchema),
-  nextEventId: z.number().int().min(0)
-});
-export type EventPollResponse = z.infer<typeof EventPollResponseSchema>;
-
-export const HeartbeatRequestSchema = z.record(z.string(), z.unknown()).default({});
-export type HeartbeatRequest = z.input<typeof HeartbeatRequestSchema>;
-
-export const HeartbeatResponseSchema = z.object({
-  status: z.literal('ok'),
-  userId: z.string().optional(),
-  organizationId: z.string().optional(),
-  state: z.string().optional(),
-  lastSeenAt: z.string().optional(),
-  updatedAt: z.string().optional()
-});
-export type HeartbeatResponse = z.infer<typeof HeartbeatResponseSchema>;
-
-export const AvailabilityStateSchema = z.enum(['available', 'busy', 'do-not-disturb', 'off-call']).or(z.string().min(1));
-export type AvailabilityState = z.infer<typeof AvailabilityStateSchema>;
-
-export const SetAvailabilitySchema = z.object({
-  state: AvailabilityStateSchema
-});
-export type SetAvailability = z.input<typeof SetAvailabilitySchema>;
-
-export const AvailabilityRecordSchema = z.object({
-  userId: z.string(),
-  organizationId: z.string(),
-  state: z.string(),
-  lastSeenAt: z.string().optional(),
-  updatedAt: z.string()
-});
-export type AvailabilityRecord = z.infer<typeof AvailabilityRecordSchema>;
-
-export const OnboardingStageSchema = z.enum(['needs_agent_token', 'needs_cli_setup', 'needs_mobile_app', 'ready_for_first_request']);
-export type OnboardingStage = z.infer<typeof OnboardingStageSchema>;
-
-export const OnboardingStatusSchema = z.object({
-  stage: OnboardingStageSchema,
-  hasAgentToken: z.boolean(),
-  hasCliHeartbeat: z.boolean(),
-  hasMobileDevice: z.boolean(),
-  canUseWebApprovals: z.boolean(),
-  activeAgentTokenCount: z.number().int().min(0),
-  connectedAgentCount: z.number().int().min(0),
-  activeMobileDeviceCount: z.number().int().min(0)
-});
-export type OnboardingStatus = z.infer<typeof OnboardingStatusSchema>;
