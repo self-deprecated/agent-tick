@@ -33,17 +33,16 @@ export async function registerTestSupportRoutes(app: FastifyInstance, { config, 
     const db = sqliteDatabaseForTestSupport(store);
     return {
       users: db.prepare('SELECT id, email, name FROM users ORDER BY created_at, id').all(),
-      organizations: db.prepare('SELECT id, name FROM organizations ORDER BY created_at, id').all(),
-      memberships: db.prepare('SELECT organization_id, user_id, role, status FROM organization_memberships ORDER BY created_at, organization_id, user_id').all(),
-      agentTokens: db.prepare('SELECT agent_id, organization_id, owner_user_id, name, last_request_at, revoked_at FROM agent_tokens ORDER BY created_at, agent_id').all(),
-      devices: db.prepare('SELECT device_id, user_id, name, platform, unregistered_at FROM devices ORDER BY created_at, device_id').all(),
-      approvals: db.prepare('SELECT id, organization_id, requester_name, requester_agent_id, title, status FROM approval_requests ORDER BY created_at, id').all(),
-      approvalRecipients: db.prepare('SELECT request_id, user_id, organization_id, source, status FROM approval_recipients ORDER BY created_at, request_id, user_id').all(),
-      policies: db.prepare('SELECT policy_id, organization_id, name, team_id, project_id, required_approvals, enabled, archived_at FROM policies ORDER BY created_at, policy_id').all(),
-      teams: db.prepare('SELECT team_id, organization_id, name, slug, archived_at FROM teams ORDER BY created_at, team_id').all(),
-      teamMemberships: db.prepare('SELECT team_id, organization_id, user_id, role FROM team_memberships ORDER BY created_at, team_id, user_id').all(),
-      invites: db.prepare('SELECT invite_id, organization_id, label, role, approval_required, used_count, revoked_at FROM organization_invites ORDER BY created_at, invite_id').all(),
-      membershipRequests: db.prepare('SELECT request_id, invite_id, organization_id, user_id, requested_role, status FROM organization_invite_acceptances ORDER BY accepted_at, request_id').all()
+      workspaces: db.prepare('SELECT workspace_id, type, name FROM workspaces ORDER BY created_at, workspace_id').all(),
+      workspaceMembers: db.prepare('SELECT workspace_id, user_id, role, status FROM workspace_members ORDER BY created_at, workspace_id, user_id').all(),
+      agentTokens: db.prepare('SELECT agent_token_id, workspace_id, creator_user_id, routing_rule_id, label, last_activity_at, last_check_in_at, revoked_at FROM agent_tokens ORDER BY created_at, agent_token_id').all(),
+      approvalDevices: db.prepare('SELECT device_id, user_id, name, platform, unregistered_at FROM approval_devices ORDER BY created_at, device_id').all(),
+      requests: db.prepare('SELECT id, workspace_id, agent_token_id, routing_rule_id, title, status FROM requests ORDER BY created_at, id').all(),
+      requestRecipients: db.prepare('SELECT request_id, user_id, has_active_device, responded_at FROM request_recipients ORDER BY created_at, request_id, user_id').all(),
+      routingRules: db.prepare('SELECT routing_rule_id, workspace_id, name, required_response_mode, required_response_count FROM routing_rules ORDER BY created_at, routing_rule_id').all(),
+      routingRuleRecipients: db.prepare('SELECT routing_rule_id, user_id FROM routing_rule_recipients ORDER BY created_at, routing_rule_id, user_id').all(),
+      statusUpdates: db.prepare('SELECT status_id, workspace_id, agent_token_id, routing_rule_id, message, state FROM status_updates ORDER BY created_at, status_id').all(),
+      responses: db.prepare('SELECT response_id, request_id, user_id, choice_id, final FROM responses ORDER BY created_at, response_id').all()
     };
   });
 }

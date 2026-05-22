@@ -171,7 +171,7 @@ export async function recordVerifiedTransaction(store: AgentTickStore, input: Ve
 
   const entitlement = await recomputePersonalEntitlement(store, input.userId, now);
   const membership = await store.defaultMembershipForUser(input.userId);
-  await store.writeAuditEvent(membership.organizationId, input.userId, 'billing.transaction_recorded', result.record.transactionId, {
+  await store.writeAuditEvent(membership.workspaceId, input.userId, 'billing.transaction_recorded', result.record.transactionId, {
     provider: input.provider,
     environment: input.environment,
     productKey: input.productKey,

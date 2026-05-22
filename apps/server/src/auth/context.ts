@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
-import { DEFAULT_ORGANIZATION_ID, DEFAULT_USER_ID, type AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
+import { DEFAULT_USER_ID, DEFAULT_WORKSPACE_ID, type AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { verifyClerkSession } from './clerk.js';
 import { verifyMobileSession } from './mobileSession.js';
@@ -11,14 +11,12 @@ export interface AuthContext {
   source: AuthSource;
   isHuman: boolean;
   userId?: string;
-  organizationId: string;
+  workspaceId: string;
   role?: string;
-  agentId?: string;
-  agentName?: string;
-  ownerUserId?: string;
-  projectId?: string;
-  teamId?: string;
-  defaultApprovalPolicy?: string;
+  agentTokenId?: string;
+  agentTokenLabel?: string;
+  creatorUserId?: string;
+  routingRuleId?: string;
   deviceId?: string;
   provider?: 'clerk';
   providerIssuer?: string;
@@ -30,13 +28,7 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
   const bearer = bearerToken(request.headers.authorization);
 
   if (config.mode === 'single' && bearer && config.adminToken && timingSafeEqualString(bearer, config.adminToken)) {
-    return await applySelectedOrganization(request, store, {
-      source: 'admin',
-      isHuman: true,
-      userId: DEFAULT_USER_ID,
-      organizationId: DEFAULT_ORGANIZATION_ID,
-      role: 'owner'
-    });
+    return applySelectedWorkspace(request, store, { source: 'admin', isHuman: true, userId: DEFAULT_USER_ID, workspaceId: DEFAULT_WORKSPACE_ID, role: 'owner' });
   }
 
   if (bearer?.startsWith('agent_')) {
@@ -45,37 +37,22 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
     return {
       source: 'agent',
       isHuman: false,
-      agentId: agent.agentId,
-      agentName: agent.name,
-      ...(agent.ownerUserId ? { ownerUserId: agent.ownerUserId } : {}),
-      organizationId: agent.organizationId,
-      ...(agent.projectId ? { projectId: agent.projectId } : {}),
-      ...(agent.teamId ? { teamId: agent.teamId } : {}),
-      ...(agent.defaultApprovalPolicy ? { defaultApprovalPolicy: agent.defaultApprovalPolicy } : {})
+      agentTokenId: agent.agentTokenId,
+      agentTokenLabel: agent.label,
+      ...(agent.creatorUserId ? { creatorUserId: agent.creatorUserId } : {}),
+      ...(agent.routingRuleId ? { routingRuleId: agent.routingRuleId } : {}),
+      workspaceId: agent.workspaceId
     };
   }
 
   if (config.mode === 'single' && bearer?.startsWith('device_')) {
     const device = await store.verifyDeviceToken(bearer);
     if (!device) return null;
-    return {
-      source: 'device',
-      isHuman: true,
-      userId: device.userId,
-      organizationId: device.organizationId,
-      role: 'owner',
-      deviceId: device.deviceId
-    };
+    return applySelectedWorkspace(request, store, { source: 'device', isHuman: true, userId: device.userId, workspaceId: device.workspaceId, role: 'owner', deviceId: device.deviceId });
   }
 
   if (config.mode === 'single' && !config.adminToken && !bearer && isLoopback(request.ip)) {
-    return await applySelectedOrganization(request, store, {
-      source: 'loopback',
-      isHuman: true,
-      userId: DEFAULT_USER_ID,
-      organizationId: DEFAULT_ORGANIZATION_ID,
-      role: 'owner'
-    });
+    return applySelectedWorkspace(request, store, { source: 'loopback', isHuman: true, userId: DEFAULT_USER_ID, workspaceId: DEFAULT_WORKSPACE_ID, role: 'owner' });
   }
 
   if (config.testAuth && bearer?.startsWith('test_')) {
@@ -84,18 +61,12 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
     const nameHeader = request.headers['x-agent-tick-test-name'];
     const email = (Array.isArray(emailHeader) ? emailHeader[0] : emailHeader) || `${subject}@example.test`;
     const name = (Array.isArray(nameHeader) ? nameHeader[0] : nameHeader) || subject;
-    const identity = await store.loginOrCreateClerkIdentity({
-      issuer: 'agent-tick-test',
-      subject,
-      email,
-      emailVerified: true,
-      name
-    });
-    return await applySelectedOrganization(request, store, {
+    const identity = await store.loginOrCreateClerkIdentity({ issuer: 'agent-tick-test', subject, email, emailVerified: true, name });
+    return applySelectedWorkspace(request, store, {
       source: 'clerk',
       isHuman: true,
       userId: identity.userId,
-      organizationId: identity.organizationId,
+      workspaceId: identity.workspaceId,
       role: identity.role,
       provider: 'clerk',
       providerIssuer: 'agent-tick-test',
@@ -105,9 +76,9 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
 
   if (config.mode === 'clerk' && bearer) {
     const mobileAuth = await verifyMobileSession(bearer, config, store);
-    if (mobileAuth) return await applySelectedOrganization(request, store, mobileAuth);
+    if (mobileAuth) return applySelectedWorkspace(request, store, mobileAuth);
     const clerkAuth = await verifyClerkSession(bearer, config, store);
-    return clerkAuth ? applySelectedOrganization(request, store, clerkAuth) : null;
+    return clerkAuth ? applySelectedWorkspace(request, store, clerkAuth) : null;
   }
 
   return null;
@@ -115,75 +86,48 @@ export async function authenticateRequest(request: FastifyRequest, config: Serve
 
 export async function requireAuth(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
   const auth = await authenticateRequest(request, config, store);
-  if (!auth) {
-    const error = new Error('Authentication required') as Error & { statusCode: number; code: string };
-    error.statusCode = 401;
-    error.code = 'not_authenticated';
-    throw error;
-  }
+  if (!auth) throw httpError(401, 'not_authenticated', 'Authentication required');
   return auth;
 }
 
 export async function requireHuman(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
   const auth = await requireAuth(request, config, store);
-  if (!auth.isHuman) {
-    const error = new Error('Human authentication required') as Error & { statusCode: number; code: string };
-    error.statusCode = 403;
-    error.code = 'forbidden';
-    throw error;
-  }
+  if (!auth.isHuman) throw httpError(403, 'forbidden', 'Human authentication required');
   return auth;
 }
 
 export async function requirePrivilegedHuman(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
   const auth = await requireHuman(request, config, store);
-  if (auth.source === 'device') {
-    const error = new Error('Dashboard or Clerk session required') as Error & { statusCode: number; code: string };
-    error.statusCode = 403;
-    error.code = 'forbidden';
-    throw error;
-  }
+  if (auth.source === 'device') throw httpError(403, 'forbidden', 'Dashboard or Clerk session required');
   return auth;
 }
 
-export async function requireOrganizationAdmin(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
+export async function requireWorkspaceAdmin(request: FastifyRequest, config: ServerConfig, store: AgentTickStore): Promise<AuthContext> {
   const auth = await requirePrivilegedHuman(request, config, store);
-  if (auth.role !== 'owner' && auth.role !== 'admin') {
-    const error = new Error('Organization owner or admin role required') as Error & { statusCode: number; code: string };
-    error.statusCode = 403;
-    error.code = 'forbidden';
-    throw error;
-  }
+  if (auth.role !== 'owner' && auth.role !== 'admin') throw httpError(403, 'forbidden', 'Workspace Owner or Admin role required');
   return auth;
 }
 
-async function applySelectedOrganization(request: FastifyRequest, store: AgentTickStore, auth: AuthContext): Promise<AuthContext> {
+export const requireOrganizationAdmin = requireWorkspaceAdmin;
+
+async function applySelectedWorkspace(request: FastifyRequest, store: AgentTickStore, auth: AuthContext): Promise<AuthContext> {
   if (!auth.isHuman || !auth.userId) return auth;
-  const selected = selectedOrganization(request);
-  if (!selected || selected === auth.organizationId) return auth;
-  const membership = await store.organizationMembershipForUser(auth.userId, selected);
-  if (!membership) {
-    const error = new Error('User is not a member of the selected organization') as Error & { statusCode: number; code: string };
-    error.statusCode = 403;
-    error.code = 'forbidden';
-    throw error;
-  }
-  return {
-    ...auth,
-    organizationId: membership.organizationId,
-    role: membership.role
-  };
+  const selected = selectedWorkspace(request);
+  if (!selected || selected === auth.workspaceId) return auth;
+  const membership = await store.workspaceMembershipForUser(auth.userId, selected);
+  if (!membership) throw httpError(403, 'forbidden', 'User is not a member of the selected Workspace');
+  return { ...auth, workspaceId: membership.workspaceId, role: membership.role };
+}
+
+function selectedWorkspace(request: FastifyRequest): string | undefined {
+  const header = request.headers['x-agent-tick-workspace-id'];
+  return Array.isArray(header) ? header[0] : header;
 }
 
 function bearerToken(header: string | undefined): string | null {
   const [scheme, token] = header?.split(/\s+/, 2) ?? [];
   if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
   return token.trim();
-}
-
-function selectedOrganization(request: FastifyRequest): string | undefined {
-  const header = request.headers['x-agent-tick-organization-id'];
-  return Array.isArray(header) ? header[0] : header;
 }
 
 function isLoopback(ip: string): boolean {
@@ -194,4 +138,11 @@ function timingSafeEqualString(a: string, b: string): boolean {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function httpError(statusCode: number, code: string, message: string): Error & { statusCode: number; code: string } {
+  const error = new Error(message) as Error & { statusCode: number; code: string };
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
 }

@@ -43,7 +43,7 @@ export async function verifyMobileSession(token: string, config: ServerConfig, s
     source: 'clerk',
     isHuman: true,
     userId: claims.sub,
-    organizationId: membership.organizationId,
+    workspaceId: membership.workspaceId,
     role: membership.role,
     provider: 'clerk',
     ...(typeof claims.clerkIssuer === 'string' ? { providerIssuer: claims.clerkIssuer } : {}),

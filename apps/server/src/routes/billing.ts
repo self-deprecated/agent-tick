@@ -45,7 +45,7 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
 
     const current = await recomputePersonalEntitlement(store, userId, now);
     if (input.event === 'delete_account_data') {
-      await store.deleteHostedPersonalData(userId, auth.organizationId, now.toISOString());
+      await store.deleteHostedPersonalData(userId, auth.workspaceId, now.toISOString());
     } else if (input.event === 'app_purchase') {
       await store.updatePersonalEntitlement({ userId, appUnlockedAt: current.appUnlockedAt ?? now.toISOString() }, now.toISOString());
     } else if (input.event === 'activate_included_hosted_month') {
@@ -84,12 +84,12 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
     const auth = await requirePrivilegedHuman(request, config, store);
     requireOrganizationAdmin(auth);
     return {
-      organizationId: auth.organizationId,
+      workspaceId: auth.workspaceId,
       plan: config.mode === 'clerk' ? 'solo' : 'self-hosted',
       limits: {
         ...(config.maxActiveMembers ? { seats: config.maxActiveMembers } : {})
       },
-      usage: await store.organizationSeatUsage(auth.organizationId)
+      usage: await store.workspaceSeatUsage(auth.workspaceId)
     };
   });
 }
@@ -99,7 +99,7 @@ function addDays(now: Date, days: number): string {
 }
 
 function personalUserId(auth: AuthContext): string {
-  return auth.userId ?? auth.ownerUserId ?? 'usr_default';
+  return auth.userId ?? auth.creatorUserId ?? 'usr_default';
 }
 
 function verifyRevenueCatWebhook(request: FastifyRequest, config: ServerConfig): void {
@@ -113,7 +113,7 @@ function verifyRevenueCatWebhook(request: FastifyRequest, config: ServerConfig):
 
 function requireOrganizationAdmin(auth: AuthContext): void {
   if (auth.role === 'owner' || auth.role === 'admin') return;
-  const error = new Error('Organization admin role required') as Error & { statusCode: number; code: string };
+  const error = new Error('Workspace Admin role required') as Error & { statusCode: number; code: string };
   error.statusCode = 403;
   error.code = 'forbidden';
   throw error;

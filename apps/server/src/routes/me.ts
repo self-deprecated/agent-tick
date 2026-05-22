@@ -20,9 +20,9 @@ export async function registerMeRoutes(app: FastifyInstance, { config, store }: 
       ...(profile?.signInMethod ? { signInMethod: profile.signInMethod } : {}),
       authProvider: config.authProvider,
       source: auth.source,
-      organizationId: auth.organizationId,
+      workspaceId: auth.workspaceId,
       role: auth.role ?? 'owner',
-      memberships: await store.listOrganizationsForUser(userId)
+      memberships: await store.listWorkspacesForUser(userId)
     };
   });
 }

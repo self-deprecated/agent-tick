@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { CreateAgentStatusUpdateSchema } from '@agent-tick/shared';
+import { CreateStatusUpdateSchema } from '@agent-tick/shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireAuth, requireHuman } from '../auth/context.js';
@@ -13,19 +13,19 @@ export interface StatusRoutesOptions {
 export async function registerStatusRoutes(app: FastifyInstance, { config, store }: StatusRoutesOptions): Promise<void> {
   app.get('/v1/status-updates', async (request) => {
     const auth = await requireHuman(request, config, store);
-    const limit = limitFromQuery(request.query);
-    return await store.listLatestAgentStatusUpdates(auth.organizationId, limit);
+    return store.listLatestStatusUpdates(auth.workspaceId, limitFromQuery(request.query));
   });
 
   app.post('/v1/status-updates', async (request) => {
     const auth = await requireAuth(request, config, store);
     await requireHostedPersonalRouting(config, store, auth);
-    const input = CreateAgentStatusUpdateSchema.parse(request.body);
-    return await store.createAgentStatusUpdate({
+    const input = CreateStatusUpdateSchema.parse(request.body);
+    return store.createStatusUpdate({
       ...input,
-      organizationId: auth.organizationId,
-      agentId: auth.agentId ?? auth.userId ?? 'human',
-      agentName: auth.agentName ?? (auth.source === 'loopback' ? 'Local admin' : 'Agent'),
+      workspaceId: auth.workspaceId,
+      ...(auth.agentTokenId ? { agentTokenId: auth.agentTokenId } : {}),
+      ...(auth.agentTokenLabel ? { agentTokenLabel: auth.agentTokenLabel } : {}),
+      ...(auth.routingRuleId ? { routingRuleId: auth.routingRuleId } : {}),
       ...(auth.userId ? { userId: auth.userId } : {})
     });
   });

@@ -2,12 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import type { AsyncAgentTickStore as AgentTickStore, AuditEventRecord } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman } from '../auth/context.js';
-import type { OrganizationEventBus } from '../services/eventBus.js';
+import type { WorkspaceEventBus } from '../services/eventBus.js';
 
 export interface EventRoutesOptions {
   config: ServerConfig;
   store: AgentTickStore;
-  eventBus: OrganizationEventBus;
+  eventBus: WorkspaceEventBus;
 }
 
 const eventPollMs = 1000;
@@ -18,16 +18,15 @@ export async function registerEventRoutes(app: FastifyInstance, { config, store,
     const auth = await requirePrivilegedHuman(request, config, store);
     return await store.createEventTicket({
       source: auth.source,
-      organizationId: auth.organizationId,
-      ...(auth.userId ? { userId: auth.userId } : {}),
-      ...(auth.agentId ? { agentId: auth.agentId } : {})
+      workspaceId: auth.workspaceId,
+      userId: auth.userId ?? 'usr_default'
     });
   });
 
   app.get('/v1/events/poll', async (request, reply) => {
     const auth = await requireHuman(request, config, store);
     const timeoutMs = timeoutMsFromQuery(request.query);
-    let lastEventId = lastEventIdFromRequest(request.query, undefined) ?? await latestAuditEventId(store, auth.organizationId);
+    let lastEventId = lastEventIdFromRequest(request.query, undefined) ?? await latestAuditEventId(store, auth.workspaceId);
     const toResponse = (events: AuditEventRecord[]) => {
       const nextEventId = events.at(-1)?.eventId ?? lastEventId;
       return {
@@ -41,14 +40,14 @@ export async function registerEventRoutes(app: FastifyInstance, { config, store,
       };
     };
 
-    const initialEvents = await store.listAuditEventsAfter(auth.organizationId, lastEventId, 50);
+    const initialEvents = await store.listAuditEventsAfter(auth.workspaceId, lastEventId, 50);
     if (initialEvents.length > 0) return toResponse(initialEvents);
 
     const abortController = new AbortController();
     request.raw.once('close', () => abortController.abort());
-    await eventBus.waitForOrganizationEvent(auth.organizationId, timeoutMs, abortController.signal);
+    await eventBus.waitForWorkspaceEvent(auth.workspaceId, timeoutMs, abortController.signal);
     if (abortController.signal.aborted) return toResponse([]);
-    const events = await store.listAuditEventsAfter(auth.organizationId, lastEventId, 50);
+    const events = await store.listAuditEventsAfter(auth.workspaceId, lastEventId, 50);
     return toResponse(events);
   });
 
@@ -60,17 +59,17 @@ export async function registerEventRoutes(app: FastifyInstance, { config, store,
     }
 
     const once = booleanQueryFlag(request.query, 'once');
-    let lastEventId = lastEventIdFromRequest(request.query, request.headers['last-event-id']) ?? await latestAuditEventId(store, eventAuth.organizationId);
+    let lastEventId = lastEventIdFromRequest(request.query, request.headers['last-event-id']) ?? await latestAuditEventId(store, eventAuth.workspaceId);
 
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-store',
       connection: 'keep-alive'
     });
-    writeSSE(reply.raw, 'ready', { organizationId: eventAuth.organizationId, lastEventId });
+    writeSSE(reply.raw, 'ready', { workspaceId: eventAuth.workspaceId, lastEventId });
 
     const sendAuditEvents = async () => {
-      const events = await store.listAuditEventsAfter(eventAuth.organizationId, lastEventId, 100);
+      const events = await store.listAuditEventsAfter(eventAuth.workspaceId, lastEventId, 100);
       for (const event of events) {
         lastEventId = event.eventId;
         writeSSE(reply.raw, 'audit', event, String(event.eventId));
@@ -133,8 +132,8 @@ function parseEventId(value: unknown): number | null {
   return Math.trunc(parsed);
 }
 
-async function latestAuditEventId(store: AgentTickStore, organizationId: string): Promise<number> {
-  return (await store.listAuditEvents(organizationId, 1))[0]?.eventId ?? 0;
+async function latestAuditEventId(store: AgentTickStore, workspaceId: string): Promise<number> {
+  return (await store.listAuditEvents(workspaceId, 1))[0]?.eventId ?? 0;
 }
 
 function writeSSE(raw: { write: (chunk: string) => unknown }, event: string, data: unknown, id?: string): void {

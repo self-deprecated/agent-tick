@@ -52,7 +52,7 @@ describe('Clerk authentication', () => {
     const db = testStore();
     const token = 'header.payload.signature';
 
-    await expect(verifyClerkSession(token, config, db)).resolves.toMatchObject({ userId: expect.stringMatching(/^usr_/), providerSubject: 'user_123' });
+    await expect(verifyClerkSession(token, config, db)).resolves.toMatchObject({ userId: expect.stringMatching(/^usr_/), workspaceId: expect.stringMatching(/^wsp_/), providerSubject: 'user_123' });
     await expect(verifyClerkSession(token, config, db)).resolves.toMatchObject({ providerSubject: 'user_123' });
     expect(clerkMocks.getUser).toHaveBeenCalledTimes(1);
 

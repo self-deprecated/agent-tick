@@ -26,7 +26,7 @@ export async function registerMobileDiagnosticsRoutes(app: FastifyInstance, { co
       lastErrorMessage: input.lastErrorMessage
     };
     const events = input.events.map((event) => ({
-      organizationId: auth.organizationId,
+      workspaceId: auth.workspaceId,
       userId: auth.userId ?? 'usr_default',
       ...(auth.deviceId ? { deviceId: auth.deviceId } : {}),
       level: event.level,

@@ -15,7 +15,7 @@ export async function registerPairingRoutes(app: FastifyInstance, { config, stor
     if (config.mode !== 'single') {
       return reply.status(404).send({ error: { code: 'not_found', message: 'Pairing tokens are only available in single mode', requestId: request.id } });
     }
-    return await store.createPairingToken(auth.userId ?? 'usr_default', auth.organizationId);
+    return await store.createPairingToken(auth.userId ?? 'usr_default', auth.workspaceId);
   });
 
   app.post('/v1/devices/pair', async (request, reply) => {

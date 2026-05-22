@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMemoryOrganizationEventBus, createRedisOrganizationEventBus } from '../src/services/eventBus.js';
+import { createMemoryWorkspaceEventBus, createRedisWorkspaceEventBus } from '../src/services/eventBus.js';
 import { createMemoryRateLimiter, createRedisRateLimiter } from '../src/services/rateLimit.js';
 import { createNoopRetentionCleanupLock, createRedisRetentionCleanupLock } from '../src/services/retentionLock.js';
 
@@ -7,10 +7,10 @@ const redisURL = process.env.AGENT_TICK_TEST_REDIS_URL;
 const describeRedis = redisURL ? describe : describe.skip;
 
 describe('memory coordination services', () => {
-  it('wakes in-process organization event waiters', async () => {
-    const bus = createMemoryOrganizationEventBus();
-    const wait = bus.waitForOrganizationEvent('org_test', 1_000);
-    bus.publishOrganizationEvent('org_test');
+  it('wakes in-process Workspace event waiters', async () => {
+    const bus = createMemoryWorkspaceEventBus();
+    const wait = bus.waitForWorkspaceEvent('wsp_test', 1_000);
+    bus.publishWorkspaceEvent('wsp_test');
     await expect(wait).resolves.toBeUndefined();
   });
 
@@ -27,12 +27,12 @@ describe('memory coordination services', () => {
 });
 
 describeRedis('redis coordination services', () => {
-  it('wakes organization event waiters across bus instances', async () => {
-    const waiterBus = await createRedisOrganizationEventBus(redisURL!);
-    const publisherBus = await createRedisOrganizationEventBus(redisURL!);
+  it('wakes Workspace event waiters across bus instances', async () => {
+    const waiterBus = await createRedisWorkspaceEventBus(redisURL!);
+    const publisherBus = await createRedisWorkspaceEventBus(redisURL!);
     try {
-      const wait = waiterBus.waitForOrganizationEvent('org_redis_test', 5_000);
-      await publisherBus.publishOrganizationEvent('org_redis_test');
+      const wait = waiterBus.waitForWorkspaceEvent('wsp_redis_test', 5_000);
+      await publisherBus.publishWorkspaceEvent('wsp_redis_test');
       await expect(wait).resolves.toBeUndefined();
     } finally {
       await Promise.allSettled([waiterBus.close?.(), publisherBus.close?.()]);

@@ -15,19 +15,15 @@ export interface RetentionCleanupTimer {
 
 export function retentionPolicyFromConfig(config: ServerConfig): RetentionPolicy {
   return {
-    ...(config.approvalRetentionDays !== undefined ? { approvalRequestsDays: config.approvalRetentionDays } : {}),
+    ...(config.approvalRetentionDays !== undefined ? { requestsDays: config.approvalRetentionDays } : {}),
     ...(config.statusUpdateRetentionDays !== undefined ? { statusUpdatesDays: config.statusUpdateRetentionDays } : {}),
     ...(config.auditRetentionDays !== undefined ? { auditEventsDays: config.auditRetentionDays } : {}),
-    ...(config.unregisteredDeviceRetentionDays !== undefined ? { unregisteredDevicesDays: config.unregisteredDeviceRetentionDays } : {}),
-    ...(config.expiredInviteRetentionDays !== undefined ? { expiredInvitesDays: config.expiredInviteRetentionDays } : {})
+    ...(config.unregisteredDeviceRetentionDays !== undefined ? { unregisteredDevicesDays: config.unregisteredDeviceRetentionDays } : {})
   };
 }
 
 export async function runRetentionCleanup(store: AgentTickStore, config: ServerConfig, now = new Date().toISOString(), lock?: RetentionCleanupLock): Promise<RetentionCleanupRunResult | null> {
-  const run = async () => ({
-    secrets: await store.cleanupExpiredSecrets(now),
-    retention: await store.cleanupRetention(retentionPolicyFromConfig(config), now)
-  });
+  const run = async () => ({ secrets: await store.cleanupExpiredSecrets(now), retention: await store.cleanupRetention(retentionPolicyFromConfig(config), now) });
   return lock ? lock.runExclusive(run) : run();
 }
 
@@ -40,23 +36,16 @@ export function startRetentionCleanupTimer(options: { store: AgentTickStore; con
   const run = (): Promise<RetentionCleanupRunResult> => runRetentionCleanup(store, config, new Date().toISOString(), lock).then((result) => result ?? emptyRetentionCleanupResult());
   const timer = setInterval(() => {
     run()
-      .then((result) => {
-        if (hasRetentionCleanupChanges(result)) logger.info({ result }, 'cleaned retained data');
-      })
-      .catch((error) => {
-        logger.error({ err: error }, 'failed to clean retained data');
-      });
+      .then((result) => { if (hasRetentionCleanupChanges(result)) logger.info({ result }, 'cleaned retained data'); })
+      .catch((error) => { logger.error({ err: error }, 'failed to clean retained data'); });
   }, config.retentionCleanupIntervalMinutes * 60_000);
   timer.unref();
-  return {
-    run,
-    stop: () => clearInterval(timer)
-  };
+  return { run, stop: () => clearInterval(timer) };
 }
 
 function emptyRetentionCleanupResult(): RetentionCleanupRunResult {
   return {
-    secrets: { eventTickets: 0, pairingCodes: 0, approvalWaiterTokens: 0 },
-    retention: { approvalRequests: 0, statusUpdates: 0, auditEvents: 0, devices: 0, organizationInviteTeams: 0, organizationInvites: 0 }
+    secrets: { eventTickets: 0, pairingCodes: 0, requestWaiterTokens: 0, approvalWaiterTokens: 0 },
+    retention: { requests: 0, statusUpdates: 0, auditEvents: 0, devices: 0 }
   };
 }

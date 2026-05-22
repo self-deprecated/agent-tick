@@ -4,27 +4,25 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from './config.js';
+import { registerActivityRoutes } from './routes/activity.js';
 import { registerAgentTokenRoutes } from './routes/agentTokens.js';
-import { registerApprovalRoutes } from './routes/approvals.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerBillingRoutes } from './routes/billing.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerEventRoutes } from './routes/events.js';
-import { registerInviteRoutes } from './routes/invites.js';
 import { registerMeRoutes } from './routes/me.js';
 import { registerMobileDiagnosticsRoutes } from './routes/mobileDiagnostics.js';
 import { registerMobileSessionRoutes } from './routes/mobileSessions.js';
-import { registerOrganizationRoutes } from './routes/organizations.js';
 import { registerOnboardingRoutes } from './routes/onboarding.js';
 import { registerPairingRoutes } from './routes/pairing.js';
-import { registerPolicyRoutes } from './routes/policies.js';
 import { registerPresenceRoutes } from './routes/presence.js';
-import { registerProjectRoutes } from './routes/projects.js';
+import { registerRequestRoutes } from './routes/requests.js';
+import { registerRoutingRuleRoutes } from './routes/routingRules.js';
 import { registerStatusRoutes } from './routes/status.js';
-import { registerTeamRoutes } from './routes/teams.js';
+import { registerTestActivityRoutes } from './routes/tests.js';
 import { registerTestSupportRoutes } from './routes/testSupport.js';
-import { createInviteEmailSender, type InviteEmailSender } from './services/inviteEmail.js';
-import { createConfiguredOrganizationEventBus, publishAuditWrites } from './services/eventBus.js';
+import { registerWorkspaceRoutes } from './routes/workspaces.js';
+import { createConfiguredWorkspaceEventBus, publishAuditWrites } from './services/eventBus.js';
 import { createApprovalNotifier, type ApprovalNotifier } from './services/notifications.js';
 import { createConfiguredRateLimiter, registerRateLimitHook } from './services/rateLimit.js';
 
@@ -32,10 +30,10 @@ export interface BuildAppOptions {
   config: ServerConfig;
   store: AgentTickStore;
   notifier?: ApprovalNotifier;
-  inviteEmailSender?: InviteEmailSender;
+
 }
 
-export async function buildApp({ config, store, notifier = createApprovalNotifier({ store, config }), inviteEmailSender = createInviteEmailSender(config) }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, store, notifier = createApprovalNotifier({ store, config }) }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: true,
     genReqId: (request) => request.headers['x-request-id']?.toString() ?? crypto.randomUUID()
@@ -52,7 +50,7 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
       }
     });
   });
-  const eventBus = await createConfiguredOrganizationEventBus({ backend: config.eventBusBackend, redisURL: config.redisURL });
+  const eventBus = await createConfiguredWorkspaceEventBus({ backend: config.eventBusBackend, redisURL: config.redisURL });
   const rateLimiter = await createConfiguredRateLimiter({ backend: config.rateLimitBackend, redisURL: config.redisURL });
   publishAuditWrites(store, eventBus);
   app.addHook('onClose', async () => {
@@ -93,19 +91,18 @@ export async function buildApp({ config, store, notifier = createApprovalNotifie
   await registerMeRoutes(app, { config, store });
   await registerMobileSessionRoutes(app, { config, store });
   await registerMobileDiagnosticsRoutes(app, { config, store });
-  await registerOrganizationRoutes(app, { config, store });
-  await registerInviteRoutes(app, { config, store, inviteEmailSender });
+  await registerWorkspaceRoutes(app, { config, store });
   await registerAgentTokenRoutes(app, { config, store });
   await registerBillingRoutes(app, { config, store });
   await registerOnboardingRoutes(app, { config, store });
-  await registerApprovalRoutes(app, { config, store, notifier });
+  await registerRequestRoutes(app, { config, store, notifier });
+  await registerActivityRoutes(app, { config, store });
   await registerDeviceRoutes(app, { config, store });
   await registerPairingRoutes(app, { config, store });
   await registerPresenceRoutes(app, { config, store });
   await registerStatusRoutes(app, { config, store });
-  await registerProjectRoutes(app, { config, store });
-  await registerTeamRoutes(app, { config, store });
-  await registerPolicyRoutes(app, { config, store });
+  await registerRoutingRuleRoutes(app, { config, store });
+  await registerTestActivityRoutes(app, { config, store });
   await registerAuditRoutes(app, { config, store });
   await registerEventRoutes(app, { config, store, eventBus });
 

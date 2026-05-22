@@ -20,7 +20,7 @@ export async function registerMobileSessionRoutes(app: FastifyInstance, { config
       token,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       userId: auth.userId!,
-      organizationId: auth.organizationId,
+      workspaceId: auth.workspaceId,
       role: auth.role ?? 'member'
     };
   });

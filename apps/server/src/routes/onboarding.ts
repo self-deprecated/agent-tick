@@ -12,26 +12,24 @@ export interface OnboardingRoutesOptions {
 export async function registerOnboardingRoutes(app: FastifyInstance, { config, store }: OnboardingRoutesOptions): Promise<void> {
   app.get('/v1/onboarding', async (request): Promise<OnboardingStatus> => {
     const auth = await requirePrivilegedHuman(request, config, store);
-    const agentTokens = (await store.listAgentTokens(auth.organizationId)).filter((token) => !token.revokedAt);
+    const agentTokens = (await store.listAgentTokens(auth.workspaceId)).filter((token) => !token.revokedAt);
     const devices = (await store.listDevicesForUser(auth.userId ?? 'usr_default')).filter((device) => !device.unregisteredAt);
-    const connectedAgents = agentTokens.filter((token) => Boolean(token.lastRequestAt));
+    const connectedAgents = agentTokens.filter((token) => Boolean(token.lastCheckInAt || token.lastActivityAt));
     const hasAgentToken = agentTokens.length > 0;
-    const hasCliHeartbeat = connectedAgents.length > 0;
+    const hasAgentCheckIn = connectedAgents.length > 0;
     const hasMobileDevice = devices.length > 0;
     const stage = !hasAgentToken
       ? 'needs_agent_token'
-      : !hasCliHeartbeat
-        ? 'needs_cli_setup'
+      : !hasAgentCheckIn
+        ? 'needs_agent_check_in'
         : !hasMobileDevice
           ? 'needs_mobile_app'
-          : 'ready_for_first_request';
-
+          : 'ready';
     return {
       stage,
       hasAgentToken,
-      hasCliHeartbeat,
+      hasAgentCheckIn,
       hasMobileDevice,
-      canUseWebApprovals: stage === 'ready_for_first_request',
       activeAgentTokenCount: agentTokens.length,
       connectedAgentCount: connectedAgents.length,
       activeMobileDeviceCount: devices.length

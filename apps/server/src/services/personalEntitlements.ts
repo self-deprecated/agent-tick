@@ -49,12 +49,12 @@ export function hostedPersonalStatus(record: PersonalEntitlementRecord, now = ne
 }
 
 export function hostedPersonalApplies(config: ServerConfig, auth: AuthContext): boolean {
-  return config.mode === 'clerk' && Boolean(auth.userId || auth.ownerUserId);
+  return config.mode === 'clerk' && Boolean(auth.userId || auth.creatorUserId);
 }
 
 export async function hostedPersonalForAuth(config: ServerConfig, store: AgentTickStore, auth: AuthContext, now = new Date()): Promise<HostedPersonalStatus | null> {
   if (!hostedPersonalApplies(config, auth)) return null;
-  const userId = auth.userId ?? auth.ownerUserId;
+  const userId = auth.userId ?? auth.creatorUserId;
   if (!userId) return null;
   const record = await store.getOrStartPersonalEntitlement(userId, now.toISOString());
   const status = hostedPersonalStatus(record, now);
