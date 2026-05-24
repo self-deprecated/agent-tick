@@ -434,6 +434,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
 
   migrate(): void {
     this.db.exec(SQLITE_SCHEMA);
+    this.dedupeDeviceInstallations();
   }
 
   ensureSingleTenantDefaults(now = new Date().toISOString()): void {
@@ -941,28 +942,50 @@ export class AgentTickStore implements AsyncAgentTickStore {
 
   registerDevice(input: DeviceRegistrationInput, now = new Date().toISOString()): DeviceRecord {
     this.ensureUserExists(input.userId, now);
+    const name = input.deviceName.trim();
+    const platform = input.platform?.trim() || null;
+    const installationId = input.installationId?.trim() || null;
+    const expoPushToken = input.expoPushToken ?? null;
+
+    if (installationId) {
+      const existing = this.db.prepare(`
+        SELECT * FROM approval_devices
+        WHERE user_id = ? AND installation_id = ?
+        ORDER BY CASE WHEN unregistered_at IS NULL THEN 0 ELSE 1 END ASC, updated_at DESC, created_at DESC, device_id DESC
+        LIMIT 1
+      `).get(input.userId, installationId) as DeviceRow | undefined;
+      if (existing) {
+        this.db.prepare('UPDATE approval_devices SET name = ?, platform = ?, expo_push_token = ?, unregistered_at = NULL, updated_at = ? WHERE device_id = ? AND user_id = ?')
+          .run(name, platform ?? existing.platform, expoPushToken ?? existing.expo_push_token, now, existing.device_id, input.userId);
+        this.retireDuplicateDevicesForInstallation(input.userId, installationId, existing.device_id, now);
+        this.writeAuditEvent(this.defaultMembershipForUser(input.userId).workspaceId, input.userId, 'approval_device.registered', existing.device_id, { name, platform }, now);
+        return this.deviceOrThrow(existing.device_id, input.userId);
+      }
+    }
+
     const deviceId = id('dev');
-    this.db.prepare('INSERT INTO approval_devices(device_id, user_id, name, platform, installation_id, expo_push_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(deviceId, input.userId, input.deviceName.trim(), input.platform ?? null, input.installationId ?? null, input.expoPushToken ?? null, now, now);
-    this.writeAuditEvent(this.defaultMembershipForUser(input.userId).workspaceId, input.userId, 'approval_device.registered', deviceId, { name: input.deviceName.trim(), platform: input.platform }, now);
+    this.db.prepare('INSERT INTO approval_devices(device_id, user_id, name, platform, installation_id, expo_push_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(deviceId, input.userId, name, platform, installationId, expoPushToken, now, now);
+    this.writeAuditEvent(this.defaultMembershipForUser(input.userId).workspaceId, input.userId, 'approval_device.registered', deviceId, { name, platform }, now);
     return this.deviceOrThrow(deviceId, input.userId);
   }
 
   listDevicesForUser(userId: string): DeviceRecord[] {
-    return (this.db.prepare('SELECT * FROM approval_devices WHERE user_id = ? ORDER BY created_at DESC').all(userId) as DeviceRow[]).map(mapDevice);
+    return (this.db.prepare('SELECT * FROM approval_devices WHERE user_id = ? AND unregistered_at IS NULL ORDER BY created_at DESC').all(userId) as DeviceRow[]).map(mapDevice);
   }
 
   listPushDevicesForRequestRecipients(requestId: string): DeviceRecord[] {
-    return (this.db.prepare(`
+    return uniqueDevicesByPushToken(this.db.prepare(`
       SELECT d.* FROM approval_devices d
       JOIN request_recipients rr ON rr.user_id = d.user_id
       WHERE rr.request_id = ? AND d.unregistered_at IS NULL AND d.expo_push_token IS NOT NULL AND d.expo_push_token <> ''
-    `).all(requestId) as DeviceRow[]).map(mapDevice);
+      ORDER BY d.updated_at DESC, d.created_at DESC
+    `).all(requestId) as DeviceRow[]);
   }
 
   listPushDevicesForUsers(userIds: string[]): DeviceRecord[] {
     if (!userIds.length) return [];
     const placeholders = userIds.map(() => '?').join(',');
-    return (this.db.prepare(`SELECT * FROM approval_devices WHERE user_id IN (${placeholders}) AND unregistered_at IS NULL AND expo_push_token IS NOT NULL AND expo_push_token <> ''`).all(...userIds) as DeviceRow[]).map(mapDevice);
+    return uniqueDevicesByPushToken(this.db.prepare(`SELECT * FROM approval_devices WHERE user_id IN (${placeholders}) AND unregistered_at IS NULL AND expo_push_token IS NOT NULL AND expo_push_token <> '' ORDER BY updated_at DESC, created_at DESC`).all(...userIds) as DeviceRow[]);
   }
 
   getDeviceForUser(deviceId: string, userId: string): DeviceRecord | null {
@@ -976,7 +999,7 @@ export class AgentTickStore implements AsyncAgentTickStore {
   }
 
   updateDevicePushToken(deviceId: string, userId: string, expoPushToken: string, now = new Date().toISOString()): DeviceRecord | null {
-    this.db.prepare('UPDATE approval_devices SET expo_push_token = ?, updated_at = ? WHERE device_id = ? AND user_id = ?').run(expoPushToken, now, deviceId, userId);
+    this.db.prepare(`UPDATE approval_devices SET expo_push_token = ?, unregistered_at = CASE WHEN ? <> '' THEN NULL ELSE unregistered_at END, updated_at = ? WHERE device_id = ? AND user_id = ?`).run(expoPushToken, expoPushToken, now, deviceId, userId);
     return this.getDeviceForUser(deviceId, userId);
   }
 
@@ -1337,6 +1360,35 @@ export class AgentTickStore implements AsyncAgentTickStore {
     return device;
   }
 
+  private dedupeDeviceInstallations(now = new Date().toISOString()): number {
+    const groups = this.db.prepare(`
+      SELECT user_id, installation_id
+      FROM approval_devices
+      WHERE installation_id IS NOT NULL AND installation_id <> ''
+      GROUP BY user_id, installation_id
+      HAVING COUNT(*) > 1
+    `).all() as { user_id: string; installation_id: string }[];
+    let retired = 0;
+    for (const group of groups) {
+      const keep = this.db.prepare(`
+        SELECT device_id FROM approval_devices
+        WHERE user_id = ? AND installation_id = ?
+        ORDER BY CASE WHEN unregistered_at IS NULL THEN 0 ELSE 1 END ASC, updated_at DESC, created_at DESC, device_id DESC
+        LIMIT 1
+      `).get(group.user_id, group.installation_id) as { device_id: string } | undefined;
+      if (keep) retired += this.retireDuplicateDevicesForInstallation(group.user_id, group.installation_id, keep.device_id, now);
+    }
+    return retired;
+  }
+
+  private retireDuplicateDevicesForInstallation(userId: string, installationId: string, keepDeviceId: string, now: string): number {
+    return this.db.prepare(`
+      UPDATE approval_devices
+      SET expo_push_token = NULL, unregistered_at = COALESCE(unregistered_at, ?), updated_at = ?
+      WHERE user_id = ? AND installation_id = ? AND device_id <> ?
+    `).run(now, now, userId, installationId, keepDeviceId).changes;
+  }
+
   private ensurePersonalEntitlementRow(userId: string, now: string): void {
     this.db.prepare(`INSERT OR IGNORE INTO personal_entitlements(user_id, trial_started_at, created_at, updated_at) VALUES (?, ?, ?, ?)`).run(userId, now, now, now);
   }
@@ -1479,6 +1531,17 @@ function mapResponse(row: ResponseRow): ResponseRecord {
     final: Boolean(row.final),
     createdAt: row.created_at
   };
+}
+
+function uniqueDevicesByPushToken(rows: DeviceRow[]): DeviceRecord[] {
+  const seen = new Set<string>();
+  const devices: DeviceRecord[] = [];
+  for (const row of rows) {
+    if (!row.expo_push_token || seen.has(row.expo_push_token)) continue;
+    seen.add(row.expo_push_token);
+    devices.push(mapDevice(row));
+  }
+  return devices;
 }
 
 function mapDevice(row: DeviceRow): DeviceRecord {
@@ -1830,6 +1893,7 @@ CREATE TABLE IF NOT EXISTS approval_devices (
   unregistered_at TEXT
 );
 CREATE INDEX IF NOT EXISTS approval_devices_user_idx ON approval_devices(user_id, unregistered_at);
+CREATE INDEX IF NOT EXISTS approval_devices_installation_idx ON approval_devices(user_id, installation_id);
 
 CREATE TABLE IF NOT EXISTS device_pairing_codes (
   token_hash TEXT PRIMARY KEY,

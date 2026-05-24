@@ -807,6 +807,7 @@ function AgentTickApp({
   const seenRequestIDs = useRef<Set<string>>(new Set());
   const didPrimeNotifications = useRef(false);
   const pairingInFlight = useRef(false);
+  const pushRegistrationInFlight = useRef(false);
   const previousScreenRef = useRef<Screen>(screen);
   const lastClerkPushRegistrationKey = useRef("");
   const lastHostedExpiryAlertKey = useRef("");
@@ -1999,6 +2000,10 @@ function AgentTickApp({
       Alert.alert("Pair first", "Pair this device before registering push notifications.");
       return;
     }
+    if (pushRegistrationInFlight.current) {
+      return;
+    }
+    pushRegistrationInFlight.current = true;
 
     try {
       const permissions = await Notifications.requestPermissionsAsync({
@@ -2071,6 +2076,8 @@ function AgentTickApp({
         "Push registration failed",
         err instanceof Error ? err.message : "Could not register push notifications",
       );
+    } finally {
+      pushRegistrationInFlight.current = false;
     }
   };
 

@@ -47,9 +47,9 @@ export function createExpoPushNotifier({ store, fetch: fetchImpl = globalThis.fe
     async notifyRequestCreated(request) {
       if (!fetchImpl) return;
       const devices = await store.listPushDevicesForRequestRecipients(request.id);
-      const targets = devices.map((device) => device.expoPushToken).filter((token): token is string => Boolean(token));
+      const targets = unique(devices.map((device) => device.expoPushToken).filter((token): token is string => Boolean(token)));
       if (!targets.length) return;
-      await fetchImpl(endpoint, {
+      const response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(targets.map((to) => ({
@@ -59,8 +59,28 @@ export function createExpoPushNotifier({ store, fetch: fetchImpl = globalThis.fe
           data: { requestId: request.id, workspaceId: request.workspaceId, type: 'request', encrypted: Boolean(request.encryptedPayload) }
         })))
       });
+      if (!response.ok) throw new Error(`expo push request failed: ${response.status}`);
+      const ticketErrors = await expoPushTicketErrors(response);
+      if (ticketErrors.length) throw new Error(`expo push ticket failed: ${ticketErrors.join('; ')}`);
     }
   };
+}
+
+async function expoPushTicketErrors(response: Response): Promise<string[]> {
+  const body = await response.json().catch(() => undefined) as { data?: unknown } | undefined;
+  if (!body || !Array.isArray(body.data)) return [];
+  return body.data.flatMap((ticket) => {
+    if (!ticket || typeof ticket !== 'object') return [];
+    const record = ticket as { status?: unknown; message?: unknown; details?: { error?: unknown } };
+    if (record.status !== 'error') return [];
+    const errorCode = typeof record.details?.error === 'string' ? record.details.error : 'unknown';
+    const message = typeof record.message === 'string' ? record.message : 'unknown Expo push error';
+    return [`${errorCode}: ${message}`];
+  });
+}
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values));
 }
 
 export function createWebhookRequestNotifier({ url, publicURL, fetch: fetchImpl = globalThis.fetch }: WebhookRequestNotifierOptions): RequestNotifier {

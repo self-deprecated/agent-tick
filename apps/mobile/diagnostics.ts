@@ -34,6 +34,7 @@ let enabled = false;
 let buffer: DiagnosticEvent[] = [];
 let initialized = false;
 let globalHandlersInstalled = false;
+let flushInFlight: Promise<number> | null = null;
 let context: Record<string, unknown> = {};
 
 export async function initializeDiagnostics(): Promise<boolean> {
@@ -75,7 +76,15 @@ export function recordDiagnostic(level: DiagnosticLevel, area: string, message: 
 }
 
 export async function flushDiagnostics(client: AgentTickClient, snapshot: DiagnosticSnapshot): Promise<number> {
+  if (flushInFlight) return flushInFlight;
   if (!enabled || buffer.length === 0) return 0;
+  flushInFlight = flushDiagnosticsNow(client, snapshot).finally(() => {
+    flushInFlight = null;
+  });
+  return flushInFlight;
+}
+
+async function flushDiagnosticsNow(client: AgentTickClient, snapshot: DiagnosticSnapshot): Promise<number> {
   let accepted = 0;
   while (buffer.length > 0) {
     const events = buffer.slice(0, 100);

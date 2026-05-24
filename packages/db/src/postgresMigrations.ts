@@ -191,6 +191,7 @@ CREATE TABLE IF NOT EXISTS approval_devices (
   unregistered_at TEXT
 );
 CREATE INDEX IF NOT EXISTS approval_devices_user_idx ON approval_devices(user_id, unregistered_at);
+CREATE INDEX IF NOT EXISTS approval_devices_installation_idx ON approval_devices(user_id, installation_id);
 
 CREATE TABLE IF NOT EXISTS device_pairing_codes (
   token_hash TEXT PRIMARY KEY,

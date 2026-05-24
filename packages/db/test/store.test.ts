@@ -61,6 +61,37 @@ describe('AgentTickStore Workspace model', () => {
     expect(local.userProfile(invited.userId)).toMatchObject({ email: 'bob@example.com', name: 'Bob', signInMethod: 'oauth_google' });
   });
 
+  it('reuses a mobile installation when push registration runs more than once', () => {
+    const local = freshStore();
+    const first = local.registerDevice({ userId: DEFAULT_USER_ID, deviceName: 'ios phone', platform: 'ios', installationId: 'install_same', expoPushToken: 'ExponentPushToken[first]' }, '2026-05-08T01:10:00.000Z');
+    const second = local.registerDevice({ userId: DEFAULT_USER_ID, deviceName: 'ios phone renamed', platform: 'ios', installationId: 'install_same', expoPushToken: 'ExponentPushToken[second]' }, '2026-05-08T01:11:00.000Z');
+
+    expect(second.deviceId).toBe(first.deviceId);
+    expect(second).toMatchObject({ name: 'ios phone renamed', expoPushToken: 'ExponentPushToken[second]', updatedAt: '2026-05-08T01:11:00.000Z' });
+    expect(local.listDevicesForUser(DEFAULT_USER_ID)).toEqual([expect.objectContaining({ deviceId: first.deviceId, expoPushToken: 'ExponentPushToken[second]' })]);
+  });
+
+  it('retires historical duplicate mobile installations during migration', () => {
+    const local = freshStore();
+    local.db.prepare('INSERT INTO approval_devices(device_id, user_id, name, platform, installation_id, expo_push_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('dev_old', DEFAULT_USER_ID, 'ios phone', 'ios', 'install_duplicate', 'ExponentPushToken[same]', '2026-05-08T01:20:00.000Z', '2026-05-08T01:20:00.000Z');
+    local.db.prepare('INSERT INTO approval_devices(device_id, user_id, name, platform, installation_id, expo_push_token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('dev_new', DEFAULT_USER_ID, 'ios phone', 'ios', 'install_duplicate', 'ExponentPushToken[same]', '2026-05-08T01:21:00.000Z', '2026-05-08T01:21:00.000Z');
+
+    local.migrate();
+
+    expect(local.listDevicesForUser(DEFAULT_USER_ID).filter((device) => device.installationId === 'install_duplicate')).toEqual([expect.objectContaining({ deviceId: 'dev_new', expoPushToken: 'ExponentPushToken[same]' })]);
+    expect(local.getDeviceForUser('dev_old', DEFAULT_USER_ID)).toMatchObject({ unregisteredAt: expect.any(String) });
+  });
+
+  it('deduplicates push targets by Expo token', () => {
+    const local = freshStore();
+    local.registerDevice({ userId: DEFAULT_USER_ID, deviceName: 'phone one', expoPushToken: 'ExponentPushToken[same]' });
+    local.registerDevice({ userId: DEFAULT_USER_ID, deviceName: 'phone two', expoPushToken: 'ExponentPushToken[same]' });
+    const credential = local.createAgentToken({ label: 'Pi' });
+    const request = local.createRequest({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, requester: { name: 'Pi' }, requestType: 'sanction', title: 'Deploy?' });
+
+    expect(local.listPushDevicesForRequestRecipients(request.id)).toEqual([expect.objectContaining({ expoPushToken: 'ExponentPushToken[same]' })]);
+  });
+
   it('routes Personal Workspace activity to the sole member', () => {
     const local = freshStore();
     const credential = local.createAgentToken({ label: 'Pi' }, '2026-05-08T00:00:00.000Z');
