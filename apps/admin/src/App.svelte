@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import {
 		AgentTickApiError,
 		AgentTickClient,
@@ -80,7 +80,7 @@
 	let cliFollowUpURL = $state('');
 	let activeLocale = $state<SupportedLocale>(defaultLocale);
 	let localePreference = $state<LocalePreference>('system');
-	let userButtonElement = $state<HTMLDivElement | undefined>();
+
 
 	type CliSetupRequest = { callbackURL: string; state: string; name: string; server: string };
 	let selectedWorkspace = $derived(workspaces.find((workspace) => workspace.workspaceId === selectedWorkspaceId) ?? workspaces[0]);
@@ -203,16 +203,11 @@
 		});
 		if (nextClerk.isSignedIn) {
 			await refreshWorkspaceData();
-			await mountUserButton();
 		} else {
 			await redirectToClerkAccount();
 		}
 	}
 
-	async function mountUserButton(): Promise<void> {
-		await tick();
-		if (clerk && userButtonElement) clerk.mountUserButton(userButtonElement);
-	}
 
 	async function redirectToClerkAccount(): Promise<void> {
 		if (!clerk) return;
@@ -402,7 +397,7 @@
 	}
 
 	function openAccount(): void {
-		if (runtimeConfig?.authProvider === 'clerk') clerk?.openUserProfile();
+		if (runtimeConfig?.authProvider === 'clerk') void clerk?.redirectToUserProfile();
 	}
 
 	function messageForError(err: unknown): string {
@@ -436,7 +431,6 @@
 			onOpenAccount={openAccount}
 			onSignOut={signOut}
 		/>
-		{#if clerkSignedIn}<div class="user-button" bind:this={userButtonElement} aria-label="Clerk account menu"></div>{/if}
 	{/if}
 
 	{#if loading}
