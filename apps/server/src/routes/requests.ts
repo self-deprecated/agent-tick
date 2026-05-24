@@ -34,7 +34,9 @@ export async function registerRequestRoutes(app: FastifyInstance, { config, stor
       ...(auth.routingRuleId ? { routingRuleId: auth.routingRuleId } : {}),
       ...(auth.isHuman && auth.userId ? { userId: auth.userId } : {})
     });
-    notifier?.notifyRequestCreated(created).catch((error) => request.log.error({ err: error, requestId: created.id }, 'request notification failed'));
+    notifier?.notifyRequestCreated(created)
+      .then(() => request.log.info({ requestId: created.id }, 'request notification processed'))
+      .catch((error) => request.log.error({ err: error, requestId: created.id }, 'request notification failed'));
     return {
       request: created,
       ...(auth.agentTokenId ? { waiter: await store.createRequestWaiterToken(created.id, created.workspaceId, auth.agentTokenId, created.deadline) } : {})

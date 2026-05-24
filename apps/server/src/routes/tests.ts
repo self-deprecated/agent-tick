@@ -3,13 +3,15 @@ import { SendTestActivitySchema } from '@agent-tick/shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman } from '../auth/context.js';
+import type { RequestNotifier } from '../services/notifications.js';
 
 export interface TestActivityRoutesOptions {
   config: ServerConfig;
   store: AgentTickStore;
+  notifier?: RequestNotifier;
 }
 
-export async function registerTestActivityRoutes(app: FastifyInstance, { config, store }: TestActivityRoutesOptions): Promise<void> {
+export async function registerTestActivityRoutes(app: FastifyInstance, { config, store, notifier }: TestActivityRoutesOptions): Promise<void> {
   app.post('/v1/tests', async (request, reply) => {
     const auth = await requireHuman(request, config, store);
     const input = SendTestActivitySchema.parse(request.body);
@@ -49,6 +51,9 @@ export async function registerTestActivityRoutes(app: FastifyInstance, { config,
       testLabel: workflowLabel,
       ...(auth.userId ? { userId: auth.userId } : {})
     });
+    notifier?.notifyRequestCreated(requestRecord)
+      .then(() => request.log.info({ requestId: requestRecord.id }, 'test request notification processed'))
+      .catch((error) => request.log.error({ err: error, requestId: requestRecord.id }, 'test request notification failed'));
     return { status: 'sent' as const, kind: input.kind, id: requestRecord.id };
   });
 }

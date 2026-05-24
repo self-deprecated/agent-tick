@@ -128,16 +128,19 @@ describe('server Workspace routing API', () => {
     expect(final.json()).toMatchObject({ status: 'responded', response: { choiceId: 'approve' } });
   });
 
-  it('creates fixed test activity through /v1/tests', async () => {
+  it('creates fixed test activity through /v1/tests and notifies for test Requests', async () => {
     const localStore = testStore();
+    const notified: string[] = [];
     localStore.registerDevice({ userId: 'usr_default', deviceName: 'iPhone' });
     const credential = localStore.createAgentToken({ label: 'Pi' });
-    const server = await buildSingle(localStore);
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: localStore, notifier: { notifyRequestCreated: async (request) => { notified.push(request.id); } } });
+    const server = app;
     await server.inject({ method: 'POST', url: '/v1/status-updates', headers: { authorization: `Bearer ${credential.token}` }, payload: { message: 'check-in', state: 'working' } });
 
     const steering = await server.inject({ method: 'POST', url: '/v1/tests', payload: { kind: 'steering', context: 'setup' } });
     expect(steering.statusCode).toBe(200);
     expect(steering.json()).toMatchObject({ status: 'sent', kind: 'steering', id: expect.stringMatching(/^req_/) });
+    expect(notified).toEqual([steering.json().id]);
     const detail = await server.inject({ method: 'GET', url: `/v1/requests/${steering.json().id}` });
     expect(detail.json()).toMatchObject({ title: 'Agent Tick steering test', isTest: true, testLabel: 'Agent Tick setup test' });
   });

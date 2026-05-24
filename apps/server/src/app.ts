@@ -104,7 +104,7 @@ export async function buildApp({ config, store, notifier = createRequestNotifier
   await registerPresenceRoutes(app, { config, store });
   await registerStatusRoutes(app, { config, store });
   await registerRoutingRuleRoutes(app, { config, store });
-  await registerTestActivityRoutes(app, { config, store });
+  await registerTestActivityRoutes(app, { config, store, notifier });
   await registerAuditRoutes(app, { config, store });
   await registerEventRoutes(app, { config, store, eventBus });
 
