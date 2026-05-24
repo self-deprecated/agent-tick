@@ -34,11 +34,12 @@ export interface BuildAppOptions {
 
 }
 
-export async function buildApp({ config, store, notifier = createRequestNotifier({ store, config }) }: BuildAppOptions): Promise<FastifyInstance> {
+export async function buildApp({ config, store, notifier }: BuildAppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: true,
     genReqId: (request) => request.headers['x-request-id']?.toString() ?? crypto.randomUUID()
   });
+  const requestNotifier = notifier ?? createRequestNotifier({ store, config, logger: app.log });
 
   app.setErrorHandler((error, request, reply) => {
     const statusCode = statusCodeForError(error);
@@ -97,14 +98,14 @@ export async function buildApp({ config, store, notifier = createRequestNotifier
   await registerAgentTokenRoutes(app, { config, store });
   await registerBillingRoutes(app, { config, store });
   await registerOnboardingRoutes(app, { config, store });
-  await registerRequestRoutes(app, { config, store, notifier });
+  await registerRequestRoutes(app, { config, store, notifier: requestNotifier });
   await registerActivityRoutes(app, { config, store });
   await registerDeviceRoutes(app, { config, store });
   await registerPairingRoutes(app, { config, store });
   await registerPresenceRoutes(app, { config, store });
   await registerStatusRoutes(app, { config, store });
   await registerRoutingRuleRoutes(app, { config, store });
-  await registerTestActivityRoutes(app, { config, store, notifier });
+  await registerTestActivityRoutes(app, { config, store, notifier: requestNotifier });
   await registerAuditRoutes(app, { config, store });
   await registerEventRoutes(app, { config, store, eventBus });
 

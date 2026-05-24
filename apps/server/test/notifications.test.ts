@@ -62,7 +62,16 @@ describe('Request notifications', () => {
     };
 
     await expect(createExpoPushNotifier({ store: local, fetch: fetchImpl }).notifyRequestCreated(created)).rejects.toThrow(/InvalidCredentials/);
-    expect(JSON.parse(String(calls[0]!.init.body))).toHaveLength(1);
+    const payload = JSON.parse(String(calls[0]!.init.body));
+    expect(payload).toHaveLength(1);
+    expect(payload[0]).toMatchObject({
+      title: 'Agent Tick',
+      body: 'Agent Tick needs your attention.',
+      sound: 'default',
+      priority: 'high',
+      channelId: 'agent-tick-requests',
+      data: { requestId: created.id, workspaceId: DEFAULT_WORKSPACE_ID, type: 'request', encrypted: false }
+    });
   });
 
   it('runs all configured Request notification sinks before surfacing failures', async () => {

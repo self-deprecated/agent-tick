@@ -1699,6 +1699,8 @@ function AgentTickApp({
         if (!decision) {
           return;
         }
+        recordDiagnostic("info", "notifications", "opened", { requestId: decision.requestID });
+        setDiagnosticsEventCount(diagnosticEvents().length);
         const fallback = notificationFallbackState(decision.requestID);
         setNotificationTargetID(fallback.notificationTargetID);
         setSelectedID(fallback.selectedID);
@@ -1712,6 +1714,8 @@ function AgentTickApp({
       .then((response) => {
         const decision = response ? notificationDecision(response) : null;
         if (decision) {
+          recordDiagnostic("info", "notifications", "opened_from_last_response", { requestId: decision.requestID });
+          setDiagnosticsEventCount(diagnosticEvents().length);
           const fallback = notificationFallbackState(decision.requestID);
           setNotificationTargetID(fallback.notificationTargetID);
           setSelectedID(fallback.selectedID);
