@@ -4,14 +4,14 @@ Agent Tick exposes a TypeScript SDK and HTTP API used by the CLI, Personal Conso
 
 Launch SDK surfaces include:
 
-- Request create/list/get/respond/wait/resolve
-- Activity list and pending Request count
+- Request create/list/get/respond/wait/abandon
+- Activity list/history and pending Request count
 - Status Update create/list
 - Workspace list/create/member helpers
 - Agent Token setup and management
 - Routing Rule management and test Activity
 - Approval Device registration and push token management
-- Entitlement Status, product catalog, and purchase preflight helpers for the first-party mobile app
+- Entitlement Status, product catalog, personal billing update, and purchase preflight helpers for the first-party mobile app
 
 Agents authenticate with Agent Tick `agent_...` tokens. Humans authenticate through local single-mode admin/device credentials or hosted Clerk-backed sessions. Workspace context is selected with `X-Agent-Tick-Workspace-ID` where applicable.
 
@@ -60,7 +60,7 @@ export async function requestSanction(client: AgentTickClient, input: { title: s
     metadata: { helper: 'requestSanction' }
   });
 
-  const result = await client.waitForRequest(created.request.id, { timeoutMs: input.timeoutMs ?? 30 * 60_000 });
+  const result = await client.waitForCreatedRequest(created, { timeoutMs: input.timeoutMs ?? 30 * 60_000 });
   if (!result.terminal || result.request.status === 'expired') return 'expired';
   return result.request.response?.choiceId === 'approve' ? 'approved' : 'denied';
 }
@@ -94,7 +94,7 @@ export async function askSteering(client: AgentTickClient, input: { title: strin
     defaultChoice: 'stop'
   });
 
-  const result = await client.waitForRequest(created.request.id, { timeoutMs: input.timeoutMs ?? 15 * 60_000 });
+  const result = await client.waitForCreatedRequest(created, { timeoutMs: input.timeoutMs ?? 15 * 60_000 });
   if (!result.terminal || result.request.status === 'expired') return 'expired';
   const choice = result.request.response?.choiceId;
   return choice === 'small_fix' || choice === 'full_refactor' || choice === 'stop' ? choice : 'expired';

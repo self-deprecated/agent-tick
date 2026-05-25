@@ -6,6 +6,9 @@ import {
   ChoiceListSchema,
   CreateRequestSchema,
   CreateRoutingRuleSchema,
+  DeleteRoutingRuleResponseSchema,
+  PersonalBillingUpdateSchema,
+  ReadyResponseSchema,
   RequestRecordSchema,
   UpdateDevicePushTokenSchema,
   WorkspaceMemberRecordSchema,
@@ -17,6 +20,12 @@ import {
 describe('shared Workspace and Request schemas', () => {
   it('validates public auth config', () => {
     expect(AuthConfigSchema.parse({ mode: 'clerk', authProvider: 'clerk', publicURL: 'https://tick.example.com', clerkPublishableKey: 'pk_test_123' })).toMatchObject({ mode: 'clerk' });
+  });
+
+  it('validates readiness and operational response schemas', () => {
+    expect(ReadyResponseSchema.parse({ status: 'ready', dependencies: { database: 'ok' } })).toMatchObject({ status: 'ready', dependencies: { database: 'ok' } });
+    expect(DeleteRoutingRuleResponseSchema.parse({ status: 'deleted', routingRuleId: 'rul_1' })).toEqual({ status: 'deleted', routingRuleId: 'rul_1' });
+    expect(PersonalBillingUpdateSchema.parse({ event: 'cancel_subscription' })).toEqual({ event: 'cancel_subscription' });
   });
 
   it('validates Workspace membership records', () => {

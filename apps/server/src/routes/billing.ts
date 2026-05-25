@@ -1,7 +1,6 @@
-import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
-import { BillingPurchasePreflightRequestSchema } from '@agent-tick/shared';
+import { BillingPurchasePreflightRequestSchema, PersonalBillingUpdateSchema } from '@agent-tick/shared';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman, type AuthContext } from '../auth/context.js';
 import {
@@ -20,10 +19,6 @@ export interface BillingRoutesOptions {
   config: ServerConfig;
   store: AgentTickStore;
 }
-
-const PersonalBillingUpdateSchema = z.object({
-  event: z.enum(['app_purchase', 'activate_included_hosted_month', 'subscribe_monthly', 'subscribe_yearly', 'cancel_subscription', 'delete_account_data'])
-});
 
 export async function registerBillingRoutes(app: FastifyInstance, { config, store }: BillingRoutesOptions): Promise<void> {
   app.get('/v1/billing/products', async () => ({ products: await billingProducts(store) }));

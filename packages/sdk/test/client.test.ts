@@ -43,28 +43,32 @@ describe('AgentTickClient', () => {
     ]);
   });
 
-  it('calls Request endpoints', async () => {
-    const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
+  it('calls Request endpoints and can wait with the returned waiter token', async () => {
+    const requests: Array<{ url: string; method?: string; body?: unknown; authorization?: string | null }> = [];
     const requestRecord = { id: 'req_123', workspaceId: 'wsp_123', requester: { name: 'Pi' }, requestType: 'sanction', title: 'Deploy?', choices: [{ id: 'approve', label: 'Approve' }, { id: 'deny', label: 'Deny', kind: 'deny' }], status: 'pending', createdAt: '2026-01-01T00:00:00.000Z' };
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com',
+      tokenProvider: () => 'agent_123',
       fetch: async (input, init) => {
-        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        const headers = new Headers(init?.headers);
+        requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined, authorization: headers.get('Authorization') });
         if (String(input).endsWith('/responses')) return jsonResponse({ ...requestRecord, status: 'responded', response: { choiceId: 'approve' } });
         if (String(input).includes('/wait')) return jsonResponse({ request: requestRecord, terminal: false });
         return jsonResponse(init?.method === 'POST' ? { request: requestRecord, waiter: { token: 'wait_123', expiresAt: '2026-01-01T01:00:00.000Z' } } : [requestRecord]);
       }
     });
-    await expect(client.createRequest({ requester: { name: 'Pi' }, requestType: 'sanction', title: 'Deploy?' })).resolves.toMatchObject({ request: { id: 'req_123' } });
+    const created = await client.createRequest({ requester: { name: 'Pi' }, requestType: 'sanction', title: 'Deploy?' });
+    expect(created).toMatchObject({ request: { id: 'req_123' }, waiter: { token: 'wait_123' } });
     await expect(client.listRequests()).resolves.toEqual([expect.objectContaining({ id: 'req_123' })]);
     await expect(client.respondToRequest('req_123', { choiceId: 'approve' })).resolves.toMatchObject({ status: 'responded' });
-    await expect(client.waitForRequest('req_123', { timeoutMs: 0 })).resolves.toMatchObject({ terminal: false });
+    await expect(client.waitForCreatedRequest(created, { timeoutMs: 0 })).resolves.toMatchObject({ terminal: false });
     expect(requests.map((entry) => entry.url)).toEqual([
       'https://tick.example.com/v1/requests',
       'https://tick.example.com/v1/requests',
       'https://tick.example.com/v1/requests/req_123/responses',
       'https://tick.example.com/v1/requests/req_123/wait?timeoutMs=0'
     ]);
+    expect(requests.at(-1)?.authorization).toBe('Bearer wait_123');
   });
 
   it('calls Workspace, Agent Token, Routing Rule, Activity, and test endpoints', async () => {
@@ -90,6 +94,49 @@ describe('AgentTickClient', () => {
     expect(calls).toContain('GET /v1/workspaces');
     expect(calls).toContain('GET /v1/agent-tokens');
     expect(calls).toContain('GET /v1/routing-rules');
+  });
+
+  it('calls readiness, history, membership, billing, routing delete, and device unpair endpoints', async () => {
+    const calls: Array<{ method?: string; path: string; body?: unknown }> = [];
+    const member = { workspaceId: 'wsp_123', type: 'shared', name: 'Team', userId: 'usr_456', role: 'member', status: 'active', email: 'ada@example.com', createdAt: '2026-01-01T00:00:00.000Z' };
+    const personalBillingStatus = {
+      entitlement: { userId: 'usr_123', trialStartedAt: '2026-01-01T00:00:00.000Z', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      hostedPersonal: { lifecycle: 'active', trialEndsAt: '2026-02-01T00:00:00.000Z', responsesEnabled: true, routingEnabled: true, pushEnabled: true, historyRetentionDays: 30 },
+      products: [],
+      activeEntitlements: { lifetimeUnlock: { active: false }, hostedPersonal: { active: false } },
+      purchaseAvailability: { lifetime_unlock: { allowed: true }, hosted_personal_monthly: { allowed: true }, hosted_personal_yearly: { allowed: true } }
+    };
+    const device = { deviceId: 'dev_123', userId: 'usr_123', name: 'Phone', platform: 'ios', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', unregisteredAt: '2026-01-01T01:00:00.000Z' };
+    const client = new AgentTickClient({
+      baseUrl: 'https://tick.example.com',
+      fetch: async (input, init) => {
+        const url = new URL(String(input));
+        calls.push({ method: init?.method, path: `${url.pathname}${url.search}`, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (url.pathname === '/readyz') return jsonResponse({ status: 'ready', time: '2026-01-01T00:00:00.000Z', dependencies: { database: 'ok' } });
+        if (url.pathname === '/v1/activity/history') return jsonResponse([]);
+        if (url.pathname === '/v1/workspaces/wsp_123/members') return jsonResponse(member);
+        if (url.pathname === '/v1/billing/personal') return jsonResponse(personalBillingStatus);
+        if (url.pathname === '/v1/routing-rules/rul_123') return jsonResponse({ status: 'deleted', routingRuleId: 'rul_123' });
+        if (url.pathname === '/v1/devices/dev_123/unpair') return jsonResponse(device);
+        return jsonResponse({});
+      }
+    });
+
+    await expect(client.ready()).resolves.toMatchObject({ status: 'ready', dependencies: { database: 'ok' } });
+    await expect(client.listActivityHistory({ workspaceId: 'wsp_123', limit: 100 })).resolves.toEqual([]);
+    await expect(client.addWorkspaceMember('wsp_123', { email: 'ada@example.com', role: 'member' })).resolves.toMatchObject({ email: 'ada@example.com' });
+    await expect(client.updatePersonalBilling({ event: 'cancel_subscription' })).resolves.toMatchObject({ entitlement: { userId: 'usr_123' } });
+    await expect(client.deleteRoutingRule('rul_123')).resolves.toEqual({ status: 'deleted', routingRuleId: 'rul_123' });
+    await expect(client.unpairDevice('dev_123')).resolves.toMatchObject({ deviceId: 'dev_123' });
+    expect(calls.map((call) => `${call.method ?? 'GET'} ${call.path}`)).toEqual([
+      'GET /readyz',
+      'GET /v1/activity/history?workspaceId=wsp_123&limit=100',
+      'POST /v1/workspaces/wsp_123/members',
+      'POST /v1/billing/personal',
+      'DELETE /v1/routing-rules/rul_123',
+      'POST /v1/devices/dev_123/unpair'
+    ]);
+    expect(calls[3]?.body).toEqual({ event: 'cancel_subscription' });
   });
 
   it('builds event stream URLs from short-lived tickets', async () => {

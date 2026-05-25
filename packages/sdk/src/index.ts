@@ -1,6 +1,7 @@
 import type { ZodType } from 'zod';
 import {
   ActivityItemSchema,
+  AddWorkspaceMemberSchema,
   AgentCredentialSchema,
   AgentTokenRecordSchema,
   ApiErrorEnvelopeSchema,
@@ -19,6 +20,7 @@ import {
   CreateRoutingRuleSchema,
   CreateSharedWorkspaceSchema,
   CreateStatusUpdateSchema,
+  DeleteRoutingRuleResponseSchema,
   DeviceCredentialSchema,
   DeviceRecordSchema,
   EventPollResponseSchema,
@@ -34,8 +36,10 @@ import {
   PairingTokenSchema,
   PendingActivityCountSchema,
   PersonalBillingStatusSchema,
+  PersonalBillingUpdateSchema,
   RegisterDeviceResponseSchema,
   RegisterDeviceSchema,
+  ReadyResponseSchema,
   RequestRecordSchema,
   RespondRequestSchema,
   RoutingRuleRecordSchema,
@@ -47,9 +51,11 @@ import {
   UpdateDevicePushTokenSchema,
   UpdateRoutingRuleSchema,
   UpdateWorkspaceSchema,
+  WaitRequestResponseSchema,
   WorkspaceMemberRecordSchema,
   WorkspaceRecordSchema,
   type ActivityItem,
+  type AddWorkspaceMember,
   type AgentCredential,
   type AgentTokenRecord,
   type ApiErrorEnvelope,
@@ -68,6 +74,7 @@ import {
   type CreateRoutingRule,
   type CreateSharedWorkspace,
   type CreateStatusUpdate,
+  type DeleteRoutingRuleResponse,
   type DeviceCredential,
   type DeviceRecord,
   type EventPollEvent,
@@ -84,8 +91,10 @@ import {
   type PairingToken,
   type PendingActivityCount,
   type PersonalBillingStatus,
+  type PersonalBillingUpdate,
   type RegisterDevice,
   type RegisterDeviceResponse,
+  type ReadyResponse,
   type RequestRecord,
   type RespondRequest,
   type RoutingRuleRecord,
@@ -97,6 +106,7 @@ import {
   type UpdateDevicePushToken,
   type UpdateRoutingRule,
   type UpdateWorkspace,
+  type WaitRequestResponse,
   type WorkspaceMemberRecord,
   type WorkspaceRecord
 } from '@agent-tick/shared';
@@ -143,6 +153,7 @@ export class AgentTickClient {
   }
 
   health(): Promise<HealthResponse> { return this.#request('GET', '/healthz', HealthResponseSchema); }
+  ready(): Promise<ReadyResponse> { return this.#request('GET', '/readyz', ReadyResponseSchema); }
   getAuthConfig(): Promise<AuthConfig> { return this.#request('GET', '/v1/auth/config', AuthConfigSchema); }
   getMe(): Promise<MeResponse> { return this.#request('GET', '/v1/me', MeResponseSchema); }
 
@@ -163,10 +174,13 @@ export class AgentTickClient {
   getBillingStatus(): Promise<BillingStatus> { return this.#request('GET', '/v1/billing', BillingStatusSchema); }
   getBillingProducts(): Promise<BillingProductsResponse> { return this.#request('GET', '/v1/billing/products', BillingProductsResponseSchema, { includeWorkspace: false }); }
   getPersonalBillingStatus(): Promise<PersonalBillingStatus> { return this.#request('GET', '/v1/billing/personal', PersonalBillingStatusSchema, { includeWorkspace: false }); }
+  updatePersonalBilling(input: PersonalBillingUpdate): Promise<PersonalBillingStatus> {
+    return this.#request('POST', '/v1/billing/personal', PersonalBillingStatusSchema, { body: PersonalBillingUpdateSchema.parse(input), includeWorkspace: false });
+  }
   preflightPurchase(input: BillingPurchasePreflightRequest): Promise<BillingPurchasePreflightResponse> {
     return this.#request('POST', '/v1/billing/purchases/preflight', BillingPurchasePreflightResponseSchema, { body: BillingPurchasePreflightRequestSchema.parse(input), includeWorkspace: false });
   }
-  activateIncludedHostedMonth(): Promise<PersonalBillingStatus> { return this.#request('POST', '/v1/billing/personal', PersonalBillingStatusSchema, { body: { event: 'activate_included_hosted_month' }, includeWorkspace: false }); }
+  activateIncludedHostedMonth(): Promise<PersonalBillingStatus> { return this.updatePersonalBilling({ event: 'activate_included_hosted_month' }); }
 
   getOnboardingStatus(): Promise<OnboardingStatus> { return this.#request('GET', '/v1/onboarding', OnboardingStatusSchema); }
   sendHeartbeat(input: HeartbeatRequest = {}): Promise<HeartbeatResponse> { return this.#request('POST', '/v1/heartbeat', HeartbeatResponseSchema, { body: HeartbeatRequestSchema.parse(input) }); }
@@ -190,10 +204,20 @@ export class AgentTickClient {
   getRequest(id: string): Promise<RequestRecord> { return this.#request('GET', `/v1/requests/${encodeURIComponent(id)}`, RequestRecordSchema); }
   respondToRequest(id: string, input: RespondRequest): Promise<RequestRecord> { return this.#request('POST', `/v1/requests/${encodeURIComponent(id)}/responses`, RequestRecordSchema, { body: RespondRequestSchema.parse(input) }); }
   abandonRequest(id: string): Promise<RequestRecord> { return this.#request('POST', `/v1/requests/${encodeURIComponent(id)}/abandon`, RequestRecordSchema, { body: {} }); }
-  waitForRequest(id: string, options: { timeoutMs?: number } = {}): Promise<{ request: RequestRecord; terminal: boolean }> {
+  waitForRequest(id: string, options: { timeoutMs?: number; waiterToken?: string; signal?: AbortSignal } = {}): Promise<WaitRequestResponse> {
     const params = new URLSearchParams();
     if (options.timeoutMs !== undefined) params.set('timeoutMs', String(options.timeoutMs));
-    return this.#request('GET', `/v1/requests/${encodeURIComponent(id)}/wait${querySuffix(params)}`, zodWaitRequestResponse());
+    return this.#request('GET', `/v1/requests/${encodeURIComponent(id)}/wait${querySuffix(params)}`, WaitRequestResponseSchema, {
+      ...(options.waiterToken ? { bearerToken: options.waiterToken } : {}),
+      ...(options.signal ? { signal: options.signal } : {})
+    });
+  }
+  waitForCreatedRequest(created: CreateRequestResponse, options: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<WaitRequestResponse> {
+    return this.waitForRequest(created.request.id, {
+      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(created.waiter ? { waiterToken: created.waiter.token } : {})
+    });
   }
 
   listActivity(options: { workspaceId?: string; limit?: number } = {}): Promise<ActivityItem[]> {
@@ -201,6 +225,12 @@ export class AgentTickClient {
     if (options.workspaceId) params.set('workspaceId', options.workspaceId);
     if (options.limit !== undefined) params.set('limit', String(options.limit));
     return this.#request('GET', `/v1/activity${querySuffix(params)}`, ActivityItemSchema.array());
+  }
+  listActivityHistory(options: { workspaceId?: string; limit?: number } = {}): Promise<ActivityItem[]> {
+    const params = new URLSearchParams();
+    if (options.workspaceId) params.set('workspaceId', options.workspaceId);
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    return this.#request('GET', `/v1/activity/history${querySuffix(params)}`, ActivityItemSchema.array());
   }
   getPendingRequestCount(options: { workspaceId?: string } = {}): Promise<PendingActivityCount> {
     const params = new URLSearchParams();
@@ -212,6 +242,9 @@ export class AgentTickClient {
   createSharedWorkspace(input: CreateSharedWorkspace): Promise<WorkspaceMemberRecord> { return this.#request('POST', '/v1/workspaces', WorkspaceMemberRecordSchema, { body: CreateSharedWorkspaceSchema.parse(input) }); }
   updateWorkspace(id: string, input: UpdateWorkspace): Promise<WorkspaceRecord> { return this.#request('PATCH', `/v1/workspaces/${encodeURIComponent(id)}`, WorkspaceRecordSchema, { body: UpdateWorkspaceSchema.parse(input) }); }
   listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMemberRecord[]> { return this.#request('GET', `/v1/workspaces/${encodeURIComponent(workspaceId)}/members`, WorkspaceMemberRecordSchema.array()); }
+  addWorkspaceMember(workspaceId: string, input: AddWorkspaceMember): Promise<WorkspaceMemberRecord> {
+    return this.#request('POST', `/v1/workspaces/${encodeURIComponent(workspaceId)}/members`, WorkspaceMemberRecordSchema, { body: AddWorkspaceMemberSchema.parse(input) });
+  }
 
   listAgentTokens(): Promise<AgentTokenRecord[]> { return this.#request('GET', '/v1/agent-tokens', AgentTokenRecordSchema.array()); }
   createAgentToken(input: CreateAgentToken): Promise<AgentCredential> { return this.#request('POST', '/v1/agent-tokens', AgentCredentialSchema, { body: CreateAgentTokenSchema.parse(input) }); }
@@ -225,7 +258,7 @@ export class AgentTickClient {
   }
   createRoutingRule(input: CreateRoutingRule): Promise<RoutingRuleRecord> { return this.#request('POST', '/v1/routing-rules', RoutingRuleRecordSchema, { body: CreateRoutingRuleSchema.parse(input) }); }
   updateRoutingRule(id: string, input: UpdateRoutingRule): Promise<RoutingRuleRecord> { return this.#request('PATCH', `/v1/routing-rules/${encodeURIComponent(id)}`, RoutingRuleRecordSchema, { body: UpdateRoutingRuleSchema.parse(input) }); }
-  deleteRoutingRule(id: string): Promise<{ status: string; routingRuleId: string }> { return this.#request('DELETE', `/v1/routing-rules/${encodeURIComponent(id)}`, looseObjectSchema<{ status: string; routingRuleId: string }>()); }
+  deleteRoutingRule(id: string): Promise<DeleteRoutingRuleResponse> { return this.#request('DELETE', `/v1/routing-rules/${encodeURIComponent(id)}`, DeleteRoutingRuleResponseSchema); }
 
   sendTestActivity(input: SendTestActivity): Promise<SendTestActivityResponse> { return this.#request('POST', '/v1/tests', SendTestActivityResponseSchema, { body: SendTestActivitySchema.parse(input) }); }
 
@@ -235,6 +268,7 @@ export class AgentTickClient {
   listDevices(): Promise<DeviceRecord[]> { return this.#request('GET', '/v1/devices', DeviceRecordSchema.array()); }
   renameDevice(deviceId: string, name: string): Promise<DeviceRecord> { return this.#request('PATCH', `/v1/devices/${encodeURIComponent(deviceId)}`, DeviceRecordSchema, { body: { name } }); }
   updateDevicePushToken(deviceId: string, input: UpdateDevicePushToken): Promise<DeviceRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/push-token`, DeviceRecordSchema, { body: UpdateDevicePushTokenSchema.parse(input) }); }
+  unpairDevice(deviceId: string): Promise<DeviceRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/unpair`, DeviceRecordSchema, { body: {} }); }
   unregisterDevice(deviceId: string): Promise<DeviceRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/unregister`, DeviceRecordSchema, { body: {} }); }
 
   createEventTicket(): Promise<EventTicketResponse> { return this.#request('POST', '/v1/events/ticket', EventTicketResponseSchema, { body: {} }); }
@@ -258,9 +292,9 @@ export class AgentTickClient {
     return new EventSourceImpl(await this.createEventStreamURL({ ...(options.lastEventId !== undefined ? { lastEventId: options.lastEventId } : {}) }));
   }
 
-  async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown; includeWorkspace?: boolean; signal?: AbortSignal } = {}): Promise<T> {
+  async #request<T>(method: string, path: string, schema: ZodType<T>, options: { body?: unknown; includeWorkspace?: boolean; signal?: AbortSignal; bearerToken?: string } = {}): Promise<T> {
     const headers = new Headers({ Accept: 'application/json' });
-    const token = await resolveProvider(this.#tokenProvider);
+    const token = options.bearerToken ?? await resolveProvider(this.#tokenProvider);
     if (token) headers.set('Authorization', `Bearer ${token}`);
     if (options.includeWorkspace !== false) {
       const workspaceId = await resolveProvider(this.#workspaceIdProvider);
@@ -300,16 +334,9 @@ function querySuffix(params: URLSearchParams): string {
   return params.size ? `?${params.toString()}` : '';
 }
 
-function looseObjectSchema<T>(): ZodType<T> {
-  return { parse: (value: unknown) => value as T } as ZodType<T>;
-}
-
-function zodWaitRequestResponse(): ZodType<{ request: RequestRecord; terminal: boolean }> {
-  return looseObjectSchema<{ request: RequestRecord; terminal: boolean }>();
-}
-
 export type {
   ActivityItem,
+  AddWorkspaceMember,
   AgentCredential,
   AgentTokenRecord,
   AuditEventRecord,
@@ -327,6 +354,7 @@ export type {
   CreateRoutingRule,
   CreateSharedWorkspace,
   CreateStatusUpdate,
+  DeleteRoutingRuleResponse,
   DeviceCredential,
   DeviceRecord,
   EventPollEvent,
@@ -343,8 +371,10 @@ export type {
   PairingToken,
   PendingActivityCount,
   PersonalBillingStatus,
+  PersonalBillingUpdate,
   RegisterDevice,
   RegisterDeviceResponse,
+  ReadyResponse,
   RequestRecord,
   RespondRequest,
   RoutingRuleRecord,
@@ -356,6 +386,7 @@ export type {
   UpdateDevicePushToken,
   UpdateRoutingRule,
   UpdateWorkspace,
+  WaitRequestResponse,
   WorkspaceMemberRecord,
   WorkspaceRecord
 };

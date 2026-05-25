@@ -38,6 +38,16 @@ export const HealthResponseSchema = z.object({
 });
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
+export const ReadyResponseSchema = z.object({
+  status: z.enum(['ready', 'not_ready']),
+  time: z.string().datetime().optional(),
+  dependencies: z.object({
+    database: z.enum(['ok', 'error']).optional(),
+    redis: z.enum(['ok', 'error']).optional()
+  }).default({})
+});
+export type ReadyResponse = z.infer<typeof ReadyResponseSchema>;
+
 export const AuthConfigSchema = z.object({
   mode: AgentTickModeSchema,
   authProvider: AuthProviderSchema,
@@ -161,6 +171,12 @@ export const UpdateRoutingRuleSchema = z.object({
   requiredResponseCount: z.number().int().min(1).max(100).optional()
 });
 export type UpdateRoutingRule = z.input<typeof UpdateRoutingRuleSchema>;
+
+export const DeleteRoutingRuleResponseSchema = z.object({
+  status: z.literal('deleted'),
+  routingRuleId: z.string()
+});
+export type DeleteRoutingRuleResponse = z.infer<typeof DeleteRoutingRuleResponseSchema>;
 
 export const AgentTokenRecordSchema = z.object({
   agentTokenId: z.string(),
@@ -651,6 +667,19 @@ export const PersonalBillingStatusSchema = z.object({
   purchaseAvailability: z.record(BillingProductKeySchema, BillingPurchaseAvailabilitySchema)
 });
 export type PersonalBillingStatus = z.infer<typeof PersonalBillingStatusSchema>;
+
+export const PersonalBillingUpdateEventSchema = z.enum([
+  'app_purchase',
+  'activate_included_hosted_month',
+  'subscribe_monthly',
+  'subscribe_yearly',
+  'cancel_subscription',
+  'delete_account_data'
+]);
+export type PersonalBillingUpdateEvent = z.infer<typeof PersonalBillingUpdateEventSchema>;
+
+export const PersonalBillingUpdateSchema = z.object({ event: PersonalBillingUpdateEventSchema });
+export type PersonalBillingUpdate = z.input<typeof PersonalBillingUpdateSchema>;
 
 export const BillingPurchasePreflightRequestSchema = z.object({ productKey: BillingProductKeySchema, platform: BillingPlatformSchema });
 export type BillingPurchasePreflightRequest = z.input<typeof BillingPurchasePreflightRequestSchema>;
