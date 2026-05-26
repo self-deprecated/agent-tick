@@ -1889,17 +1889,6 @@ function AgentTickApp({
     await runPurchaseFlow(period === "yearly" ? "hosted_personal_yearly" : "hosted_personal_monthly", "Hosted service");
   };
 
-  const activateIncludedHostedMonth = async () => {
-    if (!requirePurchaseAccount()) return;
-    try {
-      await sdk.activateIncludedHostedMonth();
-      await refreshPersonalBilling({ configureStore: true });
-      Alert.alert(translateSource("Included hosted month active"), translateSource("Hosted personal service is active for the included month."));
-    } catch (err) {
-      Alert.alert(translateSource("Activation failed"), err instanceof Error ? err.message : translateSource("Could not activate the included hosted month"));
-    }
-  };
-
   const manageSubscription = () => {
     const originPlatform = personalBillingStatus?.activeEntitlements.hostedPersonal.originPlatform;
     if (originPlatform && originPlatform !== "unknown" && originPlatform !== Platform.OS) {
@@ -2377,7 +2366,6 @@ function AgentTickApp({
           onPurchaseLifetimeUnlock={() => void purchaseLifetimeUnlock()}
           onRestorePurchases={() => void restorePurchases()}
           onSubscribeHostedPersonal={(period) => void subscribeHostedPersonal(period)}
-          onActivateIncludedHostedMonth={() => void activateIncludedHostedMonth()}
           onManageSubscription={manageSubscription}
           onScanPairing={() => {
             pairingInFlight.current = false;
