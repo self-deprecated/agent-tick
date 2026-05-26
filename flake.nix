@@ -40,7 +40,7 @@
 
           agent-tick-cli = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-cli";
-            version = "0.1.5";
+            version = "0.1.6";
             inherit src;
 
             pnpmDeps = pkgs.fetchPnpmDeps {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { Buffer } from 'node:buffer';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { realpathSync } from 'node:fs';
@@ -469,7 +470,7 @@ function defaultAgentName(): string {
   return `Agent on ${os.hostname() || 'local machine'}`;
 }
 
-const CLI_VERSION = '0.1.5';
+const CLI_VERSION = '0.1.6';
 
 function supportsColor(stream: NodeJS.WriteStream = process.stdout): boolean {
   return stream.isTTY === true && !process.env.NO_COLOR;
@@ -574,7 +575,9 @@ interface AgentTickState {
   };
 }
 
-export function agentTickStatePath(env: NodeJS.ProcessEnv = process.env): string {
+type AgentTickEnv = Record<string, string | undefined>;
+
+export function agentTickStatePath(env: AgentTickEnv = process.env): string {
   if (env.AGENT_TICK_STATE) return env.AGENT_TICK_STATE;
   return path.join(os.homedir(), '.config', 'agent-tick', 'state.json');
 }
@@ -586,19 +589,19 @@ export function normalizeAgentTickMode(value: string): AgentTickMode {
   throw new Error(`unknown Agent Tick mode: ${value}. Expected afk or pass-through.`);
 }
 
-export async function loadAgentTickMode(env: NodeJS.ProcessEnv = process.env): Promise<AgentTickMode> {
+export async function loadAgentTickMode(env: AgentTickEnv = process.env): Promise<AgentTickMode> {
   const envMode = env.AGENT_TICK_MODE;
   if (envMode) return normalizeAgentTickMode(envMode);
   return (await loadAgentTickState(env)).mode;
 }
 
-export async function saveAgentTickMode(value: string, env: NodeJS.ProcessEnv = process.env): Promise<AgentTickMode> {
+export async function saveAgentTickMode(value: string, env: AgentTickEnv = process.env): Promise<AgentTickMode> {
   const mode = normalizeAgentTickMode(value);
   await saveAgentTickState({ ...(await loadAgentTickState(env)), mode }, env);
   return mode;
 }
 
-async function loadAgentTickState(env: NodeJS.ProcessEnv = process.env): Promise<AgentTickState> {
+async function loadAgentTickState(env: AgentTickEnv = process.env): Promise<AgentTickState> {
   try {
     const parsed = JSON.parse(await fs.readFile(agentTickStatePath(env), 'utf8')) as { mode?: unknown; claude?: unknown };
     const mode = typeof parsed.mode === 'string' ? normalizeAgentTickMode(parsed.mode) : 'pass-through';
@@ -610,7 +613,7 @@ async function loadAgentTickState(env: NodeJS.ProcessEnv = process.env): Promise
   }
 }
 
-async function saveAgentTickState(state: AgentTickState, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+async function saveAgentTickState(state: AgentTickState, env: AgentTickEnv = process.env): Promise<void> {
   const statePath = agentTickStatePath(env);
   await fs.mkdir(path.dirname(statePath), { recursive: true, mode: 0o700 });
   await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
@@ -1720,16 +1723,17 @@ async function readMcpMessages(input: NodeJS.ReadableStream, onMessage: (request
     while (true) {
       const parsed = tryReadMcpMessage(buffer);
       if (!parsed) break;
-      buffer = parsed.rest;
+      buffer = Buffer.isBuffer(parsed.rest) ? parsed.rest : Buffer.from(parsed.rest);
       await onMessage(JSON.parse(parsed.body) as JsonRpcRequest, parsed.transport);
     }
   }
 }
 
-export function tryReadMcpMessage(buffer: Buffer): { body: string; rest: Buffer; transport: McpMessageTransport } | undefined {
-  const framed = tryReadMcpFrame(buffer);
+export function tryReadMcpMessage(buffer: Uint8Array): { body: string; rest: Uint8Array; transport: McpMessageTransport } | undefined {
+  const nodeBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  const framed = tryReadMcpFrame(nodeBuffer);
   if (framed) return { ...framed, transport: 'framed' };
-  const jsonl = tryReadMcpJsonLine(buffer);
+  const jsonl = tryReadMcpJsonLine(nodeBuffer);
   if (jsonl) return { ...jsonl, transport: 'jsonl' };
   return undefined;
 }
