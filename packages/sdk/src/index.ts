@@ -48,6 +48,7 @@ import {
   SetAvailabilitySchema,
   StatusUpdateRecordSchema,
   UpdateAgentTokenSchema,
+  UpdateDeviceNameSchema,
   UpdateDevicePushTokenSchema,
   UpdateRoutingRuleSchema,
   UpdateWorkspaceSchema,
@@ -103,6 +104,7 @@ import {
   type SetAvailability,
   type StatusUpdateRecord,
   type UpdateAgentToken,
+  type UpdateDeviceName,
   type UpdateDevicePushToken,
   type UpdateRoutingRule,
   type UpdateWorkspace,
@@ -266,7 +268,7 @@ export class AgentTickClient {
   pairDevice(input: PairDeviceRequest): Promise<DeviceCredential> { return this.#request('POST', '/v1/devices/pair', DeviceCredentialSchema, { body: PairDeviceRequestSchema.parse(input), includeWorkspace: false }); }
   registerDevice(input: RegisterDevice): Promise<RegisterDeviceResponse> { return this.#request('POST', '/v1/devices/register', RegisterDeviceResponseSchema, { body: RegisterDeviceSchema.parse(input) }); }
   listDevices(): Promise<DeviceRecord[]> { return this.#request('GET', '/v1/devices', DeviceRecordSchema.array()); }
-  renameDevice(deviceId: string, name: string): Promise<DeviceRecord> { return this.#request('PATCH', `/v1/devices/${encodeURIComponent(deviceId)}`, DeviceRecordSchema, { body: { name } }); }
+  renameDevice(deviceId: string, name: string): Promise<DeviceRecord> { return this.#request('PATCH', `/v1/devices/${encodeURIComponent(deviceId)}`, DeviceRecordSchema, { body: UpdateDeviceNameSchema.parse({ name }) }); }
   updateDevicePushToken(deviceId: string, input: UpdateDevicePushToken): Promise<DeviceRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/push-token`, DeviceRecordSchema, { body: UpdateDevicePushTokenSchema.parse(input) }); }
   unpairDevice(deviceId: string): Promise<DeviceRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/unpair`, DeviceRecordSchema, { body: {} }); }
   unregisterDevice(deviceId: string): Promise<DeviceRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/unregister`, DeviceRecordSchema, { body: {} }); }
@@ -383,6 +385,7 @@ export type {
   SetAvailability,
   StatusUpdateRecord,
   UpdateAgentToken,
+  UpdateDeviceName,
   UpdateDevicePushToken,
   UpdateRoutingRule,
   UpdateWorkspace,

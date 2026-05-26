@@ -497,6 +497,9 @@ export type RegisterDevice = z.input<typeof RegisterDeviceSchema>;
 export const RegisterDeviceResponseSchema = z.object({ deviceId: z.string() });
 export type RegisterDeviceResponse = z.infer<typeof RegisterDeviceResponseSchema>;
 
+export const UpdateDeviceNameSchema = z.object({ name: z.string().min(1) });
+export type UpdateDeviceName = z.input<typeof UpdateDeviceNameSchema>;
+
 export const DeviceRecordSchema = z.object({
   deviceId: z.string(),
   userId: z.string(),

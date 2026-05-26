@@ -10,6 +10,7 @@ import {
   PersonalBillingUpdateSchema,
   ReadyResponseSchema,
   RequestRecordSchema,
+  UpdateDeviceNameSchema,
   UpdateDevicePushTokenSchema,
   WorkspaceMemberRecordSchema,
   createEncryptedRequestPayload,
@@ -67,7 +68,8 @@ describe('shared Workspace and Request schemas', () => {
     expect(decryptRequestPayload(payload, key)).toEqual({ title: 'Deploy?', body: 'Prod deploy', command: 'pnpm deploy' });
   });
 
-  it('validates device push-token aliases and structured API errors', () => {
+  it('validates device update bodies and structured API errors', () => {
+    expect(UpdateDeviceNameSchema.parse({ name: 'Ada’s iPhone' })).toEqual({ name: 'Ada’s iPhone' });
     expect(UpdateDevicePushTokenSchema.parse({ token: 'ExponentPushToken[1]' })).toEqual({ token: 'ExponentPushToken[1]' });
     expect(() => UpdateDevicePushTokenSchema.parse({})).toThrow();
     expect(ApiErrorEnvelopeSchema.parse({ error: { code: 'not_authenticated', message: 'Authentication required', requestId: 'req-1' } }).error.code).toBe('not_authenticated');

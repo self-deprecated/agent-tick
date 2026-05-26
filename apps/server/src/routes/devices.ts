@@ -1,23 +1,9 @@
-import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
+import { RegisterDeviceSchema, UpdateDeviceNameSchema, UpdateDevicePushTokenSchema } from '@agent-tick/shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman } from '../auth/context.js';
 import { requireHostedPersonalRouting } from '../services/personalEntitlements.js';
-
-const RegisterDeviceSchema = z.object({
-  deviceName: z.string().min(1),
-  platform: z.string().optional(),
-  installationId: z.string().optional(),
-  expoPushToken: z.string().optional()
-});
-
-const RenameDeviceSchema = z.object({ name: z.string().min(1) });
-
-const PushTokenSchema = z.object({
-  expoPushToken: z.string().optional(),
-  token: z.string().optional()
-}).refine((value) => Object.prototype.hasOwnProperty.call(value, 'expoPushToken') || Object.prototype.hasOwnProperty.call(value, 'token'), { message: 'expoPushToken is required' });
 
 export interface DeviceRoutesOptions {
   config: ServerConfig;
@@ -47,7 +33,7 @@ export async function registerDeviceRoutes(app: FastifyInstance, { config, store
   app.patch('/v1/devices/:id', async (request, reply) => {
     const auth = await requireHuman(request, config, store);
     const { id } = request.params as { id: string };
-    const input = RenameDeviceSchema.parse(request.body);
+    const input = UpdateDeviceNameSchema.parse(request.body);
     const device = await store.updateDeviceName(id, auth.userId ?? 'usr_default', input.name);
     if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
     return device;
@@ -57,7 +43,7 @@ export async function registerDeviceRoutes(app: FastifyInstance, { config, store
     const auth = await requireHuman(request, config, store);
     await requireHostedPersonalRouting(config, store, auth);
     const { id } = request.params as { id: string };
-    const input = PushTokenSchema.parse(request.body);
+    const input = UpdateDevicePushTokenSchema.parse(request.body);
     const device = await store.updateDevicePushToken(id, auth.userId ?? 'usr_default', input.expoPushToken ?? input.token ?? '');
     if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
     return device;

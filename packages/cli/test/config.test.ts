@@ -168,7 +168,7 @@ describe('MCP stdio adapter', () => {
         createdTitle = input.title;
         return { request: { id: 'req_1', title: input.title, status: 'pending' } };
       },
-      waitForRequest: async () => new Promise(() => undefined),
+      waitForCreatedRequest: async () => new Promise(() => undefined),
       abandonRequest: async (id: string) => {
         abandonedId = id;
         return { id, status: 'resolved' };

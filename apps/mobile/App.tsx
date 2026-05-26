@@ -1603,7 +1603,7 @@ function AgentTickApp({
     setHistoryLoading(true);
     setError(null);
     try {
-      const activity = await sdk.listActivity({ limit: 100 });
+      const activity = await sdk.listActivityHistory({ limit: 100 });
       setHistory(normalizeRequests(activity.filter((item) => item.kind === "request").map((item) => item.request)));
       setConnectionStatus("connected");
     } catch (err) {

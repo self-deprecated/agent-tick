@@ -1,3 +1,5 @@
+import { AgentTickClient, type AuthConfig } from "@agent-tick/sdk";
+
 export type MobileAuthProvider = "local" | "clerk";
 
 const defaultHostedServerURL = "https://app.agenttick.sh";
@@ -24,26 +26,10 @@ export type SavedMobileAccount = {
   updatedAt: string;
 };
 
-export type RuntimeAuthConfig = {
-  mode: "single" | "clerk" | string;
-  authProvider: MobileAuthProvider | string;
-  publicURL?: string;
-  clerkPublishableKey?: string;
-};
+export type RuntimeAuthConfig = AuthConfig;
 
 export async function fetchRuntimeAuthConfig(serverURL: string, fetchImpl: typeof fetch = fetch): Promise<RuntimeAuthConfig> {
-  const base = normalizeServerURL(serverURL);
-  const response = await fetchImpl(`${base}/v1/auth/config`);
-  if (!response.ok) {
-    throw new Error(`Server returned ${response.status}`);
-  }
-  const body = (await response.json()) as RuntimeAuthConfig;
-  return {
-    mode: body.mode,
-    authProvider: body.authProvider,
-    publicURL: body.publicURL,
-    clerkPublishableKey: body.clerkPublishableKey,
-  };
+  return new AgentTickClient({ baseUrl: normalizeServerURL(serverURL), fetch: fetchImpl }).getAuthConfig();
 }
 
 export function normalizeServerURL(value: string): string {

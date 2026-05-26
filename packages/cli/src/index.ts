@@ -1801,7 +1801,7 @@ async function createRequestFromOptions(client: AgentTickClient, options: Reques
   return created;
 }
 
-async function waitForCreatedRequest(client: AgentTickClient, server: string, created: CreateRequestResponse, options: RequestOptions): Promise<RequestRecord> {
+async function waitForCreatedRequest(client: AgentTickClient, _server: string, created: CreateRequestResponse, options: RequestOptions): Promise<RequestRecord> {
   const request = created.request;
   if (!options.silent) {
     if (options.json) {
@@ -1814,8 +1814,7 @@ async function waitForCreatedRequest(client: AgentTickClient, server: string, cr
   const timeoutMs = parseDurationMs(options.timeout);
   if (timeoutMs === 0) return request;
 
-  const waitClient = created.waiter ? new AgentTickClient({ baseUrl: server, tokenProvider: () => created.waiter?.token }) : client;
-  const waited = await waitClient.waitForRequest(request.id, { timeoutMs });
+  const waited = await client.waitForCreatedRequest(created, { timeoutMs });
   if (!options.silent) {
     if (options.json) {
       process.stdout.write(`${JSON.stringify({ event: waited.terminal ? 'terminal' : 'timeout', ...waited })}\n`);

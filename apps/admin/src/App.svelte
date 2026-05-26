@@ -246,9 +246,12 @@
 		if (nextWorkspaceId) localStorage.setItem(workspaceStorageKey, nextWorkspaceId);
 		if (!nextWorkspaceId) return;
 		const scoped = apiClient();
+		const activityRequest = activePage === 'activity'
+			? scoped.listActivityHistory({ workspaceId: nextWorkspaceId, limit: 100 })
+			: scoped.listActivity({ workspaceId: nextWorkspaceId, limit: 30 });
 		const [me, nextActivity, nextTokens, nextRules, nextDevices, nextAudit, nextBilling, nextOnboarding] = await Promise.all([
 			scoped.getMe().catch(() => undefined),
-			scoped.listActivity({ workspaceId: nextWorkspaceId, limit: activePage === 'activity' ? 100 : 30 }).catch(() => []),
+			activityRequest.catch(() => []),
 			scoped.listAgentTokens().catch(() => []),
 			scoped.listRoutingRules({ workspaceId: nextWorkspaceId }).catch(() => []),
 			scoped.listDevices().catch(() => []),
