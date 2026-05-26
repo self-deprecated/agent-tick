@@ -32,7 +32,7 @@ Agent Tick starts with a 7-day Trial. The Trial includes both hosted and self-ho
 
 After the Trial, Lifetime app unlock is a one-time $19.99 in-app purchase: “Use the Agent Tick app with self-hosted servers forever.” The unlock does not imply hosted service forever.
 
-Lifetime app unlock includes one hosted month that starts when hosted service is first activated after purchase. Hosted service is available as an optional in-app subscription at any time: $5/month or $50/year.
+Lifetime app unlock starts one included hosted month immediately after purchase. Hosted service is available as an optional in-app subscription after Lifetime unlock: $5/month or $50/year.
 
 ## Screenshot plan
 
