@@ -34,11 +34,38 @@ describe('personal billing purchase ordering', () => {
     });
   });
 
+  it('starts the included hosted month from the lifetime purchase timestamp', async () => {
+    const localStore = testStore();
+    await recordVerifiedTransaction(localStore, {
+      userId: DEFAULT_USER_ID,
+      provider: 'revenuecat',
+      environment: 'sandbox',
+      productKey: 'lifetime_unlock',
+      entitlementKey: 'lifetime_app_unlock',
+      platform: 'ios',
+      providerTransactionId: 'txn_lifetime',
+      status: 'purchased',
+      purchasedAt: '2026-05-02T00:00:00.000Z',
+    }, now);
+
+    const status = await getPersonalBillingStatus(localStore, DEFAULT_USER_ID, revenueCatConfig, now);
+    expect(status.entitlement).toMatchObject({
+      appUnlockedAt: '2026-05-02T00:00:00.000Z',
+      includedHostedActivatedAt: '2026-05-02T00:00:00.000Z',
+    });
+    expect(status.hostedPersonal).toMatchObject({
+      lifecycle: 'active',
+      includedHostedEndsAt: '2026-06-02T00:00:00.000Z',
+      responsesEnabled: true,
+    });
+  });
+
   it('allows hosted subscription purchases after lifetime unlock is active', async () => {
     const localStore = testStore();
     localStore.updatePersonalEntitlement({ userId: DEFAULT_USER_ID, appUnlockedAt: '2026-05-02T00:00:00.000Z' }, '2026-05-02T00:00:00.000Z');
 
     const status = await getPersonalBillingStatus(localStore, DEFAULT_USER_ID, revenueCatConfig, now);
+    expect(status.entitlement.includedHostedActivatedAt).toBe('2026-05-02T00:00:00.000Z');
     expect(status.purchaseAvailability.hosted_personal_monthly).toEqual({ allowed: true });
     expect(status.purchaseAvailability.hosted_personal_yearly).toEqual({ allowed: true });
 

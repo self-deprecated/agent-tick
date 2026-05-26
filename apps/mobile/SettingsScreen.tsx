@@ -99,7 +99,6 @@ export function SettingsScreen({
   onPurchaseLifetimeUnlock,
   onRestorePurchases,
   onSubscribeHostedPersonal,
-  onActivateIncludedHostedMonth,
   onManageSubscription,
   onScanPairing,
   onUseHosted,
@@ -162,7 +161,6 @@ export function SettingsScreen({
   onPurchaseLifetimeUnlock?: () => void;
   onRestorePurchases?: () => void;
   onSubscribeHostedPersonal?: (period: "monthly" | "yearly") => void;
-  onActivateIncludedHostedMonth?: () => void;
   onManageSubscription?: () => void;
   onScanPairing: () => void;
   onSignInAnotherClerkAccount?: () => void;
@@ -235,10 +233,6 @@ export function SettingsScreen({
   const lifetimeBlocked = Boolean(!billingStatusLoaded || nativeAppEntitlement?.lifetimeUnlocked || lifetimeAvailability?.allowed === false);
   const monthlyBlocked = !billingStatusLoaded || monthlyAvailability?.allowed === false;
   const yearlyBlocked = !billingStatusLoaded || yearlyAvailability?.allowed === false;
-  const includedHostedActivated = Boolean(personalBillingStatus?.entitlement.includedHostedActivatedAt);
-  const hostedSubscriptionActive = Boolean(personalBillingStatus?.activeEntitlements.hostedPersonal.active);
-  const canActivateIncludedHostedMonth = Boolean(billingStatusLoaded && nativeAppEntitlement?.lifetimeUnlocked && !nativeAppEntitlement.trialActive && !includedHostedActivated && !hostedSubscriptionActive);
-  const includedHostedWaitsForTrialEnd = Boolean(billingStatusLoaded && nativeAppEntitlement?.lifetimeUnlocked && nativeAppEntitlement.trialActive && !includedHostedActivated && !hostedSubscriptionActive);
   const showHostedSubscriptionActions = billingStatusLoaded;
   const hostedExpiry = personalBillingStatus ? hostedUsageExpiry(personalBillingStatus) : null;
   const hostedOriginPlatform = personalBillingStatus?.activeEntitlements.hostedPersonal.originPlatform;
@@ -270,15 +264,9 @@ export function SettingsScreen({
       <View style={styles.purchaseCard}>
         <Text style={styles.workspaceName}>{tr("Hosted service")}</Text>
         <Text style={styles.workspaceMeta}>{tr("Let us run Request routing, push, updates, and uptime for you.")}</Text>
-        <Text style={styles.pairingHint}>{hostedPersonalActive ? tr("Hosted service is active.") : tr("The included hosted month starts when hosted service is first activated after purchase.")}</Text>
+        <Text style={styles.pairingHint}>{hostedPersonalActive ? tr("Hosted service is active.") : nativeAppEntitlement.lifetimeUnlocked ? tr("Your included hosted month has ended. Subscribe to use first-party hosted service.") : tr("Buy Lifetime app unlock to start your included hosted month automatically.")}</Text>
         {hostedExpiry ? <Text style={styles.pairingHint}>{hostedExpiryCopy(hostedExpiry, tr)}</Text> : null}
         {crossPlatformHostedCopy ? <Text style={styles.pairingHint}>{crossPlatformHostedCopy}</Text> : null}
-        {includedHostedWaitsForTrialEnd ? <Text style={styles.pairingHint}>{tr("The included hosted month waits until Trial ends, then you can activate it before subscribing.")}</Text> : null}
-        {canActivateIncludedHostedMonth ? (
-          <Pressable onPress={() => onActivateIncludedHostedMonth?.()} style={styles.secondaryActionButton}>
-            <Text style={styles.secondaryActionText}>{tr("Start included hosted month")}</Text>
-          </Pressable>
-        ) : null}
         {monthlyAvailability?.reason || yearlyAvailability?.reason ? <Text style={styles.pairingHint}>{purchaseAvailabilityCopy(monthlyAvailability?.reason ?? yearlyAvailability?.reason)}</Text> : null}
         {showHostedSubscriptionActions ? (
           <View style={styles.notificationActions}>

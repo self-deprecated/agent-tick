@@ -358,8 +358,30 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByText("6 days left in trial")).toBeNull();
   });
 
-  it("offers the included hosted month after lifetime unlock and trial end", () => {
-    const onActivateIncludedHostedMonth = jest.fn();
+  it("shows the included hosted month automatically after lifetime unlock", () => {
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: true,
+          lifetimeUnlocked: true,
+          readOnly: false,
+          hostedSubscriptionActive: false,
+          includedHostedActive: true,
+          trialRemainingMs: 1000,
+        }}
+        personalBillingStatus={personalBillingFixture({ lifetimeActive: true, trialActive: true, includedHostedActive: true })}
+      />,
+    );
+
+    fireEvent.press(screen.getByText("App access"));
+    expect(screen.getByText("Included hosted month active")).toBeTruthy();
+    expect(screen.getByText("Your Lifetime app unlock is active, and the included hosted month is running.")).toBeTruthy();
+    expect(screen.getByText("Included hosted month ends on Jun 1, 2026.")).toBeTruthy();
+    expect(screen.queryByText("Start included hosted month")).toBeNull();
+  });
+
+  it("does not offer manual included hosted month activation after it has ended", () => {
     render(
       <SettingsScreen
         {...pairedProps}
@@ -371,37 +393,12 @@ describe("SettingsScreen — paired state", () => {
           includedHostedActive: false,
           trialRemainingMs: 0,
         }}
-        personalBillingStatus={personalBillingFixture({ lifetimeActive: true })}
-        onActivateIncludedHostedMonth={onActivateIncludedHostedMonth}
+        personalBillingStatus={personalBillingFixture({ lifetimeActive: true, includedHostedActivated: true })}
       />,
     );
 
     fireEvent.press(screen.getByText("App access"));
-    expect(screen.getByText("Start included hosted month")).toBeTruthy();
-    expect(screen.getByText("$5/month")).toBeTruthy();
-    expect(screen.getByText("$50/year")).toBeTruthy();
-    fireEvent.press(screen.getByText("Start included hosted month"));
-    expect(onActivateIncludedHostedMonth).toHaveBeenCalledTimes(1);
-  });
-
-  it("waits until Trial ends before activating the included hosted month", () => {
-    render(
-      <SettingsScreen
-        {...pairedProps}
-        nativeAppEntitlement={{
-          trialActive: true,
-          lifetimeUnlocked: true,
-          readOnly: false,
-          hostedSubscriptionActive: false,
-          includedHostedActive: false,
-          trialRemainingMs: 1000,
-        }}
-        personalBillingStatus={personalBillingFixture({ lifetimeActive: true })}
-      />,
-    );
-
-    fireEvent.press(screen.getByText("App access"));
-    expect(screen.getByText("The included hosted month waits until Trial ends, then you can activate it before subscribing.")).toBeTruthy();
+    expect(screen.getByText("Your included hosted month has ended. Subscribe to use first-party hosted service.")).toBeTruthy();
     expect(screen.getByText("$5/month")).toBeTruthy();
     expect(screen.getByText("$50/year")).toBeTruthy();
     expect(screen.queryByText("Start included hosted month")).toBeNull();

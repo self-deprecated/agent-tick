@@ -191,11 +191,16 @@ export async function recomputePersonalEntitlement(store: AgentTickStore, userId
   const hostedTransactions = transactions.filter((transaction) => transaction.entitlementKey === 'hosted_personal');
 
   const activeLifetime = newestTransaction(lifetimeTransactions.filter(isActiveLifetimeTransaction));
+  const activeLifetimeUnlockedAt = activeLifetime?.purchasedAt ?? activeLifetime?.createdAt;
+  const effectiveAppUnlockedAt = lifetimeTransactions.length > 0 ? activeLifetimeUnlockedAt ?? null : current.appUnlockedAt;
+  const shouldUpdateIncludedHostedActivation = lifetimeTransactions.length > 0 || Boolean(effectiveAppUnlockedAt && !current.includedHostedActivatedAt);
+  const includedHostedActivatedAt = effectiveAppUnlockedAt ? current.includedHostedActivatedAt ?? effectiveAppUnlockedAt : null;
   const hostedProjection = projectHostedSubscription(hostedTransactions, now);
 
   return store.updatePersonalEntitlement({
     userId,
-    ...(lifetimeTransactions.length > 0 ? { appUnlockedAt: activeLifetime?.purchasedAt ?? activeLifetime?.createdAt ?? null } : {}),
+    ...(lifetimeTransactions.length > 0 ? { appUnlockedAt: effectiveAppUnlockedAt } : {}),
+    ...(shouldUpdateIncludedHostedActivation ? { includedHostedActivatedAt } : {}),
     ...(hostedTransactions.length > 0 ? { hostedSubscriptionEndsAt: hostedProjection.endsAt ?? null, hostedSubscriptionCanceledAt: hostedProjection.canceledAt ?? null } : {})
   }, now.toISOString());
 }

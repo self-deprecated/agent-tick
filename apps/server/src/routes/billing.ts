@@ -42,7 +42,8 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
     if (input.event === 'delete_account_data') {
       await store.deleteHostedPersonalData(userId, auth.workspaceId, now.toISOString());
     } else if (input.event === 'app_purchase') {
-      await store.updatePersonalEntitlement({ userId, appUnlockedAt: current.appUnlockedAt ?? now.toISOString() }, now.toISOString());
+      const unlockedAt = current.appUnlockedAt ?? now.toISOString();
+      await store.updatePersonalEntitlement({ userId, appUnlockedAt: unlockedAt, includedHostedActivatedAt: current.includedHostedActivatedAt ?? unlockedAt }, now.toISOString());
     } else if (input.event === 'activate_included_hosted_month') {
       if (!current.appUnlockedAt) throw billingError(400, 'app_purchase_required', 'Lifetime app unlock is required before activating included hosted month');
       const hostedStatus = hostedPersonalStatus(current, now);

@@ -112,19 +112,21 @@ describe("native app entitlement", () => {
     });
   });
 
-  it("does not consume the included hosted month during the initial trial", () => {
+  it("starts the included hosted month automatically with lifetime unlock, even during Trial", () => {
     const trial = nativeAppEntitlement({ now: new Date("2026-05-02T00:00:00.000Z"), firstOpenedAt: "2026-05-01T00:00:00.000Z" });
     expect(hostedPersonalActive(trial)).toBe(true);
     expect(trial.includedHostedActive).toBe(false);
 
     const includedMonth = nativeAppEntitlement({
-      now: new Date("2026-05-20T00:00:00.000Z"),
+      now: new Date("2026-05-03T00:00:00.000Z"),
       firstOpenedAt: "2026-05-01T00:00:00.000Z",
       lifetimeUnlocked: true,
-      includedHostedActivatedAt: "2026-05-15T00:00:00.000Z",
+      includedHostedActivatedAt: "2026-05-02T00:00:00.000Z",
     });
     expect(hostedPersonalActive(includedMonth)).toBe(true);
+    expect(includedMonth.trialActive).toBe(true);
     expect(includedMonth.includedHostedActive).toBe(true);
+    expect(entitlementStatusCopy(includedMonth)).toMatchObject({ title: "Included hosted month active" });
   });
 });
 
