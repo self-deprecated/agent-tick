@@ -49,6 +49,20 @@
       "cli:publish": [
         "cd packages/cli && corepack pnpm publish --access public --no-git-checks --no-provenance"
       ],
+      "shared:publish": [
+        "(cd packages/shared && corepack pnpm publish --access public --no-git-checks --no-provenance)"
+      ],
+      "sdk:publish": [
+        "(cd packages/sdk && corepack pnpm publish --access public --no-git-checks --no-provenance)"
+      ],
+      "sdk:publish:all": [
+        "(cd packages/shared && corepack pnpm publish --access public --no-git-checks --no-provenance)",
+        "(cd packages/sdk && corepack pnpm publish --access public --no-git-checks --no-provenance)"
+      ],
+      "sdk:publish:all:dry-run": [
+        "(cd packages/shared && corepack pnpm publish --dry-run --access public --no-git-checks --no-provenance)",
+        "(cd packages/sdk && corepack pnpm publish --dry-run --access public --no-git-checks --no-provenance)"
+      ],
       "cli:sanction": [
         "node packages/cli/dist/index.js sanction --title 'Run command?' --body 'Agent Tick test sanction from the CLI' --command 'npm install'"
       ],
