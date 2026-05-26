@@ -76,8 +76,8 @@ import {
 import { NativePaywall } from "./NativePaywall";
 import { ConnectionBadge, SettingsScreen } from "./SettingsScreen";
 import type { ChoiceInteractionMode, ConnectionStatus, NotificationStatus, OptionPlacement, PushStatus } from "./SettingsScreen";
-import { AgentTickClient, type StatusUpdateRecord, type MeResponse, type WorkspaceMemberRecord } from "@agent-tick/sdk";
-import { decryptRequestPayload, type PersonalBillingStatus } from "@agent-tick/shared";
+import { AgentTickClient, type StatusUpdateRecord, type MeResponse, type WorkspaceMemberRecord } from "@self-deprecated/agent-tick-sdk";
+import { decryptRequestPayload, type PersonalBillingStatus } from "@self-deprecated/agent-tick-shared";
 import { ClerkSignInScreen } from "./ClerkSignInScreen";
 import {
   fetchRuntimeAuthConfig,

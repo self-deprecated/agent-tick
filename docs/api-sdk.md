@@ -20,7 +20,7 @@ Use SDK types in `packages/sdk` and shared schemas in `packages/shared` as the s
 ## Client setup
 
 ```ts
-import { AgentTickClient } from '@agent-tick/sdk';
+import { AgentTickClient } from '@self-deprecated/agent-tick-sdk';
 
 export function agentTickClient() {
   return new AgentTickClient({
@@ -38,8 +38,8 @@ Agent Tokens are secrets. Do not place Request bodies, commands, choices, or enc
 Use Sanctions when the local agent is about to perform a bounded sensitive action and needs an explicit human Response. Always include a deny choice.
 
 ```ts
-import type { AgentTickClient } from '@agent-tick/sdk';
-import type { Choice } from '@agent-tick/shared';
+import type { AgentTickClient } from '@self-deprecated/agent-tick-sdk';
+import type { Choice } from '@self-deprecated/agent-tick-shared';
 
 export type SanctionDecision = 'approved' | 'denied' | 'expired';
 
@@ -73,8 +73,8 @@ Run the sensitive local action only after this helper returns `approved`. Agent 
 Use Steering when the agent needs the human to choose between known next steps.
 
 ```ts
-import type { AgentTickClient } from '@agent-tick/sdk';
-import type { Choice } from '@agent-tick/shared';
+import type { AgentTickClient } from '@self-deprecated/agent-tick-sdk';
+import type { Choice } from '@self-deprecated/agent-tick-shared';
 
 export type SteeringChoice = 'small_fix' | 'full_refactor' | 'stop';
 

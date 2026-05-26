@@ -1,5 +1,5 @@
 import { Linking, Platform } from "react-native";
-import type { BillingProduct, BillingProductKey } from "@agent-tick/shared";
+import type { BillingProduct, BillingProductKey } from "@self-deprecated/agent-tick-shared";
 
 export type ProductKey = BillingProductKey;
 

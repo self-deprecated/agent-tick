@@ -1,9 +1,9 @@
-# @agent-tick/sdk
+# @self-deprecated/agent-tick-sdk
 
 TypeScript HTTP client for Agent Tick.
 
 ```ts
-import { AgentTickClient } from '@agent-tick/sdk';
+import { AgentTickClient } from '@self-deprecated/agent-tick-sdk';
 
 const client = new AgentTickClient({
   baseUrl: process.env.AGENT_TICK_SERVER ?? 'https://app.agenttick.sh',

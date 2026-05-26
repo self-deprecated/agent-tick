@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { CreateStatusUpdateSchema } from '@agent-tick/shared';
+import { CreateStatusUpdateSchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireAuth, requireHuman } from '../auth/context.js';

@@ -22,8 +22,8 @@
       "./jest.setup.js"
     ],
     "moduleNameMapper": {
-      "^@agent-tick/sdk$": "<rootDir>/../../packages/sdk/src/index.ts",
-      "^@agent-tick/shared$": "<rootDir>/../../packages/shared/src/index.ts",
+      "^@self-deprecated/agent-tick-sdk$": "<rootDir>/../../packages/sdk/src/index.ts",
+      "^@self-deprecated/agent-tick-shared$": "<rootDir>/../../packages/shared/src/index.ts",
       "^@agent-tick/i18n$": "<rootDir>/__mocks__/agent-tick-i18n.js",
       "^@lingui/core$": "<rootDir>/__mocks__/lingui-core.js",
       "^@lingui/react$": "<rootDir>/__mocks__/lingui-react.js",
@@ -37,8 +37,8 @@
   },
   "dependencies": {
     "@agent-tick/i18n": "workspace:*",
-    "@agent-tick/sdk": "workspace:*",
-    "@agent-tick/shared": "workspace:*",
+    "@self-deprecated/agent-tick-sdk": "workspace:*",
+    "@self-deprecated/agent-tick-shared": "workspace:*",
     "@clerk/expo": "3.2.10",
     "@lingui/core": "6.0.1",
     "@lingui/react": "6.0.1",

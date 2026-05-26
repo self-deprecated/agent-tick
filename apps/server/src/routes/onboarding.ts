@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
-import type { OnboardingStatus } from '@agent-tick/shared';
+import type { OnboardingStatus } from '@self-deprecated/agent-tick-shared';
 import type { ServerConfig } from '../config.js';
 import { requirePrivilegedHuman } from '../auth/context.js';
 

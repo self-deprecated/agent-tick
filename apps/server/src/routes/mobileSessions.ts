@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { CreateMobileSessionSchema } from '@agent-tick/shared';
+import { CreateMobileSessionSchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { verifyClerkLoginToken } from '../auth/clerk.js';

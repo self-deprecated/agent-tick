@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { CreateAgentTokenSchema, UpdateAgentTokenSchema } from '@agent-tick/shared';
+import { CreateAgentTokenSchema, UpdateAgentTokenSchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireWorkspaceAdmin } from '../auth/context.js';

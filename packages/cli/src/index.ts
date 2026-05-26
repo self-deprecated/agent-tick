@@ -10,8 +10,8 @@ import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, type AddHelpTextContext } from 'commander';
-import { AgentTickClient, type RequestRecord, type CreateRequestResponse } from '@agent-tick/sdk';
-import { ChoiceFlagSchema, EncryptedRequestPayloadSchema, createEncryptedRequestPayload, generateRequestEncryptionKey, type ChoiceFlag, type EncryptedRequestPayload } from '@agent-tick/shared';
+import { AgentTickClient, type RequestRecord, type CreateRequestResponse } from '@self-deprecated/agent-tick-sdk';
+import { ChoiceFlagSchema, EncryptedRequestPayloadSchema, createEncryptedRequestPayload, generateRequestEncryptionKey, type ChoiceFlag, type EncryptedRequestPayload } from '@self-deprecated/agent-tick-shared';
 import { assertAgentToken, clientConfigPath, loadClientConfig, maskAgentToken, resolveServerAndToken, saveClientConfig } from './config.js';
 
 export const hostedAgentTickURL = 'https://app.agenttick.sh';

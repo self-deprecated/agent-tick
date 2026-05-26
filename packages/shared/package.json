@@ -1,5 +1,5 @@
 {
-  "name": "@agent-tick/shared",
+  "name": "@self-deprecated/agent-tick-shared",
   "version": "0.1.0",
   "description": "Shared schemas, API types, and encryption helpers for Agent Tick.",
   "private": false,

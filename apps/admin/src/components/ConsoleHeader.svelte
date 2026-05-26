@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { WorkspaceMemberRecord } from '@agent-tick/sdk';
+	import type { WorkspaceMemberRecord } from '@self-deprecated/agent-tick-sdk';
 
 	let {
 		activePage,

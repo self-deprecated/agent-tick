@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { SendTestActivitySchema } from '@agent-tick/shared';
+import { SendTestActivitySchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman } from '../auth/context.js';

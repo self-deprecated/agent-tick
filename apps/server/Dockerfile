@@ -17,8 +17,8 @@ COPY packages packages
 COPY apps/server apps/server
 COPY apps/admin apps/admin
 
-RUN pnpm --filter @agent-tick/shared build \
-  && pnpm --filter @agent-tick/sdk build \
+RUN pnpm --filter @self-deprecated/agent-tick-shared build \
+  && pnpm --filter @self-deprecated/agent-tick-sdk build \
   && pnpm --filter @agent-tick/db build \
   && pnpm --filter @agent-tick/server build \
   && pnpm --filter agent-tick-admin build \

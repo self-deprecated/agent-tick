@@ -38,7 +38,7 @@ import {
   type WorkspaceRecord,
   type WorkspaceRole,
   type WorkspaceType
-} from '@agent-tick/shared';
+} from '@self-deprecated/agent-tick-shared';
 
 export const DEFAULT_USER_ID = 'usr_default';
 export const DEFAULT_WORKSPACE_ID = 'wsp_default';

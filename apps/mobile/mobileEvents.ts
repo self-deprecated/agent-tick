@@ -1,4 +1,4 @@
-import type { AgentTickClient, EventPollEvent } from "@agent-tick/sdk";
+import type { AgentTickClient, EventPollEvent } from "@self-deprecated/agent-tick-sdk";
 
 type EventPollClient = Pick<AgentTickClient, "pollEvents">;
 

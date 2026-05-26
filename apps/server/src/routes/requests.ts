@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { CreateRequestSchema, RespondRequestSchema } from '@agent-tick/shared';
+import { CreateRequestSchema, RespondRequestSchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import type { RequestNotifier } from '../services/notifications.js';

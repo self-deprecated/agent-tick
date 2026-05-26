@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { CreateMobileDiagnosticsSchema } from '@agent-tick/shared';
+import { CreateMobileDiagnosticsSchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman } from '../auth/context.js';

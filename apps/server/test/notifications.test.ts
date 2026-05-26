@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { RequestRecord } from '@agent-tick/shared';
+import type { RequestRecord } from '@self-deprecated/agent-tick-shared';
 import { AgentTickStore, DEFAULT_USER_ID, DEFAULT_WORKSPACE_ID } from '@agent-tick/db';
 import { createCompositeRequestNotifier, createExpoPushNotifier, createWebhookRequestNotifier } from '../src/services/notifications.js';
 

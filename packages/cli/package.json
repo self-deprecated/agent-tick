@@ -43,8 +43,8 @@
     "commander": "14.0.3"
   },
   "devDependencies": {
-    "@agent-tick/sdk": "workspace:*",
-    "@agent-tick/shared": "workspace:*",
+    "@self-deprecated/agent-tick-sdk": "workspace:*",
+    "@self-deprecated/agent-tick-shared": "workspace:*",
     "@types/node": "24.12.3",
     "esbuild": "0.27.7",
     "tsx": "4.21.0",

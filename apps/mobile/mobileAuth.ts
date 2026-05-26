@@ -1,4 +1,4 @@
-import { AgentTickClient, type AuthConfig } from "@agent-tick/sdk";
+import { AgentTickClient, type AuthConfig } from "@self-deprecated/agent-tick-sdk";
 
 export type MobileAuthProvider = "local" | "clerk";
 

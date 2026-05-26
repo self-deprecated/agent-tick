@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
-import { BillingPurchasePreflightRequestSchema, PersonalBillingUpdateSchema } from '@agent-tick/shared';
+import { BillingPurchasePreflightRequestSchema, PersonalBillingUpdateSchema } from '@self-deprecated/agent-tick-shared';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman, type AuthContext } from '../auth/context.js';
 import {

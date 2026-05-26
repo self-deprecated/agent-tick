@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ActivityItem, RequestRecord, RespondRequest, WorkspaceMemberRecord } from '@agent-tick/sdk';
+	import type { ActivityItem, RequestRecord, RespondRequest, WorkspaceMemberRecord } from '@self-deprecated/agent-tick-sdk';
 
 	let {
 		workspace,

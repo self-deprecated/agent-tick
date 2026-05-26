@@ -19,7 +19,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@agent-tick/shared": "workspace:*",
+    "@self-deprecated/agent-tick-shared": "workspace:*",
     "better-sqlite3": "12.9.0",
     "pg": "8.20.0"
   },

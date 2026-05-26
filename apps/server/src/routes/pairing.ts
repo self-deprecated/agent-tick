@@ -1,4 +1,4 @@
-import { PairDeviceRequestSchema } from '@agent-tick/shared';
+import { PairDeviceRequestSchema } from '@self-deprecated/agent-tick-shared';
 import type { FastifyInstance } from 'fastify';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';

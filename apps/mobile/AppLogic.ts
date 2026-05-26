@@ -1,4 +1,4 @@
-import type { PersonalBillingStatus } from "@agent-tick/shared";
+import type { PersonalBillingStatus } from "@self-deprecated/agent-tick-shared";
 
 export type Screen = "requests" | "history" | "settings" | "scanner";
 

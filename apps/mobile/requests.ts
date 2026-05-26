@@ -1,6 +1,6 @@
 import { translateSource } from "@agent-tick/i18n";
-import type { RequestRecord, RespondRequest } from "@agent-tick/sdk";
-import type { Choice, EncryptedRequestPayload, ResponseRecord } from "@agent-tick/shared";
+import type { RequestRecord, RespondRequest } from "@self-deprecated/agent-tick-sdk";
+import type { Choice, EncryptedRequestPayload, ResponseRecord } from "@self-deprecated/agent-tick-shared";
 
 export type MobileRequest = RequestRecord;
 export type RequestResponse = RespondRequest & { encryptedPayloadAcknowledged?: boolean };

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { AgentCredential, AgentTokenRecord, AuditEventRecord, BillingStatus, DeviceRecord, RoutingRuleRecord, WorkspaceMemberRecord } from '@agent-tick/sdk';
+	import type { AgentCredential, AgentTokenRecord, AuditEventRecord, BillingStatus, DeviceRecord, RoutingRuleRecord, WorkspaceMemberRecord } from '@self-deprecated/agent-tick-sdk';
 	import type { LocalePreference, SupportedLocale } from '@agent-tick/i18n';
 
 	let {

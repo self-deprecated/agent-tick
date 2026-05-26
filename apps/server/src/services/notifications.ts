@@ -1,4 +1,4 @@
-import type { RequestRecord } from '@agent-tick/shared';
+import type { RequestRecord } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 

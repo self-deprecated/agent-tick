@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   resolve: {
     alias: {
-      '@agent-tick/sdk': fileURLToPath(new URL('../sdk/src/index.ts', import.meta.url)),
-      '@agent-tick/shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url))
+      '@self-deprecated/agent-tick-sdk': fileURLToPath(new URL('../sdk/src/index.ts', import.meta.url)),
+      '@self-deprecated/agent-tick-shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url))
     }
   },
   test: {

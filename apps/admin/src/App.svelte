@@ -17,7 +17,7 @@
 		type RoutingRuleRecord,
 		type SendTestActivityResponse,
 		type WorkspaceMemberRecord
-	} from '@agent-tick/sdk';
+	} from '@self-deprecated/agent-tick-sdk';
 	import type { Clerk as ClerkJS } from '@clerk/clerk-js';
 	import ConsoleHeader from './components/ConsoleHeader.svelte';
 	import SetupPage from './components/SetupPage.svelte';

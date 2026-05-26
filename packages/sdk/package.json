@@ -1,5 +1,5 @@
 {
-  "name": "@agent-tick/sdk",
+  "name": "@self-deprecated/agent-tick-sdk",
   "version": "0.1.0",
   "description": "TypeScript HTTP client for Agent Tick.",
   "private": false,
@@ -41,7 +41,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@agent-tick/shared": "workspace:*",
+    "@self-deprecated/agent-tick-shared": "workspace:*",
     "zod": "4.4.3"
   },
   "devDependencies": {

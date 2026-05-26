@@ -120,7 +120,7 @@
               export npm_config_nodedir=${nodejs}
               (cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3 && npm run build-release)
 
-              pnpm --filter @agent-tick/shared build
+              pnpm --filter @self-deprecated/agent-tick-shared build
               pnpm --filter @agent-tick/db build
               pnpm --filter @agent-tick/diagnostics-mcp build
 
@@ -224,8 +224,8 @@
               export npm_config_nodedir=${nodejs}
               (cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3 && npm run build-release)
 
-              pnpm --filter @agent-tick/shared build
-              pnpm --filter @agent-tick/sdk build
+              pnpm --filter @self-deprecated/agent-tick-shared build
+              pnpm --filter @self-deprecated/agent-tick-sdk build
               pnpm --filter @agent-tick/db build
               pnpm --filter @agent-tick/server build
               pnpm --filter agent-tick-admin build

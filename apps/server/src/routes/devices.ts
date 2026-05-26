@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { RegisterDeviceSchema, UpdateDeviceNameSchema, UpdateDevicePushTokenSchema } from '@agent-tick/shared';
+import { RegisterDeviceSchema, UpdateDeviceNameSchema, UpdateDevicePushTokenSchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman } from '../auth/context.js';

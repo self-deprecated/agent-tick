@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { CreateRoutingRuleSchema, UpdateRoutingRuleSchema } from '@agent-tick/shared';
+import { CreateRoutingRuleSchema, UpdateRoutingRuleSchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requireWorkspaceAdmin } from '../auth/context.js';

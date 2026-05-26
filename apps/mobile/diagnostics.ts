@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { AgentTickClient } from "@agent-tick/sdk";
+import type { AgentTickClient } from "@self-deprecated/agent-tick-sdk";
 import type { ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
 
 export type DiagnosticLevel = "info" | "warn" | "error";

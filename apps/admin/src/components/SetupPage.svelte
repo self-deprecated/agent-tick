@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { AgentTokenRecord, DeviceRecord, OnboardingStatus, RoutingRuleRecord, SendTestActivityResponse, WorkspaceMemberRecord } from '@agent-tick/sdk';
+	import type { AgentTokenRecord, DeviceRecord, OnboardingStatus, RoutingRuleRecord, SendTestActivityResponse, WorkspaceMemberRecord } from '@self-deprecated/agent-tick-sdk';
 
 	let {
 		serverUrl,

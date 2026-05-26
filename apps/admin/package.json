@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@agent-tick/i18n": "workspace:*",
-    "@agent-tick/sdk": "workspace:*",
-    "@agent-tick/shared": "workspace:*",
+    "@self-deprecated/agent-tick-sdk": "workspace:*",
+    "@self-deprecated/agent-tick-shared": "workspace:*",
     "@clerk/clerk-js": "6.10.0",
     "@lingui/core": "6.0.1"
   },

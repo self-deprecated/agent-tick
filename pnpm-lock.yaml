@@ -32,10 +32,10 @@ importers:
       '@agent-tick/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
-      '@agent-tick/sdk':
+      '@self-deprecated/agent-tick-sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      '@agent-tick/shared':
+      '@self-deprecated/agent-tick-shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@clerk/clerk-js':
@@ -110,10 +110,10 @@ importers:
       '@agent-tick/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
-      '@agent-tick/sdk':
+      '@self-deprecated/agent-tick-sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      '@agent-tick/shared':
+      '@self-deprecated/agent-tick-shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@clerk/expo':
@@ -201,7 +201,7 @@ importers:
       '@agent-tick/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@agent-tick/shared':
+      '@self-deprecated/agent-tick-shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@clerk/backend':
@@ -239,10 +239,10 @@ importers:
         specifier: 14.0.3
         version: 14.0.3
     devDependencies:
-      '@agent-tick/sdk':
+      '@self-deprecated/agent-tick-sdk':
         specifier: workspace:*
         version: link:../sdk
-      '@agent-tick/shared':
+      '@self-deprecated/agent-tick-shared':
         specifier: workspace:*
         version: link:../shared
       '@types/node':
@@ -263,7 +263,7 @@ importers:
 
   packages/db:
     dependencies:
-      '@agent-tick/shared':
+      '@self-deprecated/agent-tick-shared':
         specifier: workspace:*
         version: link:../shared
       better-sqlite3:
@@ -304,7 +304,7 @@ importers:
 
   packages/sdk:
     dependencies:
-      '@agent-tick/shared':
+      '@self-deprecated/agent-tick-shared':
         specifier: workspace:*
         version: link:../shared
       zod:

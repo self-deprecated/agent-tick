@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { AgentTickModeSchema, type AgentTickMode, type AuthProvider } from '@agent-tick/shared';
+import { AgentTickModeSchema, type AgentTickMode, type AuthProvider } from '@self-deprecated/agent-tick-shared';
 
 const ConfigSchema = z.object({
   mode: AgentTickModeSchema.default('single'),

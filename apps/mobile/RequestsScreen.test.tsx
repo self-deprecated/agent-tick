@@ -24,7 +24,7 @@ jest.mock("expo-notifications", () => ({
 }));
 jest.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 
-import { createEncryptedRequestPayload, generateRequestEncryptionKey } from "@agent-tick/shared";
+import { createEncryptedRequestPayload, generateRequestEncryptionKey } from "@self-deprecated/agent-tick-shared";
 import { RequestsScreen, HistoryScreen } from "./App";
 import { groupRequestsBySource, normalizeRequest, type MobileRequest } from "./requests";
 

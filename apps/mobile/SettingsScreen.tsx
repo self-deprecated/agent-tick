@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { MeResponse } from "@agent-tick/sdk";
+import type { MeResponse } from "@self-deprecated/agent-tick-sdk";
 import { localeName, supportedLocales, translateSource, type LocalePreference, type SupportedLocale } from "@agent-tick/i18n";
-import type { PersonalBillingStatus } from "@agent-tick/shared";
+import type { PersonalBillingStatus } from "@self-deprecated/agent-tick-shared";
 import type { StoreProduct } from "./purchases";
 import { entitlementStatusCopy, formatHostedDate, hostedUsageExpiry, type HostedUsageExpiry } from "./AppLogic";
 import type { SavedMobileAccount } from "./mobileAuth";

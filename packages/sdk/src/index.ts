@@ -111,7 +111,7 @@ import {
   type WaitRequestResponse,
   type WorkspaceMemberRecord,
   type WorkspaceRecord
-} from '@agent-tick/shared';
+} from '@self-deprecated/agent-tick-shared';
 
 export type TokenProvider = () => Promise<string | null | undefined> | string | null | undefined;
 export type WorkspaceIdProvider = () => Promise<string | null | undefined> | string | null | undefined;
