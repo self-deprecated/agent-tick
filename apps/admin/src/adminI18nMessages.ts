@@ -24,7 +24,6 @@ export const i18nMessages = [
   msg`Authorize Agent Token`,
   msg`Backend routing`,
   msg`Cancel`,
-  msg`Clerk account menu`,
   msg`CLI authorization`,
   msg`Complete the Agent and Phone steps. Account management lives in Settings.`,
   msg`Connected Agent Tokens need a Routing Rule assignment before tests can route.`,
