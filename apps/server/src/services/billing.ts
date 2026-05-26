@@ -263,11 +263,12 @@ function productGroupForProduct(productKey: BillingProductKey): BillingProductGr
 async function activeEntitlementsForUser(store: AgentTickStore, userId: string, entitlement: PersonalEntitlementRecord, now: Date): Promise<PersonalBillingStatus['activeEntitlements']> {
   const transactions = await store.listBillingTransactionsForUser(userId);
   const lifetimeOrigin = newestTransaction(transactions.filter((transaction) => transaction.entitlementKey === 'lifetime_app_unlock' && isActiveLifetimeTransaction(transaction)));
-  const hostedOrigin = newestTransaction(transactions.filter((transaction) => transaction.entitlementKey === 'hosted_personal' && isActiveHostedTransaction(transaction, now)));
+  const lifetimeUnlock = lifetimeOrigin
+    ? activeEntitlementFromTransaction(lifetimeOrigin, true)
+    : { active: Boolean(entitlement.appUnlockedAt), ...(entitlement.appUnlockedAt ? { purchasedAt: entitlement.appUnlockedAt } : {}) };
+  const hostedOrigin = lifetimeUnlock.active ? newestTransaction(transactions.filter((transaction) => transaction.entitlementKey === 'hosted_personal' && isActiveHostedTransaction(transaction, now))) : undefined;
   return {
-    lifetimeUnlock: lifetimeOrigin
-      ? activeEntitlementFromTransaction(lifetimeOrigin, true)
-      : { active: Boolean(entitlement.appUnlockedAt), ...(entitlement.appUnlockedAt ? { purchasedAt: entitlement.appUnlockedAt } : {}) },
+    lifetimeUnlock,
     hostedPersonal: hostedOrigin
       ? activeEntitlementFromTransaction(hostedOrigin, isRenewingHostedTransaction(hostedOrigin))
       : { active: false }
@@ -292,6 +293,7 @@ async function purchaseAvailabilityForProduct(store: AgentTickStore, userId: str
     };
   }
   if (productKey !== 'lifetime_unlock') {
+    if (!activeEntitlements.lifetimeUnlock.active) return { allowed: false, reason: 'app_purchase_required' };
     if (activeEntitlements.hostedPersonal.active) {
       const originPlatform = activeEntitlements.hostedPersonal.originPlatform;
       return {

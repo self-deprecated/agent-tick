@@ -17,7 +17,6 @@ stateDiagram-v2
   TrialActive: hosted service active
   TrialActive --> TrialReadOnly: Trial ends without Lifetime app unlock
   TrialActive --> LifetimeUnlocked: Lifetime app unlock purchased/restored
-  TrialActive --> HostedSubscriptionActive: subscribe monthly/yearly
 
   TrialReadOnly: Read-only after Trial
   TrialReadOnly: viewing/settings/purchase/restore stay available
@@ -55,11 +54,11 @@ stateDiagram-v2
 
 | State | Entry condition | App responses | Hosted routing | Push | History/visibility | Exit |
 | --- | --- | --- | --- | --- | --- | --- |
-| Trial active | First open starts the 7-day local Trial | Enabled | Enabled for hosted context | Enabled for hosted context | Normal launch history behavior | Trial ends, Lifetime app unlock is purchased/restored, or hosted monthly/yearly subscription starts |
-| Read-only after Trial | Trial ended and no Lifetime app unlock exists | Disabled | Hosted service also inactive unless another hosted entitlement exists | Disabled for hosted service | Viewing, settings, purchase, and restore stay available | Purchase or restore Lifetime app unlock |
+| Trial active | First open starts the 7-day local Trial | Enabled | Enabled for hosted context | Enabled for hosted context | Normal launch history behavior | Trial ends or Lifetime app unlock is purchased/restored |
+| Read-only after Trial | Trial ended and no Lifetime app unlock exists | Disabled | Hosted service inactive until Lifetime unlock plus included hosted month or subscription | Disabled for hosted service | Viewing, settings, purchase, and restore stay available | Purchase or restore Lifetime app unlock |
 | Lifetime unlock active | One-time app-store purchase is recorded/restored | Enabled for self-hosted servers and active hosted contexts | Not included forever; hosted service needs Trial, included month, or subscription | Not included forever | Self-hosted app use remains unlocked on the app-store account | Activate included hosted month or subscribe |
 | Included hosted month active | Lifetime unlock exists and hosted service is activated for the included month | Enabled | Enabled | Enabled | Normal launch history behavior | Included month ends or hosted monthly/yearly subscription starts |
-| Hosted subscription active | Monthly/yearly hosted subscription is active | Enabled | Enabled | Enabled | Normal launch history behavior | Subscription lapses/cancels |
+| Hosted subscription active | Lifetime app unlock exists and monthly/yearly hosted subscription is active | Enabled | Enabled | Enabled | Normal launch history behavior | Subscription lapses/cancels |
 | Read-Only Routing Grace | Hosted subscription ended after cancellation and grace has not expired | Disabled for hosted requests | Enabled so recent hosted context can still be viewed/recovered | Disabled | Recent hosted history remains visible during the grace period | Renew, delete hosted data, or grace expires |
 | Hosted expired | No Trial, included month, active subscription, or grace applies | Disabled for hosted requests | Disabled | Disabled | Hosted retention drops to zero in current lifecycle status | Subscribe again or switch to self-hosted use |
 | Hosted data deleted | User deletes hosted data | Disabled | Disabled | Disabled | Hosted history retention is zero; safe hosted data is deleted/revoked | New hosted setup if supported later |
@@ -71,7 +70,7 @@ stateDiagram-v2
 - **Lifetime app unlock** is a one-time app-store purchase for ongoing first-party app use with self-hosted servers after Trial.
 - Lifetime app unlock **does not include hosted service forever**.
 - The **included hosted month** starts only when hosted service is first activated after Lifetime unlock; it does not run during the initial Trial.
-- Hosted monthly/yearly subscriptions can be purchased during Trial, during the included hosted month, or after hosted access expires.
+- Hosted monthly/yearly subscriptions require Lifetime app unlock first. After unlock, they can be purchased during Trial, during the included hosted month, or after hosted access expires.
 - The app shows the current hosted access expiry date and warns when non-renewing hosted access has one week or less remaining.
 - **Read-Only Routing Grace** is a hosted service recovery state after a canceled/lapsed subscription: routing and recent history remain available, but responses and push are disabled.
 - Self-hosted deployments are responsible for their own uptime, backups, notifications, and data retention.
@@ -82,7 +81,7 @@ Use this wording when updating public copy:
 
 - Good: “Agent Tick routes bounded Requests and responses.”
 - Good: “After Trial, Lifetime app unlock keeps first-party app use available with self-hosted servers.”
-- Good: “Hosted service requires Trial, included hosted month, or an active subscription.”
+- Good: “Hosted service requires Trial, or Lifetime app unlock plus an included hosted month or active subscription.”
 - Avoid: “The app purchase includes hosted service forever.”
 - Avoid: “The phone runs commands remotely.”
 - Avoid: “Read-only grace preserves all data indefinitely.”

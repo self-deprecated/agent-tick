@@ -28,13 +28,14 @@ export function addDays(value: string, days: number): string {
 export function hostedPersonalStatus(record: PersonalEntitlementRecord, now = new Date()): HostedPersonalStatus {
   const nowMs = now.getTime();
   const trialEndsAt = addDays(record.trialStartedAt, PERSONAL_TRIAL_DAYS);
-  const includedHostedEndsAt = record.includedHostedActivatedAt ? addDays(record.includedHostedActivatedAt, INCLUDED_HOSTED_MONTH_DAYS) : undefined;
-  const subscriptionEndsAt = record.hostedSubscriptionEndsAt;
+  const appUnlocked = Boolean(record.appUnlockedAt);
+  const includedHostedEndsAt = appUnlocked && record.includedHostedActivatedAt ? addDays(record.includedHostedActivatedAt, INCLUDED_HOSTED_MONTH_DAYS) : undefined;
+  const subscriptionEndsAt = appUnlocked ? record.hostedSubscriptionEndsAt : undefined;
   const subscriptionGraceEndsAt = subscriptionEndsAt ? addDays(subscriptionEndsAt, READ_ONLY_GRACE_DAYS) : undefined;
   const trialActive = new Date(trialEndsAt).getTime() > nowMs;
   const includedActive = includedHostedEndsAt ? new Date(includedHostedEndsAt).getTime() > nowMs : false;
   const subscriptionActive = subscriptionEndsAt ? new Date(subscriptionEndsAt).getTime() > nowMs : false;
-  const graceActive = Boolean(record.hostedSubscriptionCanceledAt && subscriptionEndsAt && subscriptionGraceEndsAt && new Date(subscriptionGraceEndsAt).getTime() > nowMs);
+  const graceActive = Boolean(appUnlocked && record.hostedSubscriptionCanceledAt && subscriptionEndsAt && subscriptionGraceEndsAt && new Date(subscriptionGraceEndsAt).getTime() > nowMs);
 
   if (record.hostedDataDeletedAt) {
     return { lifecycle: 'deleted', trialEndsAt, ...(includedHostedEndsAt ? { includedHostedEndsAt } : {}), ...(subscriptionEndsAt ? { hostedSubscriptionEndsAt: subscriptionEndsAt } : {}), ...(subscriptionGraceEndsAt ? { readOnlyGraceEndsAt: subscriptionGraceEndsAt } : {}), responsesEnabled: false, routingEnabled: false, pushEnabled: false, historyRetentionDays: 0 };

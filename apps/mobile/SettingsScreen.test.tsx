@@ -335,6 +335,29 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByText("Buy lifetime unlock")).toBeNull();
   });
 
+  it("does not show remaining Trial copy once paid entitlements are active", () => {
+    render(
+      <SettingsScreen
+        {...pairedProps}
+        nativeAppEntitlement={{
+          trialActive: true,
+          lifetimeUnlocked: true,
+          readOnly: false,
+          hostedSubscriptionActive: true,
+          includedHostedActive: false,
+          trialRemainingMs: 6 * 24 * 60 * 60 * 1000,
+        }}
+        personalBillingStatus={personalBillingFixture({ lifetimeActive: true, hostedActive: true, trialActive: true })}
+        trialRemainingLabel="6 days left in trial"
+      />,
+    );
+
+    fireEvent.press(screen.getByText("App access"));
+    expect(screen.getByText("Hosted service active")).toBeTruthy();
+    expect(screen.getByText("Your Lifetime app unlock and hosted service are active.")).toBeTruthy();
+    expect(screen.queryByText("6 days left in trial")).toBeNull();
+  });
+
   it("offers the included hosted month after lifetime unlock and trial end", () => {
     const onActivateIncludedHostedMonth = jest.fn();
     render(

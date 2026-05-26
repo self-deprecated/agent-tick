@@ -227,7 +227,7 @@ export function SettingsScreen({
   ];
 
   const entitlementCopy = nativeAppEntitlement ? entitlementStatusCopy({ trialRemainingMs: 0, ...nativeAppEntitlement }) : null;
-  const entitlementSummary = nativeAppEntitlement?.trialActive && trialRemainingLabel ? trialRemainingLabel : entitlementCopy?.summary;
+  const entitlementSummary = entitlementCopy?.summary;
   const lifetimeAvailability = personalBillingStatus?.purchaseAvailability.lifetime_unlock;
   const monthlyAvailability = personalBillingStatus?.purchaseAvailability.hosted_personal_monthly;
   const yearlyAvailability = personalBillingStatus?.purchaseAvailability.hosted_personal_yearly;

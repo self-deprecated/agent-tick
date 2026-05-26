@@ -53,6 +53,7 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
       }
       await store.updatePersonalEntitlement({ userId, includedHostedActivatedAt: current.includedHostedActivatedAt ?? now.toISOString() }, now.toISOString());
     } else if (input.event === 'subscribe_monthly' || input.event === 'subscribe_yearly') {
+      if (!current.appUnlockedAt) throw billingError(400, 'app_purchase_required', 'Lifetime app unlock is required before subscribing to hosted personal service');
       const days = input.event === 'subscribe_yearly' ? 365 : 31;
       await store.updatePersonalEntitlement({ userId, hostedSubscriptionEndsAt: addDays(now, days), hostedSubscriptionCanceledAt: null }, now.toISOString());
     } else if (input.event === 'cancel_subscription') {

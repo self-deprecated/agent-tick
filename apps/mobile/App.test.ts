@@ -72,6 +72,20 @@ describe("native app entitlement", () => {
     expect(state.readOnly).toBe(false);
   });
 
+  it("does not make hosted subscription access usable before lifetime unlock", () => {
+    const state = nativeAppEntitlement({
+      now: new Date("2026-05-09T00:00:00.000Z"),
+      firstOpenedAt: "2026-05-01T00:00:00.000Z",
+      hostedSubscriptionActive: true,
+    });
+    expect(state.hostedSubscriptionActive).toBe(false);
+    expect(hostedPersonalActive(state)).toBe(false);
+    expect(entitlementStatusCopy(state)).toMatchObject({
+      title: "Read-only after Trial",
+      appAccess: "Responses are disabled until Lifetime app unlock is purchased or restored.",
+    });
+  });
+
   it("provides clear app access and paywall copy", () => {
     const trial = nativeAppEntitlement({ now: new Date("2026-05-02T00:00:00.000Z"), firstOpenedAt: "2026-05-01T00:00:00.000Z" });
     expect(entitlementStatusCopy(trial)).toMatchObject({

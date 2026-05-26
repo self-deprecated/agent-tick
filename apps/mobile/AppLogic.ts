@@ -39,9 +39,9 @@ export function nativeAppEntitlement(input: NativeAppEntitlementInput): NativeAp
   const trialEnd = trialEndsAt(trialStartedAt);
   const trialRemainingMs = Math.max(0, new Date(trialEnd).getTime() - input.now.getTime());
   const trialActive = trialRemainingMs > 0;
-  const includedHostedActive = Boolean(input.includedHostedActivatedAt && new Date(includedHostedEndsAt(input.includedHostedActivatedAt)).getTime() > input.now.getTime());
   const lifetimeUnlocked = input.lifetimeUnlocked === true;
-  const hostedSubscriptionActive = input.hostedSubscriptionActive === true;
+  const includedHostedActive = lifetimeUnlocked && Boolean(input.includedHostedActivatedAt && new Date(includedHostedEndsAt(input.includedHostedActivatedAt)).getTime() > input.now.getTime());
+  const hostedSubscriptionActive = lifetimeUnlocked && input.hostedSubscriptionActive === true;
   return {
     trialStartedAt,
     trialEndsAt: trialEnd,
@@ -61,7 +61,7 @@ export function trialRemainingLabel(remainingMs: number): string {
 }
 
 export function hostedPersonalActive(state: NativeAppEntitlementState): boolean {
-  return state.trialActive || state.includedHostedActive || state.hostedSubscriptionActive;
+  return state.trialActive || (state.lifetimeUnlocked && (state.includedHostedActive || state.hostedSubscriptionActive));
 }
 
 export type HostedUsageExpirySource = "trial" | "included_month" | "subscription" | "read_only_grace";
@@ -121,7 +121,7 @@ export type EntitlementStatusCopy = {
 
 export function entitlementStatusCopy(state: Pick<NativeAppEntitlementState, "trialActive" | "lifetimeUnlocked" | "readOnly" | "hostedSubscriptionActive" | "includedHostedActive" | "trialRemainingMs">): EntitlementStatusCopy {
   const remaining = trialRemainingLabel(state.trialRemainingMs);
-  if (state.hostedSubscriptionActive) {
+  if (state.lifetimeUnlocked && state.hostedSubscriptionActive) {
     return {
       title: "Hosted service active",
       summary: "Your Lifetime app unlock and hosted service are active.",
@@ -130,7 +130,7 @@ export function entitlementStatusCopy(state: Pick<NativeAppEntitlementState, "tr
       paywall: "Manage or cancel the hosted subscription from the app store when needed.",
     };
   }
-  if (state.includedHostedActive) {
+  if (state.lifetimeUnlocked && state.includedHostedActive) {
     return {
       title: "Included hosted month active",
       summary: "Your Lifetime app unlock is active, and the included hosted month is running.",
