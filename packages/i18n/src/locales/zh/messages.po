@@ -1,0 +1,2462 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-05-15 15:20+0200\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#: apps/admin/src/adminI18nMessages.ts:5
+msgid ". Instructions stay visible even before phone setup is complete."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:5
+msgid "· last sent $"
+msgstr "·上次发送时间： $"
+
+#: apps/mobile/mobileI18nMessages.ts:6
+msgid "‹ Back"
+msgstr "‹ 返回"
+
+#: apps/mobile/mobileI18nMessages.ts:7
+msgid "‹ Connections"
+msgstr "â¹ Connections"
+
+#: apps/mobile/mobileI18nMessages.ts:8
+msgid "‹ Previous"
+msgstr "‹ 上一项"
+
+#: apps/mobile/mobileI18nMessages.ts:9
+msgid "‹ Settings"
+msgstr "‹ 设置"
+
+#: apps/mobile/mobileI18nMessages.ts:10
+msgid "$ $ left in trial"
+msgstr "试用还剩$ $"
+
+#: apps/mobile/mobileI18nMessages.ts:11
+msgid "$ account"
+msgstr "$ 帐户"
+
+#: apps/admin/src/adminI18nMessages.ts:6
+msgid "$ selected · $ push-ready · $ available"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:12
+msgid "1 connection"
+msgstr "1个连接"
+
+#: apps/admin/src/adminI18nMessages.ts:7
+msgid "1. Connect your phone"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:8
+msgid "2. Send a Test Request"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:9
+msgid "3. Connect an Agent"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:10
+msgid "4. Receive real Agent Activity"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:13
+msgid "7-day Trial"
+msgstr "7天试用"
+
+#: apps/mobile/mobileI18nMessages.ts:14
+msgid "7-day Trial active"
+msgstr "7天试用有效"
+
+#: apps/mobile/mobileI18nMessages.ts:15
+msgid "A purchase is already in progress. Try again in a few minutes."
+msgstr "购买已在进行中。 请在几分钟后重试。"
+
+#: apps/mobile/mobileI18nMessages.ts:16
+msgid "A purchase is already in progress. Wait a few minutes, then try again."
+msgstr "购买已在进行中。 请稍等几分钟，然后重试。"
+
+#: apps/mobile/mobileI18nMessages.ts:17
+msgid "A qualifying app access purchase is required before this action."
+msgstr "在此操作之前，需要购买符合条件的应用访问权限。"
+
+#: apps/mobile/mobileI18nMessages.ts:18
+msgid "Abandoned"
+msgstr "已放弃"
+
+#: apps/admin/src/adminI18nMessages.ts:11
+msgid "Account"
+msgstr "账户"
+
+#: apps/mobile/mobileI18nMessages.ts:19
+msgid "Account deletion failed"
+msgstr "账号删除失败"
+
+#: apps/admin/src/adminI18nMessages.ts:12
+msgid "Account menu"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:20
+#~ msgid "Action placement"
+#~ msgstr "操作位置"
+
+#: apps/mobile/mobileI18nMessages.ts:20
+msgid "Active"
+msgstr "当前"
+
+#: apps/mobile/mobileI18nMessages.ts:21
+msgid "Active on this App Store account, independent of your hosted Agent Tick account."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:22
+msgid "Active via Apple. Manage on iOS or the App Store."
+msgstr "通过苹果激活。在 iOS 或 App Store 上进行管理。"
+
+#: apps/mobile/mobileI18nMessages.ts:23
+msgid "Active via Google. Manage on Android or Google Play."
+msgstr "通过谷歌活跃。在 Android 或 Google Play 上进行管理。"
+
+#: apps/admin/src/adminI18nMessages.ts:13
+msgid "Activity"
+msgstr "活动"
+
+#: apps/mobile/mobileI18nMessages.ts:24
+msgid "Add a hosted connection to receive Requests from agenttick.sh on this phone."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:25
+msgid "Add agenttick.sh connection"
+msgstr "添加 agenttick.sh 连接"
+
+#: apps/mobile/mobileI18nMessages.ts:26
+msgid "Add another account"
+msgstr "添加另一个账户"
+
+#: apps/mobile/mobileI18nMessages.ts:27
+msgid "Add hosted connection"
+msgstr "添加托管连接"
+
+#: apps/mobile/mobileI18nMessages.ts:28
+msgid "Add self-hosted connection"
+msgstr "添加自托管连接"
+
+#: apps/mobile/mobileI18nMessages.ts:29
+msgid "add-account: $"
+msgstr "添加帐户：$"
+
+#: apps/mobile/mobileI18nMessages.ts:30
+msgid "Adjust visible Session Lanes or archive the stack."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:31
+msgid "Advanced"
+msgstr "高级"
+
+#: apps/mobile/mobileI18nMessages.ts:33
+#~ msgid "After content"
+#~ msgstr "内容之后"
+
+#: apps/admin/src/adminI18nMessages.ts:14
+msgid "After setup, receive a real agent-originated Request. Details are visible in the Native App before Trial, but response buttons require a Trial or subscription."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:32
+msgid "Agent"
+msgstr "代理"
+
+#: apps/mobile/mobileI18nMessages.ts:33
+msgid "Agent Activity"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:15
+msgid "Agent Assignment"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:16
+msgid "Agent Connections"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:34
+msgid "Agent is waiting"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:35
+msgid "Agent Session"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:36
+msgid "Agent stopped waiting"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:37
+msgid "Agent Tick can follow your device language or use a language you choose here."
+msgstr "Agent Tick 可以跟随设备语言，或使用你在此选择的语言。"
+
+#: apps/admin/src/adminI18nMessages.ts:17
+msgid "Agent Tick CLI requested an Agent Token named"
+msgstr "Agent Tick CLI 请求名为的代理令牌"
+
+#: apps/admin/src/adminI18nMessages.ts:18
+msgid "Agent Tick Console"
+msgstr "Agent Tick 控制台"
+
+#: apps/mobile/mobileI18nMessages.ts:38
+msgid "Agent Tick Hosted"
+msgstr "Agent Tick 托管"
+
+#: apps/mobile/mobileI18nMessages.ts:39
+msgid "Agent Tick needs your attention."
+msgstr "Agent Tick 需要您的注意。"
+
+#: apps/mobile/mobileI18nMessages.ts:40
+msgid "Agent Tick server URLs must use HTTPS in production builds."
+msgstr "Agent Tick 服务器 URL 在生产版本中必须使用 HTTPS。"
+
+#: apps/mobile/mobileI18nMessages.ts:41
+msgid "Agent Tick shares coarse last-seen and availability with your Workspaces so Routing Rules can route Requests. Use Do Not Disturb or Off-call when you should not be interrupted."
+msgstr "Agent Tick 与您的工作区共享粗略的上次查看和可用性，以便路由规则可以路由请求。当您不应被打扰时，请使用“请勿打扰”或“挂断电话”。"
+
+#: apps/mobile/mobileI18nMessages.ts:42
+msgid "Agent Tick works best when notifications are on, so urgent Requests can reach you even when the app is closed."
+msgstr "Agent Tick 在通知打开时效果最佳，因此即使应用程序关闭，紧急请求也可以到达您。"
+
+#: apps/admin/src/adminI18nMessages.ts:19
+msgid "Agent Token authorized. Return to your terminal."
+msgstr "代理令牌已授权。返回您的终端。"
+
+#: apps/admin/src/adminI18nMessages.ts:20
+msgid "Agent Token label"
+msgstr "代理令牌标签"
+
+#: apps/mobile/mobileI18nMessages.ts:43
+msgid "Agent wait expired"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:44
+msgid "Agent wait failed"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:45
+msgid "Agent wait is stale"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:46
+msgid "Agent waiting"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:47
+msgid "agenttick.sh did not advertise Clerk sign-in."
+msgstr "agenttick.sh 未声明支持 Clerk 登录。"
+
+#: apps/mobile/mobileI18nMessages.ts:48
+msgid "agenttick.sh routing, push, updates, and uptime are covered by your hosted subscription."
+msgstr "agenttick.sh 路由、推送、更新和正常运行时间均由您的托管订阅涵盖。"
+
+#: apps/mobile/mobileI18nMessages.ts:49
+msgid "All ("
+msgstr "全部（"
+
+#: apps/mobile/mobileI18nMessages.ts:50
+msgid "Already purchased for this Agent Tick account."
+msgstr "已为此 Agent Tick 帐户购买。"
+
+#: apps/mobile/mobileI18nMessages.ts:51
+msgid "Annual hosted routing, push notifications, updates, uptime, and hosted plus self-hosted responses while active."
+msgstr "年度托管路由、推送通知、更新、正常运行时间以及活动时的托管和自托管响应。"
+
+#: apps/mobile/mobileI18nMessages.ts:52
+msgid "Answer"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:53
+msgid "Answer:"
+msgstr "答案："
+
+#: apps/mobile/mobileI18nMessages.ts:54
+msgid "Answered"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:55
+msgid "App access"
+msgstr "应用程序访问"
+
+#: apps/mobile/mobileI18nMessages.ts:56
+msgid "App access still loading"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:59
+#~ msgid "Appearance"
+#~ msgstr "外观"
+
+#: apps/admin/src/adminI18nMessages.ts:21
+msgid "Approval Devices"
+msgstr "批准装置"
+
+#: apps/mobile/mobileI18nMessages.ts:57
+msgid "Approve high-risk Sanction?"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:58
+msgid "Approve Sanction"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:22
+msgid "Approve this high-risk Sanction? Review the command before continuing."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:59
+msgid "Approved"
+msgstr "已批准"
+
+#: apps/mobile/mobileI18nMessages.ts:60
+msgid "Archive all"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:61
+msgid "Archive Session"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:62
+msgid "Archive this Session?"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:63
+msgid "Archived Sessions are hidden from the main stack until new Activity arrives."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:23
+msgid "Assigned Routing Rule was not found"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:24
+msgid "Authorize Agent Token"
+msgstr "授权代理令牌"
+
+#: apps/mobile/mobileI18nMessages.ts:64
+msgid "Auto size"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:65
+msgid "Availability"
+msgstr "可用状态"
+
+#: apps/mobile/mobileI18nMessages.ts:66
+msgid "Availability update failed"
+msgstr "更新可用状态失败"
+
+#: apps/admin/src/adminI18nMessages.ts:25
+msgid "Available"
+msgstr "有空"
+
+#: apps/mobile/mobileI18nMessages.ts:67
+msgid "Back"
+msgstr "返回"
+
+#: apps/mobile/mobileI18nMessages.ts:68
+msgid "Back to history"
+msgstr "返回历史"
+
+#: apps/mobile/mobileI18nMessages.ts:69
+msgid "Back to Session Stack"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:70
+msgid "Buffered events:"
+msgstr "缓冲事件："
+
+#: apps/admin/src/adminI18nMessages.ts:26
+msgid "Busy"
+msgstr "忙碌"
+
+#: apps/mobile/mobileI18nMessages.ts:71
+msgid "Buy Self-hosted Lifetime"
+msgstr "购买终身自托管"
+
+#: apps/mobile/mobileI18nMessages.ts:72
+msgid "Buy Self-hosted Lifetime only if you want self-hosted responses after the subscription ends."
+msgstr "仅当您希望在订阅结束后自行托管回复时才购买自托管终身。"
+
+#: apps/mobile/mobileI18nMessages.ts:73
+msgid "Camera Access"
+msgstr "相机访问"
+
+#: apps/admin/src/adminI18nMessages.ts:27
+msgid "Cancel"
+msgstr "取消"
+
+#: apps/mobile/mobileI18nMessages.ts:74
+msgid "Cancel Request"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:75
+msgid "Change Session Lane size"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:76
+msgid "Check Connection"
+msgstr "检查连接"
+
+#: apps/mobile/mobileI18nMessages.ts:77
+msgid "Checking"
+msgstr "检查中"
+
+#: apps/mobile/mobileI18nMessages.ts:78
+msgid "Checking…"
+msgstr "检查中…"
+
+#: apps/mobile/mobileI18nMessages.ts:81
+#~ msgid "Choice behavior"
+#~ msgstr "选择行为"
+
+#: apps/mobile/mobileI18nMessages.ts:82
+#~ msgid "Choice behavior, action placement, and confirmation"
+#~ msgstr "Choice behavior, action placement, and confirmation"
+
+#: apps/mobile/mobileI18nMessages.ts:79
+msgid "Choose account type"
+msgstr "选择账户类型"
+
+#: apps/mobile/mobileI18nMessages.ts:80
+msgid "Choose how to use Agent Tick"
+msgstr "Choose how to use Agent Tick"
+
+#: apps/mobile/mobileI18nMessages.ts:81
+msgid "Choose which Workspace this phone should show Requests for. Routing Rule access is managed on the Agent Tick console."
+msgstr "Choose which Workspace this phone should show Requests for. Routing Rule access is managed on the Agent Tick console."
+
+#: apps/mobile/mobileI18nMessages.ts:82
+msgid "Clear Session Stack?"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:83
+msgid "Clears this app install's Agent Tick storage, saved connections, Clerk login cache, and local purchase cache. It does not erase App Store purchase history or hosted server entitlements."
+msgstr "Clears this app install's Agent Tick storage, saved connections, Clerk login cache, and local purchase cache. It does not erase App Store purchase history or hosted server entitlements."
+
+#: apps/admin/src/adminI18nMessages.ts:28
+msgid "Clerk account management"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:84
+msgid "Clerk native sign-in cannot start a second session while another session is active. Sign out first, then sign in with the account you want to add."
+msgstr "Clerk native sign-in cannot start a second session while another session is active. Sign out first, then sign in with the account you want to add."
+
+#: apps/mobile/mobileI18nMessages.ts:85
+msgid "Clerk session switching is unavailable"
+msgstr "Clerk session switching is unavailable"
+
+#: apps/admin/src/adminI18nMessages.ts:29
+msgid "Clerk UI bundle loaded without registering UI components"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:30
+msgid "Clerk UI bundle script is present but UI components are unavailable"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:31
+msgid "Clerk user profile button"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:32
+msgid "Clerk Workspace switcher"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:86
+#~ msgid "clerk: $"
+#~ msgstr "职员：$"
+
+#: apps/admin/src/adminI18nMessages.ts:33
+msgid "CLI authorization"
+msgstr "CLI 授权"
+
+#: apps/mobile/mobileI18nMessages.ts:91
+#~ msgid "Clickable"
+#~ msgstr "可点击"
+
+#: apps/mobile/mobileI18nMessages.ts:86
+msgid "Close menu"
+msgstr "关闭菜单"
+
+#: apps/mobile/mobileI18nMessages.ts:87
+msgid "Closes"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:88
+msgid "Collapse"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:89
+msgid "Collapse all"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:90
+msgid "Collapse past Request $"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:91
+msgid "Collapse request details"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:92
+msgid "Command"
+msgstr "命令"
+
+#: apps/mobile/mobileI18nMessages.ts:93
+msgid "Community vote"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:100
+#~ msgid "Confirm clickable submissions"
+#~ msgstr "确认可点击提交"
+
+#: apps/admin/src/adminI18nMessages.ts:34
+msgid "Connect this Workspace"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:94
+msgid "Connect to an Agent Tick server that you or your Workspace runs."
+msgstr "Connect to an Agent Tick server that you or your Workspace runs."
+
+#: apps/mobile/mobileI18nMessages.ts:95
+msgid "Connected"
+msgstr "已连接"
+
+#: apps/mobile/mobileI18nMessages.ts:96
+msgid "Connected accounts"
+msgstr "关联账户"
+
+#: apps/admin/src/adminI18nMessages.ts:35
+msgid "Connected Agent Connections need a Routing Rule assignment before Shared Workspace tests can route to members."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:97
+msgid "Connection"
+msgstr "连接"
+
+#: apps/mobile/mobileI18nMessages.ts:98
+msgid "Connection inbox"
+msgstr "连接收件箱"
+
+#: apps/admin/src/adminI18nMessages.ts:36
+msgid "Connection tests"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:37
+msgid "Connections"
+msgstr "连接"
+
+#: apps/mobile/mobileI18nMessages.ts:99
+msgid "Context"
+msgstr "上下文"
+
+#: apps/mobile/mobileI18nMessages.ts:100
+msgid "Continue"
+msgstr "继续"
+
+#: apps/mobile/mobileI18nMessages.ts:101
+msgid "Continue read-only"
+msgstr "继续只读"
+
+#: apps/admin/src/adminI18nMessages.ts:38
+msgid "Copy setup prompt"
+msgstr "复制设置提示"
+
+#: apps/mobile/mobileI18nMessages.ts:102
+msgid "Could not accept this invite"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:103
+msgid "Could not complete purchase"
+msgstr "无法完成购买"
+
+#: apps/mobile/mobileI18nMessages.ts:104
+msgid "Could not delete account"
+msgstr "无法删除账号"
+
+#: apps/mobile/mobileI18nMessages.ts:105
+msgid "Could not link purchases"
+msgstr "无法链接购买"
+
+#: apps/mobile/mobileI18nMessages.ts:106
+msgid "Could not open link"
+msgstr "无法打开链接"
+
+#: apps/mobile/mobileI18nMessages.ts:107
+msgid "Could not pair this device"
+msgstr "无法配对此设备"
+
+#: apps/mobile/mobileI18nMessages.ts:108
+msgid "Could not reach agenttick.sh."
+msgstr "无法连接 agenttick.sh。"
+
+#: apps/mobile/mobileI18nMessages.ts:109
+msgid "Could not read server auth config"
+msgstr "无法读取服务器认证配置"
+
+#: apps/mobile/mobileI18nMessages.ts:110
+msgid "Could not register push for any connected account."
+msgstr "无法注册任何关联帐户的推送。"
+
+#: apps/mobile/mobileI18nMessages.ts:111
+msgid "Could not register push notifications"
+msgstr "无法注册推送通知"
+
+#: apps/mobile/mobileI18nMessages.ts:112
+msgid "Could not restore purchases"
+msgstr "无法恢复购买"
+
+#: apps/mobile/mobileI18nMessages.ts:113
+msgid "Could not send diagnostics"
+msgstr "无法发送诊断信息"
+
+#: apps/mobile/mobileI18nMessages.ts:114
+msgid "Could not send response"
+msgstr "无法发送响应"
+
+#: apps/mobile/mobileI18nMessages.ts:115
+msgid "Could not update availability"
+msgstr "无法更新可用状态"
+
+#: apps/admin/src/adminI18nMessages.ts:39
+msgid "Create a Routing Rule before Shared Workspace Requests can route to Members."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:40
+msgid "Create Routing Rule"
+msgstr "创建路由规则"
+
+#: apps/mobile/mobileI18nMessages.ts:116
+msgid "Danger zone"
+msgstr "危险区域"
+
+#: apps/mobile/mobileI18nMessages.ts:117
+msgid "Debug tools and diagnostics"
+msgstr "Debug tools and diagnostics"
+
+#: apps/mobile/mobileI18nMessages.ts:118
+msgid "Debug tools for testing paywalls, hosted expiry warnings, diagnostics, and mobile state. Agent Tick avoids sending Request text, commands, bearer tokens, or Clerk secrets."
+msgstr "Debug tools for testing paywalls, hosted expiry warnings, diagnostics, and mobile state. Agent Tick avoids sending Request text, commands, bearer tokens, or Clerk secrets."
+
+#: apps/mobile/mobileI18nMessages.ts:119
+msgid "Delete account"
+msgstr "删除账户"
+
+#: apps/mobile/mobileI18nMessages.ts:120
+msgid "Delete account unavailable"
+msgstr "Delete account unavailable"
+
+#: apps/mobile/mobileI18nMessages.ts:121
+msgid "Delete account?"
+msgstr "删除帐户？"
+
+#: apps/admin/src/adminI18nMessages.ts:41
+msgid "Delete Routing Rule $ ?"
+msgstr "删除路由规则 $ ?"
+
+#: apps/mobile/mobileI18nMessages.ts:122
+msgid "Delete your hosted Agent Tick account, hosted personal Requests and Activity, devices, and Agent Tick tokens. Shared Workspace content may remain."
+msgstr "Delete your hosted Agent Tick account, hosted personal Requests and Activity, devices, and Agent Tick tokens. Shared Workspace content may remain."
+
+#: apps/mobile/mobileI18nMessages.ts:123
+msgid "Deleting or recreating a hosted account does not remove Self-hosted Lifetime from the same App Store account."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:124
+msgid "Denied"
+msgstr "已拒绝"
+
+#: apps/mobile/mobileI18nMessages.ts:125
+msgid "Developer"
+msgstr "开发商"
+
+#: apps/admin/src/adminI18nMessages.ts:42
+msgid "Developer diagnostics"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:43
+msgid "Developer diagnostics may include raw Workspace, Agent Connection, Approval Device, and event identifiers."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:126
+msgid "Development build required"
+msgstr "需要开发构建"
+
+#: apps/mobile/mobileI18nMessages.ts:127
+msgid "Diagnostic logs"
+msgstr "诊断日志"
+
+#: apps/mobile/mobileI18nMessages.ts:128
+msgid "Diagnostics can only be sent after a hosted or self-hosted connection is available."
+msgstr "只有在托管或自托管连接可用后，才能发送诊断。"
+
+#: apps/mobile/mobileI18nMessages.ts:129
+msgid "Diagnostics could not be sent."
+msgstr "无法发送诊断。"
+
+#: apps/mobile/mobileI18nMessages.ts:130
+msgid "Diagnostics failed"
+msgstr "诊断失败"
+
+#: apps/mobile/mobileI18nMessages.ts:131
+msgid "Diagnostics require a connected account."
+msgstr "诊断需要一个已连接的帐户。"
+
+#: apps/mobile/mobileI18nMessages.ts:132
+msgid "Diagnostics sent"
+msgstr "诊断已发送"
+
+#: apps/mobile/mobileI18nMessages.ts:133
+msgid "Directory"
+msgstr "目录"
+
+#: apps/mobile/mobileI18nMessages.ts:134
+msgid "Disable"
+msgstr "禁用"
+
+#: apps/mobile/mobileI18nMessages.ts:135
+msgid "Disabled"
+msgstr "已禁用"
+
+#: apps/admin/src/adminI18nMessages.ts:44
+msgid "Disconnect"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:45
+msgid "Disconnect Approval Device $ ?"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:136
+msgid "Disconnected"
+msgstr "已断开"
+
+#: apps/mobile/mobileI18nMessages.ts:137
+msgid "Dismiss latest agent status"
+msgstr "忽略最新代理状态"
+
+#: apps/admin/src/adminI18nMessages.ts:46
+msgid "Do not disturb"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:138
+msgid "Do Not Disturb"
+msgstr "免打扰"
+
+#: apps/admin/src/adminI18nMessages.ts:47
+msgid "Email"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:139
+msgid "Enable"
+msgstr "启用"
+
+#: apps/mobile/mobileI18nMessages.ts:140
+msgid "Enable Camera"
+msgstr "启用相机"
+
+#: apps/mobile/mobileI18nMessages.ts:141
+msgid "Enable Notifications"
+msgstr "启用通知"
+
+#: apps/mobile/mobileI18nMessages.ts:142
+msgid "Enable notifications first."
+msgstr "请先启用通知。"
+
+#: apps/mobile/mobileI18nMessages.ts:143
+msgid "Enable Request alerts"
+msgstr "启用请求警报"
+
+#: apps/mobile/mobileI18nMessages.ts:144
+msgid "Enabled"
+msgstr "已启用"
+
+#: apps/mobile/mobileI18nMessages.ts:145
+msgid "Enter a pairing code from your self-hosted Agent Tick server."
+msgstr "输入来自自托管代理Tick服务器的配对代码。"
+
+#: apps/mobile/mobileI18nMessages.ts:146
+msgid "Enter a valid Agent Tick server URL."
+msgstr "输入有效的Agent Tick服务器URL。"
+
+#: apps/mobile/mobileI18nMessages.ts:147
+msgid "Entitlement source"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:48
+msgid "Error"
+msgstr "错误"
+
+#: apps/mobile/mobileI18nMessages.ts:148
+msgid "Expand all"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:149
+msgid "Expand past Request $"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:150
+msgid "Expand request details"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:151
+msgid "Expired"
+msgstr "已过期"
+
+#: apps/mobile/mobileI18nMessages.ts:152
+msgid "Expires"
+msgstr "过期时间"
+
+#: apps/admin/src/adminI18nMessages.ts:49
+msgid "Failed to load Clerk UI bundle"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:153
+msgid "Failed to poll events"
+msgstr "轮询事件失败"
+
+#: apps/mobile/mobileI18nMessages.ts:154
+msgid "Favorite choice"
+msgstr "收藏选项"
+
+#: apps/mobile/mobileI18nMessages.ts:155
+msgid "Focus Request"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:156
+msgid "Focus Request $"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:164
+#~ msgid "Focused Request"
+#~ msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:50
+msgid "Follow-up page:"
+msgstr "随访页面："
+
+#: apps/admin/src/adminI18nMessages.ts:51
+msgid "for server"
+msgstr "适用于服务器"
+
+#: apps/mobile/mobileI18nMessages.ts:157
+msgid "Forget Device"
+msgstr "忘记设备"
+
+#: apps/mobile/mobileI18nMessages.ts:158
+msgid "Free"
+msgstr "免费"
+
+#: apps/mobile/mobileI18nMessages.ts:159
+msgid "Free App Store purchase. No subscription starts."
+msgstr "免费App Store购买。没有订阅开始。"
+
+#: apps/mobile/mobileI18nMessages.ts:160
+msgid "General"
+msgstr "一般"
+
+#: apps/mobile/mobileI18nMessages.ts:161
+msgid "Go to dashboard"
+msgstr "转到仪表板"
+
+#: apps/mobile/mobileI18nMessages.ts:162
+msgid "Hide option details"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:163
+msgid "History"
+msgstr "历史"
+
+#: apps/mobile/mobileI18nMessages.ts:164
+msgid "Host"
+msgstr "主机"
+
+#: apps/mobile/mobileI18nMessages.ts:165
+msgid "Hosted account: fresh. No Hosted subscription is linked to this Agent Tick account."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:166
+msgid "Hosted login session"
+msgstr "托管登录会话"
+
+#: apps/mobile/mobileI18nMessages.ts:167
+msgid "Hosted monthly"
+msgstr "每月举办一次"
+
+#: apps/mobile/mobileI18nMessages.ts:168
+msgid "Hosted personal service"
+msgstr "托管个人服务"
+
+#: apps/mobile/mobileI18nMessages.ts:169
+msgid "Hosted personal service is included during Trial."
+msgstr "试用期间包含托管个人服务。"
+
+#: apps/mobile/mobileI18nMessages.ts:170
+msgid "Hosted read-only grace ends on"
+msgstr "托管只读宽限期结束于"
+
+#: apps/mobile/mobileI18nMessages.ts:171
+msgid "Hosted responses require Hosted service"
+msgstr "托管响应需要托管服务"
+
+#: apps/mobile/mobileI18nMessages.ts:172
+msgid "Hosted routing and push are available until the trial ends."
+msgstr "在试用期结束之前，托管路由和推送均可用。"
+
+#: apps/mobile/mobileI18nMessages.ts:173
+msgid "Hosted routing, push notifications, updates, uptime, and hosted plus self-hosted responses while active."
+msgstr "托管路由、推送通知、更新、正常运行时间以及活动时的托管和自托管响应。"
+
+#: apps/mobile/mobileI18nMessages.ts:174
+msgid "Hosted service"
+msgstr "托管服务"
+
+#: apps/mobile/mobileI18nMessages.ts:175
+msgid "Hosted service active"
+msgstr "托管服务活跃"
+
+#: apps/mobile/mobileI18nMessages.ts:176
+msgid "Hosted service ending soon"
+msgstr "托管服务即将结束"
+
+#: apps/mobile/mobileI18nMessages.ts:177
+msgid "Hosted service is active on another app-store platform."
+msgstr "托管服务在另一个应用商店平台上处于活动状态。"
+
+#: apps/mobile/mobileI18nMessages.ts:178
+msgid "Hosted service is active on another platform. Manage it on the platform where it was purchased."
+msgstr "托管服务在另一个平台上处于活动状态。在购买的平台上进行管理。"
+
+#: apps/mobile/mobileI18nMessages.ts:179
+msgid "Hosted service is active via Apple. Manage it on iOS or in the App Store."
+msgstr "托管服务通过 Apple 激活。在 iOS 或 App Store 中进行管理。"
+
+#: apps/mobile/mobileI18nMessages.ts:180
+msgid "Hosted service is active via Google. Manage it on Android or in Google Play."
+msgstr "托管服务通过 Google 激活。在 Android 或 Google Play 中进行管理。"
+
+#: apps/mobile/mobileI18nMessages.ts:181
+msgid "Hosted service is active. Hosted subscriptions also unlock self-hosted responses while active."
+msgstr "托管服务处于活动状态。托管订阅在活动时还会解锁自托管响应。"
+
+#: apps/mobile/mobileI18nMessages.ts:182
+msgid "Hosted service is already active for this Agent Tick account."
+msgstr "此 Agent Tick 帐户的托管服务已处于活动状态。"
+
+#: apps/mobile/mobileI18nMessages.ts:183
+msgid "Hosted service is already active."
+msgstr "托管服务已激活。"
+
+#: apps/mobile/mobileI18nMessages.ts:184
+msgid "Hosted service is inactive. Subscribe to respond on hosted Requests, or buy Self-hosted Lifetime to respond on self-hosted servers."
+msgstr "托管服务处于非活动状态。订阅以响应托管请求，或购买自托管终身以在自托管服务器上响应。"
+
+#: apps/mobile/mobileI18nMessages.ts:185
+msgid "Hosted service is included during Trial."
+msgstr "试用期间包含托管服务。"
+
+#: apps/mobile/mobileI18nMessages.ts:186
+msgid "Hosted service required"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:187
+msgid "Hosted service requires an active 7-day Trial or Hosted subscription."
+msgstr "托管服务需要有效的 7 天试用版或托管订阅。"
+
+#: apps/mobile/mobileI18nMessages.ts:188
+msgid "Hosted subscription expires on"
+msgstr "托管订阅到期日期"
+
+#: apps/mobile/mobileI18nMessages.ts:189
+msgid "Hosted subscription is active for this app-store account. Sign in to hosted Agent Tick to link routing, push, history, and billing."
+msgstr "此应用商店帐户的托管订阅处于活动状态。登录托管的 Agent Tick 以链接路由、推送、历史记录和计费。"
+
+#: apps/mobile/mobileI18nMessages.ts:190
+msgid "Hosted subscription renews on"
+msgstr "托管订阅续订于"
+
+#: apps/mobile/mobileI18nMessages.ts:191
+msgid "Hosted subscriptions auto-renew until canceled in your App Store account settings."
+msgstr "托管订阅会自动续订，直到您在 App Store 帐户设置中取消为止。"
+
+#: apps/mobile/mobileI18nMessages.ts:192
+msgid "Hosted Trial ends on"
+msgstr "托管审判结束于"
+
+#: apps/mobile/mobileI18nMessages.ts:193
+msgid "Hosted yearly"
+msgstr "每年举办一次"
+
+#: apps/mobile/mobileI18nMessages.ts:194
+msgid "In-app purchases are only available on iOS and Android."
+msgstr "应用内购买仅适用于 iOS 和 Android。"
+
+#: apps/mobile/mobileI18nMessages.ts:195
+msgid "Includes hosted personal routing, push notifications, updates, uptime, and responses for your Agent Tick account."
+msgstr "包括您的 Agent Tick 帐户的托管个人路由、推送通知、更新、正常运行时间和响应。"
+
+#: apps/admin/src/adminI18nMessages.ts:52
+msgid "Install the Native App and register push notifications for this Human Account."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:196
+msgid "Installed: $ ·"
+msgstr "Installed: $ Â·"
+
+#: apps/admin/src/adminI18nMessages.ts:53
+msgid "Invalid callback URL"
+msgstr "回调 URL 无效"
+
+#: apps/admin/src/adminI18nMessages.ts:54
+msgid "Invalid Clerk publishable key"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:55
+msgid "Invalid CLI server URL"
+msgstr "CLI 服务器 URL 无效"
+
+#: apps/mobile/mobileI18nMessages.ts:197
+msgid "Invalid QR code"
+msgstr "无效的二维码"
+
+#: apps/admin/src/adminI18nMessages.ts:56
+msgid "Invite at least one more active Member before configuring Connections and routing."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:198
+msgid "Invite failed"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:199
+msgid "Jump to new Session Activity"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:200
+msgid "just now"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:57
+msgid "Language"
+msgstr "语言"
+
+#: apps/mobile/mobileI18nMessages.ts:201
+msgid "Last check-in unavailable"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:202
+msgid "Last checked in"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:203
+msgid "Legal & support"
+msgstr "法律与支持"
+
+#: apps/mobile/mobileI18nMessages.ts:204
+msgid "Let us run Request routing, push, updates, uptime, and hosted plus self-hosted responses while active."
+msgstr "让我们在活动时运行请求路由、推送、更新、正常运行时间以及托管和自托管响应。"
+
+#: apps/mobile/mobileI18nMessages.ts:205
+msgid "Lifetime app unlock is already active for this Agent Tick account."
+msgstr "此 Agent Tick 帐户的终身应用程序解锁已处于活动状态。"
+
+#: apps/mobile/mobileI18nMessages.ts:206
+msgid "Link completed, but no active purchases were found for this app-store account."
+msgstr "链接已完成，但未找到此应用商店帐户的有效购买。"
+
+#: apps/mobile/mobileI18nMessages.ts:207
+msgid "Link purchases"
+msgstr "链接购买"
+
+#: apps/mobile/mobileI18nMessages.ts:208
+msgid "Link purchases failed"
+msgstr "链接购买失败"
+
+#: apps/mobile/mobileI18nMessages.ts:209
+msgid "Link purchases to hosted account"
+msgstr "将购买链接到托管帐户"
+
+#: apps/mobile/mobileI18nMessages.ts:210
+msgid "Load earlier Session history"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:58
+msgid "Load older history"
+msgstr "加载较旧的历史记录"
+
+#: apps/admin/src/adminI18nMessages.ts:59
+msgid "Loading Agent Tick Console…"
+msgstr "Loading Agent Tick Consoleâ¦"
+
+#: apps/mobile/mobileI18nMessages.ts:211
+msgid "Loading Agent Tick…"
+msgstr "正在加载 Agent Tick…"
+
+#: apps/mobile/mobileI18nMessages.ts:212
+msgid "Loading Session detail…"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:213
+msgid "Loading Session timeline…"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:214
+msgid "Local test reset"
+msgstr "本地测试重置"
+
+#: apps/mobile/mobileI18nMessages.ts:215
+msgid "Manage connections"
+msgstr "管理连接"
+
+#: apps/mobile/mobileI18nMessages.ts:216
+msgid "Manage connections ›"
+msgstr "Manage connections âº"
+
+#: apps/admin/src/adminI18nMessages.ts:60
+msgid "Manage in Clerk"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:217
+msgid "Manage or cancel Hosted service from $ ."
+msgstr "管理或取消 $ 的托管服务。"
+
+#: apps/mobile/mobileI18nMessages.ts:218
+msgid "Manage or cancel the hosted subscription from the app store when needed."
+msgstr "需要时从应用程序商店管理或取消托管订阅。"
+
+#: apps/mobile/mobileI18nMessages.ts:219
+msgid "Manage subscription"
+msgstr "管理订阅"
+
+#: apps/mobile/mobileI18nMessages.ts:220
+msgid "Manage the accounts and servers this phone can receive Requests from. The inbox shows Requests from all connections together."
+msgstr "管理此手机可以接收请求的帐户和服务器。收件箱显示来自所有连接的请求。"
+
+#: apps/mobile/mobileI18nMessages.ts:221
+msgid "Manual Bearer Token"
+msgstr "手动 Bearer 令牌"
+
+#: apps/mobile/mobileI18nMessages.ts:222
+msgid "Manual Pairing Code"
+msgstr "手动配对码"
+
+#: apps/mobile/mobileI18nMessages.ts:223
+msgid "Manual self-hosted setup"
+msgstr "手动自托管设置"
+
+#: apps/mobile/mobileI18nMessages.ts:224
+msgid "May not reach agent"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:225
+msgid "Member response $ $"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:61
+msgid "Members and roles"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:226
+msgid "Menu"
+msgstr "菜单"
+
+#: apps/mobile/mobileI18nMessages.ts:227
+msgid "Minimum supported:"
+msgstr "最低支持："
+
+#: apps/admin/src/adminI18nMessages.ts:62
+msgid "Missing Clerk publishable key from server auth config"
+msgstr "服务器身份验证配置中缺少 Clerk 可发布密钥"
+
+#: apps/mobile/mobileI18nMessages.ts:228
+msgid "Monthly"
+msgstr "每月"
+
+#: apps/admin/src/adminI18nMessages.ts:63
+msgid "Name"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:64
+msgid "Needs input"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:229
+msgid "Needs sign-in"
+msgstr "需要登录"
+
+#: apps/mobile/mobileI18nMessages.ts:230
+msgid "New Activity will reappear here as Session Lanes."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:231
+msgid "New Session Lanes will appear here when an agent sends a Request or Status Update."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:232
+msgid "Next ›"
+msgstr "下一项 ›"
+
+#: apps/mobile/mobileI18nMessages.ts:233
+msgid "Next history item"
+msgstr "下一条历史记录"
+
+#: apps/mobile/mobileI18nMessages.ts:234
+msgid "Next: $"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:65
+msgid "No Agent Connections yet."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:66
+msgid "No Approval Devices are connected for this account yet."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:67
+msgid "No assigned Routing Rule"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:235
+msgid "No hosted expiry loaded"
+msgstr "未加载托管到期"
+
+#: apps/mobile/mobileI18nMessages.ts:236
+msgid "No live wait"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:68
+msgid "No Request selected"
+msgstr "未选择请求"
+
+#: apps/mobile/mobileI18nMessages.ts:237
+msgid "No saved connections yet."
+msgstr "尚未保存连接。"
+
+#: apps/mobile/mobileI18nMessages.ts:238
+msgid "No saved hosted connections"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:239
+msgid "No Session archive yet."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:69
+msgid "No Sessions need input right now. Terminal and recent Sessions stay available below."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:240
+msgid "Not Asked"
+msgstr "未请求"
+
+#: apps/mobile/mobileI18nMessages.ts:241
+msgid "not selected"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:242
+msgid "Notifications"
+msgstr "通知"
+
+#: apps/mobile/mobileI18nMessages.ts:243
+msgid "Notifications are off"
+msgstr "通知已关闭"
+
+#: apps/mobile/mobileI18nMessages.ts:244
+msgid "Notifications are working."
+msgstr "通知正常工作。"
+
+#: apps/mobile/mobileI18nMessages.ts:250
+#~ msgid "Off"
+#~ msgstr "关闭"
+
+#: apps/mobile/mobileI18nMessages.ts:245
+msgid "Off in Agent Tick"
+msgstr "在 Agent Tick 中关闭"
+
+#: apps/mobile/mobileI18nMessages.ts:246
+msgid "Off in system settings"
+msgstr "在系统设置中关闭"
+
+#: apps/admin/src/adminI18nMessages.ts:70
+msgid "Off-call"
+msgstr "非值班"
+
+#: apps/mobile/mobileI18nMessages.ts:247
+msgid "On"
+msgstr "开启"
+
+#: apps/admin/src/adminI18nMessages.ts:71
+msgid "Onboarding stage"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:248
+msgid "One-time purchase"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:72
+msgid "Only your current signed-in Human Account's Approval Devices are shown here."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:249
+msgid "Open $"
+msgstr "打开$"
+
+#: apps/admin/src/adminI18nMessages.ts:73
+msgid "Open a pending or recent Request to inspect quorum and Responses."
+msgstr "打开待定或最近的请求，以检查仲裁和响应。"
+
+#: apps/admin/src/adminI18nMessages.ts:74
+msgid "Open a Session to inspect Status Updates, Requests, and Responses in timeline order."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:250
+msgid "Open App access after billing status loads, then try again."
+msgstr "加载账单状态后打开应用访问权限，然后重试。"
+
+#: apps/mobile/mobileI18nMessages.ts:251
+#~ msgid "Open App access to start the free Trial or unlock responses."
+#~ msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:251
+msgid "Open archived Session $"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:75
+msgid "Open Connections"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:252
+msgid "Open history item $"
+msgstr "打开历史记录项$"
+
+#: apps/mobile/mobileI18nMessages.ts:253
+msgid "Open menu"
+msgstr "打开菜单"
+
+#: apps/mobile/mobileI18nMessages.ts:254
+msgid "Open Session $"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:255
+msgid "Open Session actions"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:256
+msgid "Open Session Stack actions"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:76
+msgid "Open this section to load Developer diagnostics."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:257
+msgid "Open this URL in your browser:"
+msgstr "在浏览器中打开此网址："
+
+#: apps/mobile/mobileI18nMessages.ts:258
+msgid "Open update"
+msgstr "打开更新"
+
+#: apps/mobile/mobileI18nMessages.ts:259
+msgid "Optional message"
+msgstr "可选消息"
+
+#: apps/mobile/mobileI18nMessages.ts:260
+msgid "Optional: buy Self-hosted Lifetime only if you want self-hosted responses after your hosted subscription ends."
+msgstr "可选：仅当您希望在托管订阅结束后自行托管回复时才购买自托管终身。"
+
+#: apps/mobile/mobileI18nMessages.ts:261
+msgid "Options"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:262
+msgid "Options:"
+msgstr "选项："
+
+#: apps/mobile/mobileI18nMessages.ts:263
+msgid "Owner"
+msgstr "所有者"
+
+#: apps/mobile/mobileI18nMessages.ts:264
+msgid "Pair first"
+msgstr "请先配对"
+
+#: apps/mobile/mobileI18nMessages.ts:265
+msgid "Pair Manually"
+msgstr "手动配对"
+
+#: apps/mobile/mobileI18nMessages.ts:266
+msgid "Pair this device before registering push notifications."
+msgstr "注册推送通知前请先配对此设备。"
+
+#: apps/mobile/mobileI18nMessages.ts:267
+msgid "Paired"
+msgstr "已配对"
+
+#: apps/mobile/mobileI18nMessages.ts:268
+msgid "Pairing"
+msgstr "配对"
+
+#: apps/mobile/mobileI18nMessages.ts:269
+msgid "Pairing code required"
+msgstr "需要配对码"
+
+#: apps/mobile/mobileI18nMessages.ts:270
+msgid "Pairing failed"
+msgstr "配对失败"
+
+#: apps/admin/src/adminI18nMessages.ts:77
+msgid "Pending"
+msgstr "待处理"
+
+#: apps/mobile/mobileI18nMessages.ts:271
+msgid "pending ·"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:78
+msgid "Pending Requests"
+msgstr "待处理的请求"
+
+#: apps/admin/src/adminI18nMessages.ts:79
+msgid "Personal Workspace routing"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:80
+msgid "Plan"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:81
+msgid "Preferences"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:272
+msgid "Previous history item"
+msgstr "上一条历史记录"
+
+#: apps/admin/src/adminI18nMessages.ts:82
+msgid "Primary navigation"
+msgstr "主要导航"
+
+#: apps/admin/src/adminI18nMessages.ts:83
+msgid "Privacy policy"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:273
+msgid "Privacy Policy"
+msgstr "隐私政策"
+
+#: apps/admin/src/adminI18nMessages.ts:84
+msgid "Privacy support contact"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:274
+msgid "Purchase confirmed. Hosted service is active."
+msgstr "购买已确认。托管服务处于活动状态。"
+
+#: apps/mobile/mobileI18nMessages.ts:275
+msgid "Purchase confirmed. Self-hosted Lifetime access is active for this app-store account."
+msgstr "购买已确认。此应用商店帐户的自托管终身访问处于活动状态。"
+
+#: apps/mobile/mobileI18nMessages.ts:276
+msgid "Purchase failed"
+msgstr "购买失败"
+
+#: apps/mobile/mobileI18nMessages.ts:277
+msgid "Purchase is not available right now."
+msgstr "目前无法购买。"
+
+#: apps/mobile/mobileI18nMessages.ts:278
+msgid "Purchase received. Hosted access may take a moment to sync."
+msgstr "购买已收到。托管访问可能需要一些时间才能同步。"
+
+#: apps/mobile/mobileI18nMessages.ts:279
+msgid "Purchase restore succeeded locally. Agent Tick may still be waiting for the store entitlement to sync to this hosted account."
+msgstr "本地购买恢复成功。 Agent Tick 可能仍在等待商店授权同步到此托管帐户。"
+
+#: apps/mobile/mobileI18nMessages.ts:280
+msgid "Purchase unavailable"
+msgstr "无法购买"
+
+#: apps/mobile/mobileI18nMessages.ts:281
+msgid "Purchases are linked to this hosted Agent Tick account."
+msgstr "购买链接到此托管 Agent Tick 帐户。"
+
+#: apps/mobile/mobileI18nMessages.ts:282
+msgid "Purchases are not enabled on this server."
+msgstr "此服务器上不支持购买。"
+
+#: apps/mobile/mobileI18nMessages.ts:283
+msgid "Purchases are still loading. Try again in a moment or open App access for details."
+msgstr "购买仍在加载中。请稍后再试或打开应用程序访问以了解详细信息。"
+
+#: apps/mobile/mobileI18nMessages.ts:284
+msgid "Purchases unavailable"
+msgstr "无法购买"
+
+#: apps/mobile/mobileI18nMessages.ts:285
+msgid "Push Registered"
+msgstr "推送已注册"
+
+#: apps/mobile/mobileI18nMessages.ts:286
+msgid "Push registration failed"
+msgstr "推送注册失败"
+
+#: apps/mobile/mobileI18nMessages.ts:287
+msgid "Push:"
+msgstr "推送："
+
+#: apps/mobile/mobileI18nMessages.ts:288
+msgid "Question"
+msgstr "问题"
+
+#: apps/mobile/mobileI18nMessages.ts:289
+msgid "Questions"
+msgstr "问题"
+
+#: apps/admin/src/adminI18nMessages.ts:85
+msgid "Raw IDs and recent events"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:290
+msgid "Read-only"
+msgstr "只读"
+
+#: apps/mobile/mobileI18nMessages.ts:291
+msgid "Read-only after Trial"
+msgstr "试用后只读"
+
+#: apps/admin/src/adminI18nMessages.ts:86
+msgid "Recent Activity"
+msgstr "最近的活动"
+
+#: apps/admin/src/adminI18nMessages.ts:87
+msgid "Recent audit events"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:88
+msgid "Recent Sessions"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:89
+msgid "Recipient readiness is shown as aggregate counts; other members’ full Approval Device inventories stay hidden."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:90
+msgid "Recommended connection order"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:91
+msgid "Redirecting to sign in…"
+msgstr "Redirecting to sign inâ¦"
+
+#: apps/mobile/mobileI18nMessages.ts:292
+msgid "Refresh"
+msgstr "刷新"
+
+#: apps/admin/src/adminI18nMessages.ts:92
+msgid "Refresh Activity"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:293
+msgid "Refresh before responding if possible."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:294
+msgid "Register Push"
+msgstr "注册推送"
+
+#: apps/mobile/mobileI18nMessages.ts:295
+msgid "Registered"
+msgstr "已注册"
+
+#: apps/admin/src/adminI18nMessages.ts:93
+msgid "Release approvals"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:296
+msgid "Remote push needs a real EAS project id. Pairing still works; use local notifications until an EAS development build is configured."
+msgstr "远程推送需要真实的 EAS 项目 ID。配对仍可使用；在配置 EAS 开发构建前请使用本地通知。"
+
+#: apps/mobile/mobileI18nMessages.ts:297
+msgid "Remove"
+msgstr "删除"
+
+#: apps/mobile/mobileI18nMessages.ts:298
+msgid "Request"
+msgstr "请求"
+
+#: apps/mobile/mobileI18nMessages.ts:299
+msgid "Request alerts and push status"
+msgstr "请求提醒和推送状态"
+
+#: apps/mobile/mobileI18nMessages.ts:300
+msgid "Request alerts are off in Agent Tick"
+msgstr "客服代表Tick中的请求警报已关闭"
+
+#: apps/admin/src/adminI18nMessages.ts:94
+msgid "Request detail"
+msgstr "申请详情"
+
+#: apps/mobile/mobileI18nMessages.ts:301
+msgid "Request details"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:302
+msgid "Requested"
+msgstr "已请求"
+
+#: apps/mobile/mobileI18nMessages.ts:303
+msgid "Requester"
+msgstr "请求者"
+
+#: apps/mobile/mobileI18nMessages.ts:304
+msgid "Requests"
+msgstr "请求"
+
+#: apps/admin/src/adminI18nMessages.ts:95
+msgid "Required responses"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:305
+msgid "Required Responses"
+msgstr "所需的响应"
+
+#: apps/mobile/mobileI18nMessages.ts:306
+msgid "Required responses are complete."
+msgstr "所需的回答已完成。"
+
+#: apps/mobile/mobileI18nMessages.ts:307
+msgid "Reset"
+msgstr "重置"
+
+#: apps/mobile/mobileI18nMessages.ts:308
+msgid "Reset local test state"
+msgstr "重置本地测试状态"
+
+#: apps/mobile/mobileI18nMessages.ts:309
+msgid "Reset local test state?"
+msgstr "重置本地测试状态？"
+
+#: apps/mobile/mobileI18nMessages.ts:310
+msgid "Resolved"
+msgstr "已解决"
+
+#: apps/admin/src/adminI18nMessages.ts:96
+msgid "Respond"
+msgstr "回应"
+
+#: apps/mobile/mobileI18nMessages.ts:311
+msgid "Responded"
+msgstr "已响应"
+
+#: apps/mobile/mobileI18nMessages.ts:312
+msgid "responded $"
+msgstr "回复 $"
+
+#: apps/admin/src/adminI18nMessages.ts:97
+msgid "Response entitlement"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:313
+msgid "Response failed"
+msgstr "响应失败"
+
+#: apps/mobile/mobileI18nMessages.ts:314
+msgid "Response message"
+msgstr "响应消息"
+
+#: apps/mobile/mobileI18nMessages.ts:315
+msgid "Response progress"
+msgstr "响应进度"
+
+#: apps/admin/src/adminI18nMessages.ts:98
+msgid "Responses entitled until"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:317
+#~ msgid "Responses locked"
+#~ msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:316
+msgid "Responses require an active 7-day Trial, Hosted subscription, or Self-hosted Lifetime unlock."
+msgstr "响应需要有效的 7 天试用版、托管订阅或自托管终身解锁。"
+
+#: apps/mobile/mobileI18nMessages.ts:317
+msgid "Restore completed, but no active entitlement was found for this app-store account."
+msgstr "恢复已完成，但未找到此应用商店帐户的有效权利。"
+
+#: apps/mobile/mobileI18nMessages.ts:318
+msgid "Restore failed"
+msgstr "恢复失败"
+
+#: apps/mobile/mobileI18nMessages.ts:319
+msgid "Restore purchases"
+msgstr "恢复购买"
+
+#: apps/mobile/mobileI18nMessages.ts:320
+msgid "Restore purchases is unavailable"
+msgstr "无法恢复购买"
+
+#: apps/admin/src/adminI18nMessages.ts:99
+msgid "Retry"
+msgstr "重试"
+
+#: apps/mobile/mobileI18nMessages.ts:321
+msgid "Retry sign-in"
+msgstr "重试登录"
+
+#: apps/mobile/mobileI18nMessages.ts:322
+msgid "RevenueCat API key is not configured for this platform"
+msgstr "未为此平台配置 RevenueCat API 密钥"
+
+#: apps/mobile/mobileI18nMessages.ts:323
+msgid "Review Agent Tick's policies or contact support before or after signing in."
+msgstr "在登录之前或之后查看 Agent Tick 的政策或联系支持人员。"
+
+#: apps/admin/src/adminI18nMessages.ts:100
+msgid "Revoke Agent Token $ ?"
+msgstr "撤销代理令牌 $ ?"
+
+#: apps/mobile/mobileI18nMessages.ts:324
+msgid "Route coding-agent Requests to your phone. Start free, self-host forever, or let us host it."
+msgstr "将编码代理请求路由到您的手机。免费开始，永久自行托管，或者让我们托管。"
+
+#: apps/admin/src/adminI18nMessages.ts:101
+msgid "Routing Preview unavailable"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:325
+msgid "Routing Rule"
+msgstr "路由规则"
+
+#: apps/admin/src/adminI18nMessages.ts:102
+msgid "Routing Rule name"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:103
+msgid "Routing Rule needed"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:104
+msgid "Routing Rules"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:105
+msgid "Routing Rules decide which Workspace Members receive Requests from assigned Agent Connections."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:106
+msgid "Routing Rules require a name and at least one selected Workspace Member."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:326
+msgid "Sanction Request"
+msgstr "制裁请求"
+
+#: apps/admin/src/adminI18nMessages.ts:107
+msgid "Save recipients"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:108
+msgid "Save Routing Rule"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:327
+msgid "Scan a pairing QR from your self-hosted Agent Tick server, or open Advanced to enter a pairing code manually."
+msgstr "从自托管 Agent Tick 服务器扫描配对二维码，或打开“高级”手动输入配对码。"
+
+#: apps/mobile/mobileI18nMessages.ts:328
+msgid "Scan Pairing QR"
+msgstr "扫描配对二维码"
+
+#: apps/admin/src/adminI18nMessages.ts:109
+msgid "Seat limit"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:110
+msgid "Security contact"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:335
+#~ msgid "Select + send"
+#~ msgstr "选择并发送"
+
+#: apps/mobile/mobileI18nMessages.ts:336
+#~ msgid "Select all that apply"
+#~ msgstr "选择所有适用项"
+
+#: apps/mobile/mobileI18nMessages.ts:329
+msgid "Select one"
+msgstr "选择一项"
+
+#: apps/mobile/mobileI18nMessages.ts:330
+msgid "Select one or more"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:331
+msgid "Self-hosted Lifetime"
+msgstr "自托管终身"
+
+#: apps/mobile/mobileI18nMessages.ts:332
+msgid "Self-hosted Lifetime access was restored for this app-store account. Self-hosted Agent Tick responses are unlocked."
+msgstr "此应用商店帐户的自托管终身访问权限已恢复。自托管 Agent Tick 响应已解锁。"
+
+#: apps/mobile/mobileI18nMessages.ts:333
+msgid "Self-hosted Lifetime active"
+msgstr "自托管 终身活跃"
+
+#: apps/mobile/mobileI18nMessages.ts:334
+msgid "Self-hosted Lifetime is active on this App Store account."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:335
+msgid "Self-hosted responses require an active Trial, Hosted subscription, or Self-hosted Lifetime unlock."
+msgstr "自托管响应需要有效的试用版、托管订阅或自托管终身解锁。"
+
+#: apps/mobile/mobileI18nMessages.ts:336
+msgid "Self-hosted server"
+msgstr "自托管服务器"
+
+#: apps/mobile/mobileI18nMessages.ts:337
+msgid "Self-hosted server data is controlled by that server's operator, not hosted Agent Tick or Self-Deprecated ApS."
+msgstr "自托管服务器数据由该服务器的运营商控制，而不是托管 Agent Tick 或自弃用的 ApS。"
+
+#: apps/mobile/mobileI18nMessages.ts:338
+msgid "Self-hosted server URL"
+msgstr "自托管服务器 URL"
+
+#: apps/mobile/mobileI18nMessages.ts:339
+msgid "Self-hosting Agent Tick?"
+msgstr "自托管 Agent Tick？"
+
+#: apps/admin/src/adminI18nMessages.ts:111
+msgid "Send a first-party Test Request from the web app. Current backend routing limits still apply for Shared Workspaces."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:340
+msgid "Send a test Request from the web app."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:341
+msgid "Send decision"
+msgstr "发送决定"
+
+#: apps/admin/src/adminI18nMessages.ts:112
+msgid "Send route test"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:342
+msgid "Send Snapshot"
+msgstr "发送快照"
+
+#: apps/mobile/mobileI18nMessages.ts:343
+msgid "Send this decision?"
+msgstr "发送此决定？"
+
+#: apps/mobile/mobileI18nMessages.ts:344
+msgid "Sending response…"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:345
+msgid "Sent $ diagnostic event $ ."
+msgstr "发送$诊断事件$。"
+
+#: apps/mobile/mobileI18nMessages.ts:346
+msgid "Server discovery failed"
+msgstr "服务器发现失败"
+
+#: apps/mobile/mobileI18nMessages.ts:347
+msgid "Server saved"
+msgstr "服务器已保存"
+
+#: apps/mobile/mobileI18nMessages.ts:348
+msgid "Server URL"
+msgstr "服务器 URL"
+
+#: apps/mobile/mobileI18nMessages.ts:349
+msgid "Server:"
+msgstr "服务器："
+
+#: apps/admin/src/adminI18nMessages.ts:113
+msgid "Session Activity is temporarily unavailable. Showing the latest Activity fallback where possible."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:350
+msgid "Session Archive"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:114
+msgid "Session detail"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:115
+msgid "Session list"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:351
+msgid "Session Stack actions"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:352
+msgid "Session Stack cleared"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:353
+msgid "Session timeline is loading."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:116
+msgid "Sessions needing input first, then recent Session activity. Use the Native App for day-to-day approvals; this web view remains available as a fallback."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:117
+msgid "Settings"
+msgstr "设置"
+
+#: apps/admin/src/adminI18nMessages.ts:118
+msgid "Shared Workspace billing is separate from Personal Workspace purchases. Members cannot respond while payment is required."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:119
+msgid "Shared Workspace name"
+msgstr "共享工作区名称"
+
+#: apps/mobile/mobileI18nMessages.ts:354
+msgid "Show hosted expiry warning"
+msgstr "显示托管到期警告"
+
+#: apps/mobile/mobileI18nMessages.ts:355
+msgid "Show native paywall"
+msgstr "显示原生付费专区"
+
+#: apps/mobile/mobileI18nMessages.ts:356
+msgid "Show option details"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:357
+msgid "Shows which account, store identity, server entitlement, and final decision are currently driving access."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:358
+msgid "Sign in required"
+msgstr "需要登录"
+
+#: apps/mobile/mobileI18nMessages.ts:359
+msgid "Sign in to Agent Tick"
+msgstr "登录 Agent Tick"
+
+#: apps/mobile/mobileI18nMessages.ts:360
+msgid "Sign in to Agent Tick, then scan this invite again to connect approval Requests."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:361
+msgid "Sign in to agenttick.sh"
+msgstr "登录 agenttick.sh"
+
+#: apps/mobile/mobileI18nMessages.ts:362
+msgid "Sign in to agenttick.sh for hosted routing, push, updates, and uptime."
+msgstr "登录 agenttick.sh 以获取托管路由、推送、更新和正常运行时间。"
+
+#: apps/mobile/mobileI18nMessages.ts:363
+msgid "Sign in to an Agent Tick hosted account before deleting it."
+msgstr "在删除之前先登录 Agent Tick 托管帐户。"
+
+#: apps/mobile/mobileI18nMessages.ts:364
+msgid "Sign in to hosted Agent Tick to link purchases to routing, push, history, and billing."
+msgstr "登录托管的 Agent Tick 将购买链接到路由、推送、历史记录和计费。"
+
+#: apps/mobile/mobileI18nMessages.ts:365
+msgid "Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server."
+msgstr "登录托管的 Agent Tick 服务，或将此应用连接到你自己的自托管服务器。"
+
+#: apps/mobile/mobileI18nMessages.ts:366
+msgid "Sign in with Clerk to use this Agent Tick server."
+msgstr "使用 Clerk 登录以使用此 Agent Tick 服务器。"
+
+#: apps/mobile/mobileI18nMessages.ts:367
+msgid "Sign out of hosted login"
+msgstr "退出托管登录"
+
+#: apps/admin/src/adminI18nMessages.ts:120
+msgid "Sign-in method"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:368
+msgid "signIn"
+msgstr "登录"
+
+#: apps/mobile/mobileI18nMessages.ts:369
+msgid "Signs out of the current hosted login and removes that hosted connection from this phone. Other saved connections stay available."
+msgstr "退出当前托管登录，并从此手机移除该托管连接。其他已保存的连接仍可用。"
+
+#: apps/mobile/mobileI18nMessages.ts:370
+msgid "Source"
+msgstr "来源"
+
+#: apps/mobile/mobileI18nMessages.ts:371
+msgid "Start 7-day Trial"
+msgstr "开始 7 天试用"
+
+#: apps/mobile/mobileI18nMessages.ts:372
+msgid "Start the 7-day Trial or subscribe to Hosted service before registering hosted push notifications."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:373
+msgid "Start with a free App Store purchase. No subscription starts."
+msgstr "从免费的 App Store 购买开始。没有订阅开始。"
+
+#: apps/admin/src/adminI18nMessages.ts:121
+msgid "Start with your phone: connect an Approval Device, send a Test Request from the web app to the Native App, then connect an Agent Connection so Activity can reach the right people."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:374
+msgid "Status Update"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:375
+msgid "Status updates"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:376
+msgid "Status:"
+msgstr "状态："
+
+#: apps/mobile/mobileI18nMessages.ts:377
+msgid "Steering"
+msgstr "引导"
+
+#: apps/mobile/mobileI18nMessages.ts:378
+msgid "Steering Request"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:385
+#~ msgid "Sticky bottom"
+#~ msgstr "固定在底部"
+
+#: apps/mobile/mobileI18nMessages.ts:379
+msgid "Store product is not configured for this platform"
+msgstr "商店产品未为此平台配置"
+
+#: apps/mobile/mobileI18nMessages.ts:380
+msgid "Store purchases were restored and hosted service is active for this Agent Tick account."
+msgstr "商店购买已恢复，并且此 Agent Tick 帐户的托管服务处于活动状态。"
+
+#: apps/mobile/mobileI18nMessages.ts:381
+msgid "Store subscription found, but it is linked to another Agent Tick account."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:382
+msgid "Submit Answers"
+msgstr "提交答案"
+
+#: apps/admin/src/adminI18nMessages.ts:122
+msgid "Submitted Responses"
+msgstr "提交的答复"
+
+#: apps/mobile/mobileI18nMessages.ts:383
+msgid "Subscribe monthly"
+msgstr "每月订阅"
+
+#: apps/mobile/mobileI18nMessages.ts:384
+msgid "Subscribe monthly or yearly to keep hosted routing, push, and responses active."
+msgstr "每月或每年订阅以保持托管路由、推送和响应的活动状态。"
+
+#: apps/mobile/mobileI18nMessages.ts:385
+msgid "Subscribe monthly or yearly to use first-party hosted routing, push, updates, uptime, and hosted plus self-hosted responses while active."
+msgstr "每月或每年订阅，以在活动期间使用第一方托管路由、推送、更新、正常运行时间以及托管加自托管响应。"
+
+#: apps/mobile/mobileI18nMessages.ts:386
+msgid "Subscribe to Hosted service or buy Self-hosted Lifetime before the trial ends to keep responding."
+msgstr "在试用结束前订阅托管服务或购买自托管终身，以保持响应。"
+
+#: apps/mobile/mobileI18nMessages.ts:387
+msgid "Subscribe to Hosted service to respond on agenttick.sh Requests, or keep self-hosted access separate with Lifetime."
+msgstr "订阅托管服务以响应 agenttick.sh 请求，或将自托管访问与生命周期分开。"
+
+#: apps/mobile/mobileI18nMessages.ts:388
+msgid "Subscribe when you want first-party hosted routing, push, updates, and uptime."
+msgstr "当您需要第一方托管路由、推送、更新和正常运行时间时，请订阅。"
+
+#: apps/mobile/mobileI18nMessages.ts:389
+msgid "Subscribe yearly"
+msgstr "每年订阅"
+
+#: apps/mobile/mobileI18nMessages.ts:390
+msgid "Subscription management is only available on iOS and Android"
+msgstr "订阅管理仅适用于 iOS 和 Android"
+
+#: apps/mobile/mobileI18nMessages.ts:391
+msgid "Subscriptions auto-renew until canceled. Manage or cancel in your App Store account settings."
+msgstr "订阅会自动续订，直至取消。在您的 App Store 帐户设置中管理或取消。"
+
+#: apps/admin/src/adminI18nMessages.ts:123
+msgid "Support"
+msgstr "支持"
+
+#: apps/admin/src/adminI18nMessages.ts:124
+msgid "Support and privacy"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:125
+msgid "Support links"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:126
+msgid "System"
+msgstr "系统"
+
+#: apps/mobile/mobileI18nMessages.ts:392
+msgid "Tap for details"
+msgstr "点按查看详情"
+
+#: apps/admin/src/adminI18nMessages.ts:127
+msgid "Terms"
+msgstr "条款"
+
+#: apps/admin/src/adminI18nMessages.ts:128
+msgid "Test"
+msgstr "测试"
+
+#: apps/admin/src/adminI18nMessages.ts:129
+msgid "Test Agent Connection"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:393
+msgid "Test Request"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:394
+msgid "The 7-day Trial has already been started for this account."
+msgstr "该帐户已开始 7 天试用。"
+
+#: apps/mobile/mobileI18nMessages.ts:395
+msgid "The 7-day Trial purchase was restored. Responses are unlocked if the trial window is still active."
+msgstr "7 天试用购买已恢复。如果试用窗口仍处于活动状态，则响应将被解锁。"
+
+#: apps/mobile/mobileI18nMessages.ts:396
+msgid "The answer may not reach the original agent."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:397
+msgid "The mobile app signs in to agenttick.sh by default. Use a custom server only when you self-host Agent Tick."
+msgstr "移动应用默认登录 agenttick.sh。仅在自托管 Agent Tick 时使用自定义服务器。"
+
+#: apps/admin/src/adminI18nMessages.ts:130
+msgid "These instructions stay visible from the start. After phone proof, this becomes the recommended next setup step."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:398
+msgid "This account does not currently have a hosted expiry to show."
+msgstr "此帐户当前没有可显示的托管到期时间。"
+
+#: apps/mobile/mobileI18nMessages.ts:399
+msgid "This clears this app install's Agent Tick storage, saved connections, Clerk login cache, and local purchase cache. It does not erase App Store purchase history or hosted server entitlements."
+msgstr "这将清除此应用程序安装的 Agent Tick 存储、保存的连接、职员登录缓存和本地购买缓存。它不会删除 App Store 购买历史记录或托管服务器权利。"
+
+#: apps/mobile/mobileI18nMessages.ts:400
+msgid "This device can now receive Requests."
+msgstr "This device can now receive Requests."
+
+#: apps/mobile/mobileI18nMessages.ts:401
+msgid "This does not look like an Agent Tick pairing code."
+msgstr "这看起来不像 Agent Tick 配对码。"
+
+#: apps/mobile/mobileI18nMessages.ts:402
+msgid "This hides every visible Session Lane from the stack until new Activity arrives."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:403
+msgid "This permanently deletes your hosted Agent Tick account, removes hosted personal Request and Activity content, unregisters devices, and revokes Agent Tick tokens. Shared Workspace content may remain under that Workspace's policy. This cannot be undone."
+msgstr "这将永久删除您托管的 Agent Tick 帐户、删除托管的个人请求和活动内容、注销设备并撤销 Agent Tick 令牌。共享工作区内容可能仍遵守该工作区的政策。此操作无法撤消。"
+
+#: apps/mobile/mobileI18nMessages.ts:404
+msgid "This phone receives Requests from all saved connections."
+msgstr "此电话接收来自所有已保存连接的请求。"
+
+#: apps/mobile/mobileI18nMessages.ts:405
+msgid "This Request expired before enough Responses arrived."
+msgstr "该请求在足够的响应到达之前就过期了。"
+
+#: apps/mobile/mobileI18nMessages.ts:406
+msgid "This request is read-only."
+msgstr "此请求为只读。"
+
+#: apps/mobile/mobileI18nMessages.ts:407
+msgid "This Request may be stale. Refresh the Session before responding."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:408
+msgid "This Request was closed before enough Responses arrived."
+msgstr "在足够的响应到达之前，此请求已关闭。"
+
+#: apps/mobile/mobileI18nMessages.ts:409
+msgid "This request's connection needs to be signed in again."
+msgstr "此请求的连接需要重新登录。"
+
+#: apps/mobile/mobileI18nMessages.ts:410
+msgid "This version of Agent Tick is no longer supported. Update the app to continue."
+msgstr "不再支持此版本的 Agent Tick。 Update the app to continue."
+
+#: apps/mobile/mobileI18nMessages.ts:411
+msgid "Trial ended"
+msgstr "审判结束"
+
+#: apps/mobile/mobileI18nMessages.ts:412
+msgid "Trial ended. Viewing, settings, purchase, and restore stay available."
+msgstr "审判结束。查看、设置、购买和恢复仍然可用。"
+
+#: apps/mobile/mobileI18nMessages.ts:413
+msgid "Trial includes hosted and self-hosted responses."
+msgstr "Trial includes hosted and self-hosted responses."
+
+#: apps/mobile/mobileI18nMessages.ts:414
+msgid "Trial started"
+msgstr "审判开始"
+
+#: apps/mobile/mobileI18nMessages.ts:415
+msgid "Trial started. Responses are unlocked for 7 days."
+msgstr "Trial started. Responses are unlocked for 7 days."
+
+#: apps/mobile/mobileI18nMessages.ts:416
+msgid "Trial status unavailable"
+msgstr "Trial status unavailable"
+
+#: apps/mobile/mobileI18nMessages.ts:417
+msgid "Trial, purchases, and hosted service"
+msgstr "Trial, purchases, and hosted service"
+
+#: apps/mobile/mobileI18nMessages.ts:425
+#~ msgid "Tune how long Requests present their choices. Inline actions appear after the message, so you can scroll through the full context before deciding."
+#~ msgstr "Tune how long Requests present their choices.内联操作出现在消息之后，因此您可以在做出决定之前滚动浏览完整上下文。"
+
+#: apps/mobile/mobileI18nMessages.ts:418
+msgid "Turn Off"
+msgstr "关闭"
+
+#: apps/mobile/mobileI18nMessages.ts:419
+msgid "Turn On"
+msgstr "开启"
+
+#: apps/mobile/mobileI18nMessages.ts:420
+msgid "Turn on notifications before registering push notifications."
+msgstr "注册推送通知前请先开启通知。"
+
+#: apps/mobile/mobileI18nMessages.ts:421
+msgid "Turn on notifications in Agent Tick first."
+msgstr "请先在 Agent Tick 中开启通知。"
+
+#: apps/admin/src/adminI18nMessages.ts:131
+msgid "Type"
+msgstr "类型"
+
+#: apps/mobile/mobileI18nMessages.ts:422
+msgid "Unable to check"
+msgstr "无法检查"
+
+#: apps/mobile/mobileI18nMessages.ts:423
+msgid "Unknown check-in"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:424
+msgid "Unlock responses"
+msgstr "Unlock responses"
+
+#: apps/mobile/mobileI18nMessages.ts:425
+msgid "Unlock responses to answer Requests again."
+msgstr "Unlock responses to answer Requests again."
+
+#: apps/mobile/mobileI18nMessages.ts:426
+msgid "Unlock self-hosted responses"
+msgstr "Unlock self-hosted responses"
+
+#: apps/mobile/mobileI18nMessages.ts:427
+msgid "Update Agent Tick"
+msgstr "Update Agent Tick"
+
+#: apps/mobile/mobileI18nMessages.ts:428
+msgid "Use a self-hosted server instead"
+msgstr "改用自托管服务器"
+
+#: apps/mobile/mobileI18nMessages.ts:429
+msgid "Use Agent Tick Hosted"
+msgstr "Use Agent Tick Hosted"
+
+#: apps/admin/src/adminI18nMessages.ts:132
+msgid "Use Clerk's account menu to manage your profile, email addresses, sessions, security settings, and sign-out."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:430
+msgid "Use Self-hosted Server"
+msgstr "使用自托管服务器"
+
+#: apps/mobile/mobileI18nMessages.ts:431
+msgid "Use the Agent Tick app with self-hosted servers forever."
+msgstr "永远将 Agent Tick 应用程序与自托管服务器一起使用。"
+
+#: apps/admin/src/adminI18nMessages.ts:133
+msgid "Use the AI-assisted setup prompt from"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:432
+msgid "Use the first-party app with self-hosted Agent Tick servers forever."
+msgstr "永远将第一方应用程序与自托管 Agent Tick 服务器一起使用。"
+
+#: apps/mobile/mobileI18nMessages.ts:433
+msgid "Use the hosted Agent Tick service, or connect this app to your own self-hosted server."
+msgstr "使用托管的 Agent Tick 服务，或将此应用程序连接到您自己的自托管服务器。"
+
+#: apps/admin/src/adminI18nMessages.ts:134
+msgid "Use the web app to send a safe Steering Test Request to the Native App. Setup Test Requests can be answered before Trial; real Native App responses require a Trial or subscription."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:135
+msgid "Use these support and legal channels for help, privacy requests, account deletion requests, and security reports."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:434
+msgid "View App access"
+msgstr "View App access"
+
+#: apps/mobile/mobileI18nMessages.ts:435
+msgid "Viewing, settings, purchase, and restore are available. Responses require access."
+msgstr "可以查看、设置、购买和恢复。 Responses require access."
+
+#: apps/mobile/mobileI18nMessages.ts:436
+msgid "Wait expired"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:437
+msgid "Wait failed"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:438
+msgid "Wait stale"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:439
+msgid "Wait stopped"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:440
+msgid "Waiting"
+msgstr "等待中"
+
+#: apps/mobile/mobileI18nMessages.ts:441
+msgid "Waiting for $ more $ ."
+msgstr "Waiting for $ more $ ."
+
+#: apps/mobile/mobileI18nMessages.ts:442
+msgid "Waiting for Agent Activity"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:443
+msgid "Waiting for others"
+msgstr "等待其他人"
+
+#: apps/admin/src/adminI18nMessages.ts:136
+msgid "Web fallback responses are available here; use the Native App for day-to-day approvals."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:137
+msgid "Workspace"
+msgstr "工作区"
+
+#: apps/mobile/mobileI18nMessages.ts:444
+msgid "Workspace billing is inactive. Ask a Workspace Owner or Admin to renew before responding."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:138
+msgid "Workspace ID"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:139
+msgid "Workspace Member picker"
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:140
+msgid "Workspace overview"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:445
+msgid "Workspace Owner"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:446
+msgid "Workspace: $"
+msgstr "工作空间：$"
+
+#: apps/mobile/mobileI18nMessages.ts:447
+msgid "workspace: $ : $"
+msgstr "工作区: $ : $"
+
+#: apps/mobile/mobileI18nMessages.ts:448
+msgid "Yearly"
+msgstr "每年"
+
+#: apps/mobile/mobileI18nMessages.ts:449
+msgid "You can keep using the app with self-hosted servers without another app purchase."
+msgstr "您可以继续使用带有自托管服务器的应用程序，而无需购买其他应用程序。"
+
+#: apps/mobile/mobileI18nMessages.ts:450
+msgid "You can now receive approval Requests from $ ."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:451
+msgid "You can respond to hosted and self-hosted Requests while the subscription is active."
+msgstr "当订阅处于活动状态时，您可以响应托管和自托管请求。"
+
+#: apps/mobile/mobileI18nMessages.ts:452
+msgid "You can respond to Requests from hosted or self-hosted Agent Tick servers."
+msgstr "您可以响应来自托管或自托管 Agent Tick 服务器的请求。"
+
+#: apps/mobile/mobileI18nMessages.ts:453
+msgid "You can subscribe now with your app-store account. Sign in later to link hosted routing, push, history, and billing."
+msgstr "您现在可以使用您的应用商店帐户进行订阅。稍后登录以链接托管路由、推送、历史记录和计费。"
+
+#: apps/mobile/mobileI18nMessages.ts:454
+msgid "You own this app. Use it as much as you want with self-hosted Agent Tick servers."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:141
+msgid "You’re ready. Agent activity will appear here; use the Native App for day-to-day approvals."
+msgstr ""
+
+#: apps/admin/src/adminI18nMessages.ts:142
+msgid "Your Availability"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:455
+msgid "Your hosted Agent Tick account is separate and still needs an active Trial or Hosted subscription for hosted service."
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:456
+msgid "Your Hosted subscription and Self-hosted Lifetime unlock are active."
+msgstr "您的托管订阅和自托管终身解锁处于活动状态。"
+
+#: apps/mobile/mobileI18nMessages.ts:457
+msgid "Your hosted subscription expires on"
+msgstr "您的托管订阅将于到期"
+
+#: apps/mobile/mobileI18nMessages.ts:458
+msgid "Your Hosted subscription is active."
+msgstr "您的托管订阅已激活。"
+
+#: apps/mobile/mobileI18nMessages.ts:459
+msgid "Your hosted Trial ends on"
+msgstr "您的体验达人试用期将于结束"
+
+#: apps/mobile/mobileI18nMessages.ts:460
+msgid "Your response is needed"
+msgstr "需要您的回复"
+
+#: apps/admin/src/adminI18nMessages.ts:143
+msgid "Your role"
+msgstr ""
+
+#: apps/mobile/mobileI18nMessages.ts:461
+msgid "Your trial is over. Viewing still works; choose Hosted service or Self-hosted Lifetime to respond again."
+msgstr "您的试用期已结束。 查看仍然有效；选择“托管服务”或“自托管终身”以再次回复。"

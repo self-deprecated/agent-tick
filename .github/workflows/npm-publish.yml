@@ -1,0 +1,167 @@
+name: Publish npm packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Release tag for sanction/changelog (defaults to v<package version>)
+        required: false
+        default: ""
+        type: string
+      dry-run:
+        description: Run npm publish with --dry-run
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-agent-tick
+  cancel-in-progress: false
+
+jobs:
+  publish-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build public packages
+        run: |
+          pnpm --filter @self-deprecated/agent-tick-shared build
+          pnpm --filter @self-deprecated/agent-tick-sdk build
+          pnpm --filter @self-deprecated/agent-tick build
+
+      - name: Pack smoke test
+        run: |
+          pnpm --filter @self-deprecated/agent-tick-shared pack --pack-destination "$RUNNER_TEMP"
+          pnpm --filter @self-deprecated/agent-tick-sdk pack --pack-destination "$RUNNER_TEMP"
+          pnpm --filter @self-deprecated/agent-tick pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Resolve publish metadata
+        id: publish-meta
+        env:
+          INPUT_RELEASE_TAG: ${{ github.event.inputs.release-tag }}
+        run: |
+          set -euo pipefail
+          cli_version=$(node -p "JSON.parse(require('fs').readFileSync('packages/cli/package.json', 'utf8')).version")
+          release_tag="${INPUT_RELEASE_TAG:-v${cli_version}}"
+          package_targets=$(node - <<'NODE'
+          const fs = require('fs');
+          const paths = ['packages/shared/package.json', 'packages/sdk/package.json', 'packages/cli/package.json'];
+          console.log(paths.map((path) => {
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            return `${pkg.name}@${pkg.version}`;
+          }).join(', '));
+          NODE
+          )
+          {
+            printf 'cli-version=%s\n' "${cli_version}"
+            printf 'package-targets=%s\n' "${package_targets}"
+            printf 'release-tag=%s\n' "${release_tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify publish configuration
+        if: ${{ (github.event.inputs.dry-run || 'true') != 'true' }}
+        env:
+          AGENT_TICK_SERVER: ${{ secrets.AGENT_TICK_SERVER }}
+          AGENT_TICK_TOKEN: ${{ secrets.AGENT_TICK_RELEASE_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${AGENT_TICK_SERVER}" ]] || missing+=("AGENT_TICK_SERVER")
+          [[ -n "${AGENT_TICK_TOKEN}" ]] || missing+=("AGENT_TICK_RELEASE_TOKEN")
+          [[ -n "${NODE_AUTH_TOKEN}" ]] || missing+=("NPM_TOKEN")
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required GitHub secret(s): %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          npm whoami --registry https://registry.npmjs.org >/dev/null
+
+      - name: Check package version is unpublished
+        if: ${{ (github.event.inputs.dry-run || 'true') != 'true' }}
+        run: |
+          set -euo pipefail
+          packages=(
+            packages/shared/package.json
+            packages/sdk/package.json
+            packages/cli/package.json
+          )
+          for package_json in "${packages[@]}"; do
+            package_name=$(node -p "JSON.parse(require('fs').readFileSync('${package_json}', 'utf8')).name")
+            package_version=$(node -p "JSON.parse(require('fs').readFileSync('${package_json}', 'utf8')).version")
+            view_output=$(npm view "${package_name}@${package_version}" version --registry https://registry.npmjs.org 2>&1) && {
+              printf '%s@%s is already published on npm. Bump package versions before publishing.\n' \
+                "${package_name}" "${package_version}" >&2
+              exit 1
+            }
+            if ! grep -q 'E404' <<<"${view_output}"; then
+              printf 'Failed to check npm package version for %s@%s:\n%s\n' "${package_name}" "${package_version}" "${view_output}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Agent Tick release sanction
+        if: ${{ (github.event.inputs.dry-run || 'true') != 'true' }}
+        env:
+          AGENT_TICK_SERVER: ${{ secrets.AGENT_TICK_SERVER }}
+          AGENT_TICK_TOKEN: ${{ secrets.AGENT_TICK_RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ steps.publish-meta.outputs.release-tag }}
+          PACKAGE_TARGETS: ${{ steps.publish-meta.outputs.package-targets }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          changelog="https://github.com/${REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          node packages/cli/dist/index.js sanction \
+            --title "Publish Agent Tick npm packages ${RELEASE_TAG}?" \
+            --body "Repository: ${REPOSITORY}\nTargets: npm ${PACKAGE_TARGETS}\nChangelog: ${changelog}\nCommit: ${COMMIT_SHA}" \
+            --command "pnpm publish shared, sdk, then cli with --access public --provenance --no-git-checks" \
+            --choice-flag approve=production \
+            --choice-flag approve=audit_relevant \
+            --timeout 30m
+
+      - name: Publish packages to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry-run || 'true' }}
+        run: |
+          set -euo pipefail
+          packages=(
+            @self-deprecated/agent-tick-shared
+            @self-deprecated/agent-tick-sdk
+            @self-deprecated/agent-tick
+          )
+          for package_name in "${packages[@]}"; do
+            args=(--filter "${package_name}" publish --access public --provenance --no-git-checks)
+            if [[ "$DRY_RUN" == "true" ]]; then
+              args+=(--dry-run)
+            fi
+            pnpm "${args[@]}"
+          done

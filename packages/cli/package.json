@@ -1,0 +1,54 @@
+{
+  "name": "@self-deprecated/agent-tick",
+  "version": "1.1.0",
+  "description": "Human-in-the-loop Request CLI for Agent Tick.",
+  "private": false,
+  "type": "module",
+  "license": "BUSL-1.1",
+  "homepage": "https://agenttick.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/self-deprecated/agent-tick.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/self-deprecated/agent-tick/issues"
+  },
+  "bin": {
+    "agent-tick": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "assets",
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --packages=bundle --conditions=source --external:commander --sourcemap --outfile=dist/index.js && node scripts/fix-shebang.mjs",
+    "prepack": "corepack pnpm build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@self-deprecated/agent-tick-sdk": "workspace:*",
+    "@self-deprecated/agent-tick-shared": "workspace:*",
+    "commander": "14.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.3",
+    "esbuild": "0.27.7",
+    "tsx": "4.21.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.5"
+  }
+}

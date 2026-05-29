@@ -1,0 +1,25 @@
+name: sanction-gate-example
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gated-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for Agent Tick Sanction Response
+        id: sanction
+        uses: self-deprecated/agent-tick/integrations/github-actions/sanction-request@v1.0.0
+        with:
+          server: ${{ secrets.AGENT_TICK_SERVER }}
+          token: ${{ secrets.AGENT_TICK_TOKEN }}
+          title: Deploy production?
+          body: ${{ github.repository }} @ ${{ github.sha }}
+          command: ./scripts/deploy.sh
+          timeout: 10m
+
+      - name: Deploy
+        if: ${{ steps.sanction.outputs.choice-id == 'approve' }}
+        run: ./scripts/deploy.sh

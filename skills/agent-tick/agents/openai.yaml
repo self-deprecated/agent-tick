@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Tick"
+  short_description: "Request phone approvals from agents"
+  default_prompt: "Use $agent-tick to request approval before risky commands. If you call Agent Tick MCP tools, pass a real host chat/thread sessionId when available; otherwise omit sessionId."

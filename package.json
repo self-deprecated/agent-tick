@@ -1,0 +1,50 @@
+{
+  "name": "agent-tick-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.23.0",
+  "scripts": {
+    "setup:local": "node scripts/bootstrap.mjs",
+    "build": "corepack pnpm -r --sort build",
+    "typecheck": "corepack pnpm -r --sort typecheck",
+    "test": "python3 scripts/test_validate_mobile_eas_config.py && node --test scripts/mobile-build-android-local.test.mjs && corepack pnpm -r --sort test",
+    "test:e2e": "playwright test",
+    "test:e2e:flows": "node scripts/run-product-flow-e2e.mjs",
+    "test:e2e:docker": "node scripts/run-docker-selfhost-e2e.mjs --mode all",
+    "test:e2e:docker:single": "node scripts/run-docker-selfhost-e2e.mjs --mode single",
+    "test:e2e:docker:rate-limits": "node scripts/run-docker-selfhost-e2e.mjs --mode rate-limit",
+    "test:e2e:docker:config-negative": "node scripts/run-docker-selfhost-e2e.mjs --mode config-negative",
+    "test:e2e:docker:redis": "node scripts/run-docker-selfhost-e2e.mjs --mode redis",
+    "test:e2e:docker:postgres": "node scripts/run-docker-selfhost-e2e.mjs --mode postgres",
+    "test:e2e:docker:postgres-clerk-test": "node scripts/run-docker-selfhost-e2e.mjs --mode postgres-clerk-test",
+    "test:e2e:docker:retention": "node scripts/run-docker-selfhost-e2e.mjs --mode retention",
+    "test:e2e:docker:webhook": "node scripts/run-docker-selfhost-e2e.mjs --mode webhook",
+    "test:e2e:docker:migration": "node scripts/run-docker-selfhost-e2e.mjs --mode migration",
+    "dev:server": "corepack pnpm --filter @agent-tick/server dev",
+    "dev:admin": "corepack pnpm --filter agent-tick-admin dev",
+    "i18n:extract": "lingui extract",
+    "i18n:compile": "lingui compile --typescript",
+    "i18n:audit": "node scripts/audit-i18n.mjs",
+    "i18n:audit:runtime": "node scripts/audit-i18n.mjs --strict-runtime",
+    "i18n:audit:test": "node scripts/audit-i18n.test.mjs",
+    "i18n:audit:update": "node scripts/audit-i18n.mjs --update",
+    "i18n:check": "lingui extract --clean && lingui compile --typescript && node scripts/audit-i18n.mjs"
+  },
+  "devDependencies": {
+    "@lingui/babel-plugin-lingui-macro": "6.0.1",
+    "@lingui/cli": "6.0.1",
+    "@playwright/test": "1.59.1",
+    "@types/node": "24.12.3",
+    "typescript": "6.0.3",
+    "vitest": "4.1.5"
+  },
+  "pnpm": {
+    "overrides": {
+      "js-cookie": "3.0.7",
+      "ws@>=8.0.0 <8.20.1": "8.20.1",
+      "postcss": "8.5.14",
+      "qs": "6.15.2",
+      "serialize-javascript": "7.0.5"
+    }
+  }
+}

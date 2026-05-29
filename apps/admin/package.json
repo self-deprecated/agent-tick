@@ -1,0 +1,27 @@
+{
+  "name": "agent-tick-admin",
+  "private": true,
+  "version": "1.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --test src/*.test.mjs"
+  },
+  "dependencies": {
+    "@agent-tick/i18n": "workspace:*",
+    "@self-deprecated/agent-tick-sdk": "workspace:*",
+    "@self-deprecated/agent-tick-shared": "workspace:*",
+    "@clerk/clerk-js": "6.10.0",
+    "@lingui/core": "6.0.1"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "7.1.0",
+    "svelte": "5.55.9",
+    "svelte-check": "4.4.8",
+    "typescript": "6.0.3",
+    "vite": "8.0.10"
+  }
+}

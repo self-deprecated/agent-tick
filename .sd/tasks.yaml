@@ -1,0 +1,341 @@
+version: 1
+
+project:
+  id: agent-tick
+  name: Agent Tick
+  aliases:
+    - agenttick
+  workArea: Agent Tick
+  visibility: public-code / active product workspace
+  dir: .
+
+tasks:
+  shell:
+    desc: Open a shell in the Agent Tick workspace
+    run: exec "${SHELL:-bash}"
+
+  install:
+    desc: Install workspace dependencies
+    run: corepack pnpm install
+
+  typecheck:
+    desc: Run workspace typecheck
+    run: corepack pnpm typecheck
+
+  test:
+    desc: Validate mobile EAS config and run workspace tests
+    run: python3 scripts/test_validate_mobile_eas_config.py && corepack pnpm test
+
+  build:
+    desc: Build workspace packages/apps
+    run: corepack pnpm build
+
+  check:
+    desc: Run conservative typecheck + test
+    run: corepack pnpm typecheck && corepack pnpm test
+
+  full-check:
+    desc: Run heavier validation gate
+    run: corepack pnpm typecheck && corepack pnpm test && corepack pnpm build && corepack pnpm --filter agent-tick-admin check && python3 scripts/validate-mobile-eas-config.py
+
+  final-review:
+    desc: Run Agent Tick end-of-turn checks when Agent Tick changed
+    whenChanged:
+      - projects/agent-tick/**
+    run: sd agent-tick docker-config && sd agent-tick i18n-audit && sd agent-tick i18n-audit-test && sd agent-tick full-check && sd agent-tick mobile bundle-check
+
+  docker-config:
+    desc: Validate Docker Compose configuration
+    run: docker compose config
+
+  i18n-audit:
+    desc: Audit localization catalog coverage
+    run: corepack pnpm i18n:audit
+
+  i18n-audit-test:
+    desc: Run i18n audit fixture tests
+    run: corepack pnpm i18n:audit:test
+
+  server/dev:
+    desc: Start the server dev process
+    run: set -a; [ ! -f .env ] || source .env; set +a; corepack pnpm --filter @agent-tick/server dev
+
+  server/build:
+    desc: Build the server package
+    run: corepack pnpm --filter @agent-tick/server build
+
+  server/test:
+    desc: Test the server package
+    run: corepack pnpm --filter @agent-tick/server test
+
+  server/typecheck:
+    desc: Typecheck the server package
+    run: corepack pnpm --filter @agent-tick/server typecheck
+
+  admin/dev:
+    desc: Start the admin app dev server
+    run: corepack pnpm --filter agent-tick-admin dev
+
+  admin/check:
+    desc: Run admin app checks
+    run: corepack pnpm --filter agent-tick-admin check
+
+  admin/build:
+    desc: Build the admin app
+    run: corepack pnpm --filter agent-tick-admin build
+
+  admin/test:
+    desc: Test the admin app
+    run: corepack pnpm --filter agent-tick-admin test
+
+  docs/dev:
+    desc: Start the docs app
+    run: corepack pnpm --filter agent-tick-docs start
+
+  docs/start:
+    desc: Start the docs app
+    run: corepack pnpm --filter agent-tick-docs start
+
+  docs/build:
+    desc: Build the docs app
+    run: corepack pnpm --filter agent-tick-docs build
+
+  docs/serve:
+    desc: Serve the built docs app
+    run: corepack pnpm --filter agent-tick-docs serve
+
+  mobile/start:
+    desc: Start Expo on localhost
+    dir: apps/mobile
+    env:
+      EXPO_NO_TELEMETRY: "1"
+    run: corepack pnpm start -- --host localhost --port 8081
+
+  mobile/lan:
+    desc: Start Expo on LAN
+    dir: apps/mobile
+    env:
+      EXPO_NO_TELEMETRY: "1"
+    run: corepack pnpm start -- --host lan --port 8081
+
+  mobile/dev-client:
+    desc: Start Expo dev client on localhost
+    dir: apps/mobile
+    env:
+      EXPO_NO_TELEMETRY: "1"
+    run: corepack pnpm start:dev-client -- --host localhost --port 8081
+
+  mobile/dev-client-lan:
+    desc: Start Expo dev client on LAN
+    dir: apps/mobile
+    env:
+      EXPO_NO_TELEMETRY: "1"
+    run: corepack pnpm start:dev-client:lan -- --port 8081
+
+  mobile/typecheck:
+    desc: Typecheck the mobile app
+    run: corepack pnpm --filter @agent-tick/mobile typecheck
+
+  mobile/test:
+    desc: Run mobile tests
+    run: corepack pnpm --filter @agent-tick/mobile test --runInBand
+
+  mobile/validate:
+    desc: Validate mobile EAS config
+    run: python3 scripts/validate-mobile-eas-config.py
+
+  mobile/store-assets:
+    desc: Generate App Store 6.5-inch iPhone screenshot upload assets
+    run: corepack pnpm --filter @agent-tick/mobile screenshots:captured -- --source apps/mobile/store-assets/screenshots/captures/ios-1.1-session-stack-iphone-61 --size apple-65
+
+  mobile/store-assets/all:
+    desc: Generate all supported Apple and Google Play screenshot upload assets
+    run: corepack pnpm --filter @agent-tick/mobile screenshots:captured -- --source apps/mobile/store-assets/screenshots/captures/ios-1.1-session-stack-iphone-61 --all
+
+  mobile/bundle-check:
+    desc: Bundle mobile dev-client JS for iOS and Android with Metro
+    whenChanged:
+      - projects/agent-tick/apps/mobile/**
+      - projects/agent-tick/packages/shared/**
+      - projects/agent-tick/packages/sdk/**
+      - projects/agent-tick/pnpm-lock.yaml
+      - projects/agent-tick/pnpm-workspace.yaml
+      - projects/agent-tick/package.json
+    run: |
+      set -euo pipefail
+      for platform in ios android; do
+        out=$(mktemp -d "${TMPDIR:-/tmp}/agent-tick-mobile-${platform}-dev-export.XXXXXX")
+        cleanup() { rm -rf "$out"; }
+        trap cleanup EXIT
+        CI=1 EXPO_NO_TELEMETRY=1 corepack pnpm --filter @agent-tick/mobile exec expo export --platform "$platform" --dev --output-dir "$out"
+        cleanup
+        trap - EXIT
+      done
+
+  mobile/build:
+    desc: Build the mobile app
+    dir: apps/mobile
+    run: EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD/../.." corepack pnpm dlx --allow-build=dtrace-provider eas-cli build --profile {{profile}} --platform {{platform}}
+    options:
+      platform:
+        type: enum
+        prompt: Platform
+        values:
+          ios:
+            label: iOS
+          android:
+            label: Android
+      profile:
+        type: enum
+        prompt: Build profile
+        values:
+          development:
+            label: Development
+          production:
+            label: Production
+          preview:
+            label: Preview
+      mode:
+        type: enum
+        prompt: Build mode
+        values:
+          eas:
+            label: EAS cloud
+          local:
+            label: Local Android build script
+      artifact:
+        type: enum
+        prompt: Artifact
+        values:
+          store:
+            label: Store/development artifact
+          apk:
+            label: APK
+    choices:
+      ios-dev:
+        label: iOS development
+        desc: EAS iOS development build
+        values:
+          platform: ios
+          profile: development
+          mode: eas
+          artifact: store
+      ios-production:
+        label: iOS production + submit
+        desc: EAS iOS production build + submit
+        danger: true
+        run: EAS_NO_VCS=1 EAS_PROJECT_ROOT="$PWD/../.." corepack pnpm dlx --allow-build=dtrace-provider eas-cli@latest build --platform {{platform}} --profile {{profile}} --auto-submit
+        values:
+          platform: ios
+          profile: production
+          mode: eas
+          artifact: store
+      android-dev:
+        label: Android development
+        desc: EAS Android development build
+        values:
+          platform: android
+          profile: development
+          mode: eas
+          artifact: store
+      android-local:
+        label: Android local
+        desc: Local Android build
+        dir: .
+        run: bash scripts/mobile-build-android-local.sh
+        values:
+          platform: android
+          profile: development
+          mode: local
+          artifact: store
+      android-apk:
+        label: Android preview APK
+        desc: Local preview APK build
+        dir: .
+        env:
+          EAS_BUILD_PROFILE: preview
+        run: bash scripts/mobile-build-android-local.sh
+        values:
+          platform: android
+          profile: preview
+          mode: local
+          artifact: apk
+
+  cli/build:
+    desc: Build the Agent Tick CLI package
+    run: corepack pnpm --filter @self-deprecated/agent-tick build
+
+  cli/publish:
+    desc: Publish the Agent Tick CLI package
+    danger: true
+    dir: packages/cli
+    run: corepack pnpm publish --access public --no-git-checks --no-provenance
+
+  shared/publish:
+    desc: Publish the Agent Tick shared package
+    danger: true
+    dir: packages/shared
+    run: corepack pnpm publish --access public --no-git-checks --no-provenance
+
+  shared/publish-dry-run:
+    desc: Dry-run publish the Agent Tick shared package
+    dir: packages/shared
+    run: corepack pnpm publish --dry-run --access public --no-git-checks --no-provenance
+
+  cli/sanction:
+    desc: Run a CLI sanction smoke test
+    run: node packages/cli/dist/index.js sanction --title 'Run command?' --body 'Agent Tick test sanction from the CLI' --command 'npm install'
+
+  sdk/publish:
+    desc: Publish the Agent Tick SDK package
+    danger: true
+    dir: packages/sdk
+    run: corepack pnpm publish --access public --no-git-checks --no-provenance
+
+  sdk/publish-dry-run:
+    desc: Dry-run publish the Agent Tick SDK package
+    dir: packages/sdk
+    run: corepack pnpm publish --dry-run --access public --no-git-checks --no-provenance
+
+  release/npm:
+    desc: Release Agent Tick npm packages
+    danger: true
+    defaultMode: dry-run
+    modes:
+      dry-run:
+        danger: false
+        values:
+          publishArgs: " --dry-run"
+      publish:
+        values:
+          publishArgs: ""
+    choices:
+      all:
+        label: Publish shared, SDK, CLI, then Pi Agent Tick
+        desc: Publish all four npm packages one at a time in release order
+        depends:
+          - agent-tick:release/npm shared
+          - agent-tick:release/npm sdk
+          - agent-tick:release/npm cli
+          - agent-tick:release/npm pi-agent-tick
+      shared:
+        label: Publish shared only
+        desc: Publish @self-deprecated/agent-tick-shared
+        run: cd packages/shared && corepack pnpm publish --access public --no-git-checks --no-provenance{{publishArgs}}
+      sdk:
+        label: Publish SDK only
+        desc: Publish @self-deprecated/agent-tick-sdk
+        run: cd packages/sdk && corepack pnpm publish --access public --no-git-checks --no-provenance{{publishArgs}}
+      cli:
+        label: Publish CLI only
+        desc: Publish @self-deprecated/agent-tick
+        run: cd packages/cli && corepack pnpm publish --access public --no-git-checks --no-provenance{{publishArgs}}
+      pi-agent-tick:
+        label: Publish Pi Agent Tick only
+        desc: Publish @self-deprecated/pi-agent-tick
+        run: cd ../pi-agent-tick && corepack pnpm publish --access public --no-git-checks --no-provenance{{publishArgs}}
+
+passthrough:
+  pnpm:
+    desc: Run pnpm in the Agent Tick workspace
+    run: corepack pnpm "$@"

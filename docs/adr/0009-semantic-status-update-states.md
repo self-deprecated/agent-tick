@@ -1,0 +1,3 @@
+# Semantic Status Update states
+
+Status Updates will use a fixed semantic state set (`working`, `waiting`, `blocked`, `done`, `failed`) while keeping the message and optional reason fields custom/freeform. Custom or unknown states may be accepted for compatibility, but they are display-only and do not drive product behavior. The Native App needs stable state semantics to group Session timelines, choose visual emphasis, and avoid treating arbitrary agent wording as product behavior. Clients should not send a Status Update merely to say they are waiting on an Agent Tick Request; creating the Request is the waiting signal. During migration, the Native App may suppress a near-immediate waiting Status Update after a pending Request in the same Session as redundant.

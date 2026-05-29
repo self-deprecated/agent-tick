@@ -1,0 +1,82 @@
+# EAS Build upload archive policy for Agent Tick mobile.
+#
+# This file is used with:
+#   EAS_NO_VCS=1
+#   EAS_PROJECT_ROOT=<repo>/projects/agent-tick
+#
+# Keep the cloud archive limited to the mobile app and the workspace packages it
+# imports. Do not upload VCS metadata, local caches, server/admin/docs code, or
+# unrelated mono-sd projects.
+
+# VCS/local agent state
+.git/
+.jj/
+.frontloop/
+.pi/
+.hunk/
+
+# Dependencies and generated output
+node_modules/
+**/node_modules/
+.local-tools/
+.pnpm-store/
+.pnpm/
+.expo/
+.turbo/
+.cache/
+dist/
+build/
+out/
+coverage/
+.svelte-kit/
+.next/
+.docusaurus/
+test-results/
+playwright-report/
+scratch/
+*.tsbuildinfo
+*.apk
+*.aab
+
+# Local secrets/config
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local
+.mcp.json
+.agent-jack.json
+.pi-scratch.md
+agent-tick.json
+agent-tick.json.tmp
+agent-tick.db
+agent-tick.db-shm
+agent-tick.db-wal
+
+# Mobile store-listing screenshots and tests are not part of the native build.
+apps/mobile/store-assets/
+apps/mobile/__mocks__/
+**/*.test.*
+**/test/
+*.md
+*.nix
+flake.lock
+docker-compose.yml
+.dockerignore
+playwright.config.ts
+scripts/
+
+# Non-mobile workspaces and private project materials unnecessary for EAS Build
+apps/admin/
+apps/docs/
+apps/server/
+packages/cli/
+packages/db/
+docs/
+examples/
+integrations/
+internal/
+nix/
+skills/
+tests/
+.github/

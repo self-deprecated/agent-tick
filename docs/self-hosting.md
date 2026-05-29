@@ -1,0 +1,196 @@
+---
+title: Self-hosting
+description: Run your own Agent Tick server with Docker Compose, SQLite or PostgreSQL, and optional Clerk or Redis.
+---
+
+# Self-hosting
+
+Run Agent Tick yourself when you want request routing and history on your own infrastructure. Most users should start with the hosted app at [app.agenttick.sh](https://app.agenttick.sh); self-hosting is for people who want to operate the server.
+
+Agent Tick is source-available under the BSL 1.1 license. Internal commercial self-hosting is allowed. Offering Agent Tick as a hosted or managed service to third parties is prohibited during the BSL period. The BSL conversion date is 2028-05-31.
+
+## What you run
+
+A self-hosted deployment includes:
+
+- the Agent Tick API server
+- the web dashboard served by the server
+- SQLite by default, or PostgreSQL for production-style durable data
+- optional Redis for multi-process event/rate-limit coordination
+- optional Clerk auth for multi-user deployments
+
+The iOS or Android app can connect to a self-hosted server. For launch, expect polling/manual refresh unless you configure your own notification webhook or notifier path.
+
+## Quick Docker Compose setup
+
+Create `docker-compose.yml`:
+
+```yaml
+services:
+  server:
+    image: ${AGENT_TICK_IMAGE:-ghcr.io/self-deprecated/agent-tick:latest}
+    env_file: .env
+    ports:
+      - "${AGENT_TICK_PORT:-8787}:8787"
+    volumes:
+      - agent_tick_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  agent_tick_data:
+```
+
+Create `.env` next to it:
+
+```env
+AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
+AGENT_TICK_MODE=single
+AGENT_TICK_PUBLIC_URL=https://tick.example.com
+AGENT_TICK_PORT=8787
+AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db
+AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+
+# Recommended outside localhost.
+AGENT_TICK_ADMIN_TOKEN=change-me
+```
+
+Start the server:
+
+```sh
+docker compose up -d
+```
+
+Check health and dependency readiness. Use `/readyz` for container/load-balancer traffic gates:
+
+```sh
+curl http://127.0.0.1:8787/healthz
+curl http://127.0.0.1:8787/readyz
+```
+
+Open `AGENT_TICK_PUBLIC_URL` in a browser. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard.
+
+## Connect an agent machine
+
+For an interactive agent host, run the installer against your server:
+
+```sh
+npx @self-deprecated/agent-tick install --server https://tick.example.com
+```
+
+For CI or non-interactive hosts, create or copy an `agent_...` token from the dashboard, then save it locally with the CLI available on that host:
+
+```sh
+agent-tick config --server https://tick.example.com --token agent_...
+```
+
+If the host does not already have a persistent `agent-tick` binary for hooks or MCP, install the package globally before using `agent-tick config`.
+
+Send a safe test request:
+
+```sh
+npx @self-deprecated/agent-tick steering \
+  --title "Self-hosted Agent Tick test" \
+  --choice works="It works" \
+  --choice stop:deny="Stop testing"
+```
+
+## Optional settings
+
+Add only the pieces you need:
+
+```env
+# Limit active local members. Omit for unlimited self-hosted seats.
+AGENT_TICK_MAX_ACTIVE_MEMBERS=10
+
+# Notify an external system when a new Request is created.
+AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/requests
+
+# Auth-sensitive endpoint rate limits.
+AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
+AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
+
+# Retention cleanup windows. Omit to retain operational history indefinitely.
+AGENT_TICK_REQUEST_RETENTION_DAYS=180
+AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS=180
+AGENT_TICK_AUDIT_RETENTION_DAYS=365
+AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
+AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
+AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES=60
+```
+
+## SQLite, PostgreSQL, and Redis
+
+SQLite is the default durable store for local and simple self-hosted deployments. PostgreSQL is supported for production-style deployments with `postgres://` or `postgresql://` database URLs. Agent Tick is still pre-launch, so startup schema setup installs the current schema instead of preserving historical migrations. Delete `agent-tick.db` or reset a pre-launch PostgreSQL schema if an older database shape no longer boots. Automatic SQLite-to-PostgreSQL data migration is not included unless a separate migration tool is built.
+
+SQLite example:
+
+```env
+AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db
+AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+```
+
+PostgreSQL plus Redis example:
+
+```env
+# Docker Compose defaults to SQLite; set this when using an external PostgreSQL
+# database managed by your platform/operator.
+AGENT_TICK_DATABASE_URL=postgresql://agent_tick:change-me@postgres:5432/agent_tick
+AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+AGENT_TICK_REDIS_URL=redis://redis:6379
+AGENT_TICK_EVENT_BUS_BACKEND=redis
+AGENT_TICK_RATE_LIMIT_BACKEND=redis
+AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
+```
+
+Optional PostgreSQL pool tuning:
+
+```env
+AGENT_TICK_POSTGRES_POOL_MAX=10
+AGENT_TICK_POSTGRES_POOL_IDLE_TIMEOUT_MS=30000
+AGENT_TICK_POSTGRES_POOL_CONNECTION_TIMEOUT_MS=5000
+AGENT_TICK_POSTGRES_STATEMENT_TIMEOUT_MS=30000
+AGENT_TICK_POSTGRES_QUERY_TIMEOUT_MS=30000
+```
+
+For many server instances, keep app pool sizes below the database connection limit or put PgBouncer in transaction-pooling mode in front of PostgreSQL. Back up the selected durable store before upgrades. For PostgreSQL deployments, use regular logical dumps or physical backups. Keep schema setup enabled on startup so the current schema is created before the server accepts traffic, and use `/readyz` rather than `/healthz` as the traffic readiness check.
+
+## Clerk mode
+
+Use Clerk mode when you want Clerk-backed human sign-in instead of single-mode admin access. Agent Tick still owns Workspaces, users, Approval Devices, Agent Tokens, Requests, and authorization.
+
+```env
+AGENT_TICK_MODE=clerk
+AGENT_TICK_PUBLIC_URL=https://tick.example.com
+AGENT_TICK_CLERK_PUBLISHABLE_KEY=pk_...
+AGENT_TICK_CLERK_SECRET_KEY=sk_...
+AGENT_TICK_CLERK_AUTHORIZED_PARTIES=https://tick.example.com
+```
+
+Optional networkless verification key:
+
+```env
+AGENT_TICK_CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----..."
+```
+
+After the server is running, use the browser installer from an agent host:
+
+```sh
+npx @self-deprecated/agent-tick install --server https://tick.example.com
+```
+
+For CI or non-interactive hosts, create an agent token in the dashboard and use `agent-tick config --server ... --token ...` with the CLI available on that host.
+
+## Backups and security
+
+- Back up the database. It contains users, Workspaces, token hashes, Activity history, device registrations, and audit events.
+- Run production deployments behind HTTPS.
+- Set `AGENT_TICK_PUBLIC_URL` to the externally reachable dashboard/server origin.
+- Treat `agent_...` tokens and `AGENT_TICK_ADMIN_TOKEN` as secrets.
+- Do not put Request text, raw prompts, logs, `.env` files, or credentials into request titles, bodies, commands, or metadata.
+
+For the full repository-level self-hosting reference, see [`SELFHOSTING.md`](https://github.com/self-deprecated/agent-tick/blob/main/SELFHOSTING.md).

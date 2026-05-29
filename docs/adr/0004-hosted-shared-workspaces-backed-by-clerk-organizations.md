@@ -1,0 +1,3 @@
+# Hosted Shared Workspaces are backed by Clerk Organizations
+
+Hosted Agent Tick does not create free-floating Shared Workspaces outside account-management infrastructure: every hosted Shared Workspace is backed by a Clerk Organization, while Agent Tick still uses **Shared Workspace** as the product term where it controls copy. This trades custom membership, role, and switching UI for Clerk-managed organization creation, invitations, member account management, roles, and switching; Agent Tick mirrors those roles for authorization while keeping routing, Activity History, Agent Connections, and Approval Devices in Agent Tick.

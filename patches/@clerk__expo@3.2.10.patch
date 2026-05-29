@@ -1,0 +1,41 @@
+diff --git a/ios/ClerkExpoModule.swift b/ios/ClerkExpoModule.swift
+index efd1e1424456426a28298267dee2bc97f523c020..f52f7a6f9f682144f4b1a8cd82e3c207d215247e 100644
+--- a/ios/ClerkExpoModule.swift
++++ b/ios/ClerkExpoModule.swift
+@@ -274,6 +277,10 @@ public class ClerkAuthNativeView: UIView {
+     super.removeFromSuperview()
+   }
+ 
++  deinit {
++    dismissAuthModal()
++  }
++
+   // MARK: - Modal Presentation
+   //
+   // The AuthView is presented as a real modal rather than embedded inline.
+@@ -298,6 +305,7 @@ public class ClerkAuthNativeView: UIView {
+           }
+           self.authEventSent = true
+           self.sendAuthEvent(type: "signInCompleted", data: data)
++          self.dismissAuthModal()
+         case .failure:
+           break
+         }
+@@ -310,8 +318,16 @@ public class ClerkAuthNativeView: UIView {
+   }
+ 
+   private func dismissAuthModal() {
+-    presentedAuthVC?.dismiss(animated: false)
++    let authVC = presentedAuthVC
+     presentedAuthVC = nil
++    guard let authVC else { return }
++    if Thread.isMainThread {
++      authVC.dismiss(animated: false)
++    } else {
++      DispatchQueue.main.async {
++        authVC.dismiss(animated: false)
++      }
++    }
+   }
+ 
+   /// Presents the auth view controller as soon as it's safe to do so.

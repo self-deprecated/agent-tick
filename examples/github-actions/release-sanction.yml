@@ -1,0 +1,89 @@
+name: gated-release-example
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Release tag, for example v1.2.3
+        required: true
+      changelog-url:
+        description: Changelog or release notes URL
+        required: true
+      dry-run:
+        description: Run publish with --dry-run
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gated-release-example
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release context
+        id: release-context
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.release-tag }}"
+          changelog="${{ github.event.inputs.changelog-url }}"
+          sha="${{ github.sha }}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "changelog=${changelog}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test candidate
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm test
+          pnpm build
+
+      - name: Verify publish credentials
+        if: ${{ github.event.inputs.dry-run != 'true' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm whoami --registry https://registry.npmjs.org >/dev/null
+
+      - name: Wait for Agent Tick release Sanction
+        id: sanction
+        if: ${{ github.event.inputs.dry-run != 'true' }}
+        uses: self-deprecated/agent-tick/integrations/github-actions/sanction-request@v1.0.0
+        with:
+          server: ${{ secrets.AGENT_TICK_SERVER }}
+          token: ${{ secrets.AGENT_TICK_TOKEN }}
+          title: Publish ${{ github.repository }} ${{ steps.release-context.outputs.tag }}?
+          body: |
+            Repository: ${{ github.repository }}
+            Tag: ${{ steps.release-context.outputs.tag }}
+            Commit: ${{ steps.release-context.outputs.sha }}
+            Changelog: ${{ steps.release-context.outputs.changelog }}
+            Timeout: 30m; no response blocks the release.
+            Rollback owner: release captain
+          command: pnpm publish --access public --provenance
+          timeout: 30m
+
+      - name: Publish release artifact
+        if: ${{ github.event.inputs.dry-run == 'true' || steps.sanction.outputs.choice-id == 'approve' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          args=(publish --access public --provenance)
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          pnpm "${args[@]}"

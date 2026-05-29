@@ -1,0 +1,99 @@
+name: Agent Tick Sanction
+author: Self-Deprecated
+description: Add a bounded Agent Tick human Sanction Request checkpoint to a GitHub Actions workflow.
+branding:
+  icon: check-circle
+  color: yellow
+inputs:
+  server:
+    description: Agent Tick app/API server URL, for example https://app.agenttick.sh or a self-hosted URL
+    required: true
+  token:
+    description: Agent Tick agent token stored as a GitHub secret
+    required: true
+  title:
+    description: Short reviewer-facing request title
+    required: true
+  body:
+    description: Optional reviewer guidance; avoid secrets, raw logs, and full prompts
+    required: false
+    default: ""
+  command:
+    description: Optional safe command or action summary for the reviewer
+    required: false
+    default: ""
+  timeout:
+    description: How long to wait for a response, for example 30s, 10m, or 1h
+    required: false
+    default: 10m
+  install-cli:
+    description: Install @self-deprecated/agent-tick with npm if agent-tick is not already on PATH
+    required: false
+    default: "true"
+outputs:
+  request-id:
+    description: Created Agent Tick sanction request ID
+    value: ${{ steps.request.outputs.request-id }}
+  status:
+    description: Final Agent Tick request status
+    value: ${{ steps.request.outputs.status }}
+  choice-id:
+    description: Final response choice ID when present
+    value: ${{ steps.request.outputs.choice-id }}
+runs:
+  using: composite
+  steps:
+    - name: Ensure agent-tick CLI
+      shell: bash
+      env:
+        INPUT_INSTALL_CLI: ${{ inputs.install-cli }}
+      run: |
+        set -euo pipefail
+        if command -v agent-tick >/dev/null 2>&1; then
+          exit 0
+        fi
+        if [[ "$INPUT_INSTALL_CLI" != "true" ]]; then
+          echo "agent-tick must be installed and available on PATH before using this action." >&2
+          exit 127
+        fi
+        npm install -g @self-deprecated/agent-tick
+    - name: Wait for Agent Tick Sanction Response
+      id: request
+      shell: bash
+      env:
+        INPUT_SERVER: ${{ inputs.server }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_TITLE: ${{ inputs.title }}
+        INPUT_BODY: ${{ inputs.body }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        set -euo pipefail
+        events_file="${RUNNER_TEMP}/agent-tick-events.jsonl"
+        args=(sanction --json --server "$INPUT_SERVER" --token "$INPUT_TOKEN" --title "$INPUT_TITLE" --timeout "$INPUT_TIMEOUT")
+        if [[ -n "$INPUT_BODY" ]]; then args+=(--body "$INPUT_BODY"); fi
+        if [[ -n "$INPUT_COMMAND" ]]; then args+=(--command "$INPUT_COMMAND"); fi
+
+        set +e
+        agent-tick "${args[@]}" >"$events_file"
+        status_code=$?
+        set -e
+
+        python3 - "$events_file" "$GITHUB_OUTPUT" <<'PY'
+        import json
+        import pathlib
+        import sys
+
+        lines = [line.strip() for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+        events = [json.loads(line) for line in lines]
+        created_event = next((event for event in events if event.get("event") == "created"), {})
+        final_event = events[-1] if events else {}
+        created_request = created_event.get("request") or {}
+        final_request = final_event.get("request") or created_request
+        response = final_request.get("response") or {}
+        with open(sys.argv[2], "a", encoding="utf-8") as fh:
+            fh.write(f"request-id={created_request.get('id', '')}\n")
+            fh.write(f"status={final_request.get('status', '')}\n")
+            fh.write(f"choice-id={response.get('choiceId', '')}\n")
+        PY
+        exit "$status_code"
