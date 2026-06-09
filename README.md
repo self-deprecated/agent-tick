@@ -6,13 +6,20 @@
 
 **Let coding agents ask before they do sensitive work.**
 
-Agent Tick mirrors bounded requests from local coding agents to trusted humans. Agents can send **Status Updates**, ask **Steering** questions, and request **Sanctions** before risky actions — without turning the Native App, hosted service, or Personal Console into a remote shell.
+Agent Tick mirrors bounded requests from local coding agents to trusted humans. It works across agent surfaces — including **Claude Code**, **Codex**, **Pi**, and other local coding agents — so teams can keep one human-in-the-loop layer as their agent stack changes.
+
+Agents can send **Status Updates**, ask **Steering** questions, and request **Sanctions** before risky actions — without turning the Native App, hosted service, or Personal Console into a remote shell.
 
 <p align="center">
   <a href="https://agenttick.sh"><b>Website</b></a> ·
   <a href="https://app.agenttick.sh"><b>Hosted app</b></a> ·
   <a href="https://docs.agenttick.sh"><b>Docs</b></a> ·
   <a href="./SELFHOSTING.md"><b>Self-hosting</b></a>
+</p>
+
+<p align="center">
+  <a href="https://get.agenttick.sh/ios"><img src="https://img.shields.io/badge/iOS-App%20Store-0D1117?logo=apple&logoColor=white" alt="Download Agent Tick on the App Store" /></a>
+  <a href="https://get.agenttick.sh/android"><img src="https://img.shields.io/badge/Android-Google%20Play-0D1117?logo=googleplay&logoColor=white" alt="Get Agent Tick on Google Play" /></a>
 </p>
 
 ## Why Agent Tick?
@@ -25,7 +32,7 @@ Agent Tick gives them a least-permission request layer:
 - **Steering** — bounded questions with structured choices when the agent needs direction.
 - **Sanctions** — explicit approval before sensitive commands, deploys, migrations, or policy-relevant work.
 
-The agent asks once. The same request can appear in the local agent interface and in the Agent Tick Native App. The first trusted answer resolves the request everywhere, then local work continues.
+The agent asks once. The same request can appear in the local agent interface and in the Agent Tick Native App. The first answer resolves the request everywhere, then local work continues.
 
 ## Get started
 
@@ -40,16 +47,16 @@ https://agenttick.sh/skill.md
 Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kind of work I want routed Requests for. Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
 ```
 
-Prefer to install the CLI yourself?
+Prefer to set it up yourself?
 
 ```sh
 npm install -g @self-deprecated/agent-tick
 agent-tick install
 ```
 
-The installer signs this machine into Agent Tick, stores a local `agent_...` token, detects local coding-agent configs, and installs supported integrations where available.
+The first command installs the CLI. The second connects this machine to Agent Tick, stores a local `agent_...` token, detects local coding-agent configs, and installs supported integrations where available.
 
-Launch integrations include Claude Code and Codex through MCP, optional Claude Code permission hooks, and Pi through the native extension. Other agent configs may be detected as disabled scaffolds until their hook/config behavior is verified.
+Launch integrations include Claude Code and Codex through MCP, optional Claude Code permission hooks, and Pi through the native extension. The CLI can also be used directly from other agents or automation, with additional agent-specific integrations planned as their hook/config behavior is verified.
 
 ## Self-hosting
 
