@@ -1,27 +1,16 @@
 ---
 title: API and SDK
-description: Use the Agent Tick TypeScript SDK or HTTP API from custom integrations.
+description: Build custom Agent Tick integrations with the TypeScript SDK or HTTP API.
 sidebar_label: API and SDK
 ---
 
 # API and SDK
 
-Agent Tick exposes a TypeScript SDK and HTTP API used by the CLI, Personal Console, mobile apps, and integrations.
+Use the SDK/API when you are building a custom integration that cannot use an existing Coding-agent Integration, MCP adapter, or CLI command.
 
-Launch SDK surfaces include:
+Agents authenticate with Agent Tick `agent_...` tokens. Humans authenticate through hosted sign-in or self-hosted credentials. Workspace context is selected with `X-Agent-Tick-Workspace-ID` where applicable.
 
-- Request create/list/get/respond/wait/abandon
-- Activity list/history and pending Request count
-- Status Update create/list
-- Workspace list/create/member helpers
-- Agent Token setup and management
-- Routing Rule management and test Activity
-- Approval Device registration and push token management
-- Entitlement Status, product catalog, personal billing update, and purchase preflight helpers for the first-party mobile app
-
-Agents authenticate with Agent Tick `agent_...` tokens. Humans authenticate through local single-mode admin/device credentials or hosted Clerk-backed sessions. Workspace context is selected with `X-Agent-Tick-Workspace-ID` where applicable.
-
-Use SDK types in `packages/sdk` and shared schemas in `packages/shared` as the source of truth. See [Session identity](./session-identity.md) before setting `sessionId` manually.
+Use SDK types in `packages/sdk` and shared schemas in `packages/shared` as the source of truth.
 
 ## Install
 
@@ -29,7 +18,7 @@ Use SDK types in `packages/sdk` and shared schemas in `packages/shared` as the s
 npm install @self-deprecated/agent-tick-sdk
 ```
 
-Create an `agent_...` token in the Agent Tick dashboard, then provide it as an environment variable or secret in the environment where your integration runs.
+Create an Agent Token in Agent Tick and provide it to the integration environment as a secret.
 
 ## Client setup
 
@@ -45,9 +34,7 @@ export function agentTickClient() {
 }
 ```
 
-Agent Tokens are secrets. Do not place Request bodies, commands, choices, or other sensitive content in logs or analytics.
-
-## Minimal status update
+## Status Update
 
 ```ts
 await client.createStatusUpdate({
@@ -62,27 +49,28 @@ If your host exposes a real chat/thread/session ID, pass it as `sessionId` and o
 
 ## Sanction helper
 
-Use Sanctions when the local agent is about to perform a bounded sensitive action and needs an explicit human Response. Always include a deny choice.
-
 ```ts
 import type { AgentTickClient } from '@self-deprecated/agent-tick-sdk';
 import type { Choice } from '@self-deprecated/agent-tick-shared';
 
 export type SanctionDecision = 'approved' | 'denied' | 'expired';
 
-const sanctionChoices = [
-  { id: 'approve', label: 'Approve', kind: 'approve', flags: ['production', 'audit_relevant'] },
+const choices = [
+  { id: 'approve', label: 'Approve', kind: 'approve', flags: ['audit_relevant'] },
   { id: 'deny', label: 'Deny', kind: 'deny', flags: ['blocked'] }
 ] satisfies Choice[];
 
-export async function requestSanction(client: AgentTickClient, input: { title: string; body?: string; command?: string; timeoutMs?: number }): Promise<SanctionDecision> {
+export async function requestSanction(
+  client: AgentTickClient,
+  input: { title: string; body?: string; command?: string; timeoutMs?: number }
+): Promise<SanctionDecision> {
   const created = await client.createRequest({
     requester: { name: 'Deploy agent' },
     requestType: 'sanction',
     title: input.title,
     body: input.body,
     command: input.command,
-    choices: sanctionChoices,
+    choices,
     defaultChoice: 'deny',
     metadata: { helper: 'requestSanction' }
   });
@@ -93,125 +81,34 @@ export async function requestSanction(client: AgentTickClient, input: { title: s
 }
 ```
 
-Run the sensitive local action only after this helper returns `approved`. Agent Tick collects the human Response; it does not execute the command remotely.
+Run the sensitive local action only after this helper returns `approved`.
 
 ## Steering helper
 
-Use Steering when the agent needs the human to choose between known next steps.
-
 ```ts
-import type { AgentTickClient } from '@self-deprecated/agent-tick-sdk';
-import type { Choice } from '@self-deprecated/agent-tick-shared';
-
-export type SteeringChoice = 'small_fix' | 'full_refactor' | 'stop';
-
-const steeringChoices = [
-  { id: 'small_fix', label: 'Small targeted fix', kind: 'approve', flags: ['safest'] },
-  { id: 'full_refactor', label: 'Full refactor', kind: 'approve', flags: ['experimental'] },
-  { id: 'stop', label: 'Stop and preserve current changes', kind: 'deny', flags: ['blocked'] }
+const choices = [
+  { id: 'small_fix', label: 'Small targeted fix', kind: 'approve', flags: ['favorite'] },
+  { id: 'full_refactor', label: 'Full refactor', kind: 'approve' },
+  { id: 'stop', label: 'Stop', kind: 'deny', flags: ['blocked'] }
 ] satisfies Choice[];
 
-export async function askSteering(client: AgentTickClient, input: { title: string; body?: string; timeoutMs?: number }): Promise<SteeringChoice | 'expired'> {
-  const created = await client.createRequest({
-    requester: { name: 'Coding agent' },
-    requestType: 'steering',
-    title: input.title,
-    body: input.body,
-    choices: steeringChoices,
-    defaultChoice: 'stop'
-  });
-
-  const result = await client.waitForCreatedRequest(created, { timeoutMs: input.timeoutMs ?? 15 * 60_000 });
-  if (!result.terminal || result.request.status === 'expired') return 'expired';
-  const choice = result.request.response?.choiceId;
-  return choice === 'small_fix' || choice === 'full_refactor' || choice === 'stop' ? choice : 'expired';
-}
-```
-
-## External Approvers and Audience Channels
-
-Shared Workspace admins can add constrained External Approvers for one-customer approval routes. A typical backend flow creates an invite, has the customer accept it in Agent Tick, creates a single-recipient Routing Rule for that customer, then creates an Agent Token bound to that recipient.
-
-```ts
-const approver = await client.createExternalApprover({
-  displayName: 'Jane Customer',
-  externalSubject: 'customer_123'
-});
-const invite = await client.createExternalApproverInviteForApprover(approver.externalApproverId);
-// Show invite.qrPayload or invite.deepLink to the customer.
-
-await client.acceptExternalApproverInvite(invite.token);
-const token = await client.createExternalApproverBoundAgentToken(approver.externalApproverId);
-```
-
-For lower-level setup, you can still compose the pieces directly:
-
-```ts
-const route = await client.createRoutingRule({
-  workspaceId: 'wsp_123',
-  name: 'Jane Customer approvals',
-  recipientUserIds: ['usr_jane'],
-  requiredResponseMode: 'any_one',
-  requiredResponseCount: 1
-});
-
-const token = await client.createAgentToken({
-  workspaceId: 'wsp_123',
-  label: 'Legal AI for Jane',
-  routingRuleId: route.routingRuleId,
-  boundRecipientUserId: 'usr_jane'
-});
-```
-
-Audience Channels are for public-safe Steering polls. Audience Requests must use `deliveryKind: 'audience_channel'`, `requestType: 'steering'`, `responsePolicy: 'deadline_plurality'`, and `closesAt`; they cannot include commands.
-
-```ts
-const channel = await client.createAudienceChannel({
-  workspaceId: 'wsp_123',
-  name: 'Roadmap votes',
-  slug: 'roadmap',
-  visibility: 'public'
-});
-await client.subscribeToAudienceChannel(channel.channelId);
-
-await client.createRequest({
-  requester: { name: 'Roadmap agent' },
+const created = await client.createRequest({
+  requester: { name: 'Coding agent' },
   requestType: 'steering',
-  deliveryKind: 'audience_channel',
-  audienceChannelId: channel.channelId,
-  responsePolicy: 'deadline_plurality',
-  closesAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-  title: 'What should the agent work on next?',
-  choices: [
-    { id: 'external_approvers', label: 'External Approvers', kind: 'approve' },
-    { id: 'mobile_widgets', label: 'Mobile widgets', kind: 'approve' },
-    { id: 'stop', label: 'Do nothing', kind: 'deny' }
-  ],
+  title: 'Which path should I take?',
+  choices,
   defaultChoice: 'stop'
 });
 ```
 
-## Activity and Routing Rules
+## Routing and Workspace APIs
 
-```ts
-const workspaces = await client.listWorkspaces();
-const activity = await client.listActivity({ workspaceId: workspaces[0]?.workspaceId, limit: 50 });
-const pending = await client.getPendingRequestCount();
-const rule = await client.createRoutingRule({
-  workspaceId: workspaces[0].workspaceId,
-  name: 'Backend routing',
-  recipientUserIds: ['usr_123'],
-  requiredResponseMode: 'any_one',
-  requiredResponseCount: 1
-});
-await client.sendTestActivity({ kind: 'sanction', context: 'routing_rule', routingRuleId: rule.routingRuleId });
-```
+Advanced integrations can list Workspaces, create Agent Tokens, manage Routing Rules, and send Test Activity. Keep these flows behind human/admin authorization and avoid exposing raw tokens in logs.
 
 ## Guardrails
 
-- Keep choices finite and include a `kind: 'deny'` escape path for Sanctions and risky Steering.
-- Treat timeouts, expiration, and missing Responses as denial or no-op.
-- Use External Approvers for private customer/client decisions and Audience Channels only for public-safe Steering.
-- Never include secrets, bearer tokens, private customer data, raw prompt text, or full environment files in titles, bodies, commands, choices, metadata, diagnostics, or analytics.
-- Use `metadata` only for safe routing/debug fields such as helper name, request class, client key, or correlation ID.
-- Prefer local execution: Agent Tick collects the human Response; your local process decides what to do next.
+- Keep choices finite and include a deny/escape path for Sanctions and risky Steering.
+- Treat timeout and missing responses as denial or no-op.
+- Use metadata only for safe routing/debug fields.
+- Never include secrets, customer data, raw prompts, or full logs in Agent Tick content.
+- Prefer local execution: Agent Tick collects the human response; your local process decides what to do next.

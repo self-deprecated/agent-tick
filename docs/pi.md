@@ -1,44 +1,81 @@
 ---
 title: Pi
-description: Install the Agent Tick Pi extension for sanctions around risky shell actions.
+description: Use pi-agent-tick for mirrored Pi prompts, Agent Tick Steering, Status Updates, and optional Sanction gates.
 ---
 
 # Pi
 
-Agent Tick supports Pi with a native TypeScript extension installed by the CLI.
+Pi’s primary Agent Tick integration is `pi-agent-tick`. It adds a canonical Pi tool named `agent_tick_ask_user` and can mirror local Pi prompts to Agent Tick phone/web surfaces.
 
-## Setup
+Agent Tick remains a decision, approval, and status layer. Pi and the local shell remain the execution environment.
 
-For first-time setup, start with the [Quick Start](./quick-start.md) prompt-based skill and tell your agent you use Pi.
+## Install pi-agent-tick
 
-Manual install:
+```sh
+pi install npm:@self-deprecated/pi-agent-tick
+```
+
+Enable remote Agent Tick mirroring by logging in with the Agent Tick CLI:
+
+```sh
+agent-tick login
+```
+
+If no Agent Tick config is available, `agent_tick_ask_user` still opens the local Pi prompt. If config is available, the prompt appears both locally and remotely; the first valid answer wins.
+
+## Use `agent_tick_ask_user`
+
+Ask Pi to call `agent_tick_ask_user` at decision boundaries:
+
+```text
+Use `agent_tick_ask_user` to ask one focused question before choosing the migration path. Gather repo context first, provide 2-4 options, mark your recommended option with the favorite flag, and wait for the answer.
+```
+
+A good tool call includes:
+
+- one focused `question`
+- concise `context`
+- clear `options`
+- `flags: ["favorite"]` on the recommended option when there is one
+- a deny/stop option for risky work
+
+## Mirrored prompts
+
+A mirrored prompt appears in two places:
+
+1. the local Pi prompt in the current session
+2. the Agent Tick app/web Request
+
+Answer whichever surface is convenient. If the local prompt wins, the remote Request is resolved rather than treated as a denial.
+
+## Decision-gate skill
+
+`pi-agent-tick` includes an `agent-tick-decision-gate` skill. Use it before high-stakes architecture, schema, API, deployment, or security decisions.
+
+The skill’s handshake is:
+
+1. detect ambiguity or high stakes
+2. gather evidence from the codebase
+3. summarize context and trade-offs
+4. ask one focused Agent Tick question
+5. proceed only after the bounded answer
+
+## Optional Status Updates
+
+`pi-agent-tick` can send lifecycle Status Updates when Agent Tick config exists and status hooks are enabled. Keep updates quiet and milestone-based: start, blocked, validation, done.
+
+## Optional Sanction gates
+
+Sanction gates are opt-in. Configure rules when you want Pi to require approval before risky local shell commands such as recursive delete, pushes, broad permission changes, or package installs.
+
+Agent Tick returns the approval decision. Pi still decides whether to run or block the local tool call.
+
+## Compatibility: CLI-installed Pi extension
+
+The Agent Tick CLI also has a Pi target:
 
 ```sh
 npx @self-deprecated/agent-tick install --target pi
 ```
 
-The installer writes the Agent Tick Pi extension to:
-
-```text
-~/.pi/agent/extensions/agent-tick-sanction.ts
-```
-
-Pi auto-discovers extensions from `~/.pi/agent/extensions/`. Restart Pi or run `/reload` in Pi after installing or updating the extension.
-
-## What the extension does
-
-The launch Pi extension watches Pi `bash` tool calls. When Pi is about to run a risky command, the extension creates an Agent Tick sanction request with `agent-tick sanction` and blocks the tool call if the request is denied, times out, or fails.
-
-The current risky-command patterns include recursive remove commands, `sudo`, broad `chmod`/`chown`, `git`/`jj push`, `docker compose up`, and package-manager install/add commands. Agent Tick commands themselves are ignored so the extension does not loop on its own Sanction Request.
-
-Status Updates, Steering, and Sanctions from the Pi Native Extension share one Agent Tick Session per Pi chat. The extension uses Pi's persisted chat/session ID when available, so resumed Pi chats continue in the same Agent Tick Session. If Pi does not expose a real chat/session ID and no `AGENT_TICK_SESSION_ID` override is set, the extension should omit explicit `sessionId` rather than generate a random fallback; Agent Tick will group best-effort by source metadata. Host/source hints such as host, working directory, and client name remain source metadata, not Session identity. Set `AGENT_TICK_SESSION_ID` and optional `AGENT_TICK_SESSION_TITLE` only when a host integration already has a stronger chat/session ID or user-facing label.
-
-## Verify
-
-After setup and reload, ask Pi to do normal work that may need Response. For a safe extension smoke test, ask Pi to run a dry-run dependency install only after a human approving Response, for example:
-
-```text
-Use Agent Tick if needed, then run npm install --dry-run. Stop if the Response denies or times out.
-```
-
-You should receive the Sanction Request in Agent Tick, respond from the mobile app or web UI, and see Pi continue only after the Response.
+That path installs a Pi extension file at `~/.pi/agent/extensions/agent-tick-sanction.ts` focused on risky shell Sanctions. Prefer `pi-agent-tick` when you want mirrored prompts, decision gates, status hooks, and configurable Pi behavior.

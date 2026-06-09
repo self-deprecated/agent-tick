@@ -10,6 +10,7 @@ export type BuildAgentTickChromePropsInput = {
   accounts: ChromeProps["accounts"];
   connectionStatus: ChromeProps["connectionStatus"];
   hasSelectedVisibleSession: ChromeProps["hasSelectedVisibleSession"];
+  needsInputBadgeCount: ChromeProps["needsInputBadgeCount"];
   menuOpen: ChromeProps["menuOpen"];
   openSessionActions: ChromeProps["openSessionActions"];
   screen: ChromeProps["screen"];
@@ -17,7 +18,8 @@ export type BuildAgentTickChromePropsInput = {
   sessionStackInteractionMode: ChromeProps["sessionStackInteractionMode"];
   setMenuOpen: ChromeProps["setMenuOpen"];
   setScreen: ChromeProps["setScreen"];
-  setSettingsHomeSignal: ChromeProps["setSettingsHomeSignal"];
+  setSelectedSessionID: ChromeProps["setSelectedSessionID"];
+  setSettingsViewTarget: ChromeProps["setSettingsViewTarget"];
   toggleSessionStackInteractionMode: ChromeProps["toggleSessionStackInteractionMode"];
   visibleSessionCount: ChromeProps["visibleSessionCount"];
   workspaceName: ChromeProps["workspaceName"];
@@ -29,6 +31,7 @@ export function buildAgentTickChromeProps({
   accounts,
   connectionStatus,
   hasSelectedVisibleSession,
+  needsInputBadgeCount,
   menuOpen,
   openSessionActions,
   screen,
@@ -36,7 +39,8 @@ export function buildAgentTickChromeProps({
   sessionStackInteractionMode,
   setMenuOpen,
   setScreen,
-  setSettingsHomeSignal,
+  setSelectedSessionID,
+  setSettingsViewTarget,
   toggleSessionStackInteractionMode,
   visibleSessionCount,
   workspaceName,
@@ -47,6 +51,7 @@ export function buildAgentTickChromeProps({
     accounts,
     connectionStatus,
     hasSelectedVisibleSession,
+    needsInputBadgeCount,
     menuOpen,
     openSessionActions,
     screen,
@@ -54,7 +59,8 @@ export function buildAgentTickChromeProps({
     sessionStackInteractionMode,
     setMenuOpen,
     setScreen,
-    setSettingsHomeSignal,
+    setSelectedSessionID,
+    setSettingsViewTarget,
     toggleSessionStackInteractionMode,
     visibleSessionCount,
     workspaceName,

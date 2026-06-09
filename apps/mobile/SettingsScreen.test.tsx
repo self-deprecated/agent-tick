@@ -208,6 +208,17 @@ describe("SettingsScreen — paired state", () => {
     expect(screen.queryByText("Enable Request alerts")).toBeNull();
   });
 
+  it("opens Notifications settings from an external signal", async () => {
+    const { rerender } = render(<SettingsScreen {...pairedProps} notificationStatus="undetermined" settingsViewTarget="home" settingsViewSignal={0} />);
+    expect(screen.queryByText("Enable Request alerts")).toBeNull();
+
+    rerender(<SettingsScreen {...pairedProps} notificationStatus="undetermined" settingsViewTarget="notifications" settingsViewSignal={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Enable Request alerts")).toBeTruthy();
+    });
+  });
+
   it("disables push registration when push is already registered", () => {
     const onRegisterPush = jest.fn();
     render(<SettingsScreen {...pairedProps} onRegisterPush={onRegisterPush} pushStatus="registered" />);
@@ -311,13 +322,13 @@ describe("SettingsScreen — paired state", () => {
     expect(onDiagnosticsEnabledChange).toHaveBeenCalledWith(true);
   });
 
-  it("returns to top-level settings when the home signal changes", () => {
-    const { rerender } = render(<SettingsScreen {...pairedProps} settingsHomeSignal={0} />);
+  it("returns to top-level settings when the target view changes to home", () => {
+    const { rerender } = render(<SettingsScreen {...pairedProps} settingsViewTarget="home" settingsViewSignal={0} />);
 
     fireEvent.press(screen.getByText("Developer"));
     expect(screen.getByText("Show native paywall")).toBeTruthy();
 
-    rerender(<SettingsScreen {...pairedProps} settingsHomeSignal={1} />);
+    rerender(<SettingsScreen {...pairedProps} settingsViewTarget="home" settingsViewSignal={1} />);
     expect(screen.getByText("Debug tools and diagnostics")).toBeTruthy();
     expect(screen.queryByText("Show native paywall")).toBeNull();
   });

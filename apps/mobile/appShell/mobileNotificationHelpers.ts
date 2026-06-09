@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
 import type { MutableRefObject } from "react";
 
 import { localNotificationRequestData } from "../AppLogic";
@@ -10,6 +10,7 @@ import type { NotificationStatus, PushStatus } from "../SettingsScreen";
 export const requestCategoryID = "agent-tick-request";
 export const requestChannelID = "agent-tick-requests";
 export const mobileInstallationIDStorageKey = "agent-tick.mobileInstallationID";
+export const notificationSettingsReminderStorageKey = "agent-tick.notificationSettingsReminderSeen";
 
 export async function mobileInstallationID(): Promise<string> {
   const existing = await AsyncStorage.getItem(mobileInstallationIDStorageKey);
@@ -56,31 +57,31 @@ export async function notifyForNewRequests(
   seenRequestIDs: MutableRefObject<Set<string>>,
   didPrimeNotifications: MutableRefObject<boolean>,
   useLocalNotifications: boolean,
-) {
+): Promise<MobileRequest[]> {
   const pendingIDs = new Set(pending.map((request) => mobileRequestKey(request)));
   const seenRequest = (request: MobileRequest) => seenRequestIDs.current.has(mobileRequestKey(request));
 
   if (!didPrimeNotifications.current) {
     seenRequestIDs.current = pendingIDs;
     didPrimeNotifications.current = true;
-    return;
+    return [];
   }
 
   const newRequests = pending.filter((request) => !seenRequest(request));
   seenRequestIDs.current = pendingIDs;
 
   if (!useLocalNotifications) {
-    return;
+    return newRequests;
   }
 
   let permissions: Notifications.NotificationPermissionsStatus;
   try {
     permissions = await Notifications.getPermissionsAsync();
   } catch {
-    return;
+    return newRequests;
   }
   if (!permissions.granted) {
-    return;
+    return newRequests;
   }
 
   for (const request of newRequests) {
@@ -100,4 +101,54 @@ export async function notifyForNewRequests(
       // Local notifications are opportunistic; polling/event-stream refresh still shows the request.
     }
   }
+
+  return newRequests;
+}
+
+export function shouldRemindForRequestNotifications({
+  notificationsEnabled,
+  notificationStatus,
+}: {
+  notificationsEnabled: boolean;
+  notificationStatus: NotificationStatus;
+}): boolean {
+  return !notificationsEnabled || notificationStatus === "denied" || notificationStatus === "undetermined";
+}
+
+export async function maybeShowNotificationSettingsReminder({
+  newRequests,
+  notificationsEnabled,
+  notificationStatus,
+  reminderSeen,
+  onOpenNotificationSettings,
+}: {
+  newRequests: MobileRequest[];
+  notificationsEnabled: boolean;
+  notificationStatus: NotificationStatus;
+  reminderSeen: MutableRefObject<boolean>;
+  onOpenNotificationSettings: () => void;
+}) {
+  if (newRequests.length === 0) return;
+  if (!shouldRemindForRequestNotifications({ notificationsEnabled, notificationStatus })) return;
+  if (reminderSeen.current) return;
+
+  try {
+    if (await AsyncStorage.getItem(notificationSettingsReminderStorageKey) === "true") {
+      reminderSeen.current = true;
+      return;
+    }
+  } catch {
+    // Fall through and remind once in this app process even if persistence cannot be read.
+  }
+
+  reminderSeen.current = true;
+  await AsyncStorage.setItem(notificationSettingsReminderStorageKey, "true").catch(() => undefined);
+  Alert.alert(
+    "Turn on Request notifications?",
+    "A Request arrived while notifications are off. Enable notifications to get future Requests right away.",
+    [
+      { text: "Not now", style: "cancel" },
+      { text: "Notifications settings", onPress: onOpenNotificationSettings },
+    ],
+  );
 }

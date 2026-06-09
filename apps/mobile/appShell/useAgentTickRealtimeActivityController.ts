@@ -1,3 +1,5 @@
+import { useCallback } from "react";
+
 import type { useAgentTickAppState } from "./useAgentTickAppState";
 import type { useAgentTickBillingController } from "./useAgentTickBillingController";
 import type { useMobileApiClient } from "./useMobileApiClient";
@@ -12,6 +14,7 @@ type UseAgentTickRealtimeActivityControllerInput = {
   appStatusState: AgentTickAppState["appStatusState"];
   billingController: ReturnType<typeof useAgentTickBillingController>;
   connectionAccountState: AgentTickAppState["connectionAccountState"];
+  navigationState: AgentTickAppState["navigationState"];
   notificationTargetState: AgentTickAppState["notificationTargetState"];
   runtimeRefs: AgentTickAppState["runtimeRefs"];
   sdk: ReturnType<typeof useMobileApiClient>["sdk"];
@@ -24,20 +27,30 @@ export function useAgentTickRealtimeActivityController({
   appStatusState,
   billingController,
   connectionAccountState,
+  navigationState,
   notificationTargetState,
   runtimeRefs,
   sdk,
   selectionState,
   sessionStackDashboard,
 }: UseAgentTickRealtimeActivityControllerInput) {
+  const { setScreen, setSettingsViewTarget } = navigationState;
+  const openNotificationSettings = useCallback(() => {
+    setScreen("settings");
+    setSettingsViewTarget((target) => ({ view: "notifications", signal: target.signal + 1 }));
+  }, [setScreen, setSettingsViewTarget]);
+
   return useMobileRealtimeActivityController({
     authProvider: connectionAccountState.runtimeAuthConfig?.authProvider,
     dashboardSessionSummaries: sessionStackDashboard.dashboardSessionSummaries,
     deviceID: connectionAccountState.deviceID,
     didPrimeNotifications: runtimeRefs.didPrimeNotifications,
+    didShowNotificationSettingsReminder: runtimeRefs.didShowNotificationSettingsReminder,
     hasRequestAuth: selectionState.hasRequestAuth,
     notificationsEnabled: appStatusState.notificationsEnabled,
+    notificationStatus: appStatusState.notificationStatus,
     notificationTargetID: notificationTargetState.notificationTargetID,
+    onOpenNotificationSettings: openNotificationSettings,
     pushStatus: appStatusState.pushStatus,
     realtimeUnavailable: appStatusState.realtimeUnavailable,
     refreshPersonalBilling: billingController.refreshPersonalBilling,

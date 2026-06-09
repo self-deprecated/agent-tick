@@ -116,7 +116,8 @@ export function SettingsScreen({
   setSelectedWorkspaceID,
   setServerURL,
   setToken,
-  settingsHomeSignal = 0,
+  settingsViewTarget = "home",
+  settingsViewSignal = 0,
   token,
 }: {
   accounts?: SavedMobileAccount[];
@@ -173,7 +174,8 @@ export function SettingsScreen({
   serverURL: string;
   setPairingCode: (value: string) => void;
   setSelectedWorkspaceID?: (value: string) => void;
-  settingsHomeSignal?: number;
+  settingsViewTarget?: "home" | "notifications";
+  settingsViewSignal?: number;
   setServerURL: (value: string) => void;
   setToken: (value: string) => void;
   token: string;
@@ -194,8 +196,8 @@ export function SettingsScreen({
   };
 
   useEffect(() => {
-    setSettingsView("home");
-  }, [settingsHomeSignal]);
+    setSettingsView(settingsViewTarget);
+  }, [settingsViewSignal, settingsViewTarget]);
 
   const tr = translateSource;
   const openSettingsView = (nextView: SettingsView, button: string, metadata?: Record<string, unknown>) => {

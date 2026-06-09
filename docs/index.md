@@ -1,39 +1,37 @@
 ---
 title: Agent Tick Docs
-description: Learn how to connect coding agents to Agent Tick for status updates, bounded steering, and sanctions.
+description: Learn what Agent Tick is, connect your first agent, and use Status Updates, Steering, and Sanctions from your phone or browser.
 ---
 
 # Agent Tick Docs
 
-Agent Tick lets local coding agents ask trusted humans for help without turning the web app or phone into a remote shell.
+Agent Tick is a least-permission approval layer for coding agents. Your local agent can send progress, ask a bounded question, or wait for approval without giving the phone, hosted app, or Agent Tick server a shell.
 
-Use it for three things:
+Use Agent Tick for three things:
 
-- **Status updates** — non-blocking progress from an agent.
-- **Steering** — a human chooses from a fixed set of safe options.
-- **Sanctions** — a human approves or denies one specific local action before the agent continues.
+- **Status Updates** — one-way progress from an agent.
+- **Steering** — choose from bounded options supplied by the agent.
+- **Sanctions** — approve or deny one specific risky action before the agent continues locally.
 
-## Start with the path that matches you
+Agent Tick routes requests and returns bounded responses. It does **not** execute commands remotely.
 
-| I want to… | Go here |
+## Start here
+
+1. [Quick Start](./quick-start.md) — connect the app, send a Test Request, then connect your first Agent Connection.
+2. [Core Concepts](./core-concepts.md) — understand Requests, Sessions, Agent Connections, Approval Devices, and Workspaces.
+3. [Prompt agents to use Agent Tick](./prompting-agents.md) — make agents call the Agent Tick tool instead of just replying in chat.
+
+## Common paths
+
+| I want to… | Read |
 | --- | --- |
-| Connect my first coding-agent machine | [Quick Start](./quick-start.md) |
-| Respond from my phone | [Mobile app](./mobile-app.md) |
-| Set up Claude Code, Codex, Pi, or GitHub Actions | [Integrations](./integrations.md) |
-| Use the CLI directly | [CLI reference](./cli.md) |
-| Run my own server | [Self-hosting](./self-hosting.md) |
-| Build against the API | [API and SDK](./api-sdk.md) |
-
-## What Agent Tick does not do
-
-Agent Tick routes requests and returns bounded responses. It does **not** run commands on your phone, in the hosted app, or on Agent Tick servers. Approved actions still run only where the local agent or workflow was already running.
-
-## Recommended first flow
-
-1. Open the [Quick Start](./quick-start.md).
-2. Paste the setup prompt into the coding agent you want to connect.
-3. Install the mobile app or use the web request flow.
-4. Send one safe test request before trusting it with real work.
+| Connect my first machine | [Quick Start](./quick-start.md) |
+| Understand the app screens | [Native App](./native-app.md) and [Personal Console](./personal-console.md) |
+| Configure Claude Code, Codex, Pi, or other tools | [Coding-agent integrations](./coding-agent-integrations.md) |
+| Try Agent Tick from a terminal | [CLI](./cli.md) |
+| Use Agent Tick with a team | [Workspaces](./workspaces.md) |
+| Run my own server | [Self-hosting Quick Start](./self-hosting.md) |
+| Build a custom integration | [API and SDK](./api-sdk.md) |
 
 Privacy Policy and Terms live on the product site:
 

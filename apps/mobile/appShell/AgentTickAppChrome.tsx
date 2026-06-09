@@ -8,6 +8,7 @@ import type { AccountPendingState } from "../mobileTypes";
 import type { ConnectionStatus } from "../SettingsScreen";
 import { SideMenu } from "../sideMenu/SideMenu";
 import { AgentTickAppHeader, type AgentTickAppHeaderProps } from "./AgentTickAppHeader";
+import type { SettingsViewTarget } from "./useAgentTickNavigationState";
 
 type AgentTickAppChromeProps = {
   accountPending: Record<string, AccountPendingState>;
@@ -15,6 +16,7 @@ type AgentTickAppChromeProps = {
   accounts: SavedMobileAccount[];
   connectionStatus: ConnectionStatus;
   hasSelectedVisibleSession: boolean;
+  needsInputBadgeCount: number;
   menuOpen: boolean;
   openSessionActions: () => void;
   screen: Screen;
@@ -22,7 +24,8 @@ type AgentTickAppChromeProps = {
   sessionStackInteractionMode: AgentTickAppHeaderProps["sessionStackInteractionMode"];
   setMenuOpen: Dispatch<SetStateAction<boolean>>;
   setScreen: Dispatch<SetStateAction<Screen>>;
-  setSettingsHomeSignal: Dispatch<SetStateAction<number>>;
+  setSelectedSessionID: Dispatch<SetStateAction<string | null>>;
+  setSettingsViewTarget: Dispatch<SetStateAction<SettingsViewTarget>>;
   toggleSessionStackInteractionMode: () => void;
   visibleSessionCount: number;
   workspaceName?: string;
@@ -34,6 +37,7 @@ export function AgentTickAppChrome({
   accounts,
   connectionStatus,
   hasSelectedVisibleSession,
+  needsInputBadgeCount,
   menuOpen,
   openSessionActions,
   screen,
@@ -41,7 +45,8 @@ export function AgentTickAppChrome({
   sessionStackInteractionMode,
   setMenuOpen,
   setScreen,
-  setSettingsHomeSignal,
+  setSelectedSessionID,
+  setSettingsViewTarget,
   toggleSessionStackInteractionMode,
   visibleSessionCount,
   workspaceName,
@@ -53,9 +58,12 @@ export function AgentTickAppChrome({
         connectionStatus={connectionStatus}
         visibleSessionCount={visibleSessionCount}
         hasSelectedVisibleSession={hasSelectedVisibleSession}
+        needsInputBadgeCount={needsInputBadgeCount}
         sessionStackInteractionMode={sessionStackInteractionMode}
         onBrandPress={() => {
-          recordDiagnostic("info", "navigation", "brand_pressed", { from: screen, to: "requests" });
+          const exitsSessionFocus = screen === "requests" && hasSelectedVisibleSession && visibleSessionCount > 1;
+          recordDiagnostic("info", "navigation", "brand_pressed", { from: screen, to: "requests", exitsSessionFocus });
+          if (exitsSessionFocus) setSelectedSessionID(null);
           setScreen("requests");
           setMenuOpen(false);
         }}
@@ -69,7 +77,7 @@ export function AgentTickAppChrome({
         }}
         onOpenMenu={() => {
           recordDiagnostic("info", "button", "open_menu");
-          if (screen === "settings") setSettingsHomeSignal((value) => value + 1);
+          if (screen === "settings") setSettingsViewTarget((target) => ({ view: "home", signal: target.signal + 1 }));
           setMenuOpen(true);
         }}
       />
@@ -82,7 +90,7 @@ export function AgentTickAppChrome({
         onClose={() => setMenuOpen(false)}
         onNavigate={(nextScreen) => {
           recordDiagnostic("info", "navigation", "menu_item_selected", { to: nextScreen });
-          if (nextScreen === "settings") setSettingsHomeSignal((value) => value + 1);
+          if (nextScreen === "settings") setSettingsViewTarget((target) => ({ view: "home", signal: target.signal + 1 }));
           setScreen(nextScreen);
           setMenuOpen(false);
         }}

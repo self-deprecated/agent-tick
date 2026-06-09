@@ -8,6 +8,7 @@ import type { useAgentTickRequestHandlingActions } from "./useAgentTickRequestHa
 import type { useAgentTickSettingsActions } from "./useAgentTickSettingsActions";
 import type { useMobileBillingAccessState } from "./useMobileBillingAccessState";
 import type { useMobileSelectionState } from "./useMobileSelectionState";
+import { sessionStackSessionKey } from "../sessionStackState";
 import type { useSelectedRequestDraft } from "./useSelectedRequestDraft";
 import type { useSessionStackDashboard } from "./useSessionStackDashboard";
 import type { useSessionStackPersistence } from "./useSessionStackPersistence";
@@ -59,6 +60,13 @@ export function buildAgentTickAppViewPropsFromState({
   settingsActions,
   showDebugHostedExpiryWarning,
 }: BuildAgentTickAppViewPropsFromStateInput) {
+  const selectedVisibleSession = sessionStackDashboard.selectedVisibleSessionSummary;
+  const needsInputBadgeCount = selectedVisibleSession && sessionStackDashboard.visibleSessionSummaries.length > 1
+    ? sessionStackDashboard.visibleSessionSummaries
+      .filter((session) => sessionStackSessionKey(session) !== activityState.selectedSessionID)
+      .reduce((total, session) => total + session.pendingRequestCount, 0)
+    : 0;
+
   return buildAgentTickAppViewProps({
     accountPending: connectionManagement.accountPending,
     accountProfile: connectionAccountState.currentAccountProfile,
@@ -81,7 +89,7 @@ export function buildAgentTickAppViewPropsFromState({
     entitlementSourceDiagnostics: billingAccessState.entitlementSourceDiagnostics,
     error: appStatusState.error,
     hasAnyAppAccessEntitlement: billingAccessState.hasAnyAppAccessEntitlement,
-    hasSelectedVisibleSession: Boolean(sessionStackDashboard.selectedVisibleSessionSummary),
+    hasSelectedVisibleSession: Boolean(selectedVisibleSession),
     history: activityState.history,
     historyLoading: appStatusState.historyLoading,
     historySessionDetails: activityState.historySessionDetails,
@@ -94,6 +102,7 @@ export function buildAgentTickAppViewPropsFromState({
     menuOpen: navigationState.menuOpen,
     nativeEntitlement: billingAccessState.nativeEntitlement,
     nativePaywallVisible: billingAccessState.nativePaywallVisible,
+    needsInputBadgeCount,
     notificationStatus: appStatusState.notificationStatus,
     notificationsEnabled: appStatusState.notificationsEnabled,
     onAddClerkAccount: clerkControls.onAddClerkAccount,
@@ -132,10 +141,10 @@ export function buildAgentTickAppViewPropsFromState({
     setScreen: navigationState.setScreen,
     setSelectedSessionID: activityState.setSelectedSessionID,
     setSessionStackLocalState: sessionStackPersistence.setSessionStackLocalState,
-    setSettingsHomeSignal: navigationState.setSettingsHomeSignal,
+    setSettingsViewTarget: navigationState.setSettingsViewTarget,
     setToken: connectionAccountState.setToken,
     settingsActions,
-    settingsHomeSignal: navigationState.settingsHomeSignal,
+    settingsViewTarget: navigationState.settingsViewTarget,
     showDebugHostedExpiryWarning,
     showNativePaywall: billingController.showNativePaywall,
     storeProducts: billingState.storeProducts,

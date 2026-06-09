@@ -18,9 +18,9 @@ import {
   type MobileRequest,
 } from "../requests";
 import type { MobileSessionSummary } from "../mobileTypes";
-import type { ConnectionStatus, PushStatus } from "../SettingsScreen";
+import type { ConnectionStatus, NotificationStatus, PushStatus } from "../SettingsScreen";
 import { toMobileSessionSummary } from "../sessions/sessionDetailConnection";
-import { notifyForNewRequests } from "./mobileNotificationHelpers";
+import { maybeShowNotificationSettingsReminder, notifyForNewRequests } from "./mobileNotificationHelpers";
 import {
   attachWorkspaceMemberCounts,
   filterRequestsBySource,
@@ -35,8 +35,11 @@ type LoadActivity = (options?: { visible?: boolean }) => Promise<void>;
 type UseMobileActivityLoadOptions = {
   authProvider?: RuntimeAuthConfig["authProvider"];
   didPrimeNotifications: MutableRefObject<boolean>;
+  didShowNotificationSettingsReminder: MutableRefObject<boolean>;
   notificationsEnabled: boolean;
+  notificationStatus: NotificationStatus;
   notificationTargetID: string | null;
+  onOpenNotificationSettings: () => void;
   pushStatus: PushStatus;
   savedAccounts: SavedMobileAccount[];
   sdk: AgentTickClient;
@@ -60,8 +63,11 @@ type UseMobileActivityLoadOptions = {
 export function useMobileActivityLoad({
   authProvider,
   didPrimeNotifications,
+  didShowNotificationSettingsReminder,
   notificationsEnabled,
+  notificationStatus,
   notificationTargetID,
+  onOpenNotificationSettings,
   pushStatus,
   savedAccounts,
   sdk,
@@ -183,12 +189,19 @@ export function useMobileActivityLoad({
       setDiagnosticsEventCount(diagnosticEvents().length);
       setStatusUpdates(latestStatuses);
       setSessionSummaries(loadedSessionSummaries);
-      await notifyForNewRequests(
+      const newRequests = await notifyForNewRequests(
         pendingRequests,
         seenRequestIDs,
         didPrimeNotifications,
         shouldScheduleLocalNotifications(pushStatus, notificationsEnabled),
       );
+      await maybeShowNotificationSettingsReminder({
+        newRequests,
+        notificationsEnabled,
+        notificationStatus,
+        reminderSeen: didShowNotificationSettingsReminder,
+        onOpenNotificationSettings,
+      });
       setRequests(pendingRequests);
       setConnectionStatus(requestLoadConnectionStatus({
         successfulConnectionCount: connectionActivities.length,
@@ -224,7 +237,7 @@ export function useMobileActivityLoad({
         setLoading(false);
       }
     }
-  }, [notificationTargetID, notificationsEnabled, pushStatus, authProvider, savedAccounts, sdk, selectedWorkspaceID, selectedSourceID]);
+  }, [notificationTargetID, notificationsEnabled, notificationStatus, pushStatus, authProvider, savedAccounts, sdk, selectedWorkspaceID, selectedSourceID, onOpenNotificationSettings]);
 
   return { load };
 }

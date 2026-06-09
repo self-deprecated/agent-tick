@@ -1,26 +1,17 @@
 ---
-title: CLI reference
-description: Configure Agent Tick and use status-update, steering, sanction, and MCP commands.
-sidebar_label: CLI
+title: CLI
+description: Use the Agent Tick CLI to configure machines, smoke-test routing, run MCP, and let agents send Status Updates, Steering, and Sanctions.
 ---
 
-# CLI reference
+# CLI
 
-The `agent-tick` CLI runs on the machine where your coding agent or workflow runs.
+The `agent-tick` CLI runs where the agent or workflow runs. Humans mainly use it to configure and smoke-test Agent Tick; agents and integrations use it as a transport.
 
-Use it to:
+If `agent-tick` is not on your `PATH`, use `npx @self-deprecated/agent-tick <command>`.
 
-- configure a server URL and local `agent_...` token
-- send **status updates**
-- ask bounded **steering** questions
-- create **sanction** requests before sensitive local actions
-- run the local stdio **MCP adapter** for MCP-capable agents
+## Configure this machine
 
-If `agent-tick` is not on your `PATH`, use `npx @self-deprecated/agent-tick <command>` for one-off commands.
-
-## Configure the CLI
-
-Recommended first-time setup is the prompt-based flow in [Quick Start](./quick-start.md). Manual setup:
+Guided setup is normally done through the setup prompt from the Personal Console. Manual setup:
 
 ```sh
 npx @self-deprecated/agent-tick install
@@ -32,7 +23,7 @@ Sign in and save a local token without installing integrations:
 npx @self-deprecated/agent-tick login
 ```
 
-For self-hosted servers or CI, create an Agent Token in the dashboard and save it locally:
+For self-hosted servers or CI, save a server and Agent Token:
 
 ```sh
 agent-tick config --server https://tick.example.com --token agent_...
@@ -41,60 +32,40 @@ agent-tick config show
 
 Treat `agent_...` tokens as secrets.
 
-## Send a status update
-
-Status updates are one-way progress. They do not require a human response.
+## Smoke-test Status Updates
 
 ```sh
 agent-tick status-update --state working --next "Run tests" "Finished edits; validating now"
 ```
 
-Use Session IDs only when you have a real host chat/thread/session ID:
+Use `--notify` only for attention-worthy updates:
 
 ```sh
-AGENT_TICK_SESSION_ID=codex_019e9c78-ab9c-73b0-b21c-ce18a32c8499 \
-  agent-tick status-update --session-title "Billing migration" --state working "Running checks"
+agent-tick status-update --state blocked --notify --importance high "Need staging access"
 ```
 
-See [Session identity](./session-identity.md) for the full rules.
-
-## Ask for steering
-
-Use steering when the agent needs a human to choose between known options.
+## Smoke-test Steering
 
 ```sh
 agent-tick steering \
-  --title "Which rollout?" \
-  --choice canary="Canary" \
-  --choice blue_green="Blue/green" \
-  --choice cancel:deny="Cancel"
-```
-
-Include a deny or escape option when a bad state is possible.
-
-Choice flags add mobile-visible cues:
-
-```sh
-agent-tick steering \
-  --title "Which fix?" \
+  --title "Which path?" \
   --choice small="Small targeted fix" \
-  --choice rewrite="Rewrite subsystem" \
-  --choice stop:deny="Stop" \
-  --choice-flag small=favorite
+  --choice refactor="Larger refactor" \
+  --choice stop:deny="Stop"
 ```
 
-## Ask for a sanction
+Include a deny/escape option when continuing may be wrong.
 
-Use a sanction before one specific sensitive local action. Agent Tick records the request and returns the human decision; it does not run the command remotely.
+## Smoke-test Sanctions
+
+Use `--command` when the command is reviewer context only:
 
 ```sh
 agent-tick sanction \
   --title "Run migration?" \
-  --body "Run the migration against the staging database." \
+  --body "Touches staging billing tables." \
   --command "./migrate-staging.sh"
 ```
-
-Use `--command` when you only want to show the command as reviewer context.
 
 Put the command after `--` only when you want the CLI itself to run that local command after approval:
 
@@ -102,26 +73,37 @@ Put the command after `--` only when you want the CLI itself to run that local c
 agent-tick sanction --title "Run migration?" -- ./migrate-staging.sh
 ```
 
-The command runs locally on this machine after approval. Denial, timeout, or failure prevents it from running.
+Denial, timeout, or failure prevents the command from running.
 
 ## Run the MCP adapter
 
-MCP-capable agents can launch the local stdio adapter:
+MCP-capable agents can launch:
 
 ```sh
 agent-tick mcp
 ```
 
-The adapter uses the same saved CLI config/token and exposes Agent Tick tools for status updates, steering, and sanctions.
+The adapter exposes `agent_tick_status_update`, `agent_tick_steering`, and `agent_tick_sanction` using the saved CLI config/token.
 
 ## Resolve a pending request
 
-If a local caller created a request it no longer needs, resolve it by ID:
+If a caller created a Request it no longer needs:
 
 ```sh
 agent-tick abandon req_123
 ```
 
+## Session IDs
+
+Use a Session ID only when you have a real host chat/thread/run ID:
+
+```sh
+AGENT_TICK_SESSION_ID=ci_${GITHUB_RUN_ID} \
+  agent-tick status-update --session-title "Release validation" --state working "Running checks"
+```
+
+Do not generate random Session IDs for one-off CLI calls. Omit the Session ID and let Agent Tick group best-effort.
+
 ## Safe content checklist
 
-Do not put secrets, bearer tokens, private keys, raw logs, full prompts, `.env` files, or customer data in request titles, bodies, choices, commands, metadata, or diagnostics.
+Do not put secrets, bearer tokens, private keys, raw logs, full prompts, `.env` files, or customer data in request titles, bodies, choices, commands, metadata, diagnostics, or notifications.

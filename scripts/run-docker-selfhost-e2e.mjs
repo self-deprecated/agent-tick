@@ -166,7 +166,11 @@ async function runAllModes(parsedOptions) {
 async function runPlaywright(selectedMode, env) {
   const args = ['pnpm', 'exec', 'playwright', 'test'];
   if (selectedMode === 'clerk-test' || selectedMode === 'postgres-clerk-test') {
-    args.push('tests/e2e/docker/selfhost-clerk-test.spec.ts', 'tests/e2e/docker/selfhost-authorization-boundaries.spec.ts');
+    args.push(
+      'tests/e2e/docker/selfhost-clerk-test.spec.ts',
+      'tests/e2e/docker/selfhost-authorization-boundaries.spec.ts',
+      'tests/e2e/docker/selfhost-team-routing.spec.ts'
+    );
   } else if (selectedMode === 'rate-limit') {
     args.push('tests/e2e/docker/selfhost-rate-limits.spec.ts');
   } else if (selectedMode === 'redis') {

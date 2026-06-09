@@ -72,7 +72,7 @@ export type BuildAgentTickSettingsRoutePropsInput = {
   setPairingCode: PairingProps["setPairingCode"];
   setToken: AccountServerProps["setToken"];
   settingsActions: SettingsActions;
-  settingsHomeSignal: SettingsRouteProps["settingsHomeSignal"];
+  settingsViewTarget: SettingsRouteProps["settingsViewTarget"];
   showDebugHostedExpiryWarning: BillingProps["showDebugHostedExpiryWarning"];
   showNativePaywall: (placement: PaywallPlacement) => void;
   storeProducts: BillingProps["storeProducts"];
@@ -111,7 +111,7 @@ export function buildAgentTickSettingsRouteProps({
   setPairingCode,
   setToken,
   settingsActions,
-  settingsHomeSignal,
+  settingsViewTarget,
   showDebugHostedExpiryWarning,
   showNativePaywall,
   storeProducts,
@@ -214,6 +214,6 @@ export function buildAgentTickSettingsRouteProps({
       pairDevice,
       setPairingCode,
     },
-    settingsHomeSignal,
+    settingsViewTarget,
   };
 }

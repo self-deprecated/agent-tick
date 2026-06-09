@@ -1,70 +1,73 @@
 ---
 title: Quick Start
-description: Connect one coding-agent machine to Agent Tick and send a safe test request.
+description: Connect Agent Tick mobile/web routing, send a Test Request, then connect your first coding-agent machine.
 ---
 
 # Quick Start
 
-This guide connects one coding-agent machine, signs you in, and sends a safe test request.
+This guide connects one developer to hosted Agent Tick. You will prove that requests can reach you first, then connect a local coding agent.
 
-## Before you start
+Self-hosting instead? Start with [Self-hosting Quick Start](./self-hosting.md), then return here for app and agent setup.
 
-Choose where requests should go:
+## 1. Open the hosted app
 
-- **Hosted Agent Tick** — easiest path. Use [app.agenttick.sh](https://app.agenttick.sh) and the mobile app.
-- **Self-hosted Agent Tick** — run your own server first, then install with `--server https://tick.example.com`. See [Self-hosting](./self-hosting.md).
+Go to [app.agenttick.sh](https://app.agenttick.sh) and sign in.
 
-The phone and hosted app never run commands. Agent Tick only routes the request and returns your bounded response.
+Agent Tick will create your Personal Workspace. A Workspace contains your connected agents, Approval Devices, activity, and routing settings.
 
-## 1. Ask your coding agent to set up Agent Tick
+## 2. Install the Native App and enable notifications
 
-Paste this into the coding agent you want to connect:
+Install Agent Tick on your phone and sign in with the same account:
+
+- [Agent Tick for iOS](https://get.agenttick.sh/ios)
+- [Agent Tick for Android](https://get.agenttick.sh/android)
+
+When the app asks, enable notifications. In the Personal Console, the **Connections** page should show a push-ready Approval Device. Push notifications are intentionally minimal; review request details inside Agent Tick before responding.
+
+## 3. Send a first-party Test Request
+
+In the Personal Console, open **Connections** and send a **Steering Test Request**.
+
+A Test Request proves that Agent Tick can route a bounded request to your app/web surfaces. It is labeled as a test and does not pretend to be real agent work.
+
+Respond in the Native App or web fallback. If you can answer the Test Request, your human response path works.
+
+## 4. Connect your coding agent
+
+After the app path works, connect an Agent Connection from the **Connections** page.
+
+Copy the setup prompt shown in the Personal Console. It tells your agent which Agent Tick server and Workspace to use, asks it to fetch the setup skill from:
 
 ```text
-Fetch and follow the Agent Tick setup skill from:
 https://agenttick.sh/skill
-
-Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kinds of updates or approval checks I want routed to my phone or browser. Explain status updates, steering choices, and sanctions in plain language, and let me opt out of any of them. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
 ```
 
-You will sign in through the browser. The skill works even when this repository is not cloned.
+The setup skill should inspect your coding-agent environment, run a dry run, explain the changes, ask for confirmation, install the right integration, and verify it.
 
-Prefer doing it yourself? Run the manual installer on the agent machine:
+Manual setup is available when you do not want an agent-assisted install:
 
 ```sh
 npx @self-deprecated/agent-tick install
 ```
 
-For self-hosting, point the installer at your server:
+For a self-hosted server:
 
 ```sh
 npx @self-deprecated/agent-tick install --server https://tick.example.com
 ```
 
-## 2. Install the mobile app
+## 5. Send one real agent-originated request
 
-Install Agent Tick on your phone and sign in with the same Agent Tick account.
+Ask the connected agent for a harmless proof:
 
-- [Agent Tick for iOS](https://get.agenttick.sh/ios)
-- [Agent Tick for Android](https://get.agenttick.sh/android)
+- send a **Status Update** that says setup is complete
+- ask a **Steering** question with a safe stop option
+- request a **Sanction** before a harmless local command such as `pwd`
 
-If a store link is not live yet, use the web Request flow in [app.agenttick.sh](https://app.agenttick.sh) and retry the app later.
+You should see the activity in the Native App and Personal Console. After you respond to a Steering or Sanction request, the local agent continues or stops based on the bounded response.
 
-## 3. Send a safe test request
+## What to read next
 
-Ask your agent to prove the connection with a harmless bounded request. Good first tests are:
-
-- a **status update**: “send a progress update that says setup is complete”
-- a **steering request**: “ask me to choose between `Run docs check`, `Skip check`, or `Stop`”
-- a **sanction** before a harmless local command such as `pwd`
-
-You should see the request in the mobile app or web UI. After you respond, the local agent continues or stops based on that response.
-
-## 4. Use the integration guide for your agent
-
-- [Claude Code](./claude-code.md)
-- [Codex](./codex.md)
-- [Pi](./pi.md)
-- [GitHub Actions release gate](./github-actions-release-sanction-tutorial.md)
-
-Agent Tick groups related activity into Sessions when the host exposes a real chat/thread/session ID. You usually do not need to manage this yourself; see [Session identity](./session-identity.md) if you are writing an integration or debugging grouping.
+- [Core Concepts](./core-concepts.md) for the product vocabulary.
+- [Prompt agents to use Agent Tick](./prompting-agents.md) for reusable prompts.
+- [Coding-agent integrations](./coding-agent-integrations.md) for Claude Code, Codex, Pi, and other tools.

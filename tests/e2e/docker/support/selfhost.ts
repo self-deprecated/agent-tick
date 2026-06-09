@@ -89,6 +89,13 @@ export async function subscribePersonalBilling(request: APIRequestContext, baseU
   await expectOk(response, 'POST /v1/billing/personal');
 }
 
+export async function grantSharedWorkspaceResponses(request: APIRequestContext, baseURL: string | undefined, workspaceId: string, responsesEntitledUntil = '2099-01-01T00:00:00.000Z'): Promise<void> {
+  const response = await request.post(`${baseURL}/__test/workspaces/${workspaceId}/entitlement`, {
+    data: { responsesEntitledUntil }
+  });
+  await expectOk(response, 'POST /__test/workspaces/:id/entitlement');
+}
+
 export async function registerMobileDevice(request: APIRequestContext, baseURL: string | undefined, mobileToken: string, deviceName: string, platform = 'ios'): Promise<{ deviceId: string }> {
   const response = await request.post(`${baseURL}/v1/devices/register`, {
     headers: bearerHeaders(mobileToken),
@@ -205,8 +212,8 @@ export async function respondToRequest(request: APIRequestContext, baseURL: stri
   return await response.json() as { id: string; status: string; response?: { choiceId?: string } };
 }
 
-export async function waitForRequest(request: APIRequestContext, baseURL: string | undefined, requestId: string, waiterToken: string): Promise<{ request: { id: string; status: string; response?: { choiceId?: string } }; terminal: boolean }> {
-  const response = await request.get(`${baseURL}/v1/requests/${requestId}/wait?timeoutMs=5000`, {
+export async function waitForRequest(request: APIRequestContext, baseURL: string | undefined, requestId: string, waiterToken: string, timeoutMs = 5000): Promise<{ request: { id: string; status: string; response?: { choiceId?: string } }; terminal: boolean }> {
+  const response = await request.get(`${baseURL}/v1/requests/${requestId}/wait?timeoutMs=${timeoutMs}`, {
     headers: bearerHeaders(waiterToken)
   });
   await expectOk(response, `GET /v1/requests/${requestId}/wait`);

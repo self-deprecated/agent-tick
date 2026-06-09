@@ -103,8 +103,8 @@ Keep the first-time user flow simple:
 
 - README should point users to either hosted product usage (`https://app.agenttick.sh`) or self-hosting.
 - Self-hosting details belong in `SELFHOSTING.md`.
-- Product-vs-self-hosted usage flow belongs in user-facing docs such as `docs/quick-start.md`, `docs/self-hosting.md`, and `docs/integrations.md`.
-- Integration details belong in `docs/integrations.md`.
+- Product-vs-self-hosted usage flow belongs in user-facing docs such as `docs/quick-start.md`, `docs/self-hosting.md`, and `docs/coding-agent-integrations.md`.
+- Integration details belong in `docs/coding-agent-integrations.md` and the integration-specific docs it links.
 - Development workflow belongs in `DEVELOPMENT.md`.
 
 When docs mention install commands, use the prompt-based setup skill at `https://agenttick.sh/skill` as the primary setup path and `npx @self-deprecated/agent-tick install` as the manual command. Do not show `curl | sh` in public launch docs.

@@ -784,6 +784,31 @@ describe("connection workspace resolution", () => {
     expect(isMobileSessionDetailFresh(summary, { ...staleDetail, summary })).toBe(true);
   });
 
+  it("treats cached Session detail as stale when a pending latest Request is resolved locally", () => {
+    const pendingSummary = {
+      sessionId: "session_same",
+      title: "Run",
+      state: "needs-input" as const,
+      pendingRequestCount: 1,
+      pendingRequests: [{ id: "req_1", title: "Choose?", createdAt: "2026-05-08T00:02:00.000Z", status: "pending" as const }],
+      sourceLabels: ["Pi"],
+      startedAt: "2026-05-08T00:00:00.000Z",
+      updatedAt: "2026-05-08T00:02:00.000Z",
+      latestActivity: { id: "req_1", kind: "request" as const, preview: "Choose?", createdAt: "2026-05-08T00:02:00.000Z", requestStatus: "pending" as const },
+    };
+    const resolvedSummary = {
+      ...pendingSummary,
+      state: "recent" as const,
+      pendingRequestCount: 0,
+      pendingRequests: undefined,
+      latestActivity: { ...pendingSummary.latestActivity, requestStatus: "resolved" as const },
+    };
+    const staleDetail = { summary: pendingSummary, timeline: [] };
+
+    expect(isMobileSessionDetailFresh(resolvedSummary, staleDetail)).toBe(false);
+    expect(isMobileSessionDetailFresh(resolvedSummary, { ...staleDetail, summary: resolvedSummary })).toBe(true);
+  });
+
   it("loads workspace values for success, failure, and empty inputs", async () => {
     await expect(loadConnectionWorkspaceValues(["org_a", "org_b"], async (workspaceID) => [`request:${workspaceID}`])).resolves.toEqual({
       failedCount: 0,

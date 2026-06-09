@@ -9,11 +9,13 @@ export const confirmBeforeSubmit = true;
 export function useMobileRuntimeRefs() {
   const seenRequestIDs = useRef<Set<string>>(new Set());
   const didPrimeNotifications = useRef(false);
+  const didShowNotificationSettingsReminder = useRef(false);
   const lastClerkPushRegistrationKey = useRef("");
 
   return {
     seenRequestIDs,
     didPrimeNotifications,
+    didShowNotificationSettingsReminder,
     lastClerkPushRegistrationKey,
   };
 }

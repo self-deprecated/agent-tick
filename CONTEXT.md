@@ -80,6 +80,10 @@ _Avoid_: workspace route, token owner, project assignment, team assignment
 A local MCP server process that exposes Status Updates, Steering, and Sanctions to MCP-capable agents and calls Agent Tick with a saved agent credential.
 _Avoid_: product server endpoint, remote MCP service
 
+**Coding-agent Integration**:
+A documented way for a coding-agent tool or workflow, such as Claude Code, Codex, or Pi, to use Agent Tick.
+_Avoid_: Agent Connection when referring to the host tool, agent as the precise section label, integration target as public copy
+
 **Optional Native Permission Hook**:
 A narrow opt-in hook that routes a host agent's native permission prompt, such as Claude Code `PermissionRequest`, through Agent Tick Sanctions.
 _Avoid_: primary Claude setup path, command execution, risk classifier
@@ -132,6 +136,10 @@ _Avoid_: offline Agent Tick request, implicit approval
 An Agent Tick Request that stopped waiting because another path resolved or invalidated it before a remote answer arrived.
 _Avoid_: denied request, failed request, abandoned request
 
+**Documentation Site**:
+The public docs surface for human developers learning what Agent Tick is and how to use it, organized around user journeys rather than implementation surfaces.
+_Avoid_: marketing page, dashboard help text, private website docs, agent-facing setup notes as the primary voice
+
 ## Relationships
 
 - A **Workspace** contains **Workspace Members**, **Agent Tokens**, **Routing Rules**, **Agent Activity**, and administration settings.
@@ -148,6 +156,7 @@ _Avoid_: denied request, failed request, abandoned request
 - A **Personal Workspace** may still have personal delivery Routing Rules, such as device or timing preferences.
 - A **Personal Workspace** cannot invite additional members; shared work uses a **Shared Workspace** separate from each member's **Personal Workspace**.
 - A **Shared Workspace** has one or more **Workspace Members** and may have administrators.
+- Hosted **Shared Workspaces** can be created and configured before Shared Workspace billing is enabled, but hosted shared routing and responses require active Shared Workspace entitlement.
 - Personal and shared usage use the same **Workspace** model; available options differ by membership, entitlement, and configured **Routing Rules**.
 - Authentication and deployment differences do not create separate routing models.
 - An **Agent Token** belongs to exactly one **Workspace** and is the server-side identity for the agent actor using it.

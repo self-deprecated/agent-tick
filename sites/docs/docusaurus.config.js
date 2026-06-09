@@ -30,17 +30,22 @@ const config = {
           include: [
             'index.md',
             'quick-start.md',
-            'cli.md',
-            'integrations.md',
-            'session-identity.md',
+            'core-concepts.md',
+            'native-app.md',
+            'personal-console.md',
+            'access.md',
+            'coding-agent-integrations.md',
             'claude-code.md',
             'codex.md',
             'pi.md',
-            'github-actions-release-sanction-tutorial.md',
+            'other-tools.md',
+            'prompting-agents.md',
+            'cli.md',
+            'workspaces.md',
             'self-hosting.md',
-            'mobile-app.md',
-            'entitlement-lifecycle.md',
+            'self-hosting-operator-reference.md',
             'security.md',
+            'philosophy.md',
             'api-sdk.md'
           ],
           routeBasePath: '/',
@@ -64,7 +69,7 @@ const config = {
         srcDark: 'img/favicon.svg'
       },
       items: [
-        { type: 'docSidebar', sidebarId: 'launchDocs', position: 'left', label: 'Docs' },
+        { type: 'docSidebar', sidebarId: 'docs', position: 'left', label: 'Docs' },
         { to: '/quick-start', label: 'Quick Start', position: 'left' },
         { href: 'https://agenttick.sh', label: 'Website', position: 'right' },
         { href: 'https://github.com/self-deprecated/agent-tick', label: 'GitHub', position: 'right' }
@@ -77,9 +82,9 @@ const config = {
           title: 'Product',
           items: [
             { label: 'Quick Start', to: '/quick-start' },
-            { label: 'CLI', to: '/cli' },
-            { label: 'Integrations', to: '/integrations' },
-            { label: 'Self-Hosting', to: '/self-hosting' }
+            { label: 'Core Concepts', to: '/core-concepts' },
+            { label: 'Coding-agent integrations', to: '/coding-agent-integrations' },
+            { label: 'Self-hosting', to: '/self-hosting' }
           ]
         },
         {

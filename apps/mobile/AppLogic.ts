@@ -152,13 +152,30 @@ export function mobileSessionKey(input: MobileSessionKeyInput): string {
   return [connectionID || "current", workspaceID || "default", sessionId].map(encodeMobileSessionKeyPart).join(":");
 }
 
-export function isMobileSessionDetailFresh(summary: Pick<SessionSummary, "updatedAt" | "latestActivity">, detail?: Pick<SessionDetail, "summary"> | null): boolean {
+export function isMobileSessionDetailFresh(summary: Pick<SessionSummary, "updatedAt" | "latestActivity" | "state" | "pendingRequestCount" | "pendingRequests">, detail?: Pick<SessionDetail, "summary"> | null): boolean {
   if (!detail) return false;
   return mobileSessionFreshnessKey(summary) === mobileSessionFreshnessKey(detail.summary);
 }
 
-function mobileSessionFreshnessKey(summary: Pick<SessionSummary, "updatedAt" | "latestActivity">): string {
-  return [summary.updatedAt, summary.latestActivity.id, summary.latestActivity.createdAt].join(":");
+function mobileSessionFreshnessKey(summary: Pick<SessionSummary, "updatedAt" | "latestActivity" | "state" | "pendingRequestCount" | "pendingRequests">): string {
+  return JSON.stringify({
+    updatedAt: summary.updatedAt,
+    state: summary.state,
+    pendingRequestCount: summary.pendingRequestCount,
+    latestActivity: {
+      id: summary.latestActivity.id,
+      kind: summary.latestActivity.kind,
+      createdAt: summary.latestActivity.createdAt,
+      requestStatus: summary.latestActivity.kind === "request" ? summary.latestActivity.requestStatus : undefined,
+      statusUpdateState: summary.latestActivity.kind === "status_update" ? summary.latestActivity.state : undefined,
+      agentWaiterState: summary.latestActivity.kind === "request" ? summary.latestActivity.agentWaiter?.state : undefined,
+    },
+    pendingRequests: summary.pendingRequests?.map((request) => ({
+      id: request.id,
+      status: request.status,
+      agentWaiterState: request.agentWaiter?.state,
+    })) ?? [],
+  });
 }
 
 function encodeMobileSessionKeyPart(value: string): string {

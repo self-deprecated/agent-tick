@@ -146,6 +146,7 @@ export function AgentTickApp({
     appStatusState,
     billingController,
     connectionAccountState,
+    navigationState,
     notificationTargetState,
     runtimeRefs,
     sdk,

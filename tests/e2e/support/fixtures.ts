@@ -11,6 +11,7 @@ export interface AgentTokenFixture {
 
 export interface RequestFixture {
   request: { id: string; title: string; status: string; workspaceId: string };
+  waiter?: { token: string; waiterId: string };
 }
 
 export interface SharedWorkspaceFixture {
@@ -85,15 +86,23 @@ export async function addWorkspaceMember(request: APIRequestContext, baseURL: st
   return await response.json();
 }
 
-export async function createRoutingRule(request: APIRequestContext, baseURL: string | undefined, session: TestUserSession, workspaceId: string, name: string, recipientUserIds: string[]): Promise<RoutingRuleFixture> {
+export async function createRoutingRule(
+  request: APIRequestContext,
+  baseURL: string | undefined,
+  session: TestUserSession,
+  workspaceId: string,
+  name: string,
+  recipientUserIds: string[],
+  options: { requiredResponseMode?: 'any_one' | 'all' | 'exact'; requiredResponseCount?: number } = {}
+): Promise<RoutingRuleFixture> {
   const response = await request.post(`${baseURL}/v1/routing-rules`, {
     headers: authHeaders(session, workspaceId),
     data: {
       workspaceId,
       name,
       recipientUserIds,
-      requiredResponseMode: 'any_one',
-      requiredResponseCount: 1
+      requiredResponseMode: options.requiredResponseMode ?? 'any_one',
+      requiredResponseCount: options.requiredResponseCount ?? 1
     }
   });
   expect(response.ok()).toBeTruthy();

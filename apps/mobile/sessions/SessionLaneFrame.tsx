@@ -22,11 +22,20 @@ function sessionStateTextStyle(state: string) {
 }
 
 export function SessionLaneFrame({ borderColor, bottomBoundary = false, children, collapsed = false, displayTitle, expanded = false, laneSize, onBack, onBeginReorder, onEndReorder, onMoveReorder, onTitlePress, onToggleSize, onToggleSizeLong, state, topBoundary = false }: { borderColor?: string; bottomBoundary?: boolean; children: ReactNode; collapsed?: boolean; displayTitle: string; expanded?: boolean; laneSize?: SessionLaneSize; onBack?: () => void; onBeginReorder?: (event: any) => void; onEndReorder?: (event: any) => void; onMoveReorder?: (event: any) => void; onTitlePress?: () => void; onToggleSize?: () => void; onToggleSizeLong?: () => void; state: string; topBoundary?: boolean }) {
-  const titlePrefix = expanded && onBack ? "<" : ">";
+  const showsStackBackButton = expanded && onBack;
   const titleBarContent = (
     <>
       <View style={styles.sessionLaneTitleCluster}>
-        <Text numberOfLines={1} style={styles.historyTitle}>{titlePrefix} {displayTitle}</Text>
+        {showsStackBackButton ? (
+          <>
+            <View style={styles.sessionStackBackButton}>
+              <Text style={styles.sessionStackBackButtonText}>{"< "}{translateSource("Stack")}</Text>
+            </View>
+            <Text numberOfLines={1} style={styles.sessionLaneTitleText}>{displayTitle}</Text>
+          </>
+        ) : (
+          <Text numberOfLines={1} style={styles.historyTitle}>{">"} {displayTitle}</Text>
+        )}
       </View>
       <View style={styles.statusHeaderActions}>
         <Text style={[styles.statusState, sessionStateTextStyle(state)]}>{state}</Text>

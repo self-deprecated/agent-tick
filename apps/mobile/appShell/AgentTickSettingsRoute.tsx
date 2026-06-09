@@ -82,7 +82,7 @@ type AgentTickSettingsRouteProps = {
     pairDevice: VoidAction;
     setPairingCode: (value: string) => void;
   };
-  settingsHomeSignal: number;
+  settingsViewTarget: { view: "home" | "notifications"; signal: number };
 };
 
 export function AgentTickSettingsRoute({
@@ -93,7 +93,7 @@ export function AgentTickSettingsRoute({
   localeProps,
   notificationProps,
   pairingProps,
-  settingsHomeSignal,
+  settingsViewTarget,
 }: AgentTickSettingsRouteProps) {
   const {
     accounts,
@@ -222,7 +222,8 @@ export function AgentTickSettingsRoute({
       serverURL={serverURL}
       setPairingCode={setPairingCode}
       setSelectedWorkspaceID={selectWorkspace}
-      settingsHomeSignal={settingsHomeSignal}
+      settingsViewTarget={settingsViewTarget.view}
+      settingsViewSignal={settingsViewTarget.signal}
       setServerURL={handleServerURLChange}
       setToken={setToken}
       token={token}

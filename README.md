@@ -11,9 +11,9 @@ Agent Tick mirrors bounded requests from local coding agents to trusted humans. 
 Agents can send **Status Updates**, ask **Steering** questions, and request **Sanctions** before risky actions — without turning the Native App, hosted service, or Personal Console into a remote shell.
 
 <p align="center">
-  <a href="https://agenttick.sh"><b>Website</b></a> ·
-  <a href="https://app.agenttick.sh"><b>Hosted app</b></a> ·
-  <a href="https://docs.agenttick.sh"><b>Docs</b></a> ·
+  <a href="https://agenttick.sh/?utm_campaign=agent-tick-readme&utm_content=readme-product-surface-marketing&utm_medium=referral&utm_source=github"><b>Website</b></a> ·
+  <a href="https://app.agenttick.sh/?utm_campaign=agent-tick-readme&utm_content=readme-product-surface-app&utm_medium=referral&utm_source=github"><b>Hosted app</b></a> ·
+  <a href="https://docs.agenttick.sh/?utm_campaign=agent-tick-readme&utm_content=readme-product-surface-docs&utm_medium=referral&utm_source=github"><b>Docs</b></a> ·
   <a href="./SELFHOSTING.md"><b>Self-hosting</b></a>
 </p>
 
@@ -36,25 +36,29 @@ The agent asks once. The same request can appear in the local agent interface an
 
 ## Get started
 
-Most users should start with the hosted service at <https://app.agenttick.sh>.
+Most users should start with the [hosted service](https://app.agenttick.sh/?utm_campaign=agent-tick-readme&utm_content=readme-start-hosted-service&utm_medium=referral&utm_source=github).
 
 For guided setup, paste this into your coding agent chat on the machine you want to configure:
 
 ```text
 Fetch and follow the Agent Tick setup skill from:
-https://agenttick.sh/skill.md
+https://agenttick.sh/skill
 
-Use that skill to set up Agent Tick on this machine. Ask me which coding agent I am using and what kind of work I want routed Requests for. Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three. Use the right integration for this agent, run a dry run first, explain what will change, then install after I confirm and verify it works.
+Use that skill to set up Agent Tick on this machine.
+Ask me which coding agent I am using and what kind of work I want routed Requests for.
+Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three.
+Use the right integration for this agent.
+Run a dry run first and explain what will change.
+Install only after I confirm, then verify it works.
 ```
 
 Prefer to set it up yourself?
 
 ```sh
-npm install -g @self-deprecated/agent-tick
-agent-tick install
+npx @self-deprecated/agent-tick install
 ```
 
-The first command installs the CLI. The second connects this machine to Agent Tick, stores a local `agent_...` token, detects local coding-agent configs, and installs supported integrations where available.
+This command runs the CLI, connects this machine to Agent Tick, stores a local `agent_...` token, detects local coding-agent configs, and installs supported integrations where available.
 
 Launch integrations include Claude Code and Codex through MCP, optional Claude Code permission hooks, and Pi through the native extension. The CLI can also be used directly from other agents or automation, with additional agent-specific integrations planned as their hook/config behavior is verified.
 
@@ -66,7 +70,9 @@ Agent Tick is source-available and self-hostable for teams that need to operate 
 
 - [docs/index.md](./docs/index.md) — public documentation source for docs.agenttick.sh
 - [docs/quick-start.md](./docs/quick-start.md) — connect a machine and send safe test requests
-- [docs/integrations.md](./docs/integrations.md) — integration setup guides
+- [docs/coding-agent-integrations.md](./docs/coding-agent-integrations.md) — public coding-agent integration setup guides
+- [docs/self-hosting.md](./docs/self-hosting.md) — self-hosting quick start used by the docs site
+- [SELFHOSTING.md](./SELFHOSTING.md) — full repository-level self-hosting reference
 - [DEVELOPMENT.md](./DEVELOPMENT.md) — local development workflow
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — contribution and public mirror policy
 

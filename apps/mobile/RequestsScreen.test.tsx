@@ -362,6 +362,8 @@ describe("SessionApprovalFlow", () => {
     });
 
     expect(screen.getAllByText("Current Session Request").length).toBeGreaterThan(0);
+    expect(screen.getByText("< Stack")).toBeTruthy();
+    expect(screen.getByText("Pi · 14:00")).toBeTruthy();
     fireEvent.press(screen.getByLabelText("Back to Session Stack"));
     expect(onExitSessionDetail).toHaveBeenCalled();
   });
@@ -379,6 +381,7 @@ describe("SessionApprovalFlow", () => {
     renderSessionApprovalFlow({ summaries: [summary], details: { session_one: detail } });
 
     expect(screen.getByText("Server Request")).toBeTruthy();
+    expect(screen.getByText("> Server title")).toBeTruthy();
     expect(screen.queryByText("Local Session presentation")).toBeNull();
     expect(screen.queryByText("Save presentation")).toBeNull();
   });

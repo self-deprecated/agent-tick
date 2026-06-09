@@ -16,6 +16,10 @@ const BackdateStateSchema = z.object({
   deviceIds: z.array(z.string().min(1)).default([])
 });
 
+const TestWorkspaceEntitlementSchema = z.object({
+  responsesEntitledUntil: z.string().datetime().nullable().optional()
+});
+
 export interface TestSupportRoutesOptions {
   config: ServerConfig;
   store: AgentTickStore;
@@ -34,6 +38,14 @@ export async function registerTestSupportRoutes(app: FastifyInstance, { config, 
       name: input.name ?? input.subject
     });
     return { ...identity, token: `test_${input.subject}` };
+  });
+
+  app.post('/__test/workspaces/:id/entitlement', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const input = TestWorkspaceEntitlementSchema.parse(request.body ?? {});
+    const workspace = await store.updateWorkspaceEntitlement(id, { responsesEntitledUntil: input.responsesEntitledUntil ?? null });
+    if (!workspace) return reply.status(404).send({ error: { code: 'not_found', message: 'Workspace not found', requestId: request.id } });
+    return workspace;
   });
 
   app.get('/__test/state', async () => {
