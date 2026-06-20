@@ -19,6 +19,7 @@ import { buildAgentTickAppViewPropsFromState } from "./buildAgentTickAppViewProp
 import { choiceInteractionMode, confirmBeforeSubmit, optionPlacement } from "./useMobileRuntimeRefs";
 import { useActiveMobileConnectionIdentity } from "./useActiveMobileConnectionIdentity";
 import { useAgentTickAppState } from "./useAgentTickAppState";
+import { usePrivateEncryptionStatus } from "./usePrivateEncryptionStatus";
 
 const defaultServer = hostedServerURL;
 export function AgentTickApp({
@@ -103,6 +104,17 @@ export function AgentTickApp({
     selectedWorkspaceID: connectionAccountState.selectedWorkspaceID,
     serverURL: connectionAccountState.serverURL,
     token: connectionAccountState.token,
+  });
+
+  const privateEncryption = usePrivateEncryptionStatus({
+    currentAuthToken,
+    deviceID: connectionAccountState.deviceID,
+    savedAccounts: connectionAccountState.savedAccounts,
+    selectedWorkspaceID: connectionAccountState.selectedWorkspaceID,
+    serverURL: connectionAccountState.serverURL,
+    settingsLoaded: appStatusState.settingsLoaded,
+    setDeviceID: connectionAccountState.setDeviceID,
+    setSavedAccounts: connectionAccountState.setSavedAccounts,
   });
 
   useAgentTickDiagnosticsContextBinding({
@@ -213,6 +225,7 @@ export function AgentTickApp({
     localeInputs: { activeLocale, localePreference, onLocalePreferenceChange },
     navigationState,
     realtimeActivityController,
+    privateEncryption,
     requestDraft,
     requestHandlingActions,
     runtimePresentation: { choiceInteractionMode, confirmBeforeSubmit },

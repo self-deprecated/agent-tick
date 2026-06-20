@@ -135,6 +135,7 @@ export const WorkspaceRecordSchema = z.object({
   name: z.string(),
   clerkOrganizationId: z.string().optional(),
   responsesEntitledUntil: z.string().optional(),
+  privateRequestsRequired: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string().optional()
 });
@@ -156,7 +157,12 @@ export type WorkspaceMemberRecord = z.infer<typeof WorkspaceMemberRecordSchema>;
 export const CreateSharedWorkspaceSchema = z.object({ name: z.string().min(1).max(120) });
 export type CreateSharedWorkspace = z.input<typeof CreateSharedWorkspaceSchema>;
 
-export const UpdateWorkspaceSchema = z.object({ name: z.string().min(1).max(120) });
+export const UpdateWorkspaceSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  privateRequestsRequired: z.boolean().optional()
+}).refine((value) => Object.prototype.hasOwnProperty.call(value, 'name') || Object.prototype.hasOwnProperty.call(value, 'privateRequestsRequired'), {
+  message: 'workspace update must include a name or privateRequestsRequired'
+});
 export type UpdateWorkspace = z.input<typeof UpdateWorkspaceSchema>;
 
 export const AddWorkspaceMemberSchema = z.object({
@@ -276,6 +282,7 @@ export const RoutingRuleRecordSchema = z.object({
   requiredResponseMode: RequiredResponseModeSchema,
   requiredResponseCount: z.number().int().min(1),
   recipientUserIds: z.array(z.string()),
+  privateRequestsRequired: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -286,7 +293,8 @@ export const CreateRoutingRuleSchema = z.object({
   name: z.string().min(1).max(120),
   recipientUserIds: z.array(z.string().min(1)).min(1),
   requiredResponseMode: RequiredResponseModeSchema.default('any_one'),
-  requiredResponseCount: z.number().int().min(1).max(100).default(1)
+  requiredResponseCount: z.number().int().min(1).max(100).default(1),
+  privateRequestsRequired: z.boolean().optional()
 });
 export type CreateRoutingRule = z.input<typeof CreateRoutingRuleSchema>;
 
@@ -294,7 +302,8 @@ export const UpdateRoutingRuleSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   recipientUserIds: z.array(z.string().min(1)).min(1).optional(),
   requiredResponseMode: RequiredResponseModeSchema.optional(),
-  requiredResponseCount: z.number().int().min(1).max(100).optional()
+  requiredResponseCount: z.number().int().min(1).max(100).optional(),
+  privateRequestsRequired: z.boolean().optional()
 });
 export type UpdateRoutingRule = z.input<typeof UpdateRoutingRuleSchema>;
 
@@ -455,6 +464,109 @@ export const RequestAgentWaiterSummarySchema = z.object({
 });
 export type RequestAgentWaiterSummary = z.infer<typeof RequestAgentWaiterSummarySchema>;
 
+export const RequestContentModeSchema = z.enum(['plain', 'private']);
+export type RequestContentMode = z.infer<typeof RequestContentModeSchema>;
+
+export const PrivateRequestsPolicySchema = z.enum(['off', 'default', 'forced']);
+export type PrivateRequestsPolicy = z.infer<typeof PrivateRequestsPolicySchema>;
+
+export const DevicePublicKeyAlgorithmSchema = z.literal('p256-ecdh-hkdf-sha256');
+export type DevicePublicKeyAlgorithm = z.infer<typeof DevicePublicKeyAlgorithmSchema>;
+
+export const DevicePublicKeyRecordSchema = z.object({
+  deviceKeyId: z.string(),
+  deviceId: z.string(),
+  userId: z.string(),
+  algorithm: DevicePublicKeyAlgorithmSchema,
+  publicKey: z.string().min(1),
+  publicKeyFingerprint: z.string().min(1),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  revokedAt: z.string().optional()
+});
+export type DevicePublicKeyRecord = z.infer<typeof DevicePublicKeyRecordSchema>;
+
+export const RegisterDevicePublicKeySchema = z.object({
+  algorithm: DevicePublicKeyAlgorithmSchema.default('p256-ecdh-hkdf-sha256'),
+  publicKey: z.string().min(1).max(20_000)
+});
+export type RegisterDevicePublicKey = z.input<typeof RegisterDevicePublicKeySchema>;
+
+export const PrivateRequestKeyEnvelopeSchema = z.object({
+  deviceKeyId: z.string().min(1),
+  algorithm: z.literal('p256-ecdh-hkdf-sha256+aes-256-gcm'),
+  ephemeralPublicKey: z.string().min(1),
+  nonce: z.string().min(1),
+  ciphertext: z.string().min(1),
+  tag: z.string().min(1)
+});
+export type PrivateRequestKeyEnvelope = z.infer<typeof PrivateRequestKeyEnvelopeSchema>;
+
+export const EncryptedRequestPayloadSchema = z.object({
+  version: z.literal(1),
+  algorithm: z.literal('aes-256-gcm'),
+  nonce: z.string().min(1),
+  ciphertext: z.string().min(1),
+  tag: z.string().min(1),
+  aad: z.string().optional(),
+  keyEnvelopes: z.array(PrivateRequestKeyEnvelopeSchema).min(1)
+});
+export type EncryptedRequestPayload = z.infer<typeof EncryptedRequestPayloadSchema>;
+
+export const EncryptedStatusUpdatePayloadSchema = EncryptedRequestPayloadSchema;
+export type EncryptedStatusUpdatePayload = z.infer<typeof EncryptedStatusUpdatePayloadSchema>;
+
+export const EncryptedToolActivityPayloadSchema = EncryptedRequestPayloadSchema;
+export type EncryptedToolActivityPayload = z.infer<typeof EncryptedToolActivityPayloadSchema>;
+
+export const PrivateStatusUpdatePlaintextSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal('status_update'),
+  message: z.string().optional(),
+  body: z.string().optional(),
+  nextStep: z.string().optional(),
+  role: z.enum(['assistant', 'user', 'system']).optional(),
+  presentation: z.object({
+    collapsedByDefault: z.boolean().optional(),
+    contentFormat: z.enum(['markdown', 'text']).optional()
+  }).optional()
+});
+export type PrivateStatusUpdatePlaintext = z.infer<typeof PrivateStatusUpdatePlaintextSchema>;
+
+export const PrivateRequestUnavailableRecipientSchema = z.object({
+  userId: z.string(),
+  reason: z.enum(['no_device_key', 'no_usable_device_key']).or(z.string().min(1))
+});
+export type PrivateRequestUnavailableRecipient = z.infer<typeof PrivateRequestUnavailableRecipientSchema>;
+
+export const PreparePrivateRequestSchema = z.object({
+  requestType: RequestTypeSchema.default('sanction').optional(),
+  deliveryKind: RequestDeliveryKindSchema.default('routed_members').optional(),
+  routingRuleId: z.string().min(1).optional(),
+  audienceChannelId: z.string().min(1).optional()
+});
+export type PreparePrivateRequest = z.input<typeof PreparePrivateRequestSchema>;
+
+export const PrivateRequestPrepareResponseSchema = z.object({
+  contentMode: z.literal('private'),
+  workspaceId: z.string(),
+  routingRuleId: z.string().optional(),
+  required: z.boolean(),
+  recipientVersion: z.string(),
+  recipientUserIds: z.array(z.string()),
+  deviceKeys: z.array(DevicePublicKeyRecordSchema),
+  unavailableRecipients: z.array(PrivateRequestUnavailableRecipientSchema)
+});
+export type PrivateRequestPrepareResponse = z.infer<typeof PrivateRequestPrepareResponseSchema>;
+
+export const PreparePrivateStatusUpdateSchema = z.object({
+  routingRuleId: z.string().min(1).optional()
+}).default({});
+export type PreparePrivateStatusUpdate = z.input<typeof PreparePrivateStatusUpdateSchema>;
+
+export const PrivateStatusUpdatePrepareResponseSchema = PrivateRequestPrepareResponseSchema;
+export type PrivateStatusUpdatePrepareResponse = z.infer<typeof PrivateStatusUpdatePrepareResponseSchema>;
+
 export const RequestRecordSchema = z.object({
   id: z.string(),
   workspaceId: z.string(),
@@ -482,6 +594,10 @@ export const RequestRecordSchema = z.object({
   deadline: z.string().optional(),
   risk: z.string().optional(),
   metadata: z.record(z.string(), z.string()).optional(),
+  contentMode: RequestContentModeSchema.default('plain'),
+  encryptedPayload: EncryptedRequestPayloadSchema.optional(),
+  privateRecipientVersion: z.string().optional(),
+  privateUnavailableRecipients: z.array(PrivateRequestUnavailableRecipientSchema).optional(),
   status: RequestStatusSchema,
   createdAt: z.string(),
   respondedAt: z.string().optional(),
@@ -517,7 +633,16 @@ export const CreateRequestSchema = z.object({
   allowFreeformReply: z.boolean().optional(),
   deadline: z.string().optional(),
   risk: z.string().optional(),
-  metadata: z.record(z.string(), z.string()).optional()
+  metadata: z.record(z.string(), z.string()).optional(),
+  contentMode: RequestContentModeSchema.default('plain').optional(),
+  encryptedPayload: EncryptedRequestPayloadSchema.optional(),
+  privateRecipientVersion: z.string().optional()
+}).refine((value) => value.contentMode !== 'private' || Boolean(value.encryptedPayload), {
+  path: ['encryptedPayload'],
+  message: 'private Requests require encryptedPayload'
+}).refine((value) => value.contentMode !== 'private' || !value.allowFreeformReply, {
+  path: ['allowFreeformReply'],
+  message: 'private Requests do not support freeform replies'
 }).refine((value) => !value.choices?.length || value.choices.some((choice) => choice.kind === 'deny'), {
   path: ['choices'],
   message: 'custom request choices must include at least one choice with kind "deny"'
@@ -574,6 +699,77 @@ export const StatusUpdateStateSchema = SemanticStatusUpdateStateSchema.or(z.stri
 export type StatusUpdateState = z.infer<typeof StatusUpdateStateSchema>;
 export const StatusUpdateStateBehaviorSchema = z.enum(['semantic', 'display_only']);
 
+export const ContextUsageSchema = z.object({
+  tokens: z.number().int().nonnegative().nullable(),
+  contextWindow: z.number().int().positive(),
+  percent: z.number().min(0).nullable()
+});
+export type ContextUsage = z.infer<typeof ContextUsageSchema>;
+
+export const StatusContentModeSchema = z.enum(['plain', 'private']);
+export type StatusContentMode = z.infer<typeof StatusContentModeSchema>;
+
+export const ToolActivityContentModeSchema = z.enum(['plain', 'private']);
+export type ToolActivityContentMode = z.infer<typeof ToolActivityContentModeSchema>;
+
+export const ToolActivityStateSchema = z.enum(['started', 'finished']);
+export type ToolActivityState = z.infer<typeof ToolActivityStateSchema>;
+
+export const ToolActivityOutcomeSchema = z.enum(['success', 'failed', 'cancelled']);
+export type ToolActivityOutcome = z.infer<typeof ToolActivityOutcomeSchema>;
+
+export const ToolActivityRecordSchema = z.object({
+  toolActivityId: z.string(),
+  workspaceId: z.string(),
+  agentTokenId: z.string().optional(),
+  agentTokenLabel: z.string().optional(),
+  routingRuleId: z.string().optional(),
+  threadId: z.string().min(1).max(200).optional(),
+  sessionId: z.string().min(1).max(200),
+  turnId: z.string().min(1).max(200).optional(),
+  toolCallId: z.string().min(1).max(200).optional(),
+  toolName: z.string().min(1).max(120).regex(/^[A-Za-z0-9_.:-]+$/),
+  state: ToolActivityStateSchema,
+  outcome: ToolActivityOutcomeSchema.optional(),
+  summary: z.string().max(1000).optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+  contentMode: ToolActivityContentModeSchema.default('plain'),
+  encryptedPayload: EncryptedToolActivityPayloadSchema.optional(),
+  privateRecipientVersion: z.string().optional(),
+  recipientUserIds: z.array(z.string()).optional(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+  createdAt: z.string()
+});
+export type ToolActivityRecord = z.infer<typeof ToolActivityRecordSchema>;
+
+export const CreateToolActivitySchema = z.object({
+  threadId: z.string().min(1).max(200).optional(),
+  sessionId: z.string().min(1).max(200).optional(),
+  turnId: z.string().min(1).max(200).optional(),
+  toolCallId: z.string().min(1).max(200).optional(),
+  toolName: z.string().min(1).max(120).regex(/^[A-Za-z0-9_.:-]+$/),
+  state: ToolActivityStateSchema,
+  outcome: ToolActivityOutcomeSchema.optional(),
+  summary: z.string().max(1000).optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+  contentMode: ToolActivityContentModeSchema.optional(),
+  encryptedPayload: EncryptedToolActivityPayloadSchema.optional(),
+  privateRecipientVersion: z.string().optional(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional()
+}).refine((value) => value.contentMode !== 'private' || Boolean(value.encryptedPayload), {
+  path: ['encryptedPayload'],
+  message: 'private Tool Activity requires encryptedPayload'
+}).refine((value) => value.state !== 'started' || !value.outcome, {
+  path: ['outcome'],
+  message: 'started Tool Activity cannot include outcome'
+}).refine((value) => value.state !== 'finished' || Boolean(value.outcome), {
+  path: ['outcome'],
+  message: 'finished Tool Activity requires outcome'
+});
+export type CreateToolActivity = z.input<typeof CreateToolActivitySchema>;
+
 export const StatusUpdateRecordSchema = z.object({
   statusId: z.string(),
   workspaceId: z.string(),
@@ -592,6 +788,10 @@ export const StatusUpdateRecordSchema = z.object({
   workingDirectory: z.string().optional(),
   clientName: z.string().optional(),
   metadata: z.record(z.string(), z.string()).optional(),
+  contentMode: StatusContentModeSchema.optional(),
+  encryptedPayload: EncryptedStatusUpdatePayloadSchema.optional(),
+  privateRecipientVersion: z.string().optional(),
+  contextUsage: ContextUsageSchema.optional(),
   recipientUserIds: z.array(z.string()).optional(),
   createdAt: z.string(),
   isTest: z.boolean().optional(),
@@ -609,13 +809,21 @@ export const CreateStatusUpdateSchema = z.object({
   host: z.string().max(200).optional(),
   workingDirectory: z.string().max(500).optional(),
   clientName: z.string().max(200).optional(),
-  metadata: z.record(z.string(), z.string()).optional()
+  metadata: z.record(z.string(), z.string()).optional(),
+  contentMode: StatusContentModeSchema.optional(),
+  encryptedPayload: EncryptedStatusUpdatePayloadSchema.optional(),
+  privateRecipientVersion: z.string().optional(),
+  contextUsage: ContextUsageSchema.optional()
+}).refine((value) => value.contentMode !== 'private' || Boolean(value.encryptedPayload), {
+  path: ['encryptedPayload'],
+  message: 'private Status Updates require encryptedPayload'
 });
 export type CreateStatusUpdate = z.input<typeof CreateStatusUpdateSchema>;
 
 export const ActivityItemSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('status_update'), id: z.string(), workspaceId: z.string(), createdAt: z.string(), statusUpdate: StatusUpdateRecordSchema }),
-  z.object({ kind: z.literal('request'), id: z.string(), workspaceId: z.string(), createdAt: z.string(), request: RequestRecordSchema })
+  z.object({ kind: z.literal('request'), id: z.string(), workspaceId: z.string(), createdAt: z.string(), request: RequestRecordSchema }),
+  z.object({ kind: z.literal('tool_activity'), id: z.string(), workspaceId: z.string(), createdAt: z.string(), toolActivity: ToolActivityRecordSchema })
 ]);
 export type ActivityItem = z.infer<typeof ActivityItemSchema>;
 
@@ -623,7 +831,7 @@ export const SessionStateSchema = z.enum(['needs-input', 'blocked', 'failed', 'a
 export type SessionState = z.infer<typeof SessionStateSchema>;
 
 export const SessionLatestActivitySchema = z.object({
-  kind: z.enum(['request', 'status_update']),
+  kind: z.enum(['request', 'status_update', 'tool_activity']),
   id: z.string(),
   createdAt: z.string(),
   preview: z.string(),
@@ -918,6 +1126,9 @@ export type PersonalBillingUpdate = z.input<typeof PersonalBillingUpdateSchema>;
 export const BillingPurchasePreflightRequestSchema = z.object({ productKey: BillingProductKeySchema, platform: BillingPlatformSchema });
 export type BillingPurchasePreflightRequest = z.input<typeof BillingPurchasePreflightRequestSchema>;
 
+export const BillingTrialStartRequestSchema = z.object({ platform: BillingPlatformSchema });
+export type BillingTrialStartRequest = z.input<typeof BillingTrialStartRequestSchema>;
+
 export const BillingPurchasePreflightResponseSchema = z.object({
   purchaseAttemptId: z.string().optional(),
   providerUserId: z.string(),
@@ -941,7 +1152,8 @@ export const MeResponseSchema = z.object({
   source: z.string(),
   workspaceId: z.string().optional(),
   role: WorkspaceRoleSchema.or(z.string()).optional(),
-  memberships: z.array(WorkspaceMemberRecordSchema).optional()
+  memberships: z.array(WorkspaceMemberRecordSchema).optional(),
+  privateRequestsPolicy: PrivateRequestsPolicySchema.optional()
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 

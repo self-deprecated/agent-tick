@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { AgentTickModeSchema, type AgentTickMode, type AuthProvider } from '@self-deprecated/agent-tick-shared';
+import { AgentTickModeSchema, PrivateRequestsPolicySchema, type AgentTickMode, type AuthProvider } from '@self-deprecated/agent-tick-shared';
 
 const ConfigSchema = z.object({
   mode: AgentTickModeSchema.default('single'),
@@ -35,9 +35,12 @@ const ConfigSchema = z.object({
   rateLimitWindowMs: z.coerce.number().int().positive().default(60_000),
   rateLimitMaxRequests: z.coerce.number().int().positive().optional(),
   billingProvider: z.enum(['revenuecat', 'none']).default('none'),
+  privateRequestsPolicy: PrivateRequestsPolicySchema.default('off'),
+  hostedService: z.boolean().default(false),
   revenueCatWebhookSecret: z.string().optional(),
   revenueCatProjectId: z.string().optional(),
   billingTestMode: z.boolean().default(false),
+  billingDevGrantEmailDomains: z.array(z.string()).default([]),
   mobileMinimumSupportedVersion: z.string().max(80).optional(),
   mobileUpdateURL: z.string().url().optional(),
   mobileUpdateMessage: z.string().max(500).optional(),
@@ -86,9 +89,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     rateLimitWindowMs: optionalEnv(env.AGENT_TICK_RATE_LIMIT_WINDOW_MS),
     rateLimitMaxRequests: optionalEnv(env.AGENT_TICK_RATE_LIMIT_MAX_REQUESTS),
     billingProvider: optionalEnv(env.AGENT_TICK_BILLING_PROVIDER) ?? 'none',
+    privateRequestsPolicy: optionalEnv(env.AGENT_TICK_PRIVATE_REQUESTS_POLICY) ?? 'off',
+    hostedService: booleanEnv(env.AGENT_TICK_HOSTED_SERVICE, isFirstPartyHostedURL(env.AGENT_TICK_PUBLIC_URL)),
     revenueCatWebhookSecret: optionalEnv(env.AGENT_TICK_REVENUECAT_WEBHOOK_SECRET),
     revenueCatProjectId: optionalEnv(env.AGENT_TICK_REVENUECAT_PROJECT_ID),
     billingTestMode: booleanEnv(env.AGENT_TICK_BILLING_TEST_MODE, false),
+    billingDevGrantEmailDomains: splitCSV(env.AGENT_TICK_BILLING_DEV_GRANT_EMAIL_DOMAINS),
     mobileMinimumSupportedVersion: optionalEnv(env.AGENT_TICK_MOBILE_MINIMUM_SUPPORTED_VERSION),
     mobileUpdateURL: optionalEnv(env.AGENT_TICK_MOBILE_UPDATE_URL),
     mobileUpdateMessage: optionalEnv(env.AGENT_TICK_MOBILE_UPDATE_MESSAGE),
@@ -120,6 +126,15 @@ function optionalEnv(value: string | undefined): string | undefined {
 function booleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined || value.trim() === '') return defaultValue;
   return value === '1' || value.toLowerCase() === 'true' || value.toLowerCase() === 'yes';
+}
+
+function isFirstPartyHostedURL(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    return new URL(value).hostname === 'app.agenttick.sh';
+  } catch {
+    return false;
+  }
 }
 
 function splitCSV(value: string | undefined): string[] {

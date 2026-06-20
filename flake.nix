@@ -19,6 +19,7 @@
         let
           nodejs = pkgs.nodejs_24;
           pnpm = pkgs.pnpm_10;
+          pnpmDepsHash = "sha256-Ug+a/jyRGlZjIeQgVmnTAUsbznGZ42veHoSxYnak/ls=";
 
           src = lib.cleanSourceWith {
             src = ./.;
@@ -54,13 +55,13 @@
 
           agent-tick-cli = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-cli";
-            version = "1.1.0";
+            version = "1.3.1";
             inherit src;
 
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
-              fetcherVersion = 2;
-              hash = "sha256-bISu4DdScwQvE0QvFgv2P1RMhX9uvK8qykyrSIElfX0=";
+              fetcherVersion = 3;
+              hash = pnpmDepsHash;
             };
 
             nativeBuildInputs = [
@@ -104,13 +105,13 @@
 
           agent-tick-docs-node-modules = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-docs-node-modules";
-            version = "1.1.0";
+            version = "1.3.1";
             src = dependencySrc;
 
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
-              fetcherVersion = 2;
-              hash = "sha256-bISu4DdScwQvE0QvFgv2P1RMhX9uvK8qykyrSIElfX0=";
+              fetcherVersion = 3;
+              hash = pnpmDepsHash;
             };
 
             nativeBuildInputs = [
@@ -139,7 +140,7 @@
 
           agent-tick-docs = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-docs";
-            version = "1.1.0";
+            version = "1.3.1";
             inherit src;
 
             nativeBuildInputs = [
@@ -226,13 +227,13 @@
 
           agent-tick-server-node-modules = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-server-node-modules";
-            version = "1.1.0";
+            version = "1.3.1";
             src = dependencySrc;
 
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
-              fetcherVersion = 2;
-              hash = "sha256-bISu4DdScwQvE0QvFgv2P1RMhX9uvK8qykyrSIElfX0=";
+              fetcherVersion = 3;
+              hash = pnpmDepsHash;
             };
 
             nativeBuildInputs = [
@@ -276,7 +277,7 @@
 
           agent-tick-server = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-server";
-            version = "1.1.0";
+            version = "1.3.1";
             inherit src;
 
             nativeBuildInputs = [
@@ -397,6 +398,28 @@
               type = "app";
               program = "${agent-tick-cli}/bin/agent-tick";
               meta.description = "Run the Agent Tick CLI";
+            };
+
+            update-pnpm-deps-hash = {
+              type = "app";
+              program = lib.getExe (pkgs.writeShellApplication {
+                name = "update-pnpm-deps-hash";
+                runtimeInputs = [ pkgs.nix pkgs.python3 ];
+                text = builtins.readFile ./scripts/update-pnpm-deps-hash;
+              });
+              meta.description = "Refresh the shared fetchPnpmDeps hash in flake.nix";
+            };
+
+            check-pnpm-deps-hash = {
+              type = "app";
+              program = lib.getExe (pkgs.writeShellApplication {
+                name = "check-pnpm-deps-hash";
+                runtimeInputs = [ pkgs.nix pkgs.python3 ];
+                text = ''
+                  exec ${./scripts/update-pnpm-deps-hash} --check "$@"
+                '';
+              });
+              meta.description = "Check that the shared fetchPnpmDeps hash matches pnpm-lock.yaml";
             };
 
             default = {

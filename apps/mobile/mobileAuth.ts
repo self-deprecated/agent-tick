@@ -38,7 +38,7 @@ export type SavedMobileAccount = Omit<MobileConnection, "authScheme" | "credenti
 
 export type RuntimeAuthConfig = AuthConfig;
 
-export async function fetchRuntimeAuthConfig(serverURL: string, fetchImpl: typeof fetch = fetch, policyOptions?: { dev?: boolean }): Promise<RuntimeAuthConfig> {
+export async function fetchRuntimeAuthConfig(serverURL: string, fetchImpl: typeof fetch = fetch, policyOptions?: { allowInsecure?: boolean }): Promise<RuntimeAuthConfig> {
   const normalizedServerURL = normalizeServerURL(serverURL);
   const policyError = serverURLPolicyError(normalizedServerURL, policyOptions);
   if (policyError) throw new Error(policyError);
@@ -49,7 +49,50 @@ export function normalizeServerURL(value: string): string {
   return normalizeConfiguredServerURL(value, hostedServerURL);
 }
 
-export function serverURLPolicyError(value: string, options?: { dev?: boolean }): string | null {
+/**
+ * Coerces loose user input into a server URL by adding a scheme when missing.
+ * Bare hostnames default to https:// (the production requirement); loopback
+ * hosts (localhost / 127.0.0.1 / ::1) default to http:// for local dev.
+ * Input that already includes a scheme is left untouched.
+ */
+export function coerceServerURLInput(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  if (/^(localhost(\.|:|\/|$)|127\.0\.0\.1(:|\/|$)|\[?::1\]?(:|\/|$))/i.test(trimmed)) return `http://${trimmed}`;
+  return `https://${trimmed}`;
+}
+
+/**
+ * The http:// counterpart of an https:// URL, used as a fallback when the
+ * https probe fails. Returns null for URLs that are not https (e.g. already
+ * http, or loopback which coerce handles up front).
+ */
+export function httpVariantOf(value: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(normalizeServerURL(value));
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  parsed.protocol = "http:";
+  return parsed.toString().replace(/\/$/, "");
+}
+
+/** True for plain-http non-loopback URLs — connections that need an explicit
+ * insecure-connection confirmation before they are trusted. */
+export function isInsecureServerURL(value: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(normalizeServerURL(value));
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "http:" && !isLoopbackHost(parsed.hostname);
+}
+
+export function serverURLPolicyError(value: string, options?: { allowInsecure?: boolean }): string | null {
   const normalized = normalizeServerURL(value);
   let parsed: URL;
   try {
@@ -61,13 +104,11 @@ export function serverURLPolicyError(value: string, options?: { dev?: boolean })
   if (parsed.protocol === "https:") return null;
   if (parsed.protocol !== "http:") return "Agent Tick server URLs must use HTTPS in production builds.";
 
-  const dev = options?.dev ?? isDevelopmentBuild();
-  if (dev && isLoopbackHost(parsed.hostname)) return null;
-  return "Agent Tick server URLs must use HTTPS in production builds.";
-}
-
-function isDevelopmentBuild(): boolean {
-  return typeof __DEV__ !== "undefined" && __DEV__ === true;
+  if (isLoopbackHost(parsed.hostname)) return null;
+  // A non-loopback http URL is only allowed when the caller has already
+  // obtained an explicit insecure-connection confirmation for it (e.g. the
+  // user accepted the warning in the server picker).
+  return options?.allowInsecure ? null : "Agent Tick server URLs must use HTTPS in production builds.";
 }
 
 function isLoopbackHost(hostname: string): boolean {

@@ -6,6 +6,8 @@ import {
   ChoiceListSchema,
   CreateRequestSchema,
   CreateRoutingRuleSchema,
+  CreateStatusUpdateSchema,
+  CreateToolActivitySchema,
   DeleteRoutingRuleResponseSchema,
   PersonalBillingUpdateSchema,
   ReadyResponseSchema,
@@ -17,6 +19,7 @@ import {
   SessionSummarySchema,
   StopRequestWaiterSchema,
   StatusUpdateRecordSchema,
+  ToolActivityRecordSchema,
   UpdateDeviceNameSchema,
   UpdateDevicePushTokenSchema,
   WorkspaceMemberRecordSchema,
@@ -63,6 +66,8 @@ describe('shared Workspace and Request schemas', () => {
   it('accepts Session identity and metadata on Agent Activity schemas', () => {
     expect(CreateRequestSchema.parse({ requester: { name: 'agent', host: 'lattice', workingDirectory: '/repo', clientName: 'Pi' }, title: 'Pick?', sessionId: 'run_123', session: { title: 'Billing migration' } })).toMatchObject({ sessionId: 'run_123', session: { title: 'Billing migration' }, requester: { host: 'lattice' } });
     expect(StatusUpdateRecordSchema.parse({ statusId: 'stat_1', workspaceId: 'wsp_1', message: 'Working', state: 'working', sessionId: 'run_123', session: { label: 'Test run' }, host: 'lattice', workingDirectory: '/repo', clientName: 'Pi', createdAt: '2026-05-08T00:00:00.000Z' })).toMatchObject({ sessionId: 'run_123', session: { label: 'Test run' }, host: 'lattice' });
+    expect(CreateToolActivitySchema.parse({ sessionId: 'run_123', turnId: 'turn_1', toolCallId: 'call_1', toolName: 'bash', state: 'finished', outcome: 'success', summary: 'Ran validation' })).toMatchObject({ sessionId: 'run_123', toolName: 'bash', outcome: 'success' });
+    expect(ToolActivityRecordSchema.parse({ toolActivityId: 'toolact_1', workspaceId: 'wsp_1', sessionId: 'run_123', toolName: 'bash', state: 'started', createdAt: '2026-05-08T00:00:00.000Z' })).toMatchObject({ toolActivityId: 'toolact_1', sessionId: 'run_123', toolName: 'bash' });
   });
 
   it('validates Request waiter liveness schemas', () => {
@@ -119,6 +124,33 @@ describe('shared Workspace and Request schemas', () => {
 
   it('deduplicates duplicate choice ids for display and response safety', () => {
     expect(ChoiceListSchema.parse([{ id: 'id', label: 'First' }, { id: 'id', label: 'Second' }, { id: 'id', label: 'Cancel', kind: 'deny' }])).toEqual([{ id: 'id', label: 'First', kind: 'approve' }, { id: 'id_2', label: 'Second', kind: 'approve' }, { id: 'id_3', label: 'Cancel', kind: 'deny' }]);
+  });
+
+  it('validates private Status Update payloads and context usage', () => {
+    expect(CreateStatusUpdateSchema.parse({
+      message: 'Assistant replied',
+      state: 'waiting',
+      contentMode: 'private',
+      encryptedPayload: {
+        version: 1,
+        algorithm: 'aes-256-gcm',
+        nonce: 'n',
+        ciphertext: 'c',
+        tag: 't',
+        keyEnvelopes: [{ deviceKeyId: 'devkey_1', algorithm: 'p256-ecdh-hkdf-sha256+aes-256-gcm', ephemeralPublicKey: 'p', nonce: 'n', ciphertext: 'c', tag: 't' }]
+      },
+      contextUsage: { tokens: null, contextWindow: 200000, percent: null }
+    })).toMatchObject({ contentMode: 'private', contextUsage: { tokens: null, percent: null } });
+    expect(() => CreateStatusUpdateSchema.parse({ message: 'Assistant replied', state: 'waiting', contentMode: 'private' })).toThrow(/encryptedPayload/);
+    expect(StatusUpdateRecordSchema.parse({
+      statusId: 'stat_private',
+      workspaceId: 'wsp_1',
+      message: 'Assistant replied',
+      state: 'waiting',
+      contentMode: 'private',
+      contextUsage: { tokens: 42000, contextWindow: 200000, percent: 21 },
+      createdAt: '2026-05-08T00:00:00.000Z'
+    })).toMatchObject({ contentMode: 'private', contextUsage: { tokens: 42000, percent: 21 } });
   });
 
   it('classifies semantic Status Update states separately from custom display-only states', () => {

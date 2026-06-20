@@ -96,7 +96,7 @@ type RevenueCatStatic = {
   setAttributes?: (attributes: Record<string, string | null>) => Promise<void>;
   getProducts?: (productIds: string[], type?: string) => Promise<RevenueCatProduct[]>;
   purchasePackage?: (pkg: RevenueCatPackage) => Promise<unknown>;
-  purchaseProduct?: (productId: string) => Promise<unknown>;
+  purchaseProduct?: (productId: string, upgradeInfo?: unknown, type?: string) => Promise<unknown>;
   restorePurchases?: () => Promise<unknown>;
   logIn?: (appUserID: string) => Promise<unknown>;
   logOut?: () => Promise<unknown>;
@@ -108,7 +108,6 @@ const fallbackCatalog: BillingProduct[] = [
     kind: "non_consumable",
     entitlementKey: "native_app_trial",
     appleProductId: "ai.selfdeprecated.agenttick.initial_trial.7",
-    googleProductId: "trial_7_day",
     active: true,
   },
   {
@@ -116,7 +115,7 @@ const fallbackCatalog: BillingProduct[] = [
     kind: "non_consumable",
     entitlementKey: "lifetime_app_unlock",
     appleProductId: "ai.selfdeprecated.agenttick.lifetime_unlock",
-    googleProductId: "lifetime_unlock",
+    googleProductId: "ai.selfdeprecated.agenttick.lifetime_unlock",
     active: true,
   },
   {
@@ -124,8 +123,8 @@ const fallbackCatalog: BillingProduct[] = [
     kind: "subscription",
     entitlementKey: "hosted_personal",
     appleProductId: "ai.selfdeprecated.agenttick.hosted_personal_monthly",
-    googleProductId: "hosted_personal",
-    googleBasePlanId: "monthly",
+    googleProductId: "ai.selfdeprecated.agenttick.hosted",
+    googleBasePlanId: "hosted-personal-monthly",
     active: true,
   },
   {
@@ -133,8 +132,8 @@ const fallbackCatalog: BillingProduct[] = [
     kind: "subscription",
     entitlementKey: "hosted_personal",
     appleProductId: "ai.selfdeprecated.agenttick.hosted_personal_yearly",
-    googleProductId: "hosted_personal",
-    googleBasePlanId: "yearly",
+    googleProductId: "ai.selfdeprecated.agenttick.hosted",
+    googleBasePlanId: "hosted-personal-yearly",
     active: true,
   },
 ];
@@ -148,6 +147,7 @@ const trialProductIds = new Set([
   "trial",
 ]);
 const defaultRevenueCatIOSAPIKey = "appl_jjQlssmgYrPUZmFPbFuSyVOfPCV";
+const defaultRevenueCatAndroidAPIKey = "goog_OoUVPJdUqfBKgRDuRvIEoBjfJCV";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRIAL_MS = 7 * DAY_MS;
 
@@ -225,7 +225,7 @@ export async function purchaseProduct(productKey: ProductKey): Promise<PurchaseR
     }
     const productId = platformProductId(productForKey(productKey));
     if (!productId || !Purchases.purchaseProduct) throw new Error("Store product is not configured for this platform");
-    await Purchases.purchaseProduct(productId);
+    await Purchases.purchaseProduct(productId, null, purchaseTypeForProduct(productForKey(productKey)));
     return { success: true };
   } catch (error) {
     if (isUserCancelledPurchase(error)) return { success: false, cancelled: true };
@@ -357,11 +357,16 @@ async function setTargetingAttributes(Purchases: RevenueCatStatic, attributes?: 
 }
 
 async function loadFallbackProducts(Purchases: RevenueCatStatic): Promise<StoreProduct[]> {
-  const productIds = platformProductIds(currentCatalog);
-  if (!productIds.length || !Purchases.getProducts) return fallbackStoreProducts();
+  if (!Purchases.getProducts) return fallbackStoreProducts();
+  const subscriptionIds = platformProductIds(currentCatalog.filter((product) => product.kind === "subscription"));
+  const nonSubscriptionIds = platformProductIds(currentCatalog.filter((product) => product.kind !== "subscription"));
+  if (!subscriptionIds.length && !nonSubscriptionIds.length) return fallbackStoreProducts();
   try {
-    const products = await Purchases.getProducts(productIds);
-    const mapped = products.flatMap((product) => {
+    const [subscriptions, nonSubscriptions] = await Promise.all([
+      subscriptionIds.length ? Purchases.getProducts(subscriptionIds, "SUBSCRIPTION") : Promise.resolve([]),
+      nonSubscriptionIds.length ? Purchases.getProducts(nonSubscriptionIds, "NON_SUBSCRIPTION") : Promise.resolve([]),
+    ]);
+    const mapped = [...subscriptions, ...nonSubscriptions].flatMap((product) => {
       const productKey = productKeyForStoreProduct(product.identifier);
       return productKey ? [storeProductFromRevenueCatProduct(productKey, product)] : [];
     });
@@ -400,8 +405,8 @@ function paywallConfigFromOffering(placement: PaywallPlacement, offering: Revenu
     highlightedProduct: metadata.highlightedProduct,
     lifetimeBadge: metadata.lifetimeBadge,
     yearlyBadge: metadata.yearlyBadge,
-    trialNote: metadata.trialNote ?? "Free App Store purchase. No subscription starts.",
-    footerNote: metadata.footerNote ?? "Digital access uses App Store in-app purchases.",
+    trialNote: metadata.trialNote ?? fallbackTrialNote(),
+    footerNote: metadata.footerNote ?? fallbackFooterNote(),
     ...(missingProductKeys.length ? { diagnostics: `offering_missing_products:${missingProductKeys.join(",")}` } : {}),
   };
 }
@@ -419,8 +424,8 @@ function fallbackPaywallConfig(placement: PaywallPlacement, products = fallbackS
     highlightedProduct: primaryMode === "hosted" ? "hosted_personal_yearly" : primaryMode === "lifetime" ? "lifetime_unlock" : "trial_7_day",
     lifetimeBadge: "Self-host forever",
     yearlyBadge: "Best value",
-    trialNote: "Free App Store purchase. No subscription starts.",
-    footerNote: "Digital access uses App Store in-app purchases.",
+    trialNote: fallbackTrialNote(),
+    footerNote: fallbackFooterNote(),
     ...(diagnostics ? { diagnostics } : {}),
   };
 }
@@ -464,7 +469,7 @@ function revenueCatAPIKey(): string | undefined {
   const testStoreKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY?.trim();
   if (revenueCatUseTestStore() && testStoreKey) return testStoreKey;
   if (Platform.OS === "ios") return process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.trim() || defaultRevenueCatIOSAPIKey;
-  if (Platform.OS === "android") return process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY?.trim() || undefined;
+  if (Platform.OS === "android") return process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY?.trim() || defaultRevenueCatAndroidAPIKey;
   return undefined;
 }
 
@@ -512,8 +517,15 @@ function platformProductIds(products: BillingProduct[]): string[] {
 
 function platformProductId(product: BillingProduct): string | undefined {
   if (Platform.OS === "ios") return product.appleProductId;
-  if (Platform.OS === "android") return product.googleProductId;
+  if (Platform.OS === "android") {
+    if (product.productKey === "trial_7_day") return undefined;
+    return product.googleProductId;
+  }
   return undefined;
+}
+
+function purchaseTypeForProduct(product: BillingProduct): "subs" | "inapp" {
+  return product.kind === "subscription" ? "subs" : "inapp";
 }
 
 function fallbackStoreProducts(): StoreProduct[] {
@@ -580,6 +592,18 @@ function fallbackPriceForProduct(productKey: ProductKey): string {
     case "hosted_personal_yearly":
       return translateSource("Yearly");
   }
+}
+
+function fallbackTrialNote(): string {
+  return Platform.OS === "android"
+    ? "Free 7-day trial. No Google Play purchase starts."
+    : "Free App Store purchase. No subscription starts.";
+}
+
+function fallbackFooterNote(): string {
+  return Platform.OS === "android"
+    ? "Paid digital access uses Google Play purchases."
+    : "Digital access uses App Store in-app purchases.";
 }
 
 function fallbackHeadline(placement: PaywallPlacement): string {

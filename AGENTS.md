@@ -47,7 +47,7 @@ corepack pnpm test
 corepack pnpm build
 ```
 
-Follow `DEVELOPMENT.md#dependency-policy` for npm dependency changes. Pin npm package versions exactly, commit `pnpm-lock.yaml` with dependency changes, use frozen lockfile installs for CI/release/Docker/reproducibility checks, and keep the `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml` minimal and explicit. Before finishing any dependency or version-bump task, audit whether `flake.nix` contains a related `fetchPnpmDeps` derivation and validate/update its hash in the same change.
+Follow `DEVELOPMENT.md#dependency-policy` for npm dependency changes. Pin npm package versions exactly, commit `pnpm-lock.yaml` with dependency changes, use frozen lockfile installs for CI/release/Docker/reproducibility checks, and keep the `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml` minimal and explicit. Before finishing any dependency or version-bump task, audit whether `flake.nix` contains a related `fetchPnpmDeps` derivation and validate/update its hash in the same change with `nix run .#check-pnpm-deps-hash` / `nix run .#update-pnpm-deps-hash`.
 
 Docker is the official server distribution path:
 
@@ -61,24 +61,27 @@ docker build -f apps/server/Dockerfile -t agent-tick:dev .
 
 Current launch CLI command concepts only:
 
-- `agent-tick install`
+- `agent-tick setup`
 - `agent-tick login`
 - `agent-tick config`
+- `agent-tick features`
 - `agent-tick mode`
 - `agent-tick mcp`
-- `agent-tick sanction`
-- `agent-tick steering`
+- `agent-tick send status`
+- `agent-tick send steering`
+- `agent-tick send sanction`
 - `agent-tick abandon`
-- `agent-tick status-update`
 
-The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. When bumping `packages/cli/package.json`, also bump `CLI_VERSION` in `packages/cli/src/index.ts` and the `agent-tick-cli.version` in `flake.nix` in the same change, then run `nix build .#agent-tick-cli --no-link --print-build-logs` so stale `pnpmDeps.hash` values are caught before committing. For local repo development without a global install, use the workspace package name:
+Hidden compatibility surface: `agent-tick install` remains a shadow alias for `agent-tick setup` but should not be shown in user-facing help or docs.
+
+The CLI package is prepared for public npm publishing as `@self-deprecated/agent-tick` and exposes the `agent-tick` binary. When bumping `packages/cli/package.json`, also bump `CLI_VERSION` in `packages/cli/src/index.ts` and the `agent-tick-cli.version` in `flake.nix` in the same change, then run `nix run .#check-pnpm-deps-hash` and `nix build .#agent-tick-cli --no-link --print-build-logs` so stale `pnpmDepsHash` values are caught before committing. For local repo development without a global install, use the workspace package name:
 
 ```sh
 corepack pnpm --filter @self-deprecated/agent-tick build
 node packages/cli/dist/index.js config --server http://localhost:8787 --token agent_...
 ```
 
-Do not document or call missing commands such as `agent-tick adapter` or `agent-tick steer` as current functionality. The progress-update command/API concept is `status-update`, not `status`.
+Do not document or call missing commands such as `agent-tick adapter`, `agent-tick steer`, `agent-tick status-update`, top-level `agent-tick steering`, or top-level `agent-tick sanction` as current functionality. The preferred progress-update command is `agent-tick send status`.
 
 ## Auth and product model
 
@@ -107,7 +110,7 @@ Keep the first-time user flow simple:
 - Integration details belong in `docs/coding-agent-integrations.md` and the integration-specific docs it links.
 - Development workflow belongs in `DEVELOPMENT.md`.
 
-When docs mention install commands, use the prompt-based setup skill at `https://agenttick.sh/skill` as the primary setup path and `npx @self-deprecated/agent-tick install` as the manual command. Do not show `curl | sh` in public launch docs.
+When docs mention setup commands, use the prompt-based setup skill at `https://agenttick.sh/skill` as the primary setup path and `npx @self-deprecated/agent-tick setup` as the manual command. For rich message/tool mirroring, docs should tell users to enable **Native App → Settings → General → Private encryption** first and then use `agent-tick features` / `privacy.defaultContentMode = private` as the recommended default. Do not show `curl | sh` in public launch docs.
 
 ## Testing and validation
 
@@ -140,6 +143,35 @@ corepack pnpm --filter agent-tick-admin check
 
 Mobile Jest gotcha: pass `--runInBand` directly as shown above. Avoid `corepack pnpm --filter @agent-tick/mobile test -- --runInBand`; that form can be treated as a Jest pattern and report "No tests found".
 
+### Fetching Expo/EAS mobile build logs
+
+When a remote Expo/EAS mobile build fails, fetch the build metadata and logs from the mobile app directory. Prefer `npm exec --package eas-cli@19.1.0` if `corepack pnpm dlx eas-cli` hits ignored-build-script issues or if the latest EAS CLI is unavailable for the pinned registry date.
+
+```sh
+cd projects/agent-tick/apps/mobile
+npm exec --yes --package=eas-cli@19.1.0 -- eas build:list --platform ios --limit 5 --json --non-interactive > /tmp/agent-tick-eas-builds.json
+```
+
+The JSON contains `status`, `error`, `buildProfile`, `appVersion`, and `logFiles`. EAS log URLs are short-lived and may be Brotli-compressed newline-delimited JSON. To save the latest log:
+
+```sh
+python3 - <<'PY'
+import json, urllib.request, pathlib
+build = json.load(open('/tmp/agent-tick-eas-builds.json'))[0]
+url = build['logFiles'][0]
+data = urllib.request.urlopen(url, timeout=60).read()
+pathlib.Path('/tmp/agent-tick-eas-latest.log.br').write_bytes(data)
+print(build['id'], build['status'], build.get('error'))
+PY
+brotli -d -f /tmp/agent-tick-eas-latest.log.br -o /tmp/agent-tick-eas-latest.log
+```
+
+Then inspect the failed phase, for example:
+
+```sh
+rg 'result":"failed|level":50|\[!\]|error|failed' /tmp/agent-tick-eas-latest.log
+```
+
 Admin/Svelte changes: load the Svelte skills if available, and run `corepack pnpm --filter agent-tick-admin check`.
 
 Docker/runtime changes: validate at least `docker compose config`; for Dockerfile/runtime changes, build the image and smoke-test `/healthz` when practical.
@@ -147,8 +179,8 @@ Docker/runtime changes: validate at least `docker compose config`; for Dockerfil
 Final dependency/Nix audit before finishing:
 
 1. Run `jj diff --summary --no-pager` and look for `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, version files, or `flake.nix` changes.
-2. If dependencies or package versions changed, verify every affected `fetchPnpmDeps` hash in `flake.nix` by running the narrowest relevant Nix build, for example `nix build .#agent-tick-cli --no-link --print-build-logs` for CLI changes.
-3. If Nix reports a fixed-output hash mismatch, replace the stale hash with the reported `got:` hash and rerun the same Nix build successfully before committing.
+2. If dependencies or package versions changed, verify every affected `fetchPnpmDeps` hash in `flake.nix` by running `nix run .#check-pnpm-deps-hash` plus the narrowest relevant Nix build, for example `nix build .#agent-tick-cli --no-link --print-build-logs` for CLI changes.
+3. If the hash check fails, run `nix run .#update-pnpm-deps-hash`; if a Nix build reports a fixed-output hash mismatch manually, replace the stale hash with the reported `got:` hash and rerun the same Nix build successfully before committing.
 
 ## Commit guidance
 

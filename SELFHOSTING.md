@@ -50,6 +50,12 @@ AGENT_TICK_ADMIN_TOKEN=change-me
 # AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES=60
 # AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
 # AGENT_TICK_RETENTION_CLEANUP_LOCK_TTL_MS=600000
+# Optional server-wide Private Requests (end-to-end encrypted) policy.
+#   off     each Workspace/Routing Rule decides via its own toggle (default)
+#   default new Workspaces start with Private Requests required (toggleable)
+#   forced  Private Requests required for every Workspace/Routing Rule on this
+#           server; plain CLI requests are rejected with HTTP 409 private_required
+# AGENT_TICK_PRIVATE_REQUESTS_POLICY=off
 ```
 
 Start it:
@@ -58,11 +64,13 @@ Start it:
 docker compose up -d
 ```
 
-Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. For an interactive agent host, run the installer against your server:
+Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. For an interactive agent host, run setup against your server:
 
 ```sh
-npx @self-deprecated/agent-tick install --server https://tick.example.com
+npx @self-deprecated/agent-tick setup --server https://tick.example.com
 ```
+
+For rich agent message/tool mirroring, connect the Native App to the self-hosted server and enable **Settings → General → Private encryption** before setting `privacy.defaultContentMode` to `private` in `agent-tick features`.
 
 For CI or non-interactive hosts, create or copy an `agent_...` token from the dashboard, then save it locally with the CLI available on that host:
 
@@ -129,6 +137,8 @@ AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
 AGENT_TICK_MODE=clerk
 AGENT_TICK_PUBLIC_URL=https://tick.example.com
 AGENT_TICK_PORT=8787
+# Keep first-party hosted billing gates off for self-hosted Clerk deployments.
+AGENT_TICK_HOSTED_SERVICE=false
 # AGENT_TICK_DATABASE_MIGRATE_ON_START=true
 AGENT_TICK_CLERK_PUBLISHABLE_KEY=pk_...
 AGENT_TICK_CLERK_SECRET_KEY=sk_...
@@ -160,10 +170,10 @@ AGENT_TICK_CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----..."
 
 Start it with Docker Compose. The dashboard fetches `/v1/auth/config`, loads Clerk with the publishable key, and sends Clerk session tokens to the API. The server maps Clerk `(issuer, subject)` to local `usr_...` IDs and requires a verified primary email.
 
-After the server is running, set up an agent host with the installer:
+After the server is running, set up an agent host with the CLI:
 
 ```sh
-npx @self-deprecated/agent-tick install --server https://tick.example.com
+npx @self-deprecated/agent-tick setup --server https://tick.example.com
 ```
 
 The CLI opens the dashboard, waits while you sign in with Clerk, saves the returned Agent Tick `agent_...` token, and offers to install local coding-agent Request instructions. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick config --server https://tick.example.com --token agent_...` instead.
@@ -200,6 +210,7 @@ This repository exposes a flake package and NixOS module:
             host = "127.0.0.1";
             port = 8787;
             publicUrl = "https://tick.example.com";
+            hostedService = false;
 
             # Optional Redis coordination for multi-process deployments.
             # redisUrl = "redis://127.0.0.1:6379";

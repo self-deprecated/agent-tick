@@ -25,7 +25,8 @@ export async function registerMeRoutes(app: FastifyInstance, { config, store }: 
       workspaceType: auth.workspaceType ?? 'personal',
       role: auth.role ?? 'owner',
       memberKind: auth.memberKind ?? 'internal',
-      memberships: await store.listWorkspacesForUser(userId)
+      memberships: await store.listWorkspacesForUser(userId),
+      privateRequestsPolicy: config.privateRequestsPolicy
     };
   });
 

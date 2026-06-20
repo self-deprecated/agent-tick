@@ -11,14 +11,17 @@ import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { Command, CommanderError, Option } from 'commander';
-import { AgentTickClient, type RequestRecord, type CreateRequestResponse } from '@self-deprecated/agent-tick-sdk';
+import { AgentTickClient, AgentTickApiError, type RequestRecord, type CreateRequestResponse, type CreateStatusUpdate } from '@self-deprecated/agent-tick-sdk';
+import { formatAgentTickApiError } from './apiErrorFormat.js';
 import { agentTickStatePath, loadAgentTickMode, loadAgentTickState, normalizeAgentTickMode, saveAgentTickMode, saveAgentTickState, type AgentTickMode } from './agentTickState.js';
-import { abandonHelpText, command, configHelpText, errorText, installHelpText, loginHelpText, orderedVisibleCommands, rootHelpFooter, sanctionHelpText, statusUpdateHelpText, steeringHelpText, success, topLevelHelpText, warning } from './cliText.js';
+import { abandonHelpText, command, configHelpText, errorText, loginHelpText, orderedVisibleCommands, rootHelpFooter, sanctionHelpText, sendHelpText, setupHelpText, statusUpdateHelpText, steeringHelpText, styleArgumentTerm, styleCommandText, styleDescriptionText, styleOptionTerm, styleSubcommandTerm, success, topLevelHelpText, warning } from './cliText.js';
 import { inferredChoiceKind, parseChoices, slugifyChoiceId, type ChoiceInput } from './choiceParsing.js';
 import { isRiskyCommand } from './commandRisk.js';
 import { assertAgentToken, clientConfigPath, loadClientConfig, maskAgentToken, resolveServerAndToken, saveClientConfig } from './config.js';
 import { parseDurationMs } from './duration.js';
 import { metadataEntriesFromRecord, statusUpdateMetadata } from './metadata.js';
+import { createPrivateRequestInput, createPrivateStatusUpdateInput, privateModeFromValue } from './privateRequests.js';
+import { AGENT_FEATURES_BOOLEAN_FEATURES, ensureAgentFeaturesConfig, featureSummary, getPath, loadEffectiveAgentFeaturesConfig, loadExplicitPrivacyDefaultContentMode, normalizeContentMode, normalizeToolActivityVisibility, parseToggleValue, readAgentFeaturesConfigFile, resolveAgentFeaturesConfigPath, setAgentFeature, setPath, type AgentFeature, type AgentTickContentMode, type JsonObject, type ToolActivityVisibility } from './agentFeatureConfig.js';
 import { readMcpMessages, writeMcpMessage, type JsonRpcId, type JsonRpcRequest, type McpMessageTransport } from './mcpProtocol.js';
 import { claudeHookSessionId, resolveAgentTickSessionId, sessionFieldsFromMcpArgs, sessionFieldsFromOptions, type AgentTickEnv } from './sessionIdentity.js';
 import { isPlainObject, mcpErrorMessage, optionalString, optionalStringRecord, requiredString } from './valueGuards.js';
@@ -30,6 +33,7 @@ export type { ChoiceInput } from './choiceParsing.js';
 export { isRiskyCommand } from './commandRisk.js';
 export { parseDurationMs } from './duration.js';
 export { tryReadMcpMessage } from './mcpProtocol.js';
+export { AGENT_FEATURES_BOOLEAN_FEATURES, DEFAULT_AGENT_FEATURES_CONFIG, ensureAgentFeaturesConfig, featureSummary, loadEffectiveAgentFeaturesConfig, normalizeToolActivityVisibility, parseToggleValue, resolveAgentFeaturesConfigPath, setAgentFeature } from './agentFeatureConfig.js';
 export { claudeHookSessionId, resolveAgentTickSessionId } from './sessionIdentity.js';
 export type { AgentTickEnv } from './sessionIdentity.js';
 
@@ -39,17 +43,30 @@ export function createProgram(): Command {
   const program = new Command();
   program
     .name('agent-tick')
-    .description('Status, steering, and sanction gateway for AI agents')
+    .description('Status Updates, Steering Requests, and Sanction Requests for AI agents')
     .version(CLI_VERSION)
     .option('--config <path>', 'config file path [env: AGENT_TICK_CONFIG]')
     .exitOverride()
     .configureOutput({ writeErr: () => undefined })
-    .configureHelp({ visibleCommands: orderedVisibleCommands })
+    .configureHelp({
+      visibleCommands: orderedVisibleCommands,
+      styleCommandText,
+      styleOptionTerm,
+      styleSubcommandTerm,
+      styleArgumentTerm,
+      styleOptionDescription: styleDescriptionText,
+      styleSubcommandDescription: styleDescriptionText,
+      styleArgumentDescription: styleDescriptionText
+    })
     .addHelpText('beforeAll', topLevelHelpText)
     .addHelpText('afterAll', rootHelpFooter)
     .hook('preAction', (thisCommand) => {
       const config = thisCommand.optsWithGlobals<{ config?: string }>().config;
       if (config) process.env.AGENT_TICK_CONFIG = config;
+    })
+    .action((...args: unknown[]) => {
+      const commandArg = args.find(isCommanderCommandLike);
+      commandArg?.outputHelp();
     });
 
   program
@@ -85,30 +102,8 @@ export function createProgram(): Command {
     });
 
 
-  program
-    .command('install')
-    .description('Install Agent Tick into local AI coding agents')
-    .option('--server <url>', `Agent Tick server URL [default: ${hostedAgentTickURL}]`)
-    .option('--token <token>', 'Agent Tick agent token to save before installing integrations')
-    .option('--login', 'open browser sign-in before installing integrations')
-    .option('--target <target>', 'agent to configure, repeatable: claude, codex, gemini, pi, cursor, opencode, agents-md', collectOption, [])
-    .option('--all', 'configure every supported target without prompting')
-    .option('--yes', 'accept defaults and do not prompt')
-    .option('--no-login', 'skip browser sign-in and only install agent integrations')
-    .option('--dry-run', 'print planned changes without writing files')
-    .option('--claude-scope <scope>', 'Claude Code MCP/hook install scope: global or local')
-    .option('--claude-permission-hook', 'also route Claude Code native permission prompts through Agent Tick')
-    .option('--claude-question-hook', 'also route Claude Code AskUserQuestion prompts through Agent Tick')
-    .option('--remove-claude-hooks', 'remove existing Agent Tick Claude Code hook entries')
-    .addOption(new Option('--claude-profile <profile>', 'legacy Claude Code setup profile').hideHelp())
-    .addOption(new Option('--claude-steering <policy>', 'legacy Claude Code steering policy').hideHelp())
-    .addOption(new Option('--claude-sanctions <policy>', 'legacy Claude Code sanction policy').hideHelp())
-    .addOption(new Option('--claude-initial-mode <mode>', 'legacy initial Agent Tick mode for Claude Code').hideHelp())
-    .addOption(new Option('--claude-sandbox <policy>', 'legacy Claude Code sandbox compatibility').hideHelp())
-    .addHelpText('after', installHelpText)
-    .action(async (options: InstallOptions) => {
-      await runInstall(options);
-    });
+  configureSetupCommand(program.command('setup'));
+  configureSetupCommand(program.command('install', { hidden: true }));
 
   program
     .command('mode')
@@ -123,6 +118,75 @@ export function createProgram(): Command {
       process.stdout.write(`Agent Tick mode: ${saved}\n`);
     });
 
+  const featuresCommand = program
+    .command('features')
+    .description('Show or edit Agent Tick agent features config')
+    .option('--project', 'write .agent-tick/features.json in the current project instead of the global config')
+    .option('--file <path>', 'Agent Tick features config file to write')
+    .option('--json', 'print the effective config as JSON')
+    .action(async (...args: unknown[]) => {
+      const options = featuresConfigOptionsFromActionArgs(args);
+      if (options.json || !isInteractiveTerminal()) {
+        await showAgentFeaturesConfig(options);
+        return;
+      }
+      await runAgentFeaturesConfigTui(options);
+    });
+
+  featuresCommand
+    .command('show')
+    .description('Show the effective Agent Tick features config')
+    .option('--project', 'show with .agent-tick/features.json as the write target')
+    .option('--file <path>', 'Agent Tick features config file write target')
+    .option('--json', 'print JSON')
+    .action(async (...args: unknown[]) => {
+      await showAgentFeaturesConfig(featuresConfigOptionsFromActionArgs(args));
+    });
+
+  featuresCommand
+    .command('tui')
+    .description('Interactively toggle Agent Tick features')
+    .option('--project', 'write .agent-tick/features.json in the current project instead of the global config')
+    .option('--file <path>', 'Agent Tick features config file to write')
+    .action(async (...args: unknown[]) => {
+      await runAgentFeaturesConfigTui(featuresConfigOptionsFromActionArgs(args));
+    });
+
+  featuresCommand
+    .command('enable')
+    .description('Enable an Agent Tick feature')
+    .argument('<feature>', `feature: ${AGENT_FEATURES_BOOLEAN_FEATURES.map((feature) => feature.id).join(', ')}`)
+    .option('--project', 'write .agent-tick/features.json in the current project instead of the global config')
+    .option('--file <path>', 'Agent Tick features config file to write')
+    .action(async (...args: unknown[]) => {
+      const feature = String(args[0] ?? '');
+      await updateAgentFeature(feature, true, featuresConfigOptionsFromActionArgs(args));
+    });
+
+  featuresCommand
+    .command('disable')
+    .description('Disable an Agent Tick feature')
+    .argument('<feature>', `feature: ${AGENT_FEATURES_BOOLEAN_FEATURES.map((feature) => feature.id).join(', ')}`)
+    .option('--project', 'write .agent-tick/features.json in the current project instead of the global config')
+    .option('--file <path>', 'Agent Tick features config file to write')
+    .action(async (...args: unknown[]) => {
+      const feature = String(args[0] ?? '');
+      await updateAgentFeature(feature, false, featuresConfigOptionsFromActionArgs(args));
+    });
+
+  featuresCommand
+    .command('set')
+    .description('Set an Agent Tick feature or dotted config value')
+    .argument('<feature-or-path>', 'boolean feature name, or dotted config path such as status.heartbeat.intervalMs')
+    .argument('<value>', 'on/off for features; JSON/string value for dotted paths')
+    .option('--project', 'write .agent-tick/features.json in the current project instead of the global config')
+    .option('--file <path>', 'Agent Tick features config file to write')
+    .action(async (...args: unknown[]) => {
+      const featureOrPath = String(args[0] ?? '');
+      const value = String(args[1] ?? '');
+      await setAgentFeaturesConfigValue(featureOrPath, value, featuresConfigOptionsFromActionArgs(args));
+    });
+
   program
     .command('mcp')
     .description('Run the local stdio MCP adapter')
@@ -133,7 +197,7 @@ export function createProgram(): Command {
         await runMcpStdioAdapter(options);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`${message}\nRun \`agent-tick login\`, \`agent-tick config --server <url> --token <token>\`, or \`agent-tick install\` before starting the MCP adapter.`);
+        throw new Error(`${message}\nRun \`agent-tick login\`, \`agent-tick config --server <url> --token <token>\`, or \`agent-tick setup\` before starting the MCP adapter.`);
       }
     });
 
@@ -163,113 +227,82 @@ export function createProgram(): Command {
       }
     });
 
-  program
-    .command('sanction')
-    .description('Create a human Sanction Request and wait for a Response')
-    .allowUnknownOption(true)
-    .argument('[command...]', 'optional command to include in the Sanction Request')
-    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
-    .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
-    .option('--title <title>', 'sanction title')
-    .option('--body <body>', 'sanction body')
-    .option('--command <command>', 'command or action to approve without running it')
-    .option('--client-name <name>', 'client display name')
-    .option('--session <id>', 'real host chat/thread/session identifier [env: AGENT_TICK_SESSION_ID]')
-    .option('--session-title <title>', 'human-readable Session title/label [env: AGENT_TICK_SESSION_TITLE]')
-    .option('--choice-flag <choice=flag>', 'default sanction choice UI flag, repeatable: approve=production|reject=favorite|...', collectOption, [])
-    .option('--choice-tag <choice=tag>', 'default sanction choice display tag, repeatable: approve=tag', collectOption, [])
-    .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
-    .option('--json', 'print machine-readable JSON events')
-    .addHelpText('after', sanctionHelpText)
-    .action(async (commandParts: string[], options: RequestOptions) => {
-      const commandText = commandParts.length ? commandParts.join(' ') : options.command;
-      const { client, server } = await clientFromOptions(options);
-      const finalRequest = await createAndMaybeWait(client, server, {
-        ...options,
-        title: options.title ?? (commandText ? 'Approve command?' : 'Approve action?'),
-        ...(commandText ? { command: commandText } : {})
-      });
-      const exitCode = exitCodeForRequest(finalRequest);
-      if (exitCode !== 0 || !commandParts.length) {
-        process.exitCode = exitCode;
-        return;
-      }
-      process.exitCode = await runCommand(commandParts);
+  const sendCommand = program
+    .command('send')
+    .description('Send Agent Activity: Status Updates, Steering Requests, and Sanction Requests')
+    .addHelpText('after', sendHelpText)
+    .action((...args: unknown[]) => {
+      const commandArg = args.find(isCommanderCommandLike);
+      commandArg?.outputHelp();
     });
 
-  program
-    .command('steering')
-    .description('Ask a structured steering question and wait for a response')
-    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
-    .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
-    .option('--title <title>', 'steering question title')
-    .option('--body <body>', 'additional context for the steering question')
-    .option('--client-name <name>', 'client display name')
-    .option('--session <id>', 'real host chat/thread/session identifier [env: AGENT_TICK_SESSION_ID]')
-    .option('--session-title <title>', 'human-readable Session title/label [env: AGENT_TICK_SESSION_TITLE]')
-    .option('--choice <choice>', 'steering choice, repeatable: id=Label or id:kind=Label; include one kind=deny choice', collectOption, [])
-    .option('--choice-flag <choice=flag>', 'choice UI flag, repeatable: choiceId=favorite|production|destructive|...', collectOption, [])
-    .option('--choice-tag <choice=tag>', 'choice display tag, repeatable: choiceId=tag', collectOption, [])
-    .option('--timeout <duration>', 'wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
-    .option('--json', 'print machine-readable JSON events')
-    .addHelpText('after', steeringHelpText)
-    .action(async (options: RequestOptions) => {
-      if (!options.title?.trim()) throw cliUsageError('steering', 'steering requires --title');
-      if (!options.choice?.length) throw cliUsageError('steering', 'steering requires at least one --choice');
-      let choices: ChoiceInput[];
-      try {
-        choices = parseChoices(options.choice, options.choiceFlag, options.choiceTag);
-      } catch (error) {
-        throw cliUsageError('steering', error instanceof Error ? error.message : String(error));
-      }
-      const { client, server } = await clientFromOptions(options);
-      const created = await createAndMaybeWait(client, server, { ...options, requestType: 'steering', hookChoices: choices });
-      process.exitCode = exitCodeForRequest(created);
-    });
-
-  program
-    .command('status', { hidden: true })
-    .description('Removed; use status-update')
-    .allowUnknownOption(true)
-    .allowExcessArguments(true)
-    .action(() => {
-      throw cliUsageError('status-update', 'status has been renamed to status-update');
-    });
-
-  program
-    .command('status-update')
-    .description('Send a small progress update to Agent Tick')
+  sendCommand
+    .command('status')
+    .description('Send a non-blocking Status Update')
     .argument('[message...]', 'status update message')
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
-    .option('--thread <id>', 'legacy thread/chat identifier [env: AGENT_TICK_THREAD_ID]')
-    .option('--session <id>', 'real host chat/thread/session identifier [env: AGENT_TICK_SESSION_ID]')
-    .option('--session-title <title>', 'human-readable Session title/label [env: AGENT_TICK_SESSION_TITLE]')
-    .option('--state <state>', 'semantic status update state: working, waiting, blocked, done, failed', 'working')
-    .option('--next <text>', 'what the agent expects to do next')
-    .option('--client-name <name>', 'client display name')
-    .option('--importance <level>', 'future notification importance hint: low, normal, high, urgent', 'normal')
-    .option('--notify', 'future push-notification hint for attention-worthy updates')
-    .option('--metadata <key=value>', 'metadata key/value, repeatable', collectOption, [])
-    .option('--json', 'print machine-readable JSON')
+    .option('--thread <id>', 'Legacy thread/source metadata [env: AGENT_TICK_THREAD_ID]')
+    .option('--session <id>', 'Host chat/thread/run Session ID [env: AGENT_TICK_SESSION_ID]')
+    .option('--session-title <title>', 'Human-readable Session title [env: AGENT_TICK_SESSION_TITLE]')
+    .option('--state <state>', 'Status Update state: working, waiting, blocked, done, failed', 'working')
+    .option('--next <text>', 'Next step the agent expects to take')
+    .option('--client-name <name>', 'Client display name')
+    .option('--importance <level>', 'Notification importance: low, normal, high, urgent', 'normal')
+    .option('--notify', 'Mark this update as attention-worthy')
+    .option('--private', 'Encrypt this Status Update for approval devices')
+    .option('--plain', 'Send this Status Update as plaintext')
+    .option('--metadata <key=value>', 'Metadata key/value, repeatable', collectOption, [])
+    .option('--json', 'Print machine-readable JSON')
     .addHelpText('after', statusUpdateHelpText)
     .action(async (messageParts: string[], options: StatusOptions) => {
-      const { client } = await clientFromOptions(options);
-      const message = messageParts.join(' ').trim();
-      if (!message) throw cliUsageError('status-update', 'status-update requires a message');
-      const update = await client.createStatusUpdate({
-        threadId: options.thread ?? process.env.AGENT_TICK_THREAD_ID ?? defaultThreadId(),
-        ...(sessionFieldsFromOptions(options)),
-        message,
-        state: options.state ?? 'working',
-        nextStep: options.next,
-        host: os.hostname() || undefined,
-        workingDirectory: process.cwd(),
-        clientName: options.clientName ?? path.basename(process.cwd()),
-        metadata: statusUpdateMetadata(options)
-      });
-      if (options.json) process.stdout.write(`${JSON.stringify({ event: 'status_update', statusUpdate: update })}\n`);
-      else process.stdout.write(`sent status update for ${update.threadId}: ${update.message}\n`);
+      await runStatusUpdateAction(messageParts, options);
+    });
+
+  sendCommand
+    .command('steering')
+    .description('Create a Steering Request and wait for a Response')
+    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
+    .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
+    .option('--title <title>', 'Steering Request title')
+    .option('--body <body>', 'Additional Steering Request context')
+    .option('--client-name <name>', 'Client display name')
+    .option('--session <id>', 'Host chat/thread/run Session ID [env: AGENT_TICK_SESSION_ID]')
+    .option('--session-title <title>', 'Human-readable Session title [env: AGENT_TICK_SESSION_TITLE]')
+    .option('--choice <choice>', 'Choice, repeatable: Label, id=Label, or id:kind=Label', collectOption, [])
+    .option('--choice-flag <choice=flag>', 'Choice UI flag, repeatable: choiceId=favorite|production|destructive|...', collectOption, [])
+    .option('--choice-tag <choice=tag>', 'Choice display tag, repeatable: choiceId=tag', collectOption, [])
+    .option('--timeout <duration>', 'Wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
+    .option('--private', 'Encrypt this Request for approval devices')
+    .option('--plain', 'Send this Request as plaintext')
+    .option('--json', 'Print machine-readable JSON events')
+    .addHelpText('after', steeringHelpText)
+    .action(async (options: RequestOptions) => {
+      await runSteeringAction(options);
+    });
+
+  sendCommand
+    .command('sanction')
+    .description('Create a Sanction Request and wait for a Response')
+    .allowUnknownOption(true)
+    .argument('[command...]', 'Optional command to run locally after approval')
+    .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
+    .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
+    .option('--title <title>', 'Sanction Request title')
+    .option('--body <body>', 'Sanction Request context')
+    .option('--command <command>', 'Command/action to approve without running it')
+    .option('--client-name <name>', 'Client display name')
+    .option('--session <id>', 'Host chat/thread/run Session ID [env: AGENT_TICK_SESSION_ID]')
+    .option('--session-title <title>', 'Human-readable Session title [env: AGENT_TICK_SESSION_TITLE]')
+    .option('--choice-flag <choice=flag>', 'Default sanction choice UI flag, repeatable: approve=production|reject=favorite|...', collectOption, [])
+    .option('--choice-tag <choice=tag>', 'Default sanction choice display tag, repeatable: approve=tag', collectOption, [])
+    .option('--timeout <duration>', 'Wait timeout, e.g. 30s, 5m, 0 for no wait', '30m')
+    .option('--private', 'Encrypt this Request for approval devices')
+    .option('--plain', 'Send this Request as plaintext')
+    .option('--json', 'Print machine-readable JSON events')
+    .addHelpText('after', sanctionHelpText)
+    .action(async (commandParts: string[], options: RequestOptions) => {
+      await runSanctionAction(commandParts, options);
     });
 
   program
@@ -278,7 +311,7 @@ export function createProgram(): Command {
     .argument('<request-id>', 'Request ID')
     .option('--server <url>', 'Agent Tick server URL [env: AGENT_TICK_SERVER]')
     .option('--token <token>', 'Agent Tick agent token [env: AGENT_TICK_TOKEN]')
-    .option('--json', 'print machine-readable JSON')
+    .option('--json', 'Print machine-readable JSON')
     .addHelpText('after', abandonHelpText)
     .action(async (requestId: string, options: ClientOptions & { json?: boolean }) => {
       const { client } = await clientFromOptions(options);
@@ -294,9 +327,109 @@ export function createProgram(): Command {
   return program;
 }
 
+function configureSetupCommand(setupCommand: Command): Command {
+  return setupCommand
+    .description('Set up Agent Tick for local AI coding agents')
+    .option('--server <url>', `Agent Tick server URL [default: ${hostedAgentTickURL}]`)
+    .option('--token <token>', 'Agent Tick agent token to save before setup')
+    .option('--login', 'open browser sign-in before setup')
+    .option('--target <target>', 'agent to configure, repeatable: claude, codex, gemini, pi, cursor, opencode, agents-md', collectOption, [])
+    .option('--all', 'configure every supported target without prompting')
+    .option('--yes', 'accept defaults and do not prompt')
+    .option('--no-login', 'skip browser sign-in and only set up agent integrations')
+    .option('--dry-run', 'print planned changes without writing files')
+    .option('--claude-scope <scope>', 'Claude Code MCP/hook setup scope: global or local')
+    .option('--claude-permission-hook', 'also route Claude Code native permission prompts through Agent Tick')
+    .option('--claude-question-hook', 'also route Claude Code AskUserQuestion prompts through Agent Tick')
+    .option('--remove-claude-hooks', 'remove existing Agent Tick Claude Code hook entries')
+    .addOption(new Option('--claude-profile <profile>', 'legacy Claude Code setup profile').hideHelp())
+    .addOption(new Option('--claude-steering <policy>', 'legacy Claude Code steering policy').hideHelp())
+    .addOption(new Option('--claude-sanctions <policy>', 'legacy Claude Code sanction policy').hideHelp())
+    .addOption(new Option('--claude-initial-mode <mode>', 'legacy initial Agent Tick mode for Claude Code').hideHelp())
+    .addOption(new Option('--claude-sandbox <policy>', 'legacy Claude Code sandbox compatibility').hideHelp())
+    .addHelpText('after', setupHelpText)
+    .action(async (options: InstallOptions) => {
+      await runSetup(options);
+    });
+}
+
 async function clientFromOptions(options: ClientOptions): Promise<{ client: AgentTickClient; server: string; token: string }> {
   const { server, token } = await resolveServerAndToken(options);
   return { server, token, client: new AgentTickClient({ baseUrl: server, tokenProvider: () => token }) };
+}
+
+async function resolveSendContentMode(options: { private?: boolean; plain?: boolean; contentMode?: unknown }, usageCommand?: UsageCommand): Promise<AgentTickContentMode> {
+  if (options.private && options.plain) throw usageCommand ? cliUsageError(usageCommand, 'choose only one of --private or --plain') : new Error('choose only one of private or plain contentMode');
+  if (options.private) return 'private';
+  if (options.plain) return 'plain';
+  if (options.contentMode !== undefined && options.contentMode !== null) {
+    const contentMode = normalizeContentMode(options.contentMode);
+    if (contentMode) return contentMode;
+    if (options.contentMode !== 'default') throw new Error('contentMode must be default, private, or plain');
+  }
+  if (privateModeFromValue(process.env.AGENT_TICK_PRIVATE_REQUESTS) === 'always') return 'private';
+  const configured = await loadExplicitPrivacyDefaultContentMode();
+  if (configured) return configured;
+  return 'plain';
+}
+
+async function runStatusUpdateAction(messageParts: string[], options: StatusOptions): Promise<void> {
+  const message = messageParts.join(' ').trim();
+  if (!message) throw cliUsageError('send', 'send status requires a message');
+  const { client } = await clientFromOptions(options);
+  const baseUpdate: CreateStatusUpdate = {
+    threadId: options.thread ?? process.env.AGENT_TICK_THREAD_ID ?? defaultThreadId(),
+    ...(sessionFieldsFromOptions(options)),
+    message,
+    state: options.state ?? 'working',
+    nextStep: options.next,
+    host: os.hostname() || undefined,
+    workingDirectory: process.cwd(),
+    clientName: options.clientName ?? path.basename(process.cwd()),
+    metadata: cliMetadata(statusUpdateMetadata(options))
+  };
+  const updateInput = await resolveSendContentMode(options, 'send') === 'private'
+    ? createPrivateStatusUpdateInput({ ...baseUpdate, message: 'Private Status Update', nextStep: undefined }, {
+        schemaVersion: 1,
+        kind: 'status_update',
+        message,
+        ...(options.next ? { nextStep: options.next } : {})
+      }, await client.preparePrivateStatusUpdate())
+    : baseUpdate;
+  const update = await client.createStatusUpdate(updateInput);
+  if (options.json) process.stdout.write(`${JSON.stringify({ event: 'status_update', statusUpdate: update })}\n`);
+  else process.stdout.write(`sent status update for ${update.threadId}: ${update.message}\n`);
+}
+
+async function runSanctionAction(commandParts: string[], options: RequestOptions): Promise<void> {
+  const commandText = commandParts.length ? commandParts.join(' ') : options.command;
+  if (!options.title?.trim() && !commandText?.trim()) throw cliUsageError('send', 'send sanction requires --title, --command, or a command after --');
+  const { client, server } = await clientFromOptions(options);
+  const finalRequest = await createAndMaybeWait(client, server, {
+    ...options,
+    title: options.title?.trim() || 'Approve command?',
+    ...(commandText ? { command: commandText } : {})
+  });
+  const exitCode = exitCodeForRequest(finalRequest);
+  if (exitCode !== 0 || !commandParts.length) {
+    process.exitCode = exitCode;
+    return;
+  }
+  process.exitCode = await runCommand(commandParts);
+}
+
+async function runSteeringAction(options: RequestOptions): Promise<void> {
+  if (!options.title?.trim()) throw cliUsageError('send', 'send steering requires --title');
+  if (!options.choice?.length) throw cliUsageError('send', 'send steering requires at least one --choice');
+  let choices: ChoiceInput[];
+  try {
+    choices = parseChoices(options.choice, options.choiceFlag, options.choiceTag);
+  } catch (error) {
+    throw cliUsageError('send', error instanceof Error ? error.message : String(error));
+  }
+  const { client, server } = await clientFromOptions(options);
+  const created = await createAndMaybeWait(client, server, { ...options, requestType: 'steering', hookChoices: choices });
+  process.exitCode = exitCodeForRequest(created);
 }
 
 type ConfigMethod = 'browser' | 'token';
@@ -373,6 +506,499 @@ async function showSavedConfig(options: { json?: boolean }): Promise<void> {
     return;
   }
   process.stdout.write(`Config file: ${configPath}\nServer: ${server}\nToken: ${token}\n`);
+}
+
+type FeaturesConfigOptions = { project?: boolean; file?: string; json?: boolean };
+
+async function showAgentFeaturesConfig(options: FeaturesConfigOptions = {}): Promise<void> {
+  const targetPath = resolveAgentFeaturesConfigPath(options);
+  const effective = await loadEffectiveAgentFeaturesConfig(options);
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify({ targetPath, paths: effective.paths, existingPaths: effective.existingPaths, config: effective.config }, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(`Agent Tick features config target: ${targetPath}\n`);
+  process.stdout.write(`Loaded config files: ${effective.existingPaths.length ? effective.existingPaths.join(', ') : '(none; using built-in defaults)'}\n\n`);
+  process.stdout.write(agentFeaturesFeatureTable(effective.config));
+  process.stdout.write('\nUseful commands:\n');
+  process.stdout.write('  agent-tick features tui\n');
+  process.stdout.write('  agent-tick features enable message-mirroring\n');
+  process.stdout.write('  agent-tick features disable heartbeat\n');
+  process.stdout.write('  agent-tick features set status.heartbeat.intervalMs 15000\n');
+}
+
+function featuresConfigOptionsFromActionArgs(args: unknown[]): FeaturesConfigOptions {
+  const commandArg = args.find(isCommanderCommandLike);
+  if (commandArg) return mergeFeaturesConfigOptions(commandArg.parent?.opts<FeaturesConfigOptions>() ?? {}, commandArg.opts<FeaturesConfigOptions>());
+  const optionsArg = args.find((arg): arg is FeaturesConfigOptions => typeof arg === 'object' && arg !== null && !Array.isArray(arg));
+  return optionsArg ?? {};
+}
+
+function isCommanderCommandLike(arg: unknown): arg is Command {
+  return typeof arg === 'object' && arg !== null && typeof (arg as { opts?: unknown }).opts === 'function';
+}
+
+function mergeFeaturesConfigOptions(parentOptions: FeaturesConfigOptions, childOptions: FeaturesConfigOptions): FeaturesConfigOptions {
+  return {
+    ...(parentOptions.project !== undefined ? { project: parentOptions.project } : {}),
+    ...(parentOptions.file !== undefined ? { file: parentOptions.file } : {}),
+    ...(parentOptions.json !== undefined ? { json: parentOptions.json } : {}),
+    ...(childOptions.project !== undefined ? { project: childOptions.project } : {}),
+    ...(childOptions.file !== undefined ? { file: childOptions.file } : {}),
+    ...(childOptions.json !== undefined ? { json: childOptions.json } : {})
+  };
+}
+
+async function updateAgentFeature(featureName: string, enabled: boolean, options: FeaturesConfigOptions = {}): Promise<void> {
+  const result = await setAgentFeature(featureName, enabled, options);
+  process.stdout.write(`${success(enabled ? 'enabled' : 'disabled')} ${result.feature.id} in ${result.path}\n`);
+}
+
+async function setAgentFeaturesConfigValue(featureOrPath: string, rawValue: string, options: FeaturesConfigOptions = {}): Promise<void> {
+  const feature = AGENT_FEATURES_BOOLEAN_FEATURES.find((entry) => entry.id === featureOrPath || entry.aliases.includes(featureOrPath));
+  if (feature) {
+    await updateAgentFeature(feature.id, parseToggleValue(rawValue), options);
+    return;
+  }
+  const configPath = resolveAgentFeaturesConfigPath(options);
+  const config = await readAgentFeaturesConfigFile(configPath);
+  const pathParts = featureOrPath.split('.').map((part) => part.trim()).filter(Boolean);
+  if (!pathParts.length) throw new Error('config path must not be empty');
+  setPath(config, pathParts, parseConfigValue(rawValue));
+  await writeAgentFeatureConfig(configPath, config);
+  process.stdout.write(`${success('saved')} ${featureOrPath} in ${configPath}\n`);
+}
+
+type AgentFeaturesTuiKey = 'up' | 'down' | 'home' | 'end' | 'toggle' | 'privacy' | 'edit' | 'saveQuit' | 'quit' | 'interrupt' | 'unknown';
+
+export type AgentFeaturesTuiRenderState = {
+  selectedIndex?: number;
+  dirty?: boolean;
+  confirmDiscard?: boolean;
+  message?: string;
+};
+
+async function runAgentFeaturesConfigTui(options: FeaturesConfigOptions = {}): Promise<void> {
+  if (!isInteractiveTerminal() || typeof process.stdin.setRawMode !== 'function') {
+    throw new Error('agent-tick features tui requires an interactive terminal. Use `agent-tick features show` or `agent-tick features --json` in non-interactive shells.');
+  }
+
+  await ensureAgentFeaturesConfig(options);
+  let config = (await loadEffectiveAgentFeaturesConfig(options)).config;
+  const configPath = resolveAgentFeaturesConfigPath(options);
+  let selectedIndex = 0;
+  let dirty = false;
+  let confirmDiscard = false;
+  let message = 'Use ↑/↓ or j/k to move; Space/Enter toggles and advances; p switches privacy; e edits JSON; s saves and quits.';
+  const input = process.stdin;
+  const output = process.stdout;
+  const wasRaw = input.isRaw === true;
+
+  const render = () => {
+    const rows = featureSummary(config);
+    selectedIndex = clampIndex(selectedIndex, rows.length);
+    output.write('\u001b[2J\u001b[H');
+    output.write(renderAgentFeaturesConfigTuiScreen(config, configPath, { selectedIndex, dirty, confirmDiscard, message }, output.columns ?? 100));
+  };
+
+  const onResize = () => render();
+  output.on('resize', onResize);
+  input.setRawMode(true);
+  input.resume();
+  output.write('\u001b[?25l');
+
+  try {
+    render();
+    for await (const chunk of input) {
+      const key = agentFeaturesTuiKeyFromChunk(chunk);
+      const rows = featureSummary(config);
+      if (key === 'interrupt') {
+        process.exitCode = 130;
+        break;
+      }
+      if (key === 'saveQuit') {
+        if (dirty) await writeAgentFeatureConfig(configPath, config);
+        dirty = false;
+        break;
+      }
+      if (key === 'quit') {
+        if (dirty && !confirmDiscard) {
+          confirmDiscard = true;
+          message = 'Unsaved changes. Press q again to discard, s to save and quit, or any other key to continue editing.';
+          render();
+          continue;
+        }
+        break;
+      }
+      if (confirmDiscard) confirmDiscard = false;
+      if (key === 'up') selectedIndex = clampIndex(selectedIndex - 1, rows.length);
+      else if (key === 'down') selectedIndex = clampIndex(selectedIndex + 1, rows.length);
+      else if (key === 'home') selectedIndex = 0;
+      else if (key === 'end') selectedIndex = Math.max(0, rows.length - 1);
+      else if (key === 'edit') {
+        output.write('\u001b[?25h\n');
+        input.setRawMode(false);
+        input.pause();
+        const editResult = await editAgentFeaturesConfigDraft(config);
+        message = editResult.message;
+        input.setRawMode(true);
+        input.resume();
+        output.write('\u001b[?25l');
+        if (editResult.config) {
+          config = editResult.config;
+          dirty = true;
+        }
+      } else if (key === 'privacy') {
+        const nextMode: AgentTickContentMode = currentPrivacyMode(config) === 'private' ? 'plain' : 'private';
+        setPath(config, ['privacy', 'defaultContentMode'], nextMode);
+        dirty = true;
+        message = `Privacy mode set to ${nextMode}. Press s to save.`;
+      } else if (key === 'toggle') {
+        const row = rows[clampIndex(selectedIndex, rows.length)];
+        if (row) {
+          if (row.feature.id === 'tool-activity') {
+            const visibility = nextToolActivityVisibility(toolActivityVisibility(config));
+            setPath(config, row.feature.path, visibility !== 'off');
+            setPath(config, ['status', 'toolActivity', 'visibility'], visibility);
+            dirty = true;
+            message = `Tool Activity visibility set to ${visibility}. Press Space/Enter to cycle, s to save.`;
+          } else {
+            const next = !row.enabled;
+            setPath(config, row.feature.path, next);
+            dirty = true;
+            selectedIndex = clampIndex(selectedIndex + 1, featureSummary(config).length);
+            message = `${next ? 'Enabled' : 'Disabled'} ${row.feature.id}. Press s to save.`;
+          }
+        }
+      } else {
+        message = 'Keys: ↑/↓ or j/k move, Space/Enter toggles or cycles selected feature, p privacy, e edits JSON, s saves and quits, q quits.';
+      }
+      render();
+    }
+  } finally {
+    output.off('resize', onResize);
+    input.setRawMode(wasRaw);
+    output.write('\u001b[?25h\n');
+  }
+}
+
+export function renderAgentFeaturesConfigTuiScreen(config: JsonObject, configPath: string, state: AgentFeaturesTuiRenderState = {}, columns = 100): string {
+  const rows = featureSummary(config);
+  const selectedIndex = clampIndex(state.selectedIndex ?? 0, rows.length);
+  const width = Math.max(40, columns);
+  const privacyMode = currentPrivacyMode(config);
+  const selectedRow = rows[selectedIndex];
+  const lines = [
+    tuiColor('1;36', 'Agent Tick feature toggles'),
+    `${tuiColor('2', 'Config file:')} ${tuiColor('36', configPath)}${state.dirty ? ` ${tuiColor('1;33', '(unsaved)')}` : ''}`,
+    `${tuiColor('2', 'Privacy mode:')} ${tuiPrivacyMode(privacyMode)}`,
+    '',
+    `${tuiColor('2', 'Move with ↑/↓ or j/k.')} ${tuiColor('1', 'Space/Enter')} toggles/cycles+next, ${tuiPrivacyKey(privacyMode)} switches privacy, ${tuiColor('1', 'e')} edits JSON, ${tuiColor('1', 's')} saves+quits.`,
+    '',
+    `Legend: ${tuiStatusMarker({ marker: '[x]', summary: 'effective' })} effective   ${tuiStatusMarker({ marker: '[ ]', summary: 'disabled' })} off   ${tuiStatusMarker({ marker: '[~]', summary: 'generic in plain mode' })} generic/limited   ${tuiStatusMarker({ marker: '[!]', summary: 'inactive' })} inactive`
+  ];
+
+  let currentGroup = '';
+  rows.forEach((row, index) => {
+    const group = featureGroup(row.feature.id);
+    if (group !== currentGroup) {
+      currentGroup = group;
+      lines.push('', tuiGroupHeading(group));
+    }
+    const selector = index === selectedIndex ? tuiColor('1;36', '>') : ' ';
+    const status = featureTuiStatus(row, config);
+    const featureId = tuiColor(index === selectedIndex ? '1;36' : '36', row.feature.id.padEnd(22));
+    lines.push(fitTerminalLine(`${selector} ${tuiStatusMarker(status)} ${featureId} ${row.feature.label} ${tuiColor('2', '—')} ${tuiStatusSummary(status)}`, width));
+  });
+
+  if (selectedRow) lines.push('', ...selectedFeatureDetail(selectedRow, config, width));
+  lines.push('', `${tuiColor('2', '↑/↓ j/k: move')}   ${tuiColor('1', 'Space/Enter')}: toggle/cycle   ${tuiPrivacyKey(privacyMode)}: privacy   ${tuiColor('1', 'e')}: edit JSON   ${tuiColor('1', 's')}: save+quit   ${tuiColor('1', 'q')}: quit/discard`);
+  if (state.confirmDiscard) lines.push(tuiColor('1;33', 'Unsaved changes: q discards, s saves, any other key cancels.'));
+  if (state.message) lines.push('', state.message);
+  return `${lines.join('\n')}\n`;
+}
+
+type AgentFeatureSummaryRow = { feature: AgentFeature; enabled: boolean };
+
+type FeatureTuiStatus = {
+  marker: '[x]' | '[ ]' | '[~]' | '[!]';
+  summary: string;
+};
+
+function tuiSupportsColor(): boolean {
+  return process.stdout.isTTY === true && !process.env.NO_COLOR;
+}
+
+function tuiColor(code: string, value: string): string {
+  return tuiSupportsColor() ? `\u001b[${code}m${value}\u001b[0m` : value;
+}
+
+function tuiPrivacyMode(mode: AgentTickContentMode): string {
+  return mode === 'private'
+    ? `${tuiColor('1;32', 'private')} ${tuiColor('32', 'encrypted private content enabled')}`
+    : `${tuiColor('1;33', 'plain')} ${tuiColor('33', '⚠ rich mirrored content is generic unless sent privately')}`;
+}
+
+function tuiPrivacyKey(mode: AgentTickContentMode): string {
+  return mode === 'plain' ? tuiColor('1;33', 'p') : tuiColor('1', 'p');
+}
+
+function tuiGroupHeading(group: string): string {
+  if (group === 'Status updates') return tuiColor('1;34', group);
+  if (group === 'Mirrored content') return tuiColor('1;35', group);
+  if (group === 'Tool activity') return tuiColor('1;33', group);
+  return tuiColor('1;31', group);
+}
+
+function tuiStatusMarker(status: Pick<FeatureTuiStatus, 'marker' | 'summary'>): string {
+  if (status.marker === '[x]') return tuiColor('1;32', status.marker);
+  if (status.marker === '[~]') return tuiColor('1;33', status.marker);
+  if (status.marker === '[!]') return tuiColor('1;31', status.marker);
+  return tuiColor('2', status.marker);
+}
+
+function tuiStatusSummary(status: FeatureTuiStatus): string {
+  if (status.marker === '[x]') return tuiColor('32', status.summary);
+  if (status.marker === '[~]') return tuiColor('33', status.summary);
+  if (status.marker === '[!]') return tuiColor('31', status.summary);
+  return tuiColor('2', status.summary);
+}
+
+function currentPrivacyMode(config: JsonObject): AgentTickContentMode {
+  return normalizeContentMode(getPath(config, ['privacy', 'defaultContentMode'])) ?? 'plain';
+}
+
+function featureGroup(featureId: string): string {
+  if (['status', 'start', 'heartbeat', 'turn-end', 'finish', 'shutdown'].includes(featureId)) return 'Status updates';
+  if (featureId.startsWith('message-')) return 'Mirrored content';
+  if (featureId === 'tool-activity') return 'Tool activity';
+  return 'Sanctions';
+}
+
+function featureTuiStatus(row: AgentFeatureSummaryRow, config: JsonObject): FeatureTuiStatus {
+  if (row.feature.id === 'tool-activity') {
+    const visibility = toolActivityVisibility(config);
+    if (visibility === 'off') return { marker: '[ ]', summary: 'visibility: off' };
+    if (!featureParentEnabled(row.feature.id, config)) return { marker: '[!]', summary: `visibility: ${visibility}; inactive until ${featureParentLabel(row.feature.id)} is enabled` };
+    if (visibility === 'details' && currentPrivacyMode(config) === 'plain') return { marker: '[~]', summary: 'visibility: details; private mode required' };
+    return { marker: '[x]', summary: `visibility: ${visibility}` };
+  }
+  if (!row.enabled) return { marker: '[ ]', summary: 'disabled' };
+  if (!featureParentEnabled(row.feature.id, config)) return { marker: '[!]', summary: `inactive until ${featureParentLabel(row.feature.id)} is enabled` };
+  if (featureIsPlainModeLimited(row.feature.id, config) && currentPrivacyMode(config) === 'plain') return { marker: '[~]', summary: 'generic in plain mode' };
+  return { marker: '[x]', summary: 'effective' };
+}
+
+function featureParentEnabled(featureId: string, config: JsonObject): boolean {
+  const statusEnabled = Boolean(getPath(config, ['status', 'enabled']));
+  const mirroringEnabled = Boolean(getPath(config, ['status', 'messageMirroring', 'enabled']));
+  const sanctionsEnabled = Boolean(getPath(config, ['sanctions', 'enabled']));
+  if (['start', 'heartbeat', 'turn-end', 'finish', 'shutdown', 'message-mirroring', 'tool-activity'].includes(featureId)) return statusEnabled;
+  if (featureId.startsWith('message-')) return statusEnabled && mirroringEnabled;
+  if (['sanction-local', 'sanction-remote', 'bash-sanctions'].includes(featureId)) return sanctionsEnabled;
+  if (featureId === 'bash-parse-shell') return sanctionsEnabled && Boolean(getPath(config, ['sanctions', 'tools', 'bash', 'enabled']));
+  return true;
+}
+
+function featureParentLabel(featureId: string): string {
+  if (['start', 'heartbeat', 'turn-end', 'finish', 'shutdown', 'message-mirroring', 'tool-activity'].includes(featureId)) return 'status';
+  if (featureId.startsWith('message-')) return 'message-mirroring';
+  if (featureId === 'bash-parse-shell') return 'bash-sanctions';
+  if (featureId.startsWith('sanction-') || featureId === 'bash-sanctions') return 'sanctions';
+  return 'its parent feature';
+}
+
+function featureIsPlainModeLimited(featureId: string, config: JsonObject): boolean {
+  if (featureId === 'tool-activity') return toolActivityVisibility(config) === 'details';
+  return ['message-mirroring', 'message-user', 'message-tool-turns', 'message-thinking'].includes(featureId);
+}
+
+function toolActivityVisibility(config: JsonObject): ToolActivityVisibility {
+  return normalizeToolActivityVisibility(getPath(config, ['status', 'toolActivity', 'visibility'])) ?? (Boolean(getPath(config, ['status', 'toolActivity', 'enabled'])) ? 'names' : 'off');
+}
+
+function nextToolActivityVisibility(current: ToolActivityVisibility): ToolActivityVisibility {
+  if (current === 'off') return 'names';
+  if (current === 'names') return 'summaries';
+  if (current === 'summaries') return 'details';
+  return 'off';
+}
+
+function selectedFeatureDetail(row: AgentFeatureSummaryRow, config: JsonObject, width: number): string[] {
+  const privacyMode = currentPrivacyMode(config);
+  const status = featureTuiStatus(row, config);
+  const details = featureDetail(row.feature.id, privacyMode, status, config);
+  return [
+    `${tuiColor('1;36', 'Selected:')} ${tuiColor('1;36', row.feature.id)}`,
+    `  ${tuiColor('1', 'State:')} ${tuiStatusMarker(status)} ${tuiStatusSummary(status)}`,
+    ...(row.feature.id === 'tool-activity' ? [`  ${tuiColor('1', 'Cycle:')} ${tuiColor('36', 'off → names → summaries → details')} with Space/Enter`] : []),
+    `  ${tuiColor('1', 'Sends now:')} ${details.now}`,
+    `  ${tuiColor('1', 'Example:')} ${tuiColor(status.marker === '[ ]' || status.marker === '[!]' ? '2' : '32', details.example)}`,
+    `  ${tuiColor('1', 'Config path:')} ${tuiColor('36', row.feature.id === 'tool-activity' ? 'status.toolActivity.visibility' : row.feature.path.join('.'))}`
+  ].map((line) => fitTerminalLine(line, width));
+}
+
+function featureDetail(featureId: string, privacyMode: AgentTickContentMode, status: FeatureTuiStatus, config: JsonObject): { now: string; example: string } {
+  if (status.marker === '[ ]') return { now: 'Disabled; no Activity is sent by this feature.', example: 'none' };
+  if (status.marker === '[!]') return { now: `Nothing yet; this setting is enabled but ${status.summary}.`, example: 'none until the parent feature is enabled' };
+
+  switch (featureId) {
+    case 'status':
+      return { now: 'Lifecycle Status Updates are allowed.', example: 'Status Update: state=working, message="Running tests"' };
+    case 'start':
+      return { now: 'A generic working Status Update at the beginning of an agent run.', example: 'Status Update: state=working, message="Starting task"' };
+    case 'heartbeat':
+      return { now: 'A periodic generic working Status Update while the agent is active.', example: 'Status Update: state=working, message="Still working"' };
+    case 'turn-end':
+      return { now: 'A generic Status Update at each turn boundary.', example: 'Status Update: state=working, message="Turn complete"' };
+    case 'finish':
+      return { now: 'A generic waiting/done Status Update when the agent run finishes.', example: 'Status Update: state=waiting, message="Finished; waiting"' };
+    case 'shutdown':
+      return { now: 'A generic done Status Update when the local agent session shuts down.', example: 'Status Update: state=done, message="Session ended"' };
+    case 'message-mirroring':
+      return privacyMode === 'private'
+        ? { now: 'Assistant replies are sent as encrypted private Status Update content.', example: 'Encrypted body: "Implemented the fix and tests pass." Preview: "Assistant reply available"' }
+        : { now: 'Only a generic mirrored-message Activity is sent; full assistant text is not useful in plain mode.', example: 'Status Update: "Assistant reply available"; full text omitted unless private' };
+    case 'message-user':
+      return privacyMode === 'private'
+        ? { now: 'User messages can be mirrored as encrypted private content.', example: 'Encrypted body: "Please deploy staging"; preview: "User message available"' }
+        : { now: 'Only generic user-message metadata is sent; message text should stay out of plaintext.', example: 'Status Update: "User message available"; text omitted' };
+    case 'message-tool-turns':
+      return privacyMode === 'private'
+        ? { now: 'Assistant text before tool use is mirrored as encrypted private content.', example: 'Encrypted body: "I will inspect the failing test, then patch the parser."' }
+        : { now: 'Only generic pre-tool-turn metadata is sent.', example: 'Status Update: "Assistant tool-use turn available"' };
+    case 'message-thinking':
+      return privacyMode === 'private'
+        ? { now: 'Thinking is included only inside encrypted private mirrored content.', example: 'Encrypted body includes thinking; plaintext preview says "Private thinking available"' }
+        : { now: 'Thinking is not sent as useful plaintext; switch privacy mode to private for this to matter.', example: 'Generic Activity only; no thinking text' };
+    case 'message-context-usage':
+      return { now: 'Context/token usage metadata is attached to mirrored message Activity.', example: 'Metadata: context.used=72%, context.remaining=28%' };
+    case 'message-collapsed':
+      return { now: 'Mirrored messages default to collapsed presentation in clients.', example: 'Presentation: collapsedByDefault=true' };
+    case 'tool-activity': {
+      const visibility = toolActivityVisibility(config);
+      if (visibility === 'names') return { now: 'Structured Tool Activity sends tool names and timing only; no raw inputs/results.', example: 'Tool Activity: bash finished; details omitted' };
+      if (visibility === 'summaries') return { now: 'Structured Tool Activity sends safe summaries plus tool names; no raw inputs/results.', example: 'Tool Activity: bash · Ran validation; inputs/results omitted' };
+      if (visibility === 'details') return privacyMode === 'private'
+        ? { now: 'Detailed tool inputs/results may be sent only as encrypted private Tool Activity content.', example: 'Encrypted Tool Activity details; plaintext shows tool name/summary only' }
+        : { now: 'Details are gated: switch privacy.defaultContentMode to private after enabling Native App Private encryption.', example: 'Generic Tool Activity only; raw inputs/results omitted in plain mode' };
+      return { now: 'Tool Activity visibility is off; no tool usage is sent.', example: 'none' };
+    }
+    case 'sanctions':
+      return { now: 'Bash approval gates may ask before risky commands run.', example: 'Sanction Request: title="Run risky command?", command="rm -rf build"' };
+    case 'sanction-local':
+      return { now: 'Sanction Requests can show a local terminal approval prompt.', example: 'Local prompt: Approve command? [y/N]' };
+    case 'sanction-remote':
+      return { now: 'Sanction Requests are sent to Agent Tick for remote approval.', example: 'Remote Sanction: approve/deny in Agent Tick' };
+    case 'bash-sanctions':
+      return { now: 'Bash tool calls are checked against Sanction policy.', example: 'Command "npm install" may require approval before running' };
+    case 'bash-parse-shell':
+      return { now: 'Shell commands are parsed so policy can inspect chained/subcommands.', example: 'sh -c "npm install && npm test" is parsed before policy checks' };
+    default:
+      return { now: 'Feature is enabled.', example: 'Activity depends on the integration using this setting' };
+  }
+}
+
+function agentFeaturesTuiKeyFromChunk(chunk: unknown): AgentFeaturesTuiKey {
+  const value = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk ?? '');
+  if (value.includes('\u0003')) return 'interrupt';
+  if (value.startsWith('\u001b[A') || value.startsWith('\u001bOA')) return 'up';
+  if (value.startsWith('\u001b[B') || value.startsWith('\u001bOB')) return 'down';
+  if (value.startsWith('\u001b[H') || value.startsWith('\u001b[1~')) return 'home';
+  if (value.startsWith('\u001b[F') || value.startsWith('\u001b[4~')) return 'end';
+  const key = value[0] ?? '';
+  if (key === '\u001b' || key === 'q' || key === 'Q') return 'quit';
+  if (key === 'k' || key === 'K') return 'up';
+  if (key === 'j' || key === 'J') return 'down';
+  if (key === 'g') return 'home';
+  if (key === 'G') return 'end';
+  if (key === ' ' || key === '\r' || key === '\n') return 'toggle';
+  if (key === 'p' || key === 'P') return 'privacy';
+  if (key === 'e' || key === 'E') return 'edit';
+  if (key === 's' || key === 'S') return 'saveQuit';
+  return 'unknown';
+}
+
+function clampIndex(index: number, length: number): number {
+  if (length <= 0) return 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
+function fitTerminalLine(line: string, width: number): string {
+  if (visibleTerminalLength(line) <= width) return line;
+  if (width <= 1) return sliceTerminalVisible(line, width);
+  return `${sliceTerminalVisible(line, width - 1)}…`;
+}
+
+function visibleTerminalLength(value: string): number {
+  return value.replace(/\u001b\[[0-9;]*m/g, '').length;
+}
+
+function sliceTerminalVisible(value: string, width: number): string {
+  let result = '';
+  let visible = 0;
+  for (let index = 0; index < value.length && visible < width;) {
+    if (value[index] === '\u001b') {
+      const match = /^\u001b\[[0-9;]*m/.exec(value.slice(index));
+      if (match) {
+        result += match[0];
+        index += match[0].length;
+        continue;
+      }
+    }
+    result += value[index];
+    visible += 1;
+    index += 1;
+  }
+  return value.includes('\u001b[') && !result.endsWith('\u001b[0m') ? `${result}\u001b[0m` : result;
+}
+
+function agentFeaturesFeatureTable(config: JsonObject): string {
+  const lines = ['Feature toggles:'];
+  for (const row of featureSummary(config)) {
+    lines.push(`  ${row.enabled ? 'on ' : 'off'}  ${row.feature.id.padEnd(22)} ${row.feature.label}`);
+  }
+  lines.push('', `Tool activity visibility: ${toolActivityVisibility(config)} (off, names, summaries, details)`);
+  return `${lines.join('\n')}\n`;
+}
+
+function parseConfigValue(rawValue: string): unknown {
+  const value = rawValue.trim();
+  if (!value) return '';
+  if (['true', 'false'].includes(value.toLowerCase())) return value.toLowerCase() === 'true';
+  if (value.toLowerCase() === 'null') return null;
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+  if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']')) || (value.startsWith('"') && value.endsWith('"'))) return JSON.parse(value) as unknown;
+  return rawValue;
+}
+
+async function writeAgentFeatureConfig(configPath: string, config: JsonObject): Promise<void> {
+  await fs.mkdir(path.dirname(configPath), { recursive: true, mode: 0o700 });
+  await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+}
+
+async function editAgentFeaturesConfigDraft(config: JsonObject): Promise<{ message: string; config?: JsonObject }> {
+  const editor = process.env.VISUAL || process.env.EDITOR || 'vi';
+  const [commandName, ...editorArgs] = editor.split(/\s+/).filter(Boolean);
+  if (!commandName) return { message: 'No editor configured. Set VISUAL or EDITOR to edit JSON from the TUI.' };
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-edit-'));
+  const tempPath = path.join(tempDir, 'features.json');
+  try {
+    await fs.writeFile(tempPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+    const result = spawnSync(commandName, [...editorArgs, tempPath], { stdio: 'inherit' });
+    if (result.error) return { message: `Editor failed: ${result.error.message}` };
+    if (result.status && result.status !== 0) return { message: `Editor exited with status ${result.status}; keeping previous TUI state.` };
+    try {
+      const parsed = JSON.parse(await fs.readFile(tempPath, 'utf8')) as unknown;
+      if (!isPlainObject(parsed)) return { message: 'Edited JSON must be an object; keeping previous TUI state.' };
+      return { message: 'Edited draft config. Press s to save.', config: parsed };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { message: `Edited JSON is invalid or unreadable: ${message}` };
+    }
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 function isInteractiveTerminal(): boolean {
@@ -489,9 +1115,13 @@ function defaultAgentName(): string {
   return `Agent on ${os.hostname() || 'local machine'}`;
 }
 
-const CLI_VERSION = '1.1.0';
+const CLI_VERSION = '1.3.1';
 
-type UsageCommand = 'status-update' | 'steering' | 'sanction' | 'config' | 'login' | 'install' | 'mode' | 'mcp' | 'abandon' | 'unknown';
+function cliMetadata(metadata: Record<string, string> = {}): Record<string, string> {
+  return { ...metadata, agentTickCliVersion: CLI_VERSION };
+}
+
+type UsageCommand = 'send' | 'config' | 'login' | 'setup' | 'install' | 'features' | 'mode' | 'mcp' | 'abandon' | 'unknown';
 
 class CliUsageError extends Error {
   constructor(public usageCommand: UsageCommand, message: string) {
@@ -542,9 +1172,9 @@ function normalizeClaudeSandboxPolicy(value: string): ClaudeSandboxPolicy {
   throw new Error(`unknown Claude Code sandbox policy: ${value}. Expected auto, allow, or skip.`);
 }
 
-async function runInstall(options: InstallOptions): Promise<void> {
+async function runSetup(options: InstallOptions): Promise<void> {
   let server = normalizeURL(options.server ?? hostedAgentTickURL);
-  process.stdout.write('Agent Tick installer\n');
+  process.stdout.write('Agent Tick setup\n');
   if (options.dryRun || options.login === false) process.stdout.write(`Agent Tick server: ${server}\n\n`);
 
   if (options.dryRun) {
@@ -555,7 +1185,7 @@ async function runInstall(options: InstallOptions): Promise<void> {
         : 'Step 1/2: [dry-run] would connect this machine to Agent Tick.\n\n');
   } else if (options.login !== false) {
     process.stdout.write('Step 1/2: connect this machine to Agent Tick.\n');
-    const result = await configureSavedClient({ server: options.server, token: options.token, login: options.login, name: defaultAgentName() }, { allowInteractive: !options.yes, usageCommand: 'install', defaultMethod: 'browser' });
+    const result = await configureSavedClient({ server: options.server, token: options.token, login: options.login, name: defaultAgentName() }, { allowInteractive: !options.yes, usageCommand: 'setup', defaultMethod: 'browser' });
     server = result.server;
     process.stdout.write(`saved Agent Tick config to ${result.path}\n\n`);
   } else {
@@ -564,13 +1194,13 @@ async function runInstall(options: InstallOptions): Promise<void> {
 
   const selected = await selectInstallTargets(options);
   if (!selected.length) {
-    process.stdout.write('No agent integrations selected. You can re-run `agent-tick install` later.\n');
+    process.stdout.write('No agent integrations selected. You can re-run `agent-tick setup` later.\n');
     return;
   }
 
   const claudeConfig = selected.includes('claude') ? await resolveClaudeInstallConfig(options, server) : undefined;
 
-  process.stdout.write('Step 2/2: install agent integrations.\n');
+  process.stdout.write('Step 2/2: set up agent integrations.\n');
   const plans = selected.map((target) => installPlanForTarget(target, claudeConfig));
   for (const plan of plans) {
     if (plan.status === 'disabled') {
@@ -586,7 +1216,7 @@ async function runInstall(options: InstallOptions): Promise<void> {
     process.stdout.write(`${plan.description}\n`);
   }
 
-  process.stdout.write(options.dryRun ? '\nDry run complete. No files were changed.\n' : '\nDone. Agent Tick integrations are installed.\n');
+  process.stdout.write(options.dryRun ? '\nDry run complete. No files were changed.\n' : '\nDone. Agent Tick setup is complete.\n');
   if (selected.includes('claude')) {
     process.stdout.write('Claude Code MCP tools: agent_tick_status_update, agent_tick_steering, agent_tick_sanction.\n');
     process.stdout.write(claudeMcpSessionInstructionText());
@@ -608,11 +1238,11 @@ async function selectInstallTargets(options: InstallOptions): Promise<InstallTar
     process.stdout.write(`  ${index + 1}. ${targetLabels[target]}${suffix}\n`);
   });
   process.stdout.write('  all. Every known target, including disabled scaffolds\n');
-  process.stdout.write('  none. Skip agent instruction install\n');
+  process.stdout.write('  none. Skip agent integration setup\n');
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const answer = (await rl.question(`Install for [${detected.join(', ')}]? `)).trim().toLowerCase();
+    const answer = (await rl.question(`Set up for [${detected.join(', ')}]? `)).trim().toLowerCase();
     if (!answer) return detected;
     if (answer === 'none' || answer === 'n' || answer === 'no') return [];
     if (answer === 'all' || answer === 'a') return [...installTargets];
@@ -627,7 +1257,7 @@ function uniqueInstallTargets(values: string[]): InstallTarget[] {
   for (const value of values) {
     const target = value.trim().toLowerCase();
     if (!installTargets.includes(target as InstallTarget)) {
-      throw new Error(`unknown install target: ${value}. Expected one of: ${installTargets.join(', ')}`);
+      throw new Error(`unknown setup target: ${value}. Expected one of: ${installTargets.join(', ')}`);
     }
     if (!selected.includes(target as InstallTarget)) selected.push(target as InstallTarget);
   }
@@ -766,8 +1396,11 @@ function installPlanForTarget(target: InstallTarget, claudeConfig?: ClaudeInstal
     return {
       target,
       status: 'enabled',
-      description: `install Pi tool_call Sanction Request extension in ${extensionPath}`,
-      apply: () => installPackagedPiExtension(extensionPath)
+      description: `install Pi integration and features config in ${extensionPath}`,
+      apply: async () => {
+        await installPackagedPiExtension(extensionPath);
+        await ensureAgentFeaturesConfig();
+      }
     };
   }
   if (target === 'codex') {
@@ -1075,7 +1708,7 @@ function packagedAssetPath(relativePath: string): string {
 
 export function agentInstructionBlock(target: string = 'agent'): string {
   const title = target === 'pi' ? '---\nname: agent-tick\ndescription: Use Agent Tick for status updates, steering, and sanctions.\n---\n\n# Agent Tick human loop' : '# Agent Tick human loop';
-  return `${title}\n\nThis machine is connected to Agent Tick. Use the product language directly: status updates, steering, and sanctions.\n\nFor sanctions before risky, destructive, expensive, production, data-accessing, or dependency-installing actions:\n\n\`\`\`sh\nagent-tick sanction --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nFor a command that should run only after a granted Sanction Request:\n\n\`\`\`sh\nagent-tick sanction -- <command and args>\n\`\`\`\n\nFor structured choices that steer the work:\n\n\`\`\`sh\nagent-tick steering --title "Which approach?" --choice option_a="Option A" --choice cancel:deny="Cancel"\n\`\`\`\n\nFor non-blocking progress updates:\n\n\`\`\`sh\nagent-tick status-update --state working "Finished edits; validating now"\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in titles, bodies, commands, or status update messages.\n`;
+  return `${title}\n\nThis machine is connected to Agent Tick. Use the product language directly: status updates, steering, and sanctions.\n\nFor sanctions before risky, destructive, expensive, production, data-accessing, or dependency-installing actions:\n\n\`\`\`sh\nagent-tick send sanction --title "Proceed?" --body "Describe the action and risk."\n\`\`\`\n\nFor a command that should run only after a granted Sanction Request:\n\n\`\`\`sh\nagent-tick send sanction -- <command and args>\n\`\`\`\n\nFor structured choices that steer the work:\n\n\`\`\`sh\nagent-tick send steering --title "Which approach?" --choice option_a="Option A" --choice cancel:deny="Cancel"\n\`\`\`\n\nFor non-blocking progress updates:\n\n\`\`\`sh\nagent-tick send status --state working "Finished edits; validating now"\n\`\`\`\n\nIf Agent Tick denies, times out, or exits non-zero, stop and report the outcome. Do not include secrets, tokens, private keys, or full environment files in titles, bodies, commands, or status update messages.\n`;
 }
 
 async function appendInstallBlock(filePath: string, block: string): Promise<void> {
@@ -1344,6 +1977,7 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
         clientName: { type: 'string', description: 'Optional client display name.' },
         importance: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'], default: 'normal', description: 'Future notification importance hint; recorded as metadata today.' },
         notify: { type: 'boolean', description: 'Future push-notification hint; recorded as metadata today.' },
+        contentMode: { type: 'string', enum: ['default', 'private', 'plain'], default: 'default', description: 'Privacy mode for this send. Omit this field unless the user explicitly asks to override privacy. default follows Agent Tick features config and required-private workspace rules; private encrypts content for recipient Approval Devices; plain sends message text to the server and should only be used when explicitly requested.' },
         metadata: { type: 'object', additionalProperties: { type: 'string' } }
       },
       required: ['message'],
@@ -1363,6 +1997,7 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
         sessionId: { type: 'string', description: 'Optional real host chat/thread/session identifier.' },
         sessionTitle: { type: 'string', description: 'Optional human-readable Session title/label.' },
         timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' },
+        contentMode: { type: 'string', enum: ['default', 'private', 'plain'], default: 'default', description: 'Privacy mode for the remote Request. Omit this field unless the user explicitly asks to override privacy. default follows Agent Tick features config and required-private workspace rules; private encrypts content for recipient Approval Devices; plain sends title/body/command text to the server and should only be used when explicitly requested.' },
         localElicitation: { type: 'string', enum: ['auto', 'off', 'only'], default: 'auto', description: 'Use MCP elicitation locally when the client supports it.' }
       },
       required: ['title'],
@@ -1396,6 +2031,7 @@ export const mcpToolDefinitions: McpToolDefinition[] = [
         },
         clientName: { type: 'string', description: 'Optional client display name.' },
         timeout: { type: 'string', default: '30m', description: 'Wait timeout such as 30s, 5m, 0 for no wait.' },
+        contentMode: { type: 'string', enum: ['default', 'private', 'plain'], default: 'default', description: 'Privacy mode for the remote Request. Omit this field unless the user explicitly asks to override privacy. default follows Agent Tick features config and required-private workspace rules; private encrypts content for recipient Approval Devices; plain sends title/body text to the server and should only be used when explicitly requested.' },
         localElicitation: { type: 'string', enum: ['auto', 'off', 'only'], default: 'auto', description: 'Use MCP elicitation locally when the client supports it.' }
       },
       required: ['title', 'choices'],
@@ -1527,7 +2163,7 @@ async function callMcpTool(params: unknown, client: AgentTickClient, server: str
 
 async function callMcpStatusUpdate(args: Record<string, unknown>, client: AgentTickClient): Promise<string> {
   const message = requiredString(args.message, 'message');
-  const update = await client.createStatusUpdate({
+  const baseUpdate: CreateStatusUpdate = {
     threadId: optionalString(args.threadId) ?? process.env.AGENT_TICK_THREAD_ID ?? defaultThreadId(),
     message,
     state: optionalString(args.state) ?? 'working',
@@ -1536,12 +2172,21 @@ async function callMcpStatusUpdate(args: Record<string, unknown>, client: AgentT
     workingDirectory: process.cwd(),
     clientName: optionalString(args.clientName) ?? path.basename(process.cwd()),
     ...(sessionFieldsFromMcpArgs(args)),
-    metadata: statusUpdateMetadata({
+    metadata: cliMetadata(statusUpdateMetadata({
       metadata: metadataEntriesFromRecord(optionalStringRecord(args.metadata)),
       importance: optionalString(args.importance),
       notify: args.notify === true
-    })
-  });
+    }))
+  };
+  const updateInput = await resolveSendContentMode({ contentMode: args.contentMode }) === 'private'
+    ? createPrivateStatusUpdateInput({ ...baseUpdate, message: 'Private Status Update', nextStep: undefined }, {
+        schemaVersion: 1,
+        kind: 'status_update',
+        message,
+        ...(baseUpdate.nextStep ? { nextStep: baseUpdate.nextStep } : {})
+      }, await client.preparePrivateStatusUpdate())
+    : baseUpdate;
+  const update = await client.createStatusUpdate(updateInput);
   return `Sent status update ${update.statusId} for ${update.threadId}: ${update.message}`;
 }
 
@@ -1555,6 +2200,7 @@ async function callMcpSanction(args: Record<string, unknown>, client: AgentTickC
     timeout: optionalString(args.timeout) ?? '30m',
     requestType: 'sanction',
     choice: [],
+    contentMode: args.contentMode,
     silent: true
   };
   const clientName = optionalString(args.clientName);
@@ -1598,6 +2244,7 @@ async function callMcpSteering(args: Record<string, unknown>, client: AgentTickC
     requestType: 'steering',
     choice: [],
     hookChoices,
+    contentMode: args.contentMode,
     silent: true
   };
   const clientName = optionalString(args.clientName);
@@ -1749,20 +2396,28 @@ async function createAndMaybeWait(client: AgentTickClient, server: string, optio
 
 async function createRequestFromOptions(client: AgentTickClient, options: RequestOptions): Promise<CreateRequestResponse> {
   const choices = options.hookChoices ?? parseRequestChoices(options);
-  return client.createRequest({
+  const title = options.title?.trim();
+  if (!title) throw new Error('Request title is required');
+  const input = {
     requester: {
       name: process.env.AGENT_TICK_REQUESTER_NAME || os.hostname() || 'agent',
       host: os.hostname(),
       workingDirectory: process.cwd(),
       clientName: options.clientName ?? path.basename(process.cwd())
     },
-    title: options.title,
+    title,
     ...(options.body ? { body: options.body } : {}),
     ...(options.command ? { command: options.command } : {}),
     requestType: options.requestType ?? 'sanction',
     ...(sessionFieldsFromOptions(options)),
-    ...(choices.length ? { choices } : {})
-  });
+    ...(choices.length ? { choices } : {}),
+    metadata: cliMetadata()
+  };
+  if (await resolveSendContentMode(options, 'send') === 'private') {
+    const prepared = await client.preparePrivateRequest({ requestType: options.requestType ?? 'sanction' });
+    return client.createRequest(createPrivateRequestInput(input, prepared));
+  }
+  return client.createRequest(input);
 }
 
 async function waitForCreatedRequest(client: AgentTickClient, _server: string, created: CreateRequestResponse, options: RequestOptions): Promise<RequestRecord> {
@@ -1870,12 +2525,15 @@ interface StatusOptions extends ClientOptions {
   clientName?: string;
   importance?: string;
   notify?: boolean;
+  private?: boolean;
+  plain?: boolean;
+  contentMode?: unknown;
   metadata?: string[];
   json?: boolean;
 }
 
 interface RequestOptions extends ClientOptions {
-  title: string;
+  title?: string;
   body?: string;
   command?: string;
   clientName?: string;
@@ -1887,6 +2545,9 @@ interface RequestOptions extends ClientOptions {
   hookChoices?: ChoiceInput[];
   requestType?: 'steering' | 'sanction';
   timeout?: string;
+  private?: boolean;
+  plain?: boolean;
+  contentMode?: unknown;
   json?: boolean;
   silent?: boolean;
 }
@@ -1898,17 +2559,16 @@ function isDirectExecution(): boolean {
 
 function commandFromArgv(argv: string[]): UsageCommand {
   const commandName = argv.slice(2).find((arg) => !arg.startsWith('-'));
-  if (commandName === 'status-update' || commandName === 'steering' || commandName === 'sanction' || commandName === 'config' || commandName === 'login' || commandName === 'install' || commandName === 'mode' || commandName === 'mcp' || commandName === 'abandon') return commandName;
+  if (commandName === 'send' || commandName === 'config' || commandName === 'login' || commandName === 'setup' || commandName === 'install' || commandName === 'features' || commandName === 'mode' || commandName === 'mcp' || commandName === 'abandon') return commandName;
   return 'unknown';
 }
 
 function usageHint(name: UsageCommand): string {
-  if (name === 'status-update') return `${statusUpdateHelpText}\nRun ${command('agent-tick status-update --help')} for all options.\n`;
-  if (name === 'steering') return `${steeringHelpText}\nRun ${command('agent-tick steering --help')} for all options.\n`;
-  if (name === 'sanction') return `${sanctionHelpText}\nRun ${command('agent-tick sanction --help')} for all options.\n`;
+  if (name === 'send') return `${sendHelpText()}\nRun ${command('agent-tick send --help')}, ${command('agent-tick send status --help')}, ${command('agent-tick send steering --help')}, or ${command('agent-tick send sanction --help')} for all options.\n`;
   if (name === 'config') return `${configHelpText}\nRun ${command('agent-tick config --help')} for all options.\n`;
   if (name === 'login') return `${loginHelpText}\nRun ${command('agent-tick login --help')} for all options.\n`;
-  if (name === 'install') return `${installHelpText}\nRun ${command('agent-tick install --help')} for all options.\n`;
+  if (name === 'setup' || name === 'install') return `${setupHelpText}\nRun ${command('agent-tick setup --help')} for all options.\n`;
+  if (name === 'features') return `\nRun ${command('agent-tick features --help')} for Agent Tick feature options.\n`;
   if (name === 'mcp') return `\nRun ${command('agent-tick mcp --help')} for all options.\n`;
   if (name === 'abandon') return `${abandonHelpText}\nRun ${command('agent-tick abandon --help')} for all options.\n`;
   return `\n${topLevelHelpText()}Run ${command('agent-tick --help')} for all options.\n`;
@@ -1918,9 +2578,15 @@ function handleCliError(error: unknown): void {
   if (error instanceof CommanderError && (error.code === 'commander.helpDisplayed' || error.code === 'commander.version')) {
     process.exit(error.exitCode);
   }
-  const rawMessage = error instanceof Error ? error.message : String(error);
-  const message = rawMessage.replace(/^error:\s*/i, '');
-  if (!(error instanceof CliUsageError) && !(error instanceof CommanderError)) {
+  let message: string;
+  let usageError = error instanceof CliUsageError;
+  if (error instanceof AgentTickApiError) {
+    message = formatAgentTickApiError(error);
+  } else {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    message = rawMessage.replace(/^error:\s*/i, '');
+  }
+  if (!usageError && !(error instanceof CommanderError)) {
     process.stderr.write(`${errorText('Error:')} ${message}\n`);
     process.exit(1);
   }

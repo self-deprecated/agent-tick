@@ -45,7 +45,7 @@ Versioning and lockfiles:
   ```
 
 - When intentionally updating dependencies, update package manifests and `pnpm-lock.yaml` together.
-- For Nix package builds that use `fetchPnpmDeps`, update the corresponding fixed-output hash in `flake.nix` in the same dependency-change commit.
+- For Nix package builds that use `fetchPnpmDeps`, update the shared fixed-output hash in `flake.nix` in the same dependency-change commit. Use `corepack pnpm nix:pnpm-deps:check` to detect drift and `corepack pnpm nix:pnpm-deps:update` to refresh it.
 
 Dependency install scripts are a supply-chain risk:
 
@@ -219,7 +219,7 @@ Run it from the package during development:
 
 ```sh
 node packages/cli/dist/index.js login --server http://localhost:8787
-node packages/cli/dist/index.js sanction --title "Deploy?"
+node packages/cli/dist/index.js send sanction --title "Deploy?"
 ```
 
 For single-mode/manual setup or CI, pass a dashboard-created token directly:
@@ -237,7 +237,7 @@ The CLI package publishes publicly as `@self-deprecated/agent-tick` from the pub
 Before running a real publish:
 
 1. Bump `packages/cli/package.json`, `CLI_VERSION` in `packages/cli/src/index.ts`, and `agent-tick-cli.version` in `flake.nix` together.
-2. Run `nix build .#agent-tick-cli --no-link --print-build-logs` to catch stale `pnpmDeps.hash` values.
+2. Run `corepack pnpm nix:pnpm-deps:check` to catch stale `pnpmDepsHash` values, then `nix build .#agent-tick-cli --no-link --print-build-logs`.
 3. Ensure the target npm version is not already published.
 4. Push/mirror the release candidate to `self-deprecated/agent-tick`.
 
@@ -256,7 +256,7 @@ The public GitHub repository must define these Actions secrets for a real publis
 | `AGENT_TICK_SERVER` | Agent Tick server URL used by the release Sanction. |
 | `AGENT_TICK_RELEASE_TOKEN` | Agent Tick agent token allowed to create the release Sanction. |
 
-For real publishes, the workflow verifies secrets, checks `npm whoami`, confirms the package version is unpublished, sends an Agent Tick Sanction, and then runs `pnpm --filter @self-deprecated/agent-tick publish --access public --provenance --no-git-checks`.
+For all publish runs, the workflow checks the Nix `fetchPnpmDeps` hash before packaging. For real publishes, the workflow also verifies secrets, checks `npm whoami`, confirms the package version is unpublished, sends an Agent Tick Sanction, and then runs `pnpm --filter @self-deprecated/agent-tick publish --access public --provenance --no-git-checks`.
 
 ## Docker
 
@@ -281,4 +281,62 @@ corepack pnpm --filter @agent-tick/mobile typecheck
 corepack pnpm --filter @agent-tick/mobile test --runInBand
 ```
 
-The mobile app discovers runtime auth config, namespaces local session state by server URL, signs in with Clerk in hosted/Clerk mode, exchanges that login for an Agent Tick mobile session, and registers/unregisters devices for push flows. For the happy path, set up the CLI with `agent-tick install --login`, then sign in to mobile with the same Clerk account before sending the first request.
+The mobile app discovers runtime auth config, namespaces local session state by server URL, signs in with Clerk in hosted/Clerk mode, exchanges that login for an Agent Tick mobile session, registers/unregisters devices for push flows, and owns Private encryption setup. For the happy path, run `agent-tick setup`, sign in to mobile with the same Clerk account, enable **Settings → General → Private encryption**, then send the first request.
+
+### Android UI smoke loop
+
+For layout bugs involving the real Android soft keyboard, keep one emulator/device running and run the targeted smoke instead of rebuilding everything. Prepare the SDK/AVD once from the mono-sd devenv shell:
+
+```sh
+sd agent-tick android/setup
+sd agent-tick android/start-emulator
+```
+
+Then run either path:
+
+```sh
+# Slow path: build or reuse the latest preview APK, install it, then run the smoke.
+sd agent-tick android/keyboard-smoke
+
+# Fast path: use the app already installed on the connected device/emulator.
+sd agent-tick android/keyboard-smoke-fast
+
+# Watch path: fast smoke plus opening each screenshot as it is captured.
+sd agent-tick android/keyboard-smoke-watch
+
+# Local integration path: start a temporary backend, reverse it into the device,
+# enter the local server URL in the app, and verify the app reaches the main UI.
+sd agent-tick android/local-integration-smoke
+
+# Fast/watch variants use the already-installed app.
+sd agent-tick android/local-integration-smoke-fast
+sd agent-tick android/local-integration-smoke-watch
+
+# Clerk sign-in path: drive hosted Clerk by default, or pass a self-hosted
+# Clerk-mode Agent Tick server without hardcoding the URL into the script.
+sd agent-tick android/clerk-signin-smoke
+AGENT_TICK_ANDROID_CLERK_SERVER_URL=https://tick.example.com \
+  sd agent-tick android/clerk-signin-smoke-fast
+```
+
+The keyboard smoke uses `adb` + Android `uiautomator` to launch the Native App, tap "Use a self-hosted server instead", focus the Server URL input, capture screenshots/XML, and verify the input plus Continue button remain visible after the keyboard opens. The local integration smoke additionally starts a temporary single-mode backend with an isolated SQLite database, runs `adb reverse tcp:18787 tcp:18787`, enters `http://127.0.0.1:18787` in the app, taps Continue, and waits for the main Agent Tick UI. The Clerk sign-in smoke drives the hosted sign-in path by default, or enters `AGENT_TICK_ANDROID_CLERK_SERVER_URL` first, opens native Clerk auth, taps GitHub, and captures the browser/custom-tab handoff. These smokes write artifacts to a directory printed in the output; set `AGENT_TICK_ANDROID_UI_ARTIFACT_DIR=/path/to/dir` to choose it. Watch tasks open the artifact directory first, then open screenshots with `xdg-open`/`open` as they are captured. If opening fails, check `opener.log` in the artifact directory.
+
+Useful environment variables:
+
+- `AGENT_TICK_ANDROID_SERIAL=<serial>` — target a specific device from `adb devices`.
+- `AGENT_TICK_ANDROID_APK=/path/to/app.apk` — install a specific APK.
+- `AGENT_TICK_ANDROID_UI_REBUILD=1` — force rebuilding instead of reusing the latest APK.
+- `AGENT_TICK_ANDROID_UI_SKIP_INSTALL=1` — run against the already-installed app.
+- `AGENT_TICK_ANDROID_UI_SKIP_CLEAR=1` — preserve app state between smoke runs.
+- `AGENT_TICK_ANDROID_INTEGRATION_PORT=18787` — local backend port for integration smoke.
+- `AGENT_TICK_ANDROID_INTEGRATION_SERVER_URL=http://127.0.0.1:18787` — URL entered in the app; by default `adb reverse` maps device localhost to the host backend.
+- `AGENT_TICK_ANDROID_INTEGRATION_SKIP_SERVER=1` — use an already-running backend instead of starting a temporary one.
+- `AGENT_TICK_ANDROID_INTEGRATION_SKIP_REVERSE=1` — skip `adb reverse` when the device URL is reachable directly.
+- `AGENT_TICK_ANDROID_CLERK_SERVER_URL=https://app.agenttick.sh` — Agent Tick server URL for the Clerk sign-in smoke; defaults to hosted.
+- `AGENT_TICK_ANDROID_CLERK_EXPECT_TEXT=<text>` — optional text that must appear after tapping GitHub in the Clerk sign-in smoke.
+- `AGENT_TICK_ANDROID_CLERK_REJECT_TEXT=<text>` — optional text that must not appear after tapping GitHub in the Clerk sign-in smoke.
+- `AGENT_TICK_ANDROID_UI_OPEN_ARTIFACT_DIR=1` — open the artifact directory at the start of the smoke.
+- `AGENT_TICK_ANDROID_UI_OPEN_SCREENSHOTS=1` — open screenshots as they are captured.
+- `AGENT_TICK_ANDROID_UI_SCREENSHOT_OPENER=<command>` — override the screenshot opener.
+
+For the fastest JS/layout iteration, install a development build once, keep Metro running with `sd agent-tick mobile/dev-client`, reload the app, then run `sd agent-tick android/keyboard-smoke-fast`. Rebuild/reinstall only when native dependencies, Expo plugins, permissions, or Android config change.

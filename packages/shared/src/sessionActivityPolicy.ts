@@ -8,11 +8,17 @@ export function sessionMetadataTitle(session: SessionMetadata | undefined): stri
 export function deriveSessionSummaryTitle(activity: ActivityItem[], fallback = 'Agent activity'): string {
   const latestFirst = [...activity].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   for (const item of latestFirst) {
-    const title = sessionMetadataTitle(item.kind === 'request' ? item.request.session : item.statusUpdate.session);
+    const title = sessionMetadataTitle(item.kind === 'request' ? item.request.session : item.kind === 'status_update' ? item.statusUpdate.session : undefined);
     if (title) return title;
   }
   for (const item of latestFirst) {
+    if (item.kind === 'tool_activity') continue;
     const title = item.kind === 'request' ? item.request.title : item.statusUpdate.message;
+    if (title.trim()) return title.trim();
+  }
+  for (const item of latestFirst) {
+    if (item.kind !== 'tool_activity') continue;
+    const title = item.toolActivity.summary ?? `Tool activity: ${item.toolActivity.toolName}`;
     if (title.trim()) return title.trim();
   }
   return fallback;
@@ -37,6 +43,7 @@ export function suppressRedundantWaitingStatusUpdates(activity: ActivityItem[], 
       if (item.request.status === 'pending') lastPendingRequest = item.request;
       return true;
     }
+    if (item.kind !== 'status_update') return true;
     if (lastPendingRequest && isRedundantWaitingStatusUpdateAfterRequest(item.statusUpdate, lastPendingRequest, windowMs)) return false;
     return true;
   });

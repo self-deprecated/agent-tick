@@ -34,7 +34,7 @@ Shared Workspace Owners and Admins manage membership through Clerk-backed organi
 
 ## Settings
 
-The **Settings** page contains low-frequency account, support, privacy, language, and developer diagnostic controls.
+The **Settings** page contains low-frequency account, support, privacy, language, and developer diagnostic controls. Use **Settings → General → Private encryption** in the Native App before enabling rich agent message/tool mirroring; setup should then make encrypted Activity the default.
 
 Developer diagnostics may show raw Workspace, Agent Connection, Approval Device, and audit identifiers. Treat them as support/debug context, not public copy.
 

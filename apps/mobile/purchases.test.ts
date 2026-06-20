@@ -1,4 +1,4 @@
-import { Platform } from "react-native";
+let mockPlatformOS: "ios" | "android" = "ios";
 
 const mockPurchases = {
   configure: jest.fn(),
@@ -20,12 +20,16 @@ jest.mock("react-native-purchases", () => mockPurchases);
 
 function loadPurchases(): typeof import("./purchases") {
   jest.resetModules();
+  jest.doMock("react-native", () => ({
+    Linking: { openURL: jest.fn(async () => undefined) },
+    Platform: { OS: mockPlatformOS },
+  }));
   jest.doMock("react-native-purchases", () => mockPurchases);
   return require("./purchases");
 }
 
 function setPlatform(os: "ios" | "android") {
-  Object.defineProperty(Platform, "OS", { configurable: true, get: () => os });
+  mockPlatformOS = os;
 }
 
 describe("purchases", () => {
@@ -45,6 +49,8 @@ describe("purchases", () => {
     mockPurchases.logOut.mockResolvedValue({});
     delete process.env.EXPO_PUBLIC_REVENUECAT_USE_TEST_STORE;
     delete process.env.EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY;
+    delete process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
+    delete process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY;
   });
 
   it("configures RevenueCat with a stable install identity for self-hosted lifetime purchases", async () => {
@@ -56,6 +62,15 @@ describe("purchases", () => {
     expect(mockPurchases.configure).toHaveBeenCalledWith(expect.objectContaining({ apiKey: expect.stringMatching(/^appl_/), appUserID: "install_test_123" }));
     expect(mockPurchases.logIn).not.toHaveBeenCalled();
     expect(mockPurchases.logOut).not.toHaveBeenCalled();
+  });
+
+  it("configures Android RevenueCat with the bundled public SDK key", async () => {
+    setPlatform("android");
+    const purchases = loadPurchases();
+
+    await purchases.configureLocalStorePurchases("install_test_123");
+
+    expect(mockPurchases.configure).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "goog_OoUVPJdUqfBKgRDuRvIEoBjfJCV", appUserID: "install_test_123" }));
   });
 
   it("configures hosted purchases directly as the signed-in Agent Tick user id", async () => {
@@ -136,6 +151,24 @@ describe("purchases", () => {
     ]);
   });
 
+  it("maps Android RevenueCat hosted packages by package type even when monthly and yearly share a Play subscription product", async () => {
+    setPlatform("android");
+    const purchases = loadPurchases();
+    mockPurchases.getOfferings.mockResolvedValue({
+      current: {
+        availablePackages: [
+          { identifier: "$rc_monthly", packageType: "MONTHLY", product: { identifier: "ai.selfdeprecated.agenttick.hosted", title: "Hosted", priceString: "$4.99/month" } },
+          { identifier: "$rc_annual", packageType: "ANNUAL", product: { identifier: "ai.selfdeprecated.agenttick.hosted", title: "Hosted", priceString: "$49.99/year" } },
+        ],
+      },
+    });
+
+    await expect(purchases.loadStoreProducts()).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ productKey: "hosted_personal_monthly", productId: "ai.selfdeprecated.agenttick.hosted", priceString: "$4.99/month" }),
+      expect.objectContaining({ productKey: "hosted_personal_yearly", productId: "ai.selfdeprecated.agenttick.hosted", priceString: "$49.99/year" }),
+    ]));
+  });
+
   it("purchases subscriptions through configured RevenueCat packages instead of external links", async () => {
     setPlatform("ios");
     const purchases = loadPurchases();
@@ -154,7 +187,24 @@ describe("purchases", () => {
 
     await expect(purchases.purchaseProduct("lifetime_unlock")).resolves.toEqual({ success: true });
 
-    expect(mockPurchases.purchaseProduct).toHaveBeenCalledWith("ai.selfdeprecated.agenttick.lifetime_unlock");
+    expect(mockPurchases.purchaseProduct).toHaveBeenCalledWith("ai.selfdeprecated.agenttick.lifetime_unlock", null, "inapp");
+  });
+
+  it("queries Android subscriptions and one-time products with the correct Play product ids and product categories", async () => {
+    setPlatform("android");
+    const purchases = loadPurchases();
+    mockPurchases.getProducts.mockImplementation(async (ids: string[], type: string) => {
+      if (type === "SUBSCRIPTION") return ids.map((identifier) => ({ identifier, title: identifier, priceString: "$4.99" }));
+      if (type === "NON_SUBSCRIPTION") return ids.map((identifier) => ({ identifier, title: identifier, priceString: "$19.99" }));
+      return [];
+    });
+    mockPurchases.getOfferings.mockResolvedValue({ current: null });
+
+    await purchases.loadStoreProducts();
+
+    expect(mockPurchases.getProducts).toHaveBeenCalledWith(["ai.selfdeprecated.agenttick.hosted"], "SUBSCRIPTION");
+    expect(mockPurchases.getProducts).toHaveBeenCalledWith(["ai.selfdeprecated.agenttick.lifetime_unlock"], "NON_SUBSCRIPTION");
+    expect(mockPurchases.getProducts).not.toHaveBeenCalledWith(expect.arrayContaining(["trial_7_day"]), expect.anything());
   });
 
   it("detects an active 7-day trial from RevenueCat customer info", () => {

@@ -31,7 +31,7 @@ Agent Tick does **not** run your deploy, refund, migration, or release command. 
 | `status` | Final Agent Tick request status returned by the CLI. |
 | `choice-id` | Final selected choice id when present, commonly `approve` or `deny`. |
 
-The action exits with the same status code as `agent-tick sanction`. A denial or timeout should fail the guarded job unless your workflow catches the result and branches explicitly.
+The action exits with the same status code as `agent-tick send sanction`. A denial or timeout should fail the guarded job unless your workflow catches the result and branches explicitly.
 
 ## Example
 

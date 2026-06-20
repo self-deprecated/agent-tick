@@ -55,6 +55,8 @@ The app does not run commands. If a Sanction is approved, the local agent or wor
 
 Use History to inspect recent Agent Activity. Use Settings for account, connection, purchase/access, diagnostics, privacy, and support actions.
 
+Settings → General includes **Private encryption** status. It shows whether this app installation has a device-generated private key and whether each saved server connection has the matching public key registered. The private key is generated and stored on this device; Agent Tick servers receive only the public key registration. See [Private encryption](./private-encryption.md).
+
 Developer diagnostics may include raw IDs and setup state. Do not paste diagnostics into public issues if they contain sensitive operational context.
 
 ## Access and response availability

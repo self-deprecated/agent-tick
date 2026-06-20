@@ -33,7 +33,7 @@ function requireSharedWorkspaceRequestResponses(config: ServerConfig, entitled: 
 }
 
 function sharedWorkspaceBillingApplies(config: ServerConfig): boolean {
-  return config.mode === 'clerk';
+  return config.hostedService && config.mode === 'clerk';
 }
 
 function workspaceBillingError(): Error & { statusCode: number; code: string } {

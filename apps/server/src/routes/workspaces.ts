@@ -30,7 +30,10 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, { config, st
     if (id !== auth.workspaceId) return reply.status(403).send({ error: { code: 'forbidden', message: 'Select the Workspace before changing it', requestId: request.id } });
     if (auth.role !== 'owner') return reply.status(403).send({ error: { code: 'forbidden', message: 'Workspace Owner role required', requestId: request.id } });
     const input = UpdateWorkspaceSchema.parse(request.body);
-    const workspace = await store.updateWorkspace(id, input.name);
+    if (config.privateRequestsPolicy === 'forced' && input.privateRequestsRequired === false) {
+      return reply.status(409).send({ error: { code: 'private_required_forced', message: 'Private Requests are required server-wide and cannot be disabled for this Workspace', requestId: request.id } });
+    }
+    const workspace = await store.updateWorkspace(id, input);
     if (!workspace) return reply.status(404).send({ error: { code: 'not_found', message: 'Workspace not found', requestId: request.id } });
     return workspace;
   });

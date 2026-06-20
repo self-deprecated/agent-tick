@@ -21,16 +21,16 @@ Configure your tool to launch that command as an MCP server, then approve the Ag
 - `agent_tick_steering`
 - `agent_tick_sanction`
 
-The adapter uses the saved Agent Tick CLI config/token.
+The adapter uses the saved Agent Tick CLI config/token. The MCP tools accept `contentMode: "default" | "private" | "plain"`; use private for sensitive content and plain only for safe operational text. Before relying on rich private Activity, enable **Settings → General → Private encryption** in the Native App, then run `agent-tick features` and set privacy mode to private.
 
 ## CLI-capable tools
 
 Any agent or workflow that can run shell commands can use the CLI:
 
 ```sh
-agent-tick status-update --state working "Running validation"
-agent-tick steering --title "Which path?" --choice small="Small fix" --choice stop:deny="Stop"
-agent-tick sanction --title "Run migration?" --command "./migrate.sh"
+agent-tick send status --state working "Running validation"
+agent-tick send steering --title "Which path?" --choice small="Small fix" --choice stop:deny="Stop"
+agent-tick send sanction --title "Run migration?" --command "./migrate.sh"
 ```
 
 See [CLI](./cli.md) for the smoke-test and reference flow.
@@ -40,9 +40,9 @@ See [CLI](./cli.md) for the smoke-test and reference flow.
 For tools that read project instructions such as `AGENTS.md`, add concise rules:
 
 ```text
-Use Agent Tick for bounded human input. Use Status Updates for milestones, Steering for bounded choices, and Sanctions before risky local actions. Do not put secrets or raw logs in Agent Tick content. If an Agent Tick request is denied or times out, stop or choose a safe fallback.
+Use Agent Tick for bounded human input. Use `agent-tick send status` for milestones, `agent-tick send steering` for bounded choices, and `agent-tick send sanction` before risky local actions. Use private mode for sensitive content; do not put secrets or raw logs in plaintext Agent Tick content. If an Agent Tick request is denied or times out, stop or choose a safe fallback.
 ```
 
-## Unsupported installer targets
+## Unsupported setup targets
 
-The CLI may know about additional installer target names for detection or scaffolding. A target is not a supported public integration until it has a verified guide or uses the generic MCP/CLI path above.
+The CLI may know about additional setup target names for detection or scaffolding. A target is not a supported public integration until it has a verified guide or uses the generic MCP/CLI path above.

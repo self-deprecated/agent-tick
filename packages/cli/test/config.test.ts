@@ -1,14 +1,25 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { assertAgentToken, clientConfigPath, loadClientConfig, maskAgentToken, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, claudeHookSessionId, createProgram, handleMcpRequest, hostedAgentTickURL, installClaudePermissionHook, installClaudeQuestionHook, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, removeAgentTickClaudeHooks, resolveAgentTickSessionId, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage } from '../src/index.js';
+import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, claudeHookSessionId, createProgram, handleMcpRequest, hostedAgentTickURL, installClaudePermissionHook, installClaudeQuestionHook, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, removeAgentTickClaudeHooks, resolveAgentTickSessionId, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage, ensureAgentFeaturesConfig, loadEffectiveAgentFeaturesConfig, setAgentFeature, renderAgentFeaturesConfigTuiScreen } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
+beforeEach(async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-test-features-'));
+  tmpRoots.push(root);
+  const featuresPath = path.join(root, 'features.json');
+  await fs.writeFile(featuresPath, JSON.stringify({ privacy: { defaultContentMode: 'plain' } }));
+  process.env.AGENT_TICK_FEATURES_CONFIG = featuresPath;
+});
+
 afterEach(async () => {
+  delete process.env.AGENT_TICK_FEATURES_CONFIG;
+  delete process.env.AGENT_TICK_PRIVATE_REQUESTS;
   await Promise.all(tmpRoots.map((dir) => fs.rm(dir, { recursive: true, force: true })));
   tmpRoots.length = 0;
 });
@@ -27,6 +38,28 @@ async function withProcessEnv<T>(values: Record<string, string | undefined>, run
       else process.env[key] = value;
     }
   }
+}
+
+function privatePrepareResponse() {
+  const { publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return {
+    contentMode: 'private',
+    workspaceId: 'wsp_cli',
+    required: false,
+    recipientVersion: 'version_1',
+    recipientUserIds: ['usr_cli'],
+    unavailableRecipients: [],
+    deviceKeys: [{
+      deviceKeyId: 'devkey_cli',
+      deviceId: 'dev_cli',
+      userId: 'usr_cli',
+      algorithm: 'p256-ecdh-hkdf-sha256',
+      publicKey: Buffer.from(publicKey.export({ format: 'der', type: 'spki' })).toString('base64url'),
+      publicKeyFingerprint: 'fingerprint_cli',
+      createdAt: '2026-06-12T00:00:00.000Z',
+      updatedAt: '2026-06-12T00:00:00.000Z'
+    }]
+  };
 }
 
 describe('CLI config', () => {
@@ -60,11 +93,219 @@ describe('CLI config', () => {
     expect(() => assertAgentToken('sk_test_123')).toThrow(/must start with agent_/);
   });
 
-  it('exposes config and login commands without setup', () => {
+  it('exposes setup and generic features config commands without Pi-specific top-level commands', () => {
     const commands = createProgram().commands.map((command) => command.name());
     expect(commands).toContain('config');
     expect(commands).toContain('login');
-    expect(commands).not.toContain('setup');
+    expect(commands).toContain('setup');
+    expect(commands).toContain('features');
+    expect(commands).not.toContain('pi');
+  });
+
+  it('groups Activity-creating commands under send without legacy top-level aliases', () => {
+    const program = createProgram();
+    const commands = program.commands.map((command) => command.name());
+    expect(commands).toContain('send');
+    expect(commands).not.toContain('status-update');
+    expect(commands).not.toContain('steering');
+    expect(commands).not.toContain('sanction');
+    const send = program.commands.find((command) => command.name() === 'send');
+    expect(send?.commands.map((command) => command.name())).toEqual(['status', 'steering', 'sanction']);
+    expect(send?.commands.find((command) => command.name() === 'status')?.options.map((option) => option.long)).toEqual(expect.arrayContaining(['--private', '--plain']));
+    expect(send?.commands.find((command) => command.name() === 'steering')?.options.map((option) => option.long)).toEqual(expect.arrayContaining(['--private', '--plain']));
+    expect(send?.commands.find((command) => command.name() === 'sanction')?.options.map((option) => option.long)).toEqual(expect.arrayContaining(['--private', '--plain']));
+  });
+
+  it('prints root help when run without a command', async () => {
+    const writes: string[] = [];
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      await createProgram().parseAsync([], { from: 'user' });
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+    const output = writes.join('');
+    expect(output).toContain('Usage: agent-tick');
+    expect(output).toContain('agent-tick send status "Running tests now"');
+    expect(output).toContain('setup [options]');
+  });
+
+  it('prints send help when send is run without a subcommand', async () => {
+    const writes: string[] = [];
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      await createProgram().parseAsync(['send'], { from: 'user' });
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+    const output = writes.join('');
+    expect(output).toContain('agent-tick send status "Running tests now"');
+    expect(output).toContain('agent-tick send steering');
+    expect(output).toContain('agent-tick send sanction');
+  });
+});
+
+describe('Agent Tick features config', () => {
+  it('creates a first-run features config with status defaults', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-config-'));
+    tmpRoots.push(root);
+    const file = path.join(root, 'config.json');
+
+    await expect(ensureAgentFeaturesConfig({ file, cwd: root })).resolves.toEqual({ path: file, created: true });
+    await expect(ensureAgentFeaturesConfig({ file, cwd: root })).resolves.toEqual({ path: file, created: false });
+
+    const effective = await loadEffectiveAgentFeaturesConfig({ file, cwd: root, homeDirectory: root, env: {} });
+    expect(effective.config).toMatchObject({
+      privacy: { defaultContentMode: 'plain' },
+      status: {
+        enabled: true,
+        heartbeat: { enabled: true, intervalMs: 285000 },
+        hooks: {
+          before_agent_start: { send: true },
+          agent_end: { send: true },
+          turn_end: { send: false },
+          session_shutdown: { send: false }
+        },
+        messageMirroring: { enabled: false, sendAssistant: 'final-only', contentMode: 'private' },
+        toolActivity: { enabled: false, visibility: 'off', detailContentMode: 'private', maxDetailChars: 2000 }
+      },
+      sanctions: { enabled: false }
+    });
+  });
+
+  it('toggles named Agent Tick features from the CLI', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-cli-'));
+    tmpRoots.push(root);
+    const file = path.join(root, 'config.json');
+
+    await createProgram().parseAsync(['features', 'enable', 'message-mirroring', '--file', file], { from: 'user' });
+    await createProgram().parseAsync(['features', 'enable', 'tool-activity', '--file', file], { from: 'user' });
+    await createProgram().parseAsync(['features', 'disable', 'heartbeat', '--file', file], { from: 'user' });
+
+    const saved = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, any>;
+    expect(saved.status.messageMirroring.enabled).toBe(true);
+    expect(saved.status.toolActivity).toMatchObject({ enabled: true, visibility: 'names' });
+    expect(saved.status.heartbeat.enabled).toBe(false);
+  });
+
+  it('passes feature file options through subcommands without arguments', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-show-'));
+    tmpRoots.push(root);
+    const file = path.join(root, 'config.json');
+    const writes: string[] = [];
+    const originalWrite = process.stdout.write;
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      await createProgram().parseAsync(['features', 'show', '--json', '--file', file], { from: 'user' });
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+
+    const output = JSON.parse(writes.join('')) as { targetPath: string };
+    expect(output.targetPath).toBe(file);
+  });
+
+  it('renders the features TUI with a movable selector instead of a numbered prompt', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-tui-'));
+    tmpRoots.push(root);
+    const file = path.join(root, 'config.json');
+    await ensureAgentFeaturesConfig({ file, cwd: root });
+    const effective = await loadEffectiveAgentFeaturesConfig({ file, cwd: root, homeDirectory: root, env: {} });
+
+    const screen = renderAgentFeaturesConfigTuiScreen(effective.config, file, { selectedIndex: 1 }, 100);
+
+    expect(screen).toContain('Move with ↑/↓ or j/k.');
+    expect(screen).toContain('Privacy mode: plain');
+    expect(screen).toContain('Legend: [x] effective');
+    expect(screen).toContain('> [x] start');
+    expect(screen).toContain('message-tool-turns');
+    expect(screen).toContain('Mirror assistant text before tool use');
+    expect(screen).toContain('tool-activity');
+    expect(screen).toContain('Mirror structured Tool Activity metadata');
+    expect(screen).toContain('Selected: start');
+    expect(screen).toContain('Sends now: A generic working Status Update');
+    expect(screen).toContain('Space/Enter: toggle/cycle');
+    expect(screen).toContain('e: edit JSON');
+    expect(screen).toContain('s: save+quit');
+    expect(screen).not.toContain('Enter a number');
+    expect(screen).not.toContain('Agent Tick features>');
+  });
+
+  it('renders unsaved-change and discard confirmation state in the features TUI', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-dirty-'));
+    tmpRoots.push(root);
+    const file = path.join(root, 'config.json');
+    await ensureAgentFeaturesConfig({ file, cwd: root });
+    const effective = await loadEffectiveAgentFeaturesConfig({ file, cwd: root, homeDirectory: root, env: {} });
+
+    const screen = renderAgentFeaturesConfigTuiScreen(effective.config, file, { dirty: true, confirmDiscard: true }, 100);
+
+    expect(screen).toContain('(unsaved)');
+    expect(screen).toContain('Unsaved changes: q discards, s saves');
+    expect(screen).toContain('q: quit/discard');
+  });
+
+  it('shows privacy-limited feature effects in the features TUI', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-effects-'));
+    tmpRoots.push(root);
+    const file = path.join(root, 'config.json');
+    await fs.writeFile(file, JSON.stringify({
+      privacy: { defaultContentMode: 'plain' },
+      status: { messageMirroring: { enabled: true, includeThinking: true } }
+    }));
+    const effective = await loadEffectiveAgentFeaturesConfig({ file, cwd: root, homeDirectory: root, env: {} });
+
+    const screen = renderAgentFeaturesConfigTuiScreen(effective.config, file, { selectedIndex: 9 }, 100);
+
+    expect(screen).toContain('> [~] message-thinking');
+    expect(screen).toContain('generic in plain mode');
+    expect(screen).toContain('Sends now: Thinking is not sent as useful plaintext');
+    expect(screen).toContain('Example: Generic Activity only; no thinking text');
+  });
+
+  it('shows Tool Activity visibility and private detail gating in the features TUI', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-tool-activity-'));
+    tmpRoots.push(root);
+    const file = path.join(root, 'config.json');
+    await fs.writeFile(file, JSON.stringify({
+      privacy: { defaultContentMode: 'plain' },
+      status: { toolActivity: { enabled: true, visibility: 'details' } }
+    }));
+    const effective = await loadEffectiveAgentFeaturesConfig({ file, cwd: root, homeDirectory: root, env: {} });
+
+    const screen = renderAgentFeaturesConfigTuiScreen(effective.config, file, { selectedIndex: 12 }, 120);
+
+    expect(screen).toContain('> [~] tool-activity');
+    expect(screen).toContain('visibility: details; private mode required');
+    expect(screen).toContain('Cycle: off → names → summaries → details');
+    expect(screen).toContain('Details are gated: switch privacy.defaultContentMode to private');
+    expect(screen).toContain('raw inputs/results omitted in plain mode');
+  });
+
+  it('supports direct feature and dotted-value Agent Tick features config writes', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-features-set-'));
+    tmpRoots.push(root);
+    const file = path.join(root, 'config.json');
+
+    await setAgentFeature('turn-end', true, { file, cwd: root });
+    await createProgram().parseAsync(['features', 'set', 'status.heartbeat.intervalMs', '15000', '--file', file], { from: 'user' });
+    await createProgram().parseAsync(['features', 'set', 'status.toolActivity.visibility', 'summaries', '--file', file], { from: 'user' });
+
+    const saved = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, any>;
+    expect(saved.status.hooks.turn_end.send).toBe(true);
+    expect(saved.status.heartbeat.intervalMs).toBe(15000);
+    expect(saved.status.toolActivity.visibility).toBe('summaries');
   });
 });
 
@@ -97,12 +338,12 @@ describe('browser setup', () => {
   });
 });
 
-describe('install instructions', () => {
+describe('setup instructions', () => {
   it('documents status update, steering, and sanction commands', () => {
     const block = agentInstructionBlock('claude');
-    expect(block).toContain('agent-tick sanction -- <command and args>');
-    expect(block).toContain('agent-tick steering --title');
-    expect(block).toContain('agent-tick status-update --state working');
+    expect(block).toContain('agent-tick send sanction -- <command and args>');
+    expect(block).toContain('agent-tick send steering --title');
+    expect(block).toContain('agent-tick send status --state working');
     expect(block).toContain('Do not include secrets');
   });
 
@@ -114,7 +355,7 @@ describe('install instructions', () => {
       return true;
     }) as typeof process.stdout.write;
     try {
-      await createProgram().parseAsync(['install', '--target', 'claude', '--dry-run', '--no-login', '--yes'], { from: 'user' });
+      await createProgram().parseAsync(['setup', '--target', 'claude', '--dry-run', '--no-login', '--yes'], { from: 'user' });
     } finally {
       process.stdout.write = originalWrite;
     }
@@ -148,7 +389,7 @@ describe('install instructions', () => {
       return true;
     }) as typeof process.stdout.write;
     try {
-      await createProgram().parseAsync(['install', '--target', 'claude', '--no-login', '--yes'], { from: 'user' });
+      await createProgram().parseAsync(['setup', '--target', 'claude', '--no-login', '--yes'], { from: 'user' });
     } finally {
       process.stdout.write = originalWrite;
       process.env.PATH = originalPath;
@@ -180,7 +421,7 @@ describe('install instructions', () => {
     const originalWrite = process.stdout.write;
     process.stdout.write = (() => true) as typeof process.stdout.write;
     try {
-      await createProgram().parseAsync(['install', '--target', 'claude', '--no-login', '--yes', '--claude-permission-hook'], { from: 'user' });
+      await createProgram().parseAsync(['setup', '--target', 'claude', '--no-login', '--yes', '--claude-permission-hook'], { from: 'user' });
     } finally {
       process.stdout.write = originalWrite;
       process.env.PATH = originalPath;
@@ -291,6 +532,16 @@ describe('MCP stdio adapter', () => {
     await expect(handleMcpRequest({ method: 'tools/list', id: 1 }, {} as never, 'https://tick.example.com')).resolves.toEqual({ tools: mcpToolDefinitions });
   });
 
+  it('advertises contentMode on every Activity-creating MCP tool', () => {
+    for (const tool of mcpToolDefinitions) {
+      const properties = (tool.inputSchema.properties ?? {}) as Record<string, any>;
+      expect(properties.contentMode).toMatchObject({ enum: ['default', 'private', 'plain'], default: 'default' });
+      expect(properties.contentMode.description).toContain('private');
+      expect(properties.contentMode.description).toContain('plain');
+      expect(properties.contentMode.description).toContain('Omit this field unless the user explicitly asks');
+    }
+  });
+
   it('returns MCP initialize server capabilities', async () => {
     await expect(handleMcpRequest({ method: 'initialize', id: 1, params: { protocolVersion: '2024-11-05' } }, {} as never, 'https://tick.example.com')).resolves.toMatchObject({
       protocolVersion: '2024-11-05',
@@ -326,6 +577,107 @@ describe('MCP stdio adapter', () => {
       content: [{ type: 'text', text: 'Sent status update status_1 for thread_1: Running tests' }]
     });
     expect(capturedInput).toMatchObject({ sessionId: 'run_123', session: { title: 'Billing migration' }, metadata: { agentTickNotify: 'true', agentTickImportance: 'high' } });
+  });
+
+  it('encrypts MCP status updates when contentMode is private', async () => {
+    let capturedInput: any;
+    const client = {
+      preparePrivateStatusUpdate: async () => privatePrepareResponse(),
+      createStatusUpdate: async (input: unknown) => {
+        capturedInput = input;
+        return { statusId: 'status_private', threadId: 'thread_1', message: (input as { message: string }).message };
+      }
+    };
+
+    await expect(handleMcpRequest({
+      method: 'tools/call',
+      id: 1,
+      params: { name: 'agent_tick_status_update', arguments: { message: 'Secret MCP status', nextStep: 'Hidden next', threadId: 'thread_1', contentMode: 'private' } }
+    }, client as never, 'https://tick.example.com')).resolves.toEqual({
+      content: [{ type: 'text', text: 'Sent status update status_private for thread_1: Private Status Update' }]
+    });
+    expect(capturedInput).toMatchObject({ message: 'Private Status Update', contentMode: 'private', privateRecipientVersion: 'version_1' });
+    expect(JSON.stringify(capturedInput)).not.toContain('Secret MCP status');
+    expect(JSON.stringify(capturedInput)).not.toContain('Hidden next');
+  });
+
+  it('uses saved MCP default privacy and lets explicit plain override it', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-mcp-private-default-'));
+    tmpRoots.push(root);
+    const featuresPath = path.join(root, 'features.json');
+    await fs.writeFile(featuresPath, JSON.stringify({ privacy: { defaultContentMode: 'private' } }));
+    const capturedInputs: any[] = [];
+    const client = {
+      preparePrivateStatusUpdate: async () => privatePrepareResponse(),
+      createStatusUpdate: async (input: unknown) => {
+        capturedInputs.push(input);
+        return { statusId: `status_${capturedInputs.length}`, threadId: 'thread_1', message: (input as { message: string }).message };
+      }
+    };
+
+    await withProcessEnv({ AGENT_TICK_FEATURES_CONFIG: featuresPath, AGENT_TICK_PRIVATE_REQUESTS: undefined }, async () => {
+      await handleMcpRequest({ method: 'tools/call', id: 1, params: { name: 'agent_tick_status_update', arguments: { message: 'Default-private MCP status', contentMode: 'default' } } }, client as never, 'https://tick.example.com');
+      await handleMcpRequest({ method: 'tools/call', id: 2, params: { name: 'agent_tick_status_update', arguments: { message: 'Plain MCP status', contentMode: 'plain' } } }, client as never, 'https://tick.example.com');
+    });
+
+    expect(capturedInputs[0]).toMatchObject({ message: 'Private Status Update', contentMode: 'private' });
+    expect(JSON.stringify(capturedInputs[0])).not.toContain('Default-private MCP status');
+    expect(capturedInputs[1]).toMatchObject({ message: 'Plain MCP status' });
+    expect((capturedInputs[1] as { contentMode?: string }).contentMode).toBeUndefined();
+  });
+
+  it('rejects invalid MCP contentMode values before sending Activity', async () => {
+    const client = { createStatusUpdate: async () => { throw new Error('should not send'); } };
+    await expect(handleMcpRequest({
+      method: 'tools/call',
+      id: 1,
+      params: { name: 'agent_tick_status_update', arguments: { message: 'Nope', contentMode: 'encrypted' } }
+    }, client as never, 'https://tick.example.com')).rejects.toThrow(/contentMode must be default, private, or plain/);
+  });
+
+  it('encrypts MCP steering and sanctions when contentMode is private', async () => {
+    const capturedRequests: any[] = [];
+    const client = {
+      preparePrivateRequest: async () => privatePrepareResponse(),
+      createRequest: async (input: unknown) => {
+        capturedRequests.push(input);
+        return { request: { id: `req_${capturedRequests.length}`, title: (input as { title: string }).title, status: 'pending', choices: [] } };
+      }
+    };
+
+    await handleMcpRequest({ method: 'tools/call', id: 1, params: { name: 'agent_tick_sanction', arguments: { title: 'Secret sanction', command: 'deploy secret', timeout: '0', localElicitation: 'off', contentMode: 'private' } } }, client as never, 'https://tick.example.com');
+    await handleMcpRequest({ method: 'tools/call', id: 2, params: { name: 'agent_tick_steering', arguments: { title: 'Secret steering', timeout: '0', localElicitation: 'off', contentMode: 'private', choices: [{ id: 'go', label: 'Go' }, { id: 'stop', label: 'Stop', kind: 'deny' }] } } }, client as never, 'https://tick.example.com');
+
+    expect(capturedRequests).toHaveLength(2);
+    expect(capturedRequests.every((request) => request.title === 'Private Request' && request.contentMode === 'private')).toBe(true);
+    expect(JSON.stringify(capturedRequests)).not.toContain('Secret sanction');
+    expect(JSON.stringify(capturedRequests)).not.toContain('Secret steering');
+    expect(JSON.stringify(capturedRequests)).not.toContain('deploy secret');
+  });
+
+  it('uses saved MCP default privacy for requests and lets explicit plain override it', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-mcp-request-default-'));
+    tmpRoots.push(root);
+    const featuresPath = path.join(root, 'features.json');
+    await fs.writeFile(featuresPath, JSON.stringify({ privacy: { defaultContentMode: 'private' } }));
+    const capturedRequests: any[] = [];
+    const client = {
+      preparePrivateRequest: async () => privatePrepareResponse(),
+      createRequest: async (input: unknown) => {
+        capturedRequests.push(input);
+        return { request: { id: `req_${capturedRequests.length}`, title: (input as { title: string }).title, status: 'pending', choices: [] } };
+      }
+    };
+
+    await withProcessEnv({ AGENT_TICK_FEATURES_CONFIG: featuresPath, AGENT_TICK_PRIVATE_REQUESTS: undefined }, async () => {
+      await handleMcpRequest({ method: 'tools/call', id: 1, params: { name: 'agent_tick_sanction', arguments: { title: 'Default private sanction', timeout: '0', localElicitation: 'off' } } }, client as never, 'https://tick.example.com');
+      await handleMcpRequest({ method: 'tools/call', id: 2, params: { name: 'agent_tick_steering', arguments: { title: 'Plain steering', timeout: '0', localElicitation: 'off', contentMode: 'plain', choices: [{ id: 'go', label: 'Go' }, { id: 'stop', label: 'Stop', kind: 'deny' }] } } }, client as never, 'https://tick.example.com');
+    });
+
+    expect(capturedRequests[0]).toMatchObject({ title: 'Private Request', contentMode: 'private' });
+    expect(JSON.stringify(capturedRequests[0])).not.toContain('Default private sanction');
+    expect(capturedRequests[1]).toMatchObject({ title: 'Plain steering', requestType: 'steering' });
+    expect(capturedRequests[1].contentMode).toBeUndefined();
   });
 
   it('does not synthesize one process-wide Session ID for MCP Activity without caller run metadata', async () => {

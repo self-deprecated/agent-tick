@@ -106,6 +106,7 @@ export function useAgentTickSettingsActions({
     setError: appStatusState.setError,
     setHistory: activityState.setHistory,
     setLoadedSessionServerURL: appStatusState.setLoadedSessionServerURL,
+    setLocalDevAppAccessUnlocked: billingState.setLocalDevAppAccessUnlocked,
     setLocalStoreHostedSubscriptionActive: billingState.setLocalStoreHostedSubscriptionActive,
     setLocalStoreLifetimeUnlocked: billingState.setLocalStoreLifetimeUnlocked,
     setLocalStoreTrialPurchased: billingState.setLocalStoreTrialPurchased,

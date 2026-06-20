@@ -22,7 +22,9 @@ Install Agent Tick on your phone and sign in with the same account:
 - [Agent Tick for iOS](https://get.agenttick.sh/ios)
 - [Agent Tick for Android](https://get.agenttick.sh/android)
 
-When the app asks, enable notifications. In the Personal Console, the **Connections** page should show a push-ready Approval Device. Push notifications are intentionally minimal; review request details inside Agent Tick before responding.
+When the app asks, enable notifications. Then open **Settings → General → Private encryption** in the Native App and enable private encryption. Do this before connecting rich agent mirroring; the setup skill will recommend encrypted Activity as the default.
+
+In the Personal Console, the **Connections** page should show a push-ready Approval Device. Push notifications are intentionally minimal; review request details inside Agent Tick before responding.
 
 ## 3. Send a first-party Test Request
 
@@ -42,18 +44,18 @@ Copy the setup prompt shown in the Personal Console. It tells your agent which A
 https://agenttick.sh/skill
 ```
 
-The setup skill should inspect your coding-agent environment, run a dry run, explain the changes, ask for confirmation, install the right integration, and verify it.
+The setup skill should inspect your coding-agent environment, confirm Native App private encryption is enabled for rich content, offer the Agent Tick feature selector, run a dry run, explain the changes, ask for confirmation, install the right integration, and verify it.
 
-Manual setup is available when you do not want an agent-assisted install:
+Manual setup is available when you do not want agent-assisted setup:
 
 ```sh
-npx @self-deprecated/agent-tick install
+npx @self-deprecated/agent-tick setup
 ```
 
 For a self-hosted server:
 
 ```sh
-npx @self-deprecated/agent-tick install --server https://tick.example.com
+npx @self-deprecated/agent-tick setup --server https://tick.example.com
 ```
 
 ## 5. Send one real agent-originated request

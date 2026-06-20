@@ -46,17 +46,21 @@ https://agenttick.sh/skill
 
 Use that skill to set up Agent Tick on this machine.
 Ask me which coding agent I am using and what kind of work I want routed Requests for.
+Before enabling rich mirrored content, remind me to enable Private encryption in the Native App at Settings → General.
 Walk me through enabling status updates, steering, and sanctions, and let me opt out of any of the three.
+Offer Agent Tick feature settings, recommend encrypted Activity as the default, and explain what each selected feature sends.
 Use the right integration for this agent.
 Run a dry run first and explain what will change.
-Install only after I confirm, then verify it works.
+Write changes only after I confirm, then verify it works.
 ```
 
 Prefer to set it up yourself?
 
 ```sh
-npx @self-deprecated/agent-tick install
+npx @self-deprecated/agent-tick setup
 ```
+
+Before enabling rich message/tool mirroring, open the Native App and enable **Settings → General → Private encryption**. This lets setup recommend encrypted Activity as the default.
 
 This command runs the CLI, connects this machine to Agent Tick, stores a local `agent_...` token, detects local coding-agent configs, and installs supported integrations where available.
 

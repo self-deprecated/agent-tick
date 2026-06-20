@@ -28,7 +28,9 @@
     "i18n:audit:runtime": "node scripts/audit-i18n.mjs --strict-runtime",
     "i18n:audit:test": "node scripts/audit-i18n.test.mjs",
     "i18n:audit:update": "node scripts/audit-i18n.mjs --update",
-    "i18n:check": "lingui extract --clean && lingui compile --typescript && node scripts/audit-i18n.mjs"
+    "i18n:check": "lingui extract --clean && lingui compile --typescript && node scripts/audit-i18n.mjs",
+    "nix:pnpm-deps:check": "nix run .#check-pnpm-deps-hash",
+    "nix:pnpm-deps:update": "nix run .#update-pnpm-deps-hash"
   },
   "devDependencies": {
     "@lingui/babel-plugin-lingui-macro": "6.0.1",
@@ -37,14 +39,5 @@
     "@types/node": "24.12.3",
     "typescript": "6.0.3",
     "vitest": "4.1.5"
-  },
-  "pnpm": {
-    "overrides": {
-      "js-cookie": "3.0.7",
-      "ws@>=8.0.0 <8.20.1": "8.20.1",
-      "postcss": "8.5.14",
-      "qs": "6.15.2",
-      "serialize-javascript": "7.0.5"
-    }
   }
 }

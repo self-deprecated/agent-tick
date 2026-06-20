@@ -1,4 +1,4 @@
-import { agentTickHostedServerURL, clerkTokenCacheKey, fetchRuntimeAuthConfig, hostedServerURL, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeSavedMobileAccounts, normalizeServerURL, savedMobileAccountID, serverURLPolicyError, upsertSavedMobileAccount, upsertSavedMobileAccountIfChanged } from "./mobileAuth";
+import { agentTickHostedServerURL, clerkTokenCacheKey, coerceServerURLInput, fetchRuntimeAuthConfig, hostedServerURL, httpVariantOf, isInsecureServerURL, mobileSessionStorageKeyList, mobileSessionStorageKeys, normalizeSavedMobileAccounts, normalizeServerURL, savedMobileAccountID, serverURLPolicyError, upsertSavedMobileAccount, upsertSavedMobileAccountIfChanged } from "./mobileAuth";
 
 describe("mobile auth config", () => {
   it("normalizes server URLs", () => {
@@ -6,6 +6,20 @@ describe("mobile auth config", () => {
     expect(hostedServerURL).toBe("https://app.agenttick.sh");
     expect(normalizeServerURL(" https://tick.example.com/// ")).toBe("https://tick.example.com");
     expect(normalizeServerURL(" ")).toBe(hostedServerURL);
+  });
+
+  it("coerces bare hostnames to https and loopback to http", () => {
+    expect(coerceServerURLInput("")).toBe("");
+    expect(coerceServerURLInput("   ")).toBe("");
+    expect(coerceServerURLInput("dev.example.com")).toBe("https://dev.example.com");
+    expect(coerceServerURLInput("dev.example.com/")).toBe("https://dev.example.com/");
+    expect(coerceServerURLInput("dev.example.com:8443")).toBe("https://dev.example.com:8443");
+    expect(coerceServerURLInput("https://dev.example.com")).toBe("https://dev.example.com");
+    expect(coerceServerURLInput("http://localhost:8787")).toBe("http://localhost:8787");
+    expect(coerceServerURLInput("localhost:8787")).toBe("http://localhost:8787");
+    expect(coerceServerURLInput("localhost")).toBe("http://localhost");
+    expect(coerceServerURLInput("127.0.0.1:8787")).toBe("http://127.0.0.1:8787");
+    expect(coerceServerURLInput("[::1]:8787")).toBe("http://[::1]:8787");
   });
 
   it("namespaces mobile session state by normalized server URL", () => {
@@ -121,19 +135,39 @@ describe("mobile auth config", () => {
     expect(clerkTokenCacheKey("https://tick.example.com/", "pk_test_123")).toMatch(/^[A-Za-z0-9._-]+$/);
   });
 
-  it("enforces HTTPS server URLs for production self-hosted connections", async () => {
-    expect(serverURLPolicyError("https://tick.example.com", { dev: false })).toBeNull();
-    expect(serverURLPolicyError("http://tick.example.com", { dev: false })).toBe("Agent Tick server URLs must use HTTPS in production builds.");
-    expect(serverURLPolicyError("http://localhost:8787", { dev: false })).toBe("Agent Tick server URLs must use HTTPS in production builds.");
-    expect(serverURLPolicyError("http://localhost:8787", { dev: true })).toBeNull();
-    expect(serverURLPolicyError("http://127.0.0.1:8787", { dev: true })).toBeNull();
-    expect(serverURLPolicyError("not a url", { dev: false })).toBe("Enter a valid Agent Tick server URL.");
+  it("enforces HTTPS server URLs for non-loopback production self-hosted connections", async () => {
+    expect(serverURLPolicyError("https://tick.example.com")).toBeNull();
+    expect(serverURLPolicyError("http://tick.example.com")).toBe("Agent Tick server URLs must use HTTPS in production builds.");
+    expect(serverURLPolicyError("http://localhost:8787")).toBeNull();
+    expect(serverURLPolicyError("http://127.0.0.1:8787")).toBeNull();
+    expect(serverURLPolicyError("not a url")).toBe("Enter a valid Agent Tick server URL.");
+  });
+
+  it("allows a non-loopback http URL only with an explicit insecure confirmation", () => {
+    expect(serverURLPolicyError("http://tick.example.com", { allowInsecure: false })).toBe("Agent Tick server URLs must use HTTPS in production builds.");
+    expect(serverURLPolicyError("http://tick.example.com", { allowInsecure: true })).toBeNull();
+    // Loopback is always allowed regardless of the insecure flag.
+    expect(serverURLPolicyError("http://localhost:8787", { allowInsecure: false })).toBeNull();
+  });
+
+  it("derives the http fallback variant and flags insecure urls", () => {
+    expect(httpVariantOf("https://dev.example.com")).toBe("http://dev.example.com");
+    expect(httpVariantOf("https://dev.example.com:8443/path")).toBe("http://dev.example.com:8443/path");
+    expect(httpVariantOf("http://localhost:8787")).toBeNull();
+    expect(httpVariantOf("http://dev.example.com")).toBeNull();
+    expect(httpVariantOf("not a url")).toBeNull();
+
+    expect(isInsecureServerURL("http://dev.example.com")).toBe(true);
+    expect(isInsecureServerURL("https://dev.example.com")).toBe(false);
+    expect(isInsecureServerURL("http://localhost:8787")).toBe(false);
+    expect(isInsecureServerURL("http://127.0.0.1:8787")).toBe(false);
+    expect(isInsecureServerURL("not a url")).toBe(false);
   });
 
   it("does not fetch runtime auth config for production HTTP URLs", async () => {
     const fetchImpl = jest.fn();
 
-    await expect(fetchRuntimeAuthConfig("http://tick.example.com", fetchImpl, { dev: false })).rejects.toThrow("Agent Tick server URLs must use HTTPS in production builds.");
+    await expect(fetchRuntimeAuthConfig("http://tick.example.com", fetchImpl)).rejects.toThrow("Agent Tick server URLs must use HTTPS in production builds.");
 
     expect(fetchImpl).not.toHaveBeenCalled();
   });

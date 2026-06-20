@@ -24,14 +24,14 @@ https://agenttick.sh/skill.md
 Use the published npm CLI. If `agent-tick` is missing, prefer `npx` for first run:
 
 ```sh
-npx @self-deprecated/agent-tick install
+npx @self-deprecated/agent-tick setup
 ```
 
 Global npm install is secondary:
 
 ```sh
 npm install -g @self-deprecated/agent-tick
-agent-tick install
+agent-tick setup
 ```
 
 Do not use or recommend pipe-to-shell installers.
@@ -41,20 +41,22 @@ Do not use or recommend pipe-to-shell installers.
 When setting up Agent Tick, do all of this in order:
 
 1. Detect intent: hosted quick start by default; self-hosted only if the user asks for it or provides a self-hosted server/token.
-2. Inspect current agent configs before changing them. For Claude Code, inspect `claude mcp list` / `claude mcp get agent-tick` when available plus `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` when present. Look for existing Agent Tick hooks, unrelated hooks, permission rules, sandbox settings, and any rule that could block `agent-tick` itself.
-3. Enable status updates, steering, and sanctions by default through MCP where the agent supports MCP. Mention each capability and allow explicit opt-out.
-4. For Claude Code, MCP is the primary setup path. Ask whether to install MCP locally or globally. Recommend local when working in one repository or when project-specific settings already exist; recommend global for a personal machine with many projects; if unsure, recommend local first for safer blast radius.
-5. For Claude Code native permission prompts, offer `--claude-permission-hook` only as an optional add-on. Explain that MCP Sanctions are model/tool-driven and do not automatically intercept Claude Code Bash/Edit permission prompts.
-6. Run a dry run first.
-7. Explain exactly which files/settings will change and why.
-8. Ask for confirmation before writing files.
-9. Run the same install command without `--dry-run` after confirmation.
-10. Verify the result with `agent-tick --help`, `claude mcp list`, `claude mcp get agent-tick` for Claude Code, and a safe first proof request.
+2. Tell the user to open the Native App and enable **Settings → General → Private encryption** before enabling rich agent mirroring. Treat encryption as required by default for useful message mirroring, thinking, and detailed Tool Activity. If the user cannot enable private encryption yet, keep rich mirroring/details off or explain that Tool Activity can send only names or summaries.
+3. Inspect current agent configs before changing them. For Claude Code, inspect `claude mcp list` / `claude mcp get agent-tick` when available plus `~/.claude/settings.json`, project `.claude/settings.json`, and `.claude/settings.local.json` when present. Look for existing Agent Tick hooks, unrelated hooks, permission rules, sandbox settings, and any rule that could block `agent-tick` itself.
+4. Enable status updates, steering, and sanctions by default through MCP where the agent supports MCP. Mention each capability and allow explicit opt-out.
+5. Offer the Agent Tick feature selector after CLI setup. Recommend `privacy.defaultContentMode = private` when Native App private encryption is enabled, and walk the user through optional mirrored content/tool activity settings.
+6. For Claude Code, MCP is the primary setup path. Ask whether to install MCP locally or globally. Recommend local when working in one repository or when project-specific settings already exist; recommend global for a personal machine with many projects; if unsure, recommend local first for safer blast radius.
+7. For Claude Code native permission prompts, offer `--claude-permission-hook` only as an optional add-on. Explain that MCP Sanctions are model/tool-driven and do not automatically intercept Claude Code Bash/Edit permission prompts.
+8. Run a dry run first.
+9. Explain exactly which files/settings will change and why.
+10. Ask for confirmation before writing files.
+11. Run the same setup command without `--dry-run` after confirmation.
+12. Verify the result with `agent-tick --help`, `agent-tick features`, `claude mcp list`, `claude mcp get agent-tick` for Claude Code, and a safe first proof request.
 
 Suggested hosted Claude Code dry run:
 
 ```sh
-npx @self-deprecated/agent-tick install --target claude --claude-scope local --dry-run
+npx @self-deprecated/agent-tick setup --target claude --claude-scope local --dry-run
 ```
 
 If the user chose global scope, use `--claude-scope global` instead. For direct CLI setup without installing agent integrations:
@@ -71,14 +73,37 @@ npx @self-deprecated/agent-tick config --server https://tick.example.com --token
 
 Do not print, log, summarize, or expose token values after setup.
 
+## Recommended Feature Setup
+
+Offer feature configuration as part of setup, not as an afterthought. Start from the assumption that rich agent content should be private encrypted. Ask the user to enable **Private encryption** in the Native App at **Settings → General** first, then run:
+
+```sh
+agent-tick features
+```
+
+In the feature TUI:
+
+- Press `p` until privacy mode is `private`.
+- Toggle the capabilities the user wants. Space/Enter toggles the focused row and moves to the next row.
+- Use the focused-row details to explain what gets sent now: disabled, generic/plain, or encrypted private content.
+- Press `s` to save and quit. Press `q` to quit without saving; if there are unsaved changes, confirm discard with `q` again.
+
+For a non-interactive setup after the user confirms Native App encryption is enabled, set the private default directly:
+
+```sh
+agent-tick features set privacy.defaultContentMode private
+```
+
+Only use `--plain` or MCP `contentMode: "plain"` for deliberately safe operational text. Use `--private` or MCP `contentMode: "private"` for one-off sensitive Activity when the saved default is not private.
+
 ## First Proof Request
 
-After Claude Code installation, make the first proof request use the MCP tool path: ask Claude Code to call `agent_tick_steering` with bounded choices and an explicit decline option. Optionally ask it to call `agent_tick_sanction` before a harmless command such as `pwd`.
+After Claude Code setup, make the first proof request use the MCP tool path: ask Claude Code to call `agent_tick_steering` with bounded choices and an explicit decline option. Optionally ask it to call `agent_tick_sanction` before a harmless command such as `pwd`.
 
 For non-MCP or manual CLI verification, use a safe Steering test:
 
 ```sh
-agent-tick steering \
+agent-tick send steering \
   --title "Agent Tick setup test" \
   --body "Choose whether setup is working." \
   --choice works="It works" \
@@ -88,8 +113,8 @@ agent-tick steering \
 Optional follow-up demos:
 
 ```sh
-agent-tick status-update --state working "Agent Tick setup test status update"
-agent-tick sanction --title "Agent Tick setup test sanction" --body "No command will be run; this only tests approval routing."
+agent-tick send status --state working "Agent Tick setup test status update"
+agent-tick send sanction --title "Agent Tick setup test sanction" --body "No command will be run; this only tests approval routing."
 ```
 
 ## Session Identity
@@ -106,23 +131,25 @@ If no real host chat ID is available, do **not** invent a random or cwd-derived 
 
 ## Status Updates
 
-Use `agent-tick status-update` for non-blocking progress updates. Recommended states are `working`, `waiting`, `blocked`, `done`, and `failed`. Use `--notify` and `--importance` only when the update deserves future push-notification treatment.
+Use `agent-tick send status` for non-blocking progress updates. Recommended states are `working`, `waiting`, `blocked`, `done`, and `failed`. Use `--notify` and `--importance` only when the update deserves future push-notification treatment.
 
 ```sh
-agent-tick status-update --state working --next "Run typecheck" "Finished edits; validating now"
-agent-tick status-update --state waiting "Waiting for CI"
-agent-tick status-update --state blocked --notify --importance high --next "Wait for user decision" "Need clarification before changing the API shape"
-agent-tick status-update --state done "Implementation complete; tests passed"
+agent-tick send status --state working --next "Run typecheck" "Finished edits; validating now"
+agent-tick send status --state waiting "Waiting for CI"
+agent-tick send status --state blocked --notify --importance high --next "Wait for user decision" "Need clarification before changing the API shape"
+agent-tick send status --state done "Implementation complete; tests passed"
 ```
 
-Do not include secrets or sensitive logs.
+Use `--private` for sensitive Status Update content and `--plain` only for safe operational text when overriding a private default.
+
+Do not include secrets or sensitive logs in plaintext fields.
 
 ## Steering
 
-Use `agent-tick steering` for bounded choices that steer the work. Repeat `--choice`. Use `id=Label` or `id:kind=Label`; include a `deny` choice when the user should be able to stop or decline.
+Use `agent-tick send steering` for bounded choices that steer the work. Repeat `--choice`. Use `id=Label` or `id:kind=Label`; include a `deny` choice when the user should be able to stop or decline.
 
 ```sh
-agent-tick steering \
+agent-tick send steering \
   --title "Which rollout should I use?" \
   --body "Choose the deployment strategy." \
   --choice canary="Canary rollout" \
@@ -135,10 +162,10 @@ Treat denial or any selected `deny` choice as a hard stop unless the user gives 
 
 ## Sanctions
 
-Use `agent-tick sanction` before one risky or sensitive action. Sanctions should describe the exact action and risk.
+Use `agent-tick send sanction` before one risky or sensitive action. Sanctions should describe the exact action and risk.
 
 ```sh
-agent-tick sanction \
+agent-tick send sanction \
   --title "Proceed with deployment?" \
   --body "Deploy commit abc123 to production." \
   --command "deploy production"
@@ -147,13 +174,13 @@ agent-tick sanction \
 To run a command only after approval:
 
 ```sh
-agent-tick sanction -- npm install
+agent-tick send sanction -- npm install
 ```
 
 For flags, pipes, redirection, shell expansion, or multiple steps, wrap the command in a shell:
 
 ```sh
-agent-tick sanction -- sh -c 'npm install && npm test'
+agent-tick send sanction -- sh -c 'npm install && npm test'
 ```
 
 If denied, timed out, or the CLI exits non-zero, stop the gated action and report the outcome.
@@ -167,6 +194,8 @@ The launch tool names are:
 - `agent_tick_status_update`
 - `agent_tick_steering`
 - `agent_tick_sanction`
+
+Each MCP tool accepts `contentMode: "default" | "private" | "plain"`. Use `private` for sensitive Activity, `plain` only for safe operational text, and `default` to follow saved CLI privacy settings.
 
 For Codex, pre-approve Agent Tick MCP tools so Agent Tick can ask the human without an extra local tool approval:
 
@@ -192,10 +221,10 @@ Codex local elicitation prompts require Codex policy to allow MCP elicitations. 
 
 ## JSON Output
 
-Use `--json` when another script needs machine-readable events from `sanction`, `steering`, `abandon`, or `status-update`:
+Use `--json` when another script needs machine-readable events from `send sanction`, `send steering`, `abandon`, or `send status`:
 
 ```sh
-agent-tick status-update --json --state working "Running server tests"
+agent-tick send status --json --state working "Running server tests"
 ```
 
 ## Safety Rules

@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { POSTGRES_MIGRATIONS } from '../src/postgresMigrations.js';
+import { REQUIRED_EVOLVED_COLUMNS } from '../src/requiredColumns.js';
 
 const expectedCurrentTables = [
   'agent_tokens',
+  'approval_device_keys',
   'approval_devices',
   'audit_events',
   'audience_channels',
@@ -29,6 +32,8 @@ const expectedCurrentTables = [
   'routing_rules',
   'status_update_recipients',
   'status_updates',
+  'tool_activities',
+  'tool_activity_recipients',
   'users',
   'workspace_members',
   'workspaces'
@@ -47,6 +52,8 @@ const intentionalTypeDifferences = new Set([
   'auth_identities.id',
   'audit_events.event_id',
   'users.email_verified',
+  'workspaces.private_requests_required',
+  'routing_rules.private_requests_required',
   'requests.allow_freeform_reply',
   'requests.is_test',
   'request_recipients.has_active_device',
@@ -95,19 +102,37 @@ describe('current relational schema parity', () => {
     expect(postgresIndexes).toEqual(expect.arrayContaining(sqliteIndexes.filter((name) => !name.includes('sqlite_autoindex'))));
   });
 
-  it('does not reintroduce historical migration tables or helpers into source or built artifacts', () => {
+  it('keeps migration metadata out of current-schema definitions', () => {
     const { sqliteSchema, postgresSchema } = readSchemas();
     expect(sqliteSchema).not.toMatch(/schema_migrations|ALTER TABLE|addColumnIfMissing/);
     expect(postgresSchema).not.toMatch(/schema_migrations|POSTGRES_MIGRATIONS|ALTER TABLE/);
+  });
 
-    const distDir = new URL('../dist/', import.meta.url);
-    if (fs.existsSync(distDir)) {
-      const distText = fs.readdirSync(distDir)
-        .filter((name) => name.endsWith('.js'))
-        .map((name) => fs.readFileSync(new URL(name, distDir), 'utf8'))
-        .join('\n');
-      expect(distText).not.toMatch(/POSTGRES_MIGRATIONS|schema_migrations|addColumnIfMissing|ALTER TABLE/);
+  it('keeps Postgres migrations ordered and uniquely identified', () => {
+    const ids = POSTGRES_MIGRATIONS.map((migration) => migration.id);
+    expect(ids).toEqual([...ids].sort());
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.every((id) => /^\d{8}_\d{4}_[a-z0-9_]+$/.test(id))).toBe(true);
+  });
+
+  it('registers every evolved column introduced by migrations in the compatibility gate', () => {
+    // Prevents future drift: a column added via ALTER/ensureColumn but missing
+    // from REQUIRED_EVOLVED_COLUMNS would slip past the readiness gate.
+    const registered = new Set(REQUIRED_EVOLVED_COLUMNS.map((entry) => `${entry.table}.${entry.column}`));
+
+    const postgresMigrations = fs.readFileSync(new URL('../src/postgresMigrations.ts', import.meta.url), 'utf8');
+    const sqliteStore = fs.readFileSync(new URL('../src/sqlite/store.ts', import.meta.url), 'utf8');
+
+    const evolved = new Set<string>();
+    for (const match of postgresMigrations.matchAll(/ALTER TABLE\s+(\w+)\s+ADD COLUMN IF NOT EXISTS\s+(\w+)/g)) {
+      evolved.add(`${match[1]}.${match[2]}`);
     }
+    for (const match of sqliteStore.matchAll(/this\.ensureColumn\(\s*'(\w+)'\s*,\s*'(\w+)'/g)) {
+      evolved.add(`${match[1]}.${match[2]}`);
+    }
+
+    const unregistered = [...evolved].filter((column) => !registered.has(column));
+    expect(unregistered, 'evolved columns missing from REQUIRED_EVOLVED_COLUMNS').toEqual([]);
   });
 });
 

@@ -7,6 +7,7 @@ export type ClerkTokenProvider = () => Promise<string | null>;
 export type AgentTickAppProps = {
   initialServerURL?: string;
   initialAuthConfig?: RuntimeAuthConfig | null;
+  initialShowClerkAuthView?: boolean;
   clerkTokenProvider?: ClerkTokenProvider;
   clerkSessionToken?: string | null;
   clerkSessionID?: string | null;

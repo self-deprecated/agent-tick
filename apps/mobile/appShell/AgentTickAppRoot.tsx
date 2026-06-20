@@ -18,14 +18,17 @@ import {
   type SupportedLocale,
 } from "@agent-tick/i18n";
 
-import { mobileUpdateStatus, parsePairingPayload } from "../AppLogic";
+import { mobileUpdateStatus, parsePairingPayload, shouldKeepSavedBootstrapServer } from "../AppLogic";
+import { ClerkSignInScreen } from "../ClerkSignInScreen";
 import { hostedServerURL, normalizeServerURL, serverURLStorageKey, type RuntimeAuthConfig } from "../mobileAuth";
+import { loadStoredMobileConnections } from "../mobileConnections";
 import { ClerkBoundApp } from "./ClerkBoundApp";
 import type { AgentTickAppClerkControls, AgentTickAppProps } from "./AgentTickAppProps";
 import { currentMobileAppVersion } from "./appBootstrapHelpers";
 import { HostedFirstOnboardingScreen } from "./HostedFirstOnboardingScreen";
 import { LoadingScreen } from "./LoadingScreen";
 import { fetchRuntimeAuthConfigIfAvailable, writeRuntimeAuthConfigCache } from "./runtimeAuthConfigCache";
+import { isKnownInsecureServer } from "./useKnownServers";
 import { hasSavedLocalSession } from "./mobileSessionClientHelpers";
 import { UpdateRequiredScreen } from "./UpdateRequiredScreen";
 
@@ -49,8 +52,10 @@ export function AgentTickAppRoot({ renderAgentTickApp }: AgentTickAppRootProps) 
   const [bootstrap, setBootstrap] = useState<{
     serverURL: string;
     authConfig: RuntimeAuthConfig | null;
+    hasSavedClerkConnection: boolean;
     loaded: boolean;
-  }>({ serverURL: defaultServer, authConfig: null, loaded: false });
+  }>({ serverURL: defaultServer, authConfig: null, hasSavedClerkConnection: false, loaded: false });
+  const [clerkAuthStartKey, setClerkAuthStartKey] = useState<string | null>(null);
   const [localeState, setLocaleState] = useState<{
     loaded: boolean;
     activeLocale: SupportedLocale;
@@ -78,15 +83,23 @@ export function AgentTickAppRoot({ renderAgentTickApp }: AgentTickAppRootProps) 
       const initialURLPayload = parsePairingPayload((await Linking.getInitialURL().catch(() => null)) ?? "");
       const linkedServerURL = initialURLPayload.serverURL ? normalizeServerURL(initialURLPayload.serverURL) : "";
       const savedServerURL = normalizeServerURL((await AsyncStorage.getItem(serverURLStorageKey)) ?? defaultServer);
-      const savedAuthConfig = await fetchRuntimeAuthConfigIfAvailable(savedServerURL);
-      const shouldKeepSavedServer =
-        savedServerURL === defaultServer ||
-        (savedAuthConfig?.authProvider !== "clerk" && (await hasSavedLocalSession(savedServerURL)));
+      const savedAllowInsecure = await isKnownInsecureServer(savedServerURL);
+      const savedAuthConfig = await fetchRuntimeAuthConfigIfAvailable(savedServerURL, { allowInsecure: savedAllowInsecure });
+      const storedConnections = await loadStoredMobileConnections().catch(() => []);
+      const hasSavedSession = await hasSavedLocalSession(savedServerURL);
+      const shouldKeepSavedServer = shouldKeepSavedBootstrapServer({
+        savedServerURL,
+        defaultServerURL: defaultServer,
+        savedAuthConfig,
+        hasSavedLocalSession: hasSavedSession,
+        storedConnections,
+      });
       const serverURL = linkedServerURL || (shouldKeepSavedServer ? savedServerURL : defaultServer);
       const authConfig = serverURL === savedServerURL
         ? savedAuthConfig
-        : await fetchRuntimeAuthConfigIfAvailable(serverURL);
-      if (!cancelled) setBootstrap({ serverURL, authConfig, loaded: true });
+        : await fetchRuntimeAuthConfigIfAvailable(serverURL, { allowInsecure: await isKnownInsecureServer(serverURL) });
+      const hasSavedClerkConnection = storedConnections.some((connection) => connection.authProvider === "clerk" && normalizeServerURL(connection.serverURL) === serverURL);
+      if (!cancelled) setBootstrap({ serverURL, authConfig, hasSavedClerkConnection, loaded: true });
     };
     void loadBootstrap();
     return () => {
@@ -98,7 +111,7 @@ export function AgentTickAppRoot({ renderAgentTickApp }: AgentTickAppRootProps) 
     const normalizedServerURL = normalizeServerURL(serverURL);
     void AsyncStorage.setItem(serverURLStorageKey, normalizedServerURL);
     if (authConfig) void writeRuntimeAuthConfigCache(normalizedServerURL, authConfig);
-    setBootstrap({ serverURL: normalizedServerURL, authConfig, loaded: true });
+    setBootstrap({ serverURL: normalizedServerURL, authConfig, hasSavedClerkConnection: false, loaded: true });
   }, []);
 
   const handleLocalePreferenceChange = useCallback((preference: LocalePreference) => {
@@ -125,11 +138,24 @@ export function AgentTickAppRoot({ renderAgentTickApp }: AgentTickAppRootProps) 
   if (!updateStatus.supported) {
     content = <UpdateRequiredScreen status={updateStatus} serverURL={bootstrap.serverURL} />;
   } else if (bootstrap.authConfig?.authProvider === "clerk" && bootstrap.authConfig.clerkPublishableKey) {
-    content = (
-      <ClerkProvider publishableKey={bootstrap.authConfig.clerkPublishableKey} tokenCache={tokenCache}>
+    const clerkProviderKey = `${normalizeServerURL(bootstrap.serverURL)}:${bootstrap.authConfig.clerkPublishableKey}`;
+    // The native Clerk SDK is effectively first-config-wins for publishable keys.
+    // Keep the hosted provider unmounted on the intro page so selecting a
+    // self-hosted Clerk server can initialize native auth with that server's key.
+    const shouldDelayHostedClerkInit = normalizeServerURL(bootstrap.serverURL) === defaultServer && !bootstrap.hasSavedClerkConnection && clerkAuthStartKey !== clerkProviderKey;
+    content = shouldDelayHostedClerkInit ? (
+      <ClerkSignInScreen
+        serverURL={bootstrap.serverURL}
+        selfHostedInitialURL=""
+        onServerSelected={handleRuntimeAuthConfig}
+        onSignInSelected={() => setClerkAuthStartKey(clerkProviderKey)}
+      />
+    ) : (
+      <ClerkProvider key={clerkProviderKey} publishableKey={bootstrap.authConfig.clerkPublishableKey} tokenCache={tokenCache}>
         <ClerkBoundApp
           initialServerURL={bootstrap.serverURL}
           initialAuthConfig={bootstrap.authConfig}
+          initialShowClerkAuthView={clerkAuthStartKey === clerkProviderKey}
           onRuntimeAuthConfig={handleRuntimeAuthConfig}
           renderAgentTickApp={renderAgentTickApp}
           {...i18nProps}

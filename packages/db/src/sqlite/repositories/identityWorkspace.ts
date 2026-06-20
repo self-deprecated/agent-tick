@@ -6,19 +6,22 @@ import {
   type ClerkIdentityProfile,
   type DeleteWorkspaceDataResult,
   type HumanIdentityResult,
+  type UpdateWorkspace,
   type UpdateWorkspaceEntitlementInput,
   type UserProfileRecord,
   type WorkspaceMemberKind,
   type WorkspaceMemberRecord,
   type WorkspaceRecord,
   type WorkspaceRole,
-  type WorkspaceType
+  type WorkspaceType,
+  type PrivateRequestsPolicy
 } from '../../store/types.js';
 
 export interface SQLiteIdentityWorkspaceRepositoryDeps {
   writeAuditEvent(workspaceId: string, userId: string, eventType: string, targetId: string, payload: unknown, now?: string): void;
   revokeAgentTokensForOwner(userId: string, now?: string): number;
   deleteRoutingRule(routingRuleId: string, workspaceId: string, now?: string): boolean;
+  privateRequestPolicy(): PrivateRequestsPolicy;
 }
 
 export class SQLiteIdentityWorkspaceRepository {
@@ -111,7 +114,8 @@ export class SQLiteIdentityWorkspaceRepository {
   createSharedWorkspaceForUser(userId: string, name: string, now = new Date().toISOString(), clerkOrganizationId?: string): WorkspaceMemberRecord {
     this.ensureUserExists(userId, now);
     const workspaceId = id('wsp');
-    this.db.prepare('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(workspaceId, 'shared', name.trim(), clerkOrganizationId ?? null, now, now);
+    const privateRequestsRequired = this.deps.privateRequestPolicy() !== 'off' ? 1 : 0;
+    this.db.prepare('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, private_requests_required, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(workspaceId, 'shared', name.trim(), clerkOrganizationId ?? null, privateRequestsRequired, now, now);
     this.db.prepare('INSERT INTO workspace_members(workspace_id, user_id, role, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(workspaceId, userId, 'owner', 'active', now, now);
     this.deps.writeAuditEvent(workspaceId, userId, 'workspace.created', workspaceId, { name: name.trim(), type: 'shared', clerkOrganizationId }, now);
     return this.workspaceMemberOrThrow(userId, workspaceId);
@@ -129,7 +133,8 @@ export class SQLiteIdentityWorkspaceRepository {
       return mapWorkspace(this.workspaceRow(existing.workspaceId)!);
     }
     const workspaceId = id('wsp');
-    this.db.prepare('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(workspaceId, 'shared', name.trim(), clerkOrganizationId, now, now);
+    const privateRequestsRequired = this.deps.privateRequestPolicy() !== 'off' ? 1 : 0;
+    this.db.prepare('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, private_requests_required, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(workspaceId, 'shared', name.trim(), clerkOrganizationId, privateRequestsRequired, now, now);
     if (ownerUserId) {
       this.ensureUserExists(ownerUserId, now);
       this.db.prepare('INSERT INTO workspace_members(workspace_id, user_id, role, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(workspaceId, ownerUserId, 'owner', 'active', now, now);
@@ -163,11 +168,14 @@ export class SQLiteIdentityWorkspaceRepository {
     this.deps.revokeAgentTokensForOwner(userId, now);
   }
 
-  updateWorkspace(workspaceId: string, name: string, now = new Date().toISOString()): WorkspaceRecord | null {
+  updateWorkspace(workspaceId: string, input: UpdateWorkspace | string, now = new Date().toISOString()): WorkspaceRecord | null {
     const workspace = this.workspaceRow(workspaceId);
     if (!workspace) return null;
-    if (workspace.type === 'personal') throw new Error('Personal Workspace cannot be renamed');
-    this.db.prepare('UPDATE workspaces SET name = ?, updated_at = ? WHERE workspace_id = ?').run(name.trim(), now, workspaceId);
+    const update = typeof input === 'string' ? { name: input } : input;
+    if (workspace.type === 'personal' && update.name !== undefined) throw new Error('Personal Workspace cannot be renamed');
+    const name = update.name?.trim() ?? workspace.name;
+    const privateRequestsRequired = update.privateRequestsRequired ?? Boolean(workspace.private_requests_required);
+    this.db.prepare('UPDATE workspaces SET name = ?, private_requests_required = ?, updated_at = ? WHERE workspace_id = ?').run(name, privateRequestsRequired ? 1 : 0, now, workspaceId);
     return mapWorkspace(this.workspaceRow(workspaceId)!);
   }
 
@@ -272,11 +280,11 @@ export class SQLiteIdentityWorkspaceRepository {
 
 interface CountRow { count: number }
 interface UserRow { id: string; email: string | null; email_verified: number; name: string | null; sign_in_method: string | null }
-interface WorkspaceRow { workspace_id: string; type: string; name: string; clerk_organization_id: string | null; responses_entitled_until: string | null; created_at: string; updated_at: string }
+interface WorkspaceRow { workspace_id: string; type: string; name: string; clerk_organization_id: string | null; responses_entitled_until: string | null; private_requests_required: number; created_at: string; updated_at: string }
 interface WorkspaceMemberRow extends WorkspaceRow { user_id: string; role: string; status: string; member_kind: string; email: string | null; display_name: string | null; clerk_membership_id: string | null }
 
 const WORKSPACE_MEMBER_SELECT = `
-  SELECT w.workspace_id, w.type, w.name, w.clerk_organization_id, w.created_at, w.updated_at,
+  SELECT w.workspace_id, w.type, w.name, w.clerk_organization_id, w.responses_entitled_until, w.private_requests_required, w.created_at, w.updated_at,
          wm.user_id, wm.role, wm.status, wm.member_kind, wm.clerk_membership_id,
          u.email, u.name AS display_name
   FROM workspace_members wm
@@ -300,6 +308,7 @@ function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
     name: row.name,
     ...(row.clerk_organization_id ? { clerkOrganizationId: row.clerk_organization_id } : {}),
     ...(row.responses_entitled_until ? { responsesEntitledUntil: row.responses_entitled_until } : {}),
+    ...(row.private_requests_required ? { privateRequestsRequired: true } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

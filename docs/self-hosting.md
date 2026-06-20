@@ -74,10 +74,10 @@ Open `AGENT_TICK_PUBLIC_URL` in a browser and enter the admin token if configure
 
 ## Connect an agent machine
 
-Run the installer against your server:
+First connect the Native App to your self-hosted server and enable **Settings → General → Private encryption** if you want rich agent message/tool mirroring. Then run setup against your server:
 
 ```sh
-npx @self-deprecated/agent-tick install --server https://tick.example.com
+npx @self-deprecated/agent-tick setup --server https://tick.example.com
 ```
 
 For CI or non-interactive hosts, create or copy an `agent_...` token from the dashboard and save it locally:
@@ -89,7 +89,7 @@ agent-tick config --server https://tick.example.com --token agent_...
 Send a safe test:
 
 ```sh
-npx @self-deprecated/agent-tick steering \
+npx @self-deprecated/agent-tick send steering \
   --title "Self-hosted Agent Tick test" \
   --choice works="It works" \
   --choice stop:deny="Stop testing"
@@ -98,6 +98,8 @@ npx @self-deprecated/agent-tick steering \
 ## Connect the Native App
 
 In the Native App, choose the self-hosted server option and enter your server URL. Where the product provides a pairing QR code, scan it instead of manually typing the URL.
+
+After sign-in, open **Settings → General → Private encryption** and enable/repair private encryption before turning on rich mirrored agent content.
 
 ## Production checklist
 

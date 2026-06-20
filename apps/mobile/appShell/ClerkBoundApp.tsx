@@ -25,7 +25,7 @@ export function ClerkBoundApp({ renderAgentTickApp, ...props }: AgentTickAppProp
   const [signedOutManually, setSignedOutManually] = useState(false);
   const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [addingClerkAccount, setAddingClerkAccount] = useState(false);
-  const [openSignInAfterSignOut, setOpenSignInAfterSignOut] = useState(false);
+  const [openSignInAfterSignOut, setOpenSignInAfterSignOut] = useState(Boolean(props.initialShowClerkAuthView));
   const [authViewOpened, setAuthViewOpened] = useState(false);
   const [authViewHandoffSettled, setAuthViewHandoffSettled] = useState(false);
   const [activeMobileAccountID, setActiveMobileAccountID] = useState<string | null>(null);
@@ -35,6 +35,7 @@ export function ClerkBoundApp({ renderAgentTickApp, ...props }: AgentTickAppProp
   const authViewHandoffStarted = useRef("");
   const refreshedNativeSignInEvent = useRef("");
 
+  const clerkServerURL = props.initialServerURL || defaultServer;
   const nativeSessionSignedIn = Boolean(nativeSession.isSignedIn);
   const nativeAuthStateType = nativeAuthEvents.nativeAuthState?.type;
   const nativeAuthStateSessionId = nativeAuthEvents.nativeAuthState?.sessionId;
@@ -205,7 +206,7 @@ export function ClerkBoundApp({ renderAgentTickApp, ...props }: AgentTickAppProp
     return (
       <ClerkSignInScreen
         key={`add-account:${addAccountInitialSessionID.current ?? "signed-out"}`}
-        serverURL={defaultServer}
+        serverURL={clerkServerURL}
         selfHostedInitialURL={selfHostedInitialURL(props.initialServerURL)}
         initialShowAuthView={openSignInAfterSignOut}
         authMode="signIn"
@@ -237,7 +238,7 @@ export function ClerkBoundApp({ renderAgentTickApp, ...props }: AgentTickAppProp
     }
     return (
       <ClerkSignInScreen
-        serverURL={defaultServer}
+        serverURL={clerkServerURL}
         selfHostedInitialURL={selfHostedInitialURL(props.initialServerURL)}
         initialShowAuthView={openSignInAfterSignOut}
         onAuthViewOpen={handleAuthViewOpen}

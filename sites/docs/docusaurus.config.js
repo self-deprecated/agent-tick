@@ -45,6 +45,7 @@ const config = {
             'self-hosting.md',
             'self-hosting-operator-reference.md',
             'security.md',
+            'private-encryption.md',
             'philosophy.md',
             'api-sdk.md'
           ],

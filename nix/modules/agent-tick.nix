@@ -129,6 +129,12 @@ in
       description = "Billing provider for mobile in-app purchases. Set to revenuecat for hosted deployments that receive RevenueCat webhooks.";
     };
 
+    hostedService = lib.mkOption {
+      type = lib.types.nullOr lib.types.bool;
+      default = null;
+      description = "Whether this deployment is the first-party hosted Agent Tick service for hosted billing/entitlement gates. Leave null to let the server infer from publicUrl.";
+    };
+
     revenueCatProjectId = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -139,6 +145,28 @@ in
       type = lib.types.bool;
       default = false;
       description = "Allow test-only manual billing state mutations. Keep disabled for production RevenueCat deployments.";
+    };
+
+    billingDevGrantEmailDomains = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Verified email domains allowed to use the hosted development billing grant while billing test mode remains disabled.";
+    };
+
+    privateRequestsPolicy = lib.mkOption {
+      type = lib.types.enum [ "off" "default" "forced" ];
+      default = "off";
+      description = ''
+        Server-wide Private Requests (end-to-end encrypted) policy.
+
+        - "off": each Workspace/Routing Rule decides via its own toggle.
+        - "default": new Workspaces are created with Private Requests
+          required, but Workspace Owners can still toggle them off.
+        - "forced": Private Requests are required for every Workspace and
+          Routing Rule on this server, regardless of stored toggles, and
+          cannot be disabled. Plain (unencrypted) CLI requests are rejected
+          with HTTP 409 `private_required`.
+      '';
     };
 
     requestNotificationWebhookUrl = lib.mkOption {
@@ -199,8 +227,11 @@ in
       // optionalCSVEnv "AGENT_TICK_CLERK_AUTHORIZED_PARTIES" cfg.clerkAuthorizedParties
       // optionalEnv "AGENT_TICK_MAX_ACTIVE_MEMBERS" cfg.maxActiveMembers
       // optionalEnv "AGENT_TICK_BILLING_PROVIDER" cfg.billingProvider
+      // optionalEnv "AGENT_TICK_HOSTED_SERVICE" cfg.hostedService
       // optionalEnv "AGENT_TICK_REVENUECAT_PROJECT_ID" cfg.revenueCatProjectId
       // optionalEnv "AGENT_TICK_BILLING_TEST_MODE" cfg.billingTestMode
+      // optionalCSVEnv "AGENT_TICK_BILLING_DEV_GRANT_EMAIL_DOMAINS" cfg.billingDevGrantEmailDomains
+      // optionalEnv "AGENT_TICK_PRIVATE_REQUESTS_POLICY" cfg.privateRequestsPolicy
       // optionalEnv "AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL" cfg.requestNotificationWebhookUrl
       // optionalEnv "AGENT_TICK_REQUEST_RETENTION_DAYS" cfg.retention.requestDays
       // optionalEnv "AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS" cfg.retention.statusUpdateDays

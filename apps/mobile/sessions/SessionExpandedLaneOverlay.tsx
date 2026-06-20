@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Animated } from "react-native";
 
 import { styles } from "../mobileStyles";
@@ -23,7 +24,10 @@ export function SessionExpandedLaneOverlay({
   detail,
   displayTitle,
   expansion,
+  headerAction,
   interactive,
+  messageBodiesExpanded,
+  messageBodiesFocusRevision,
   onBack,
   onRespond,
   onSubmitQuestionnaire,
@@ -45,7 +49,10 @@ export function SessionExpandedLaneOverlay({
   detail?: MobileSessionDetail;
   displayTitle: string;
   expansion: SessionExpandedLaneOverlayState;
+  headerAction?: ReactNode;
   interactive: boolean;
+  messageBodiesExpanded?: boolean;
+  messageBodiesFocusRevision?: number;
   onBack: () => void;
   onRespond: (request: MobileRequest, choice: Choice) => void;
   onSubmitQuestionnaire: (request: MobileRequest, answers?: Record<string, string[]>) => void;
@@ -86,7 +93,7 @@ export function SessionExpandedLaneOverlay({
   const overlayBranch = expansion.kind !== "settling" && detail ? "detail" : "lane_preview";
   return (
     <Animated.View pointerEvents={interactive ? "auto" : "none"} style={[styles.sessionExpansionOverlay, animatedStyle]}>
-      <SessionLaneFrame displayTitle={displayTitle} expanded onBack={expansion.kind === "detail" ? onBack : undefined} state={summary.state}>
+      <SessionLaneFrame displayTitle={displayTitle} expanded headerAction={headerAction} onBack={expansion.kind === "detail" ? onBack : undefined} state={summary.state}>
         {overlayBranch === "detail" && detail ? (
           <SessionDetailTimeline
             detail={detail}
@@ -104,6 +111,8 @@ export function SessionExpandedLaneOverlay({
             unlockResponsesLabel={unlockResponsesLabel}
             onUnlockResponses={onUnlockResponses}
             showHeader={false}
+            messageBodiesExpanded={messageBodiesExpanded}
+            messageBodiesFocusRevision={messageBodiesFocusRevision}
             collapseScrollProgress={expansion.kind === "collapsing" ? progress : undefined}
             collapseTargetViewportHeight={expansion.kind === "collapsing" ? Math.max(0, expansion.to.height - SESSION_LANE_TITLE_BAR_HEIGHT) : undefined}
           />

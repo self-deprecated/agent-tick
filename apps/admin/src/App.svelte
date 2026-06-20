@@ -75,6 +75,7 @@
 	let selectedTestAgentTokenId = $state('');
 	let testBusy = $state<'' | 'status' | 'steering' | 'sanction'>('');
 	let lastTest = $state<(SendTestActivityResponse & { sentAt: string }) | undefined>();
+	let testError = $state('');
 	let respondingRequestId = $state('');
 	let newWorkspaceName = $state('');
 	let newTokenLabel = $state(hostLabel());
@@ -523,6 +524,12 @@
 		await refreshWorkspaceData();
 	}
 
+	async function toggleWorkspacePrivateRequestsRequired(required: boolean): Promise<void> {
+		if (!selectedWorkspaceId) return;
+		await apiClient().updateWorkspace(selectedWorkspaceId, { privateRequestsRequired: required });
+		await refreshWorkspaceData();
+	}
+
 	async function deleteRoutingRule(rule: RoutingRuleRecord): Promise<void> {
 		if (!window.confirm(`Delete Routing Rule ${rule.name}?`)) return;
 		await apiClient().deleteRoutingRule(rule.routingRuleId);
@@ -532,13 +539,28 @@
 	async function runTest(kind: 'status' | 'steering' | 'sanction', options: { routingRuleId?: string } = {}): Promise<void> {
 		if (!selectedWorkspaceId) return;
 		testBusy = kind;
+		testError = '';
 		try {
 			const token = selectedTestAgentTokenId || agentTokens.find((entry) => !entry.revokedAt && (selectedWorkspace?.type === 'personal' || entry.routingRuleId))?.agentTokenId;
 			lastTest = { ...(await apiClient().sendTestActivity({ kind, context: options.routingRuleId ? 'routing_rule' : 'setup', workspaceId: selectedWorkspaceId, agentTokenId: token, routingRuleId: options.routingRuleId })), sentAt: new Date().toISOString() };
 			await refreshWorkspaceData();
+		} catch (error) {
+			testError = testActivityErrorMessage(error);
 		} finally {
 			testBusy = '';
 		}
+	}
+
+	/** Safe, SQL-free message for a failed Send Test Activity request, including the server code and request id when present. */
+	function testActivityErrorMessage(error: unknown): string {
+		if (error instanceof AgentTickApiError) {
+			const detail = error.code === 'schema_mismatch'
+				? 'The Agent Tick database schema is incompatible with this server. Run migrations or roll back.'
+				: (error.message || 'Test activity could not be sent.');
+			const ref = error.requestId ? ` (request ${error.requestId})` : '';
+			return `${detail}${ref}`;
+		}
+		return error instanceof Error ? error.message : 'Test activity could not be sent.';
 	}
 
 	async function respondToRequest(request: RequestRecord, response: RespondRequest): Promise<void> {
@@ -701,6 +723,7 @@
 			{currentUser}
 			onUpdateOwnAvailability={updateOwnAvailability}
 			onOpenConnections={() => navigate('connections')}
+			onTogglePrivateRequestsRequired={toggleWorkspacePrivateRequestsRequired}
 		/>
 	{:else if activePage === 'settings'}
 		<SettingsPage
@@ -753,6 +776,7 @@
 			{selectedTestAgentTokenId}
 			{testBusy}
 			{lastTest}
+			{testError}
 			onSelectTestAgent={(agentTokenId) => (selectedTestAgentTokenId = agentTokenId)}
 			onDisconnectDevice={disconnectDevice}
 			onAssignTokenRule={selectedWorkspaceCanManageConnections ? assignTokenRule : undefined}

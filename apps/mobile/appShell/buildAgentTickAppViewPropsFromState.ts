@@ -6,6 +6,7 @@ import type { useAgentTickConnectionManagement } from "./useAgentTickConnectionM
 import type { useAgentTickRealtimeActivityController } from "./useAgentTickRealtimeActivityController";
 import type { useAgentTickRequestHandlingActions } from "./useAgentTickRequestHandlingActions";
 import type { useAgentTickSettingsActions } from "./useAgentTickSettingsActions";
+import type { usePrivateEncryptionStatus } from "./usePrivateEncryptionStatus";
 import type { useMobileBillingAccessState } from "./useMobileBillingAccessState";
 import type { useMobileSelectionState } from "./useMobileSelectionState";
 import { sessionStackSessionKey } from "../sessionStackState";
@@ -30,6 +31,7 @@ type BuildAgentTickAppViewPropsFromStateInput = {
   navigationState: AgentTickAppState["navigationState"];
   requestDraft: ReturnType<typeof useSelectedRequestDraft>;
   realtimeActivityController: ReturnType<typeof useAgentTickRealtimeActivityController>;
+  privateEncryption: ReturnType<typeof usePrivateEncryptionStatus>;
   requestHandlingActions: ReturnType<typeof useAgentTickRequestHandlingActions>;
   runtimePresentation: RuntimePresentation;
   selectionState: ReturnType<typeof useMobileSelectionState>;
@@ -51,6 +53,7 @@ export function buildAgentTickAppViewPropsFromState({
   localeInputs,
   navigationState,
   realtimeActivityController,
+  privateEncryption,
   requestDraft,
   requestHandlingActions,
   runtimePresentation,
@@ -99,6 +102,7 @@ export function buildAgentTickAppViewPropsFromState({
     load: realtimeActivityController.load,
     loading: appStatusState.loading,
     localePreference: localeInputs.localePreference,
+    localDevAppAccessUnlocked: billingState.localDevAppAccessUnlocked,
     menuOpen: navigationState.menuOpen,
     nativeEntitlement: billingAccessState.nativeEntitlement,
     nativePaywallVisible: billingAccessState.nativePaywallVisible,
@@ -114,6 +118,11 @@ export function buildAgentTickAppViewPropsFromState({
     paywallPurchaseUnavailable: billingAccessState.paywallPurchaseUnavailable,
     paywallPurchaseUnavailableMessage: billingAccessState.paywallPurchaseUnavailableMessage,
     personalBillingStatus: billingState.personalBillingStatus,
+    privateEncryptionProps: {
+      status: privateEncryption.privateEncryptionStatus,
+      refresh: privateEncryption.refreshPrivateEncryptionStatus,
+      repairRegistration: privateEncryption.repairPrivateEncryptionRegistration,
+    },
     purchaseAccountReady: billingAccessState.purchaseAccountReady,
     pushStatus: appStatusState.pushStatus,
     questionnaireAnswers: requestDraft.questionnaireAnswers,

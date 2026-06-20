@@ -37,7 +37,9 @@ Hosted push notifications are minimal by default and should not include request 
 
 Do not send secrets in titles, bodies, commands, choices, metadata, logs, diagnostics, analytics, or notification payloads.
 
-Agent Tick treats Request content as normal hosted/self-hosted application data. Do not claim hosted Request contents are unreadable to Agent Tick unless a client-held-key Private Requests design is implemented and reviewed.
+Private Requests and private full-reply Status Updates can store sensitive display content as server-opaque encrypted payloads for Approval Devices. Each device key is generated and stored on that device; only the public key is registered with Agent Tick servers. See [Private encryption](./private-encryption.md) for the exact scope and trust model.
+
+Plain Requests, clear operational fields, diagnostics, analytics, notifications, and integrations that do not enable private content should be treated as normal hosted/self-hosted application data.
 
 ## Retention and deletion
 

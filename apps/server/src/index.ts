@@ -1,6 +1,7 @@
 import { openAgentTickStore } from '@agent-tick/db';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
+import { assertSchemaCompatible, SchemaMismatchError } from './schemaCompatibility.js';
 import { hasRetentionCleanupChanges, runRetentionCleanup, startRetentionCleanupTimer } from './services/retention.js';
 import { createConfiguredRetentionCleanupLock } from './services/retentionLock.js';
 
@@ -16,8 +17,24 @@ const store = openAgentTickStore({
   databaseURL: config.databaseURL,
   ...(Object.keys(postgresPool).length ? { postgresPool } : {})
 });
+store.setPrivateRequestPolicy(config.privateRequestsPolicy);
 if (config.databaseMigrateOnStart) await store.migrate();
 await store.ensureSingleTenantDefaults();
+
+// Fail fast: if the deployed schema is missing columns the running code needs,
+// refuse to bind the port instead of serving a lying readiness probe that fails
+// on the first Activity write. Migrations run above; this catches deployments
+// where migrate-on-start is disabled or the applied migrations lag the image.
+try {
+  await assertSchemaCompatible(store);
+} catch (error) {
+  console.error(
+    '[agent-tick] Startup aborted: database schema is incompatible with the running server.',
+    error instanceof SchemaMismatchError ? error.message : error,
+    'Run migrations or roll back.'
+  );
+  process.exit(1);
+}
 
 const app = await buildApp({ config, store });
 const retentionCleanupLock = config.retentionCleanupEnabled ? await createConfiguredRetentionCleanupLock(config) : null;

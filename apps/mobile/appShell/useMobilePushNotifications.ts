@@ -8,6 +8,7 @@ import type { PersonalBillingStatus } from "@self-deprecated/agent-tick-shared";
 import { diagnosticEvents, recordDiagnostic } from "../diagnostics";
 import { saveStoredMobileConnections } from "../mobileConnections";
 import { normalizeServerURL, type RuntimeAuthConfig, type SavedMobileAccount } from "../mobileAuth";
+import { ensurePrivateRequestDeviceKeyRegistered } from "../mobilePrivateRequests";
 import type { NotificationStatus, PushStatus } from "../SettingsScreen";
 import { isUsableProjectID } from "./mobileActivityHelpers";
 import { mobileInstallationID, requestChannelID, toNotificationStatus } from "./mobileNotificationHelpers";
@@ -172,6 +173,13 @@ export function useMobilePushNotifications({
         return;
       }
 
+      const ensurePrivateKey = async (client: AgentTickClient, registeredDeviceID: string) => {
+        await ensurePrivateRequestDeviceKeyRegistered(client, registeredDeviceID).catch((err) => {
+          recordDiagnostic("warn", "private_requests", "device_key_registration_failed", { message: err instanceof Error ? err.message : String(err) });
+          setDiagnosticsEventCount(diagnosticEvents().length);
+        });
+      };
+
       if (Platform.OS === "android") {
         await Notifications.setNotificationChannelAsync(requestChannelID, {
           name: "Requests",
@@ -205,6 +213,7 @@ export function useMobilePushNotifications({
           });
           if (account.deviceID) {
             await pushClient.updateDevicePushToken(account.deviceID, { token: pushToken.data });
+            await ensurePrivateKey(pushClient, account.deviceID);
             deviceUpdates[account.id] = account.deviceID;
             return;
           }
@@ -214,6 +223,7 @@ export function useMobilePushNotifications({
             installationId,
             expoPushToken: pushToken.data,
           });
+          await ensurePrivateKey(pushClient, responseBody.deviceId);
           deviceUpdates[account.id] = responseBody.deviceId;
         }));
         const registeredCount = Object.keys(deviceUpdates).length;
@@ -237,16 +247,21 @@ export function useMobilePushNotifications({
       const pushClient = runtimeAuthProvider === "clerk"
         ? sdk
         : new AgentTickClient({ baseUrl: trimmed, tokenProvider: () => activeToken });
-      if (runtimeAuthProvider === "clerk") {
+      if (runtimeAuthProvider === "clerk" && activeDeviceID) {
+        await pushClient.updateDevicePushToken(activeDeviceID, { token: pushToken.data });
+        await ensurePrivateKey(pushClient, activeDeviceID);
+      } else if (runtimeAuthProvider === "clerk") {
         const responseBody = await pushClient.registerDevice({
           deviceName: `${Platform.OS} phone`,
           platform: Platform.OS,
           installationId,
           expoPushToken: pushToken.data,
         });
+        await ensurePrivateKey(pushClient, responseBody.deviceId);
         setDeviceID(responseBody.deviceId);
       } else if (activeDeviceID) {
         await pushClient.updateDevicePushToken(activeDeviceID, { token: pushToken.data });
+        await ensurePrivateKey(pushClient, activeDeviceID);
       } else {
         const responseBody = await pushClient.registerDevice({
           deviceName: `${Platform.OS} phone`,
@@ -254,6 +269,7 @@ export function useMobilePushNotifications({
           installationId,
           expoPushToken: pushToken.data,
         });
+        await ensurePrivateKey(pushClient, responseBody.deviceId);
         setDeviceID(responseBody.deviceId);
       }
       setPushStatus("registered");

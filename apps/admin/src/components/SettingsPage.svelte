@@ -135,6 +135,22 @@
 		</details>
 	</div>
 
+	<div class="settings-group" aria-labelledby="settings-private-requests-heading">
+		<h2 id="settings-private-requests-heading">Private Requests and encryption</h2>
+		<details open>
+			<summary>How encryption is enforced</summary>
+			<div class="settings-section">
+				<p>Agent Tick supports end-to-end encrypted Private Requests. When required for a Workspace or Routing Rule, plain CLI requests are rejected until the agent uses Private Request encryption.</p>
+				<p>Manage the per-Workspace toggle on the Workspace page.</p>
+				{#if currentUser?.privateRequestsPolicy === 'forced'}
+					<p>This server enforces Private Requests for all Workspaces. The toggle cannot be disabled.</p>
+				{:else}
+					<p>The server policy lets Workspace Owners control the toggle.</p>
+				{/if}
+			</div>
+		</details>
+	</div>
+
 	<div class="settings-group" aria-labelledby="settings-support-heading">
 		<h2 id="settings-support-heading">Support and privacy</h2>
 		<details open>

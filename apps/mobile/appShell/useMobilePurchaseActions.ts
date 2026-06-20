@@ -143,6 +143,39 @@ export function useMobilePurchaseActions({
   };
 
   const startTrial = async () => {
+    if (Platform.OS === "android") {
+      if (!requireHostedPurchaseAccount()) return;
+      if (purchaseInFlightRef.current) {
+        Alert.alert(translateSource("Purchase unavailable"), translateSource("A purchase is already in progress. Wait a few minutes, then try again."));
+        return;
+      }
+      purchaseInFlightRef.current = "trial_7_day";
+      setPurchaseInFlightProductKey("trial_7_day");
+      try {
+        const latest = await refreshPersonalBilling({ configureStore: false });
+        const availability = latest?.purchaseAvailability.trial_7_day;
+        if (availability && !availability.allowed) {
+          Alert.alert("Purchase unavailable", purchaseAvailabilityMessage(availability.reason, availability.originPlatform));
+          return;
+        }
+        const status = await sdk.startNativeTrial({ platform: "android" });
+        await refreshPersonalBilling({ configureStore: false });
+        const active = Boolean(status.activeEntitlements.trial7Day.active);
+        Alert.alert(
+          translateSource("7-day Trial"),
+          active
+            ? translateSource("Trial started. Responses are unlocked for 7 days.")
+            : translateSource("Trial started. Hosted access may take a moment to sync."),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : translateSource("Could not start trial");
+        Alert.alert(translateSource("Purchase failed"), purchaseAvailabilityMessage(apiCode(err), undefined, message));
+      } finally {
+        purchaseInFlightRef.current = null;
+        setPurchaseInFlightProductKey(null);
+      }
+      return;
+    }
     await runPurchaseFlow("trial_7_day", "7-day Trial");
   };
 

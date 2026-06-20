@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { MeResponse } from "@self-deprecated/agent-tick-sdk";
 
 import type { RuntimeAuthConfig } from "../mobileAuth";
@@ -32,8 +32,22 @@ export function useClerkSessionReset({
   setSelectedID: Dispatch<SetStateAction<string | null>>;
   setConnectionStatus: Dispatch<SetStateAction<ConnectionStatus>>;
 }) {
+  const observedClerkSessionID = useRef<string | null>(null);
+
   useEffect(() => {
-    if (runtimeAuthConfig?.authProvider !== "clerk" || !activeClerkSessionID) return;
+    if (runtimeAuthConfig?.authProvider !== "clerk") {
+      observedClerkSessionID.current = null;
+      return;
+    }
+    if (!activeClerkSessionID) return;
+
+    const previousClerkSessionID = observedClerkSessionID.current;
+    observedClerkSessionID.current = activeClerkSessionID;
+    // A cold start also changes Clerk from "no session yet" to the restored
+    // session. Do not treat that as an account switch: clearing deviceID here
+    // makes the phone forget its Approval Device and locks private Activity.
+    if (!previousClerkSessionID || previousClerkSessionID === activeClerkSessionID) return;
+
     setCurrentAccountProfile((current) => (current?.source === "mobile-saved-account" ? current : null));
     setSelectedWorkspaceID("");
     setDeviceID("");

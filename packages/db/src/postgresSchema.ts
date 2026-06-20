@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   name TEXT NOT NULL,
   clerk_organization_id TEXT UNIQUE,
   responses_entitled_until TEXT,
+  private_requests_required BOOLEAN NOT NULL DEFAULT false,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS routing_rules (
   name TEXT NOT NULL,
   required_response_mode TEXT NOT NULL DEFAULT 'any_one',
   required_response_count INTEGER NOT NULL DEFAULT 1,
+  private_requests_required BOOLEAN NOT NULL DEFAULT false,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -111,6 +113,10 @@ CREATE TABLE IF NOT EXISTS requests (
   deadline TEXT,
   risk TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
+  content_mode TEXT NOT NULL DEFAULT 'plain',
+  encrypted_payload_json TEXT,
+  private_recipient_version TEXT,
+  private_unavailable_recipients_json TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL,
   required_response_count INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
@@ -222,6 +228,10 @@ CREATE TABLE IF NOT EXISTS status_updates (
   working_directory TEXT,
   client_name TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
+  content_mode TEXT NOT NULL DEFAULT 'plain',
+  encrypted_payload_json TEXT,
+  private_recipient_version TEXT,
+  context_usage_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   is_test BOOLEAN NOT NULL DEFAULT false,
   test_label TEXT
@@ -235,6 +245,38 @@ CREATE TABLE IF NOT EXISTS status_update_recipients (
   PRIMARY KEY(status_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS status_update_recipients_user_idx ON status_update_recipients(user_id, status_id);
+
+CREATE TABLE IF NOT EXISTS tool_activities (
+  tool_activity_id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(workspace_id) ON DELETE CASCADE,
+  agent_token_id TEXT REFERENCES agent_tokens(agent_token_id) ON DELETE SET NULL,
+  routing_rule_id TEXT REFERENCES routing_rules(routing_rule_id) ON DELETE SET NULL,
+  thread_id TEXT,
+  session_id TEXT NOT NULL,
+  turn_id TEXT,
+  tool_call_id TEXT,
+  tool_name TEXT NOT NULL,
+  state TEXT NOT NULL,
+  outcome TEXT,
+  summary TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  content_mode TEXT NOT NULL DEFAULT 'plain',
+  encrypted_payload_json TEXT,
+  private_recipient_version TEXT,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tool_activities_workspace_idx ON tool_activities(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS tool_activities_session_idx ON tool_activities(workspace_id, session_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS tool_activity_recipients (
+  tool_activity_id TEXT NOT NULL REFERENCES tool_activities(tool_activity_id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(tool_activity_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS tool_activity_recipients_user_idx ON tool_activity_recipients(user_id, tool_activity_id);
 
 CREATE TABLE IF NOT EXISTS approval_devices (
   device_id TEXT PRIMARY KEY,
@@ -250,6 +292,21 @@ CREATE TABLE IF NOT EXISTS approval_devices (
 );
 CREATE INDEX IF NOT EXISTS approval_devices_user_idx ON approval_devices(user_id, unregistered_at);
 CREATE INDEX IF NOT EXISTS approval_devices_installation_idx ON approval_devices(user_id, installation_id);
+
+CREATE TABLE IF NOT EXISTS approval_device_keys (
+  device_key_id TEXT PRIMARY KEY,
+  device_id TEXT NOT NULL REFERENCES approval_devices(device_id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  algorithm TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  public_key_fingerprint TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  revoked_at TEXT,
+  UNIQUE(device_id, algorithm, public_key_fingerprint)
+);
+CREATE INDEX IF NOT EXISTS approval_device_keys_user_idx ON approval_device_keys(user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS approval_device_keys_device_idx ON approval_device_keys(device_id, revoked_at);
 
 CREATE TABLE IF NOT EXISTS device_pairing_codes (
   token_hash TEXT PRIMARY KEY,

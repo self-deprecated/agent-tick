@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
-import { Alert, Linking, Platform, StyleSheet } from "react-native";
+import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet } from "react-native";
 import { SettingsScreen, ConnectionStatus, NotificationStatus, PushStatus } from "./SettingsScreen";
 
 const baseProps = {
@@ -90,6 +90,16 @@ describe("SettingsScreen — unpaired state", () => {
     expect(screen.getByPlaceholderText("https://tick.example.com")).toBeTruthy();
   });
 
+  it("keeps manual self-hosted setup keyboard-aware", () => {
+    render(<SettingsScreen {...unpairedProps} />);
+    fireEvent.press(screen.getByText("Manual self-hosted setup"));
+
+    expect(screen.UNSAFE_getByType(KeyboardAvoidingView).props.behavior).toBe(Platform.OS === "ios" ? "padding" : "height");
+    expect(screen.UNSAFE_getByType(ScrollView).props.keyboardShouldPersistTaps).toBe("handled");
+    expect(screen.UNSAFE_getByType(ScrollView).props.automaticallyAdjustKeyboardInsets).toBe(true);
+    expect(screen.getByPlaceholderText("https://tick.example.com").props.returnKeyType).toBe("go");
+  });
+
   it("shows the self-hosted privacy boundary in manual setup", () => {
     render(<SettingsScreen {...unpairedProps} />);
     fireEvent.press(screen.getByText("Manual self-hosted setup"));
@@ -100,6 +110,60 @@ describe("SettingsScreen — unpaired state", () => {
     render(<SettingsScreen {...unpairedProps} />);
     fireEvent.press(screen.getByText("Manual self-hosted setup"));
     expect(screen.getByText("Check Connection")).toBeTruthy();
+  });
+
+  it("adapts to a Clerk self-hosted server from the manual setup picker", async () => {
+    jest.spyOn(global, "fetch").mockImplementation(
+      async () => new Response(JSON.stringify({ mode: "clerk", authProvider: "clerk", clerkPublishableKey: "pk_test_dev" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const onSignInToServer = jest.fn();
+    render(<SettingsScreen {...unpairedProps} onSignInToServer={onSignInToServer} />);
+
+    fireEvent.press(screen.getByText("Manual self-hosted setup"));
+
+    // Add a remembered Clerk dev server via the server picker.
+    fireEvent.press(screen.getByLabelText("Add another Agent Tick server"));
+    fireEvent.changeText(screen.getByLabelText("New self-hosted server URL"), "https://dev.example.com");
+    fireEvent.press(screen.getByLabelText("Add self-hosted server"));
+
+    await waitFor(() => expect(screen.getByText("Sign in to dev.example.com")).toBeTruthy());
+    fireEvent.press(screen.getByText("Sign in to dev.example.com"));
+
+    // A Clerk server re-bootstraps into Clerk native sign-in rather than the
+    // QR/pairing flow — this is the dev-server path that used to be unreachable.
+    await waitFor(() => {
+      expect(onSignInToServer).toHaveBeenCalledWith("https://dev.example.com");
+    });
+    jest.restoreAllMocks();
+  });
+
+  it("falls through to token/pairing for a local self-hosted server", async () => {
+    jest.spyOn(global, "fetch").mockImplementation(
+      async () => new Response(JSON.stringify({ mode: "single", authProvider: "local", publicURL: "https://tick.example.com" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const onSignInToServer = jest.fn();
+    const setServerURL = jest.fn();
+    render(<SettingsScreen {...unpairedProps} onSignInToServer={onSignInToServer} setServerURL={setServerURL} />);
+
+    fireEvent.press(screen.getByText("Manual self-hosted setup"));
+    fireEvent.press(screen.getByLabelText("Add another Agent Tick server"));
+    fireEvent.changeText(screen.getByLabelText("New self-hosted server URL"), "https://tick.example.com");
+    fireEvent.press(screen.getByLabelText("Add self-hosted server"));
+
+    await waitFor(() => expect(screen.getByText("Sign in to tick.example.com")).toBeTruthy());
+    fireEvent.press(screen.getByText("Sign in to tick.example.com"));
+
+    await waitFor(() => {
+      expect(setServerURL).toHaveBeenCalledWith("https://tick.example.com");
+    });
+    expect(onSignInToServer).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
   });
 
   it("offers hosted service as a clear account choice", () => {
@@ -185,6 +249,62 @@ describe("SettingsScreen — paired state", () => {
   it("shows Notifications section", () => {
     render(<SettingsScreen {...pairedProps} />);
     expect(screen.getByText("Notifications")).toBeTruthy();
+  });
+
+  it("shows private encryption registration status in General settings", () => {
+    const openURL = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+    render(<SettingsScreen {...pairedProps} privateEncryptionStatus={{
+      state: "ready",
+      summary: "This phone's private encryption key is registered on every saved connection.",
+      detail: "Future private Requests and private Status Updates from those connections should be decryptable on this phone.",
+      checkedAt: "2026-06-14T12:00:00.000Z",
+      connections: [{
+        id: "conn_1",
+        label: "at.example.com",
+        serverURL: "https://at.example.com",
+        workspaceID: "wsp_1234567890",
+        deviceID: "dev_1234567890",
+        status: "registered",
+        statusLabel: "Registered",
+        message: "This phone's install key is registered on this server for future private Activity.",
+        publicKeyFingerprint: "fingerprint_1234567890",
+        updatedAt: "2026-06-14T12:00:00.000Z",
+      }],
+    }} />);
+
+    fireEvent.press(screen.getByText("General"));
+
+    expect(screen.getByText("Private encryption")).toBeTruthy();
+    expect(screen.getByText("This phone's private encryption key is registered on every saved connection.")).toBeTruthy();
+    expect(screen.getByText(/This app generates one private encryption install key on this phone/)).toBeTruthy();
+    expect(screen.getByText("at.example.com")).toBeTruthy();
+    expect(screen.getByText("Registered")).toBeTruthy();
+    expect(screen.getByText(/Key fingerprint:/)).toBeTruthy();
+    fireEvent.press(screen.getByText("Learn more"));
+    expect(openURL).toHaveBeenCalledWith("https://docs.agenttick.sh/private-encryption");
+  });
+
+  it("lets users repair private encryption registration from General settings", () => {
+    const onRepairPrivateEncryptionRegistration = jest.fn();
+    render(<SettingsScreen {...pairedProps} onRepairPrivateEncryptionRegistration={onRepairPrivateEncryptionRegistration} privateEncryptionStatus={{
+      state: "warning",
+      summary: "This phone's private encryption key is not registered with a saved server yet.",
+      detail: "Repair registration so future private Activity can be encrypted for this phone on each connection.",
+      connections: [{
+        id: "conn_1",
+        label: "Local server",
+        serverURL: "http://localhost:8787",
+        deviceID: "dev_1",
+        status: "not_registered",
+        statusLabel: "Not registered",
+        message: "This phone has an install key, but this server does not have a matching active public key for this connection yet.",
+      }],
+    }} />);
+
+    fireEvent.press(screen.getByText("General"));
+    fireEvent.press(screen.getByText("Repair registration"));
+
+    expect(onRepairPrivateEncryptionRegistration).toHaveBeenCalled();
   });
 
   it("does not expose Session Stack settings", () => {
@@ -300,6 +420,7 @@ describe("SettingsScreen — paired state", () => {
     const onResetLocalTestState = jest.fn();
     const onShowHostedExpiryWarning = jest.fn();
     const onShowNativePaywall = jest.fn();
+    const onSetLocalDevAppAccessUnlocked = jest.fn();
     render(
       <SettingsScreen
         {...pairedProps}
@@ -307,18 +428,21 @@ describe("SettingsScreen — paired state", () => {
         onResetLocalTestState={onResetLocalTestState}
         onShowHostedExpiryWarning={onShowHostedExpiryWarning}
         onShowNativePaywall={onShowNativePaywall}
+        onSetLocalDevAppAccessUnlocked={onSetLocalDevAppAccessUnlocked}
       />,
     );
     fireEvent.press(screen.getByText("Developer"));
     expect(screen.getByText("Developer")).toBeTruthy();
     fireEvent.press(screen.getByText("Show native paywall"));
     fireEvent.press(screen.getByText("Show hosted expiry warning"));
+    fireEvent.press(screen.getByText("Grant local dev access"));
     fireEvent.press(screen.getByText("Reset local test state"));
     fireEvent.press(screen.getByText("Diagnostic logs"));
     fireEvent.press(screen.getAllByText("Enable").at(-1)!);
     expect(onShowNativePaywall).toHaveBeenCalledTimes(1);
     expect(onShowHostedExpiryWarning).toHaveBeenCalledTimes(1);
     expect(onResetLocalTestState).toHaveBeenCalledTimes(1);
+    expect(onSetLocalDevAppAccessUnlocked).toHaveBeenCalledWith(true);
     expect(onDiagnosticsEnabledChange).toHaveBeenCalledWith(true);
   });
 

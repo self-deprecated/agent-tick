@@ -208,7 +208,7 @@ describe('AgentTickStore Workspace model', () => {
     expect(local.verifyRequestWaiterToken(waiter.token, request.id, '2026-05-08T00:03:10.000Z')).toMatchObject({ waiterId: waiter.waiterId, requestId: request.id, agentTokenId: credential.agentTokenId });
     expect(local.getRequestForWorkspace(request.id, DEFAULT_WORKSPACE_ID, undefined, '2026-05-08T00:03:30.000Z')).toMatchObject({ agentWaiter: { state: 'waiting', lastSeenAt: '2026-05-08T00:03:00.000Z', leaseExpiresAt: '2026-05-08T00:04:00.000Z' } });
     expect(local.getRequestForWorkspace(request.id, DEFAULT_WORKSPACE_ID, undefined, '2026-05-08T00:04:01.000Z')).toMatchObject({ agentWaiter: { state: 'stale' } });
-    expect(local.getRequestForWorkspace(request.id, DEFAULT_WORKSPACE_ID, undefined, '2026-05-08T01:06:11.000Z')).toMatchObject({ agentWaiter: { state: 'expired' } });
+    expect(local.getRequestForWorkspace(request.id, DEFAULT_WORKSPACE_ID, undefined, '2026-05-08T01:08:01.000Z')).toMatchObject({ agentWaiter: { state: 'expired' } });
 
     local.stopRequestWaiter(waiter.waiterId, 'agent_cancelled', '2026-05-08T00:05:00.000Z');
     local.stopRequestWaiter(waiter.waiterId, 'shutdown', '2026-05-08T00:05:10.000Z');

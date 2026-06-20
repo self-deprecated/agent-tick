@@ -28,16 +28,18 @@ Installer-known targets that are not verified are not documented as supported in
 
 ## First-time setup
 
-For a guided install, copy the setup prompt from the Personal Console after your app/Test Request proof. The prompt points the agent at:
+For a guided install, copy the setup prompt from the Personal Console after your app/Test Request proof. Before enabling rich message/tool mirroring, open the Native App and enable **Settings → General → Private encryption**; the setup skill treats encrypted Activity as the recommended default.
+
+The prompt points the agent at:
 
 ```text
 https://agenttick.sh/skill
 ```
 
-Manual install remains available:
+During setup, the agent should offer `agent-tick features` so you can choose privacy mode and optional mirroring/tool settings. Manual setup remains available:
 
 ```sh
-npx @self-deprecated/agent-tick install
+npx @self-deprecated/agent-tick setup
 ```
 
 ## Keep integration requests reviewable

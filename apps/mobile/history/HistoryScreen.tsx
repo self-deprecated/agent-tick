@@ -19,7 +19,7 @@ import {
 import { RequestContextPanel, QuorumProgressPanel } from "../requestsScreen/RequestPanels";
 import { formatRequestTime, requestTitleStyles } from "../requestsScreen/requestDisplayHelpers";
 import { sessionStackSessionKey } from "../sessionStackState";
-import { orderedSessionTimeline, sessionTimelineItemKey } from "../sessions/sessionTimelineLogic";
+import { groupSessionTimelineItems, orderedSessionTimeline, sessionTimelineItemKey, toolActivityCallCountLabel, toolActivityCountsLabel, toolActivityGroupOutcomeLabel } from "../sessions/sessionTimelineLogic";
 
 export function HistoryScreen({
   error,
@@ -164,15 +164,21 @@ function SessionArchiveDetailScreen({ detail, onBack, summary }: { detail?: Mobi
         <Text style={styles.historyDetailType}>{translateSource("Session Archive")}</Text>
         <Text style={styles.sectionHeading}>{summary.title}</Text>
         {!detail ? <Text style={styles.emptyText}>{translateSource("Session timeline is loading.")}</Text> : null}
-        {detail ? orderedSessionTimeline(detail).map((item) => (
-          item.kind === "status_update" ? (
-            <View key={sessionTimelineItemKey(item)} style={styles.historyRow}>
+        {detail ? groupSessionTimelineItems(orderedSessionTimeline(detail)).map((item) => (
+          item.kind === "status_group" ? item.statusUpdates.map((statusUpdate) => (
+            <View key={statusUpdate.statusId} style={styles.historyRow}>
               <Text style={styles.historyDetailType}>{translateSource("Status Update")}</Text>
-              <MarkdownInlineText text={item.statusUpdate.message} style={styles.statusMessage} />
-              <Text style={styles.historyMeta}>{item.statusUpdate.state} · {formatRequestTime(item.statusUpdate.createdAt)}</Text>
+              <MarkdownInlineText text={statusUpdate.message} style={styles.statusMessage} />
+              <Text style={styles.historyMeta}>{statusUpdate.state} · {formatRequestTime(statusUpdate.createdAt)}</Text>
+            </View>
+          )) : item.kind === "tool_activity_group" ? (
+            <View key={item.group.key} style={styles.historyRow}>
+              <Text style={styles.historyDetailType}>{translateSource("Tool Activity")}</Text>
+              <MarkdownInlineText text={`${translateSource("Tools used")} · ${toolActivityCallCountLabel(item.group.toolActivities)}`} style={styles.statusMessage} />
+              <Text style={styles.historyMeta}>{toolActivityCountsLabel(item.group.toolActivities)} · {toolActivityGroupOutcomeLabel(item.group.toolActivities)} · {formatRequestTime(item.group.toolActivities[0]?.createdAt ?? summary.updatedAt)}</Text>
             </View>
           ) : (
-            <View key={sessionTimelineItemKey(item)} style={styles.historyRow}>
+            <View key={sessionTimelineItemKey(item.timelineItem)} style={styles.historyRow}>
               <Text style={styles.historyDetailType}>{translateSource("Request")}</Text>
               <MarkdownInlineText text={item.request.title} style={styles.statusMessage} />
               <Text style={styles.historyMeta}>{item.request.status} · {formatRequestTime(item.request.createdAt)}</Text>

@@ -19,8 +19,9 @@ export type MarkdownBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; level: number; text: string }
   | { type: "code"; language?: string; text: string }
-  | { type: "list"; ordered: boolean; items: string[] }
-  | { type: "quote"; text: string };
+  | { type: "list"; ordered: boolean; start: number; items: string[] }
+  | { type: "quote"; text: string }
+  | { type: "table"; headers: string[]; rows: string[][] };
 
 type MarkdownInlineTextProps = {
   numberOfLines?: number;
@@ -64,6 +65,8 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
   const quoteLines: string[] = [];
   const listItems: string[] = [];
   let listOrdered = false;
+  let listStart = 1;
+  let nextOrderedListNumber = 1;
   let inCodeFence = false;
   let codeLanguage: string | undefined;
   let codeLines: string[] = [];
@@ -80,8 +83,9 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
   };
   const flushList = () => {
     if (listItems.length === 0) return;
-    blocks.push({ type: "list", ordered: listOrdered, items: [...listItems] });
+    blocks.push({ type: "list", ordered: listOrdered, start: listStart, items: [...listItems] });
     listItems.length = 0;
+    listStart = 1;
   };
   const flushCode = () => {
     blocks.push({ type: "code", language: codeLanguage, text: codeLines.join("\n").replace(/\n+$/u, "") });
@@ -89,7 +93,9 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
     codeLanguage = undefined;
   };
 
-  for (const line of normalized.split("\n")) {
+  const lines = normalized.split("\n");
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex] ?? "";
     const fenceMatch = line.match(/^\s*```\s*([^`]*)?$/u);
     if (inCodeFence) {
       if (fenceMatch) {
@@ -118,6 +124,16 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
       continue;
     }
 
+    const maybeTable = parseMarkdownTable(lines, lineIndex);
+    if (maybeTable) {
+      flushParagraph();
+      flushQuote();
+      flushList();
+      blocks.push(maybeTable.block);
+      lineIndex = maybeTable.endIndex;
+      continue;
+    }
+
     const headingMatch = line.match(/^\s{0,3}(#{1,3})\s+(.+)$/u);
     if (headingMatch) {
       flushParagraph();
@@ -137,7 +153,7 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
     flushQuote();
 
     const unorderedMatch = line.match(/^\s*[-*+]\s+(.+)$/u);
-    const orderedMatch = line.match(/^\s*\d+[.)]\s+(.+)$/u);
+    const orderedMatch = line.match(/^\s*(\d+)[.)]\s+(.+)$/u);
     if (unorderedMatch || orderedMatch) {
       flushParagraph();
       const ordered = Boolean(orderedMatch);
@@ -145,7 +161,15 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
         flushList();
       }
       listOrdered = ordered;
-      listItems.push((orderedMatch?.[1] ?? unorderedMatch?.[1] ?? "").trim());
+      if (orderedMatch) {
+        const explicitNumber = Number(orderedMatch[1]);
+        const itemNumber = explicitNumber === 1 && nextOrderedListNumber > 1 ? nextOrderedListNumber : explicitNumber;
+        if (listItems.length === 0) listStart = itemNumber;
+        nextOrderedListNumber = itemNumber + 1;
+      } else if (listItems.length === 0) {
+        listStart = 1;
+      }
+      listItems.push((orderedMatch?.[2] ?? unorderedMatch?.[1] ?? "").trim());
       continue;
     }
     flushList();
@@ -161,6 +185,37 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
   flushList();
 
   return blocks;
+}
+
+function parseMarkdownTable(lines: string[], startIndex: number): { block: Extract<MarkdownBlock, { type: "table" }>; endIndex: number } | null {
+  const headerLine = lines[startIndex] ?? "";
+  const separatorLine = lines[startIndex + 1] ?? "";
+  if (!isMarkdownTableRow(headerLine) || !isMarkdownTableSeparator(separatorLine)) return null;
+  const headers = splitMarkdownTableRow(headerLine);
+  if (headers.length < 2) return null;
+  const rows: string[][] = [];
+  let endIndex = startIndex + 1;
+  for (let rowIndex = startIndex + 2; rowIndex < lines.length; rowIndex += 1) {
+    const rowLine = lines[rowIndex] ?? "";
+    if (!isMarkdownTableRow(rowLine) || !rowLine.trim()) break;
+    rows.push(splitMarkdownTableRow(rowLine));
+    endIndex = rowIndex;
+  }
+  return { block: { type: "table", headers, rows }, endIndex };
+}
+
+function isMarkdownTableRow(line: string): boolean {
+  return line.includes("|") && splitMarkdownTableRow(line).length >= 2;
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const cells = splitMarkdownTableRow(line);
+  return cells.length >= 2 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell.replace(/\s+/gu, "")));
+}
+
+function splitMarkdownTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/u, "").replace(/\|$/u, "");
+  return trimmed.split("|").map((cell) => cell.trim());
 }
 
 export function parseInlineMarkdown(input: string): MarkdownInline[] {
@@ -186,7 +241,7 @@ function renderBlock(block: MarkdownBlock, index: number, selectable: boolean, p
         <View key={`list:${index}`} style={markdownStyles.list}>
           {block.items.map((item, itemIndex) => (
             <View key={`${itemIndex}:${item}`} style={markdownStyles.listItem}>
-              <Text style={markdownStyles.listMarker}>{block.ordered ? `${itemIndex + 1}.` : "•"}</Text>
+              <Text style={markdownStyles.listMarker}>{block.ordered ? `${block.start + itemIndex}.` : "•"}</Text>
               <Text selectable={selectable} style={[markdownStyles.paragraph, paragraphStyle, markdownStyles.listText]}>
                 {renderInlineTokens(parseInlineMarkdown(item))}
               </Text>
@@ -202,6 +257,31 @@ function renderBlock(block: MarkdownBlock, index: number, selectable: boolean, p
           </Text>
         </View>
       );
+    case "table": {
+      const columnWidths = tableColumnWidths(block);
+      return (
+        <ScrollView horizontal key={`table:${index}`} style={markdownStyles.tableScroll} contentContainerStyle={markdownStyles.table}>
+          <View>
+            <View style={[markdownStyles.tableRow, markdownStyles.tableHeaderRow]}>
+              {block.headers.map((header, cellIndex) => (
+                <View key={`header:${cellIndex}`} style={[markdownStyles.tableCell, { width: columnWidths[cellIndex] }]}>
+                  <Text selectable={selectable} style={[markdownStyles.tableCellText, markdownStyles.tableHeaderCell]}>{renderInlineTokens(parseInlineMarkdown(header))}</Text>
+                </View>
+              ))}
+            </View>
+            {block.rows.map((row, rowIndex) => (
+              <View key={`row:${rowIndex}`} style={markdownStyles.tableRow}>
+                {block.headers.map((_header, cellIndex) => (
+                  <View key={`cell:${rowIndex}:${cellIndex}`} style={[markdownStyles.tableCell, { width: columnWidths[cellIndex] }]}>
+                    <Text selectable={selectable} style={markdownStyles.tableCellText}>{renderInlineTokens(parseInlineMarkdown(row[cellIndex] ?? ""))}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      );
+    }
     case "paragraph":
       return (
         <Text key={`paragraph:${index}`} selectable={selectable} style={[markdownStyles.paragraph, paragraphStyle]}>
@@ -209,6 +289,14 @@ function renderBlock(block: MarkdownBlock, index: number, selectable: boolean, p
         </Text>
       );
   }
+}
+
+function tableColumnWidths(block: Extract<MarkdownBlock, { type: "table" }>): number[] {
+  return block.headers.map((header, index) => {
+    const values = [header, ...block.rows.map((row) => row[index] ?? "")];
+    const longest = Math.max(...values.map((value) => value.length));
+    return Math.min(320, Math.max(112, longest * 8 + 28));
+  });
 }
 
 function renderInlineTokens(tokens: MarkdownInline[]): ReactNode[] {
@@ -318,7 +406,7 @@ function findClosingMarker(input: string, marker: string, start: number, end: nu
 
 const markdownStyles = StyleSheet.create({
   container: {
-    gap: 12,
+    gap: 8,
   },
   codeBlockText: {
     color: "#f8f5ed",
@@ -338,13 +426,14 @@ const markdownStyles = StyleSheet.create({
   },
   heading: {
     color: "#202124",
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: "900",
-    lineHeight: 26,
+    lineHeight: 24,
+    marginTop: 4,
   },
   headingOne: {
-    fontSize: 23,
-    lineHeight: 29,
+    fontSize: 22,
+    lineHeight: 28,
   },
   inlineCode: {
     backgroundColor: "#eee5d4",
@@ -353,7 +442,7 @@ const markdownStyles = StyleSheet.create({
     fontFamily: "monospace",
   },
   list: {
-    gap: 8,
+    gap: 6,
   },
   listItem: {
     alignItems: "flex-start",
@@ -365,7 +454,7 @@ const markdownStyles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "900",
     lineHeight: 25,
-    minWidth: 18,
+    minWidth: 24,
     textAlign: "right",
   },
   listText: {
@@ -384,6 +473,40 @@ const markdownStyles = StyleSheet.create({
   quoteText: {
     color: "#545044",
     fontStyle: "italic",
+  },
+  table: {
+    borderColor: "#b8dacd",
+    borderLeftWidth: 1,
+    borderTopWidth: 1,
+  },
+  tableCell: {
+    alignSelf: "stretch",
+    borderBottomWidth: 1,
+    borderColor: "#b8dacd",
+    borderRightWidth: 1,
+    justifyContent: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  tableCellText: {
+    color: "#202124",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+  },
+  tableHeaderCell: {
+    color: "#184f42",
+    fontWeight: "900",
+  },
+  tableHeaderRow: {
+    backgroundColor: "#dff1eb",
+  },
+  tableRow: {
+    backgroundColor: "#f8fffc",
+    flexDirection: "row",
+  },
+  tableScroll: {
+    borderRadius: 8,
   },
   strong: {
     fontWeight: "900",

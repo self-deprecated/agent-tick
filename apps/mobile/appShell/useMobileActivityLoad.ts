@@ -10,6 +10,7 @@ import {
 } from "../AppLogic";
 import { diagnosticEvents, recordDiagnostic } from "../diagnostics";
 import { mobileSessionStorageKeys, type RuntimeAuthConfig, type SavedMobileAccount } from "../mobileAuth";
+import { decryptMobileRequests, decryptMobileStatusUpdates } from "../mobilePrivateRequests";
 import {
   mobileRequestMatchesSelection,
   normalizeRequests,
@@ -35,6 +36,7 @@ type LoadActivity = (options?: { visible?: boolean }) => Promise<void>;
 type UseMobileActivityLoadOptions = {
   authProvider?: RuntimeAuthConfig["authProvider"];
   didPrimeNotifications: MutableRefObject<boolean>;
+  deviceID: string;
   didShowNotificationSettingsReminder: MutableRefObject<boolean>;
   notificationsEnabled: boolean;
   notificationStatus: NotificationStatus;
@@ -62,6 +64,7 @@ type UseMobileActivityLoadOptions = {
 
 export function useMobileActivityLoad({
   authProvider,
+  deviceID,
   didPrimeNotifications,
   didShowNotificationSettingsReminder,
   notificationsEnabled,
@@ -174,11 +177,16 @@ export function useMobileActivityLoad({
             workspaceID,
           })))
         : fallbackSessions.map((session) => toMobileSessionSummary(session));
-      const latestStatuses = activity
-        .filter((item) => item.kind === "status_update")
-        .map((item) => item.statusUpdate)
-        .slice(0, 5);
-      const pendingRequests = activityRequests.filter((request) => request.status === "pending");
+      const latestStatusCandidates = connectionActivities.length > 0
+        ? connectionActivities.flatMap(({ account, activity: connectionActivity }) => connectionActivity
+            .filter((item) => item.kind === "status_update")
+            .map((item) => ({ ...item.statusUpdate, connectionID: account.id })))
+        : activity.filter((item) => item.kind === "status_update").map((item) => item.statusUpdate);
+      const latestStatuses = await decryptMobileStatusUpdates(latestStatusCandidates.slice(0, 5), { activeDeviceID: deviceID || undefined, savedAccounts });
+      const pendingRequests = await decryptMobileRequests(
+        activityRequests.filter((request) => request.status === "pending"),
+        { activeDeviceID: deviceID || undefined, savedAccounts },
+      );
       recordDiagnostic("info", "requests", "loaded", {
         pendingRequestCount: pendingRequests.length,
         connectionCount: new Set(pendingRequests.map((request) => request.connectionID).filter(Boolean)).size,
@@ -237,7 +245,7 @@ export function useMobileActivityLoad({
         setLoading(false);
       }
     }
-  }, [notificationTargetID, notificationsEnabled, notificationStatus, pushStatus, authProvider, savedAccounts, sdk, selectedWorkspaceID, selectedSourceID, onOpenNotificationSettings]);
+  }, [notificationTargetID, notificationsEnabled, notificationStatus, pushStatus, authProvider, deviceID, savedAccounts, sdk, selectedWorkspaceID, selectedSourceID, onOpenNotificationSettings]);
 
   return { load };
 }

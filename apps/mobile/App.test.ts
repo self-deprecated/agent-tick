@@ -59,6 +59,7 @@ import {
   responseReadOnlyState,
   resolveConnectionWorkspaceIDs,
   shouldFallbackToBootstrapHistory,
+  shouldKeepSavedBootstrapServer,
   trialRemainingLabel,
   webActivitySessionURL,
 } from "./AppLogic";
@@ -198,6 +199,29 @@ describe("mobile account session helpers", () => {
       mobileConnectionCredentialKey(legacyID),
       mobileConnectionCredentialKey(staleSessionID),
     ]));
+  });
+});
+
+describe("mobile app bootstrap", () => {
+  it("keeps a saved self-hosted Clerk server when that server has a stored Clerk connection", () => {
+    const savedServerURL = "https://at.example.com";
+    const defaultServerURL = "https://app.agenttick.sh";
+
+    expect(shouldKeepSavedBootstrapServer({
+      savedServerURL,
+      defaultServerURL,
+      savedAuthConfig: { authProvider: "clerk" },
+      hasSavedLocalSession: false,
+      storedConnections: [{ authProvider: "clerk", serverURL: `${savedServerURL}/` }],
+    })).toBe(true);
+
+    expect(shouldKeepSavedBootstrapServer({
+      savedServerURL,
+      defaultServerURL,
+      savedAuthConfig: { authProvider: "clerk" },
+      hasSavedLocalSession: false,
+      storedConnections: [],
+    })).toBe(false);
   });
 });
 

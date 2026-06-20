@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
-import { BillingPurchaseAttemptCancelRequestSchema, BillingPurchasePreflightRequestSchema, PersonalBillingUpdateSchema } from '@self-deprecated/agent-tick-shared';
+import { BillingPurchaseAttemptCancelRequestSchema, BillingPurchasePreflightRequestSchema, BillingTrialStartRequestSchema, PersonalBillingUpdateSchema } from '@self-deprecated/agent-tick-shared';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman, type AuthContext } from '../auth/context.js';
 import {
@@ -12,6 +12,7 @@ import {
   normalizeRevenueCatTransferEvent,
   preflightPurchase,
   recordRevenueCatTransfer,
+  startNativeTrial,
   recordVerifiedTransaction,
   recomputePersonalEntitlement,
   type BillingProductKey
@@ -36,7 +37,7 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
     const now = new Date();
     const input = PersonalBillingUpdateSchema.parse(request.body);
 
-    if (input.event !== 'delete_account_data' && !config.testAuth && !config.billingTestMode) {
+    if (input.event !== 'delete_account_data' && !config.testAuth && !config.billingTestMode && !await allowsBillingDevGrant(config, store, auth, input.event)) {
       throw billingError(403, 'billing_test_mode_required', 'Production purchase grants require verified App Store, Play, or billing-provider events');
     }
 
@@ -59,6 +60,12 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
     const auth = await requireHuman(request, config, store);
     const input = BillingPurchasePreflightRequestSchema.parse(request.body);
     return preflightPurchase(store, config, personalUserId(auth), input.platform, input.productKey as BillingProductKey);
+  });
+
+  app.post('/v1/billing/purchases/start-trial', async (request) => {
+    const auth = await requireHuman(request, config, store);
+    const input = BillingTrialStartRequestSchema.parse(request.body);
+    return startNativeTrial(store, config, personalUserId(auth), input.platform);
   });
 
   app.post('/v1/billing/purchases/cancel', async (request) => {
@@ -98,6 +105,22 @@ export async function registerBillingRoutes(app: FastifyInstance, { config, stor
   });
 }
 
+async function allowsBillingDevGrant(config: ServerConfig, store: AgentTickStore, auth: AuthContext, event: string): Promise<boolean> {
+  if (event !== 'subscribe_monthly') return false;
+  if (config.billingDevGrantEmailDomains.length === 0 || !auth.userId) return false;
+  const profile = await store.userProfile(auth.userId);
+  return emailDomainAllowedForBillingDevGrant(profile?.email, config.billingDevGrantEmailDomains);
+}
+
+export function emailDomainAllowedForBillingDevGrant(email: string | undefined, allowedDomains: string[]): boolean {
+  const domain = email?.split('@').at(-1)?.trim().toLowerCase();
+  if (!domain) return false;
+  return allowedDomains.some((candidate) => {
+    const allowed = candidate.trim().toLowerCase().replace(/^@+/, '');
+    return allowed !== '' && (domain === allowed || domain.endsWith(`.${allowed}`));
+  });
+}
+
 function addDays(now: Date, days: number): string {
   return new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
@@ -117,7 +140,7 @@ function verifyRevenueCatWebhook(request: FastifyRequest, config: ServerConfig):
 
 function workspaceBillingPlan(config: ServerConfig, auth: AuthContext): string {
   if (auth.workspaceType === 'shared') return 'shared-workspace';
-  return config.mode === 'clerk' ? 'solo' : 'self-hosted';
+  return config.hostedService && config.mode === 'clerk' ? 'solo' : 'self-hosted';
 }
 
 async function workspaceBillingEntitlement(store: AgentTickStore, auth: AuthContext): Promise<{ responsesEnabled: boolean; status: 'active' | 'inactive'; responsesEntitledUntil?: string } | null> {

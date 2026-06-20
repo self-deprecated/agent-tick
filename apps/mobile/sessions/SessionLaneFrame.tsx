@@ -21,7 +21,7 @@ function sessionStateTextStyle(state: string) {
   }
 }
 
-export function SessionLaneFrame({ borderColor, bottomBoundary = false, children, collapsed = false, displayTitle, expanded = false, laneSize, onBack, onBeginReorder, onEndReorder, onMoveReorder, onTitlePress, onToggleSize, onToggleSizeLong, state, topBoundary = false }: { borderColor?: string; bottomBoundary?: boolean; children: ReactNode; collapsed?: boolean; displayTitle: string; expanded?: boolean; laneSize?: SessionLaneSize; onBack?: () => void; onBeginReorder?: (event: any) => void; onEndReorder?: (event: any) => void; onMoveReorder?: (event: any) => void; onTitlePress?: () => void; onToggleSize?: () => void; onToggleSizeLong?: () => void; state: string; topBoundary?: boolean }) {
+export function SessionLaneFrame({ borderColor, bottomBoundary = false, children, collapsed = false, displayTitle, expanded = false, headerAction, laneSize, onBack, onBeginReorder, onEndReorder, onMoveReorder, onTitlePress, onToggleSize, onToggleSizeLong, state, topBoundary = false }: { borderColor?: string; bottomBoundary?: boolean; children: ReactNode; collapsed?: boolean; displayTitle: string; expanded?: boolean; headerAction?: ReactNode; laneSize?: SessionLaneSize; onBack?: () => void; onBeginReorder?: (event: any) => void; onEndReorder?: (event: any) => void; onMoveReorder?: (event: any) => void; onTitlePress?: () => void; onToggleSize?: () => void; onToggleSizeLong?: () => void; state: string; topBoundary?: boolean }) {
   const showsStackBackButton = expanded && onBack;
   const titleBarContent = (
     <>
@@ -38,6 +38,7 @@ export function SessionLaneFrame({ borderColor, bottomBoundary = false, children
         )}
       </View>
       <View style={styles.statusHeaderActions}>
+        {headerAction}
         <Text style={[styles.statusState, sessionStateTextStyle(state)]}>{state}</Text>
         {onToggleSize && laneSize ? (
           <Pressable accessibilityLabel={translateSource("Change Session Lane size")} accessibilityRole="button" delayLongPress={260} hitSlop={10} onLongPress={(event) => { event?.stopPropagation?.(); onToggleSizeLong?.(); }} onPress={(event) => { event?.stopPropagation?.(); onToggleSize(); }} style={styles.sessionLaneSizeButton}>

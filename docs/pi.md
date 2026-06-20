@@ -64,6 +64,25 @@ The skill’s handshake is:
 
 `pi-agent-tick` can send lifecycle Status Updates when Agent Tick config exists and status hooks are enabled. Keep updates quiet and milestone-based: start, blocked, validation, done.
 
+Pi can also mirror chat text and structured Tool Activity into the Agent Tick Session timeline. Message mirroring sends user/assistant text only. The `includeToolUseTurns` setting means “allow assistant text before tool use”; it does not send tool call arguments or tool results. Use `status.toolActivity.visibility` for separate Tool Activity: `off`, `names`, `summaries`, or `details`.
+
+Tool detail disclosure is opt-in and private-only:
+
+```json
+{
+  "status": {
+    "toolActivity": {
+      "enabled": true,
+      "visibility": "details",
+      "detailContentMode": "private",
+      "maxDetailChars": 2000
+    }
+  }
+}
+```
+
+Defaults send no raw tool inputs/results. Disclosed details are redacted, truncated, and sent privately. Before enabling detailed mirrored prompts/tool activity, open the Native App and enable **Settings → General → Private encryption**, then use `agent-tick features` to set privacy mode to private.
+
 ## Optional Sanction gates
 
 Sanction gates are opt-in. Configure rules when you want Pi to require approval before risky local shell commands such as recursive delete, pushes, broad permission changes, or package installs.
@@ -75,7 +94,8 @@ Agent Tick returns the approval decision. Pi still decides whether to run or blo
 The Agent Tick CLI also has a Pi target:
 
 ```sh
-npx @self-deprecated/agent-tick install --target pi
+npx @self-deprecated/agent-tick setup --target pi
+agent-tick features
 ```
 
 That path installs a Pi extension file at `~/.pi/agent/extensions/agent-tick-sanction.ts` focused on risky shell Sanctions. Prefer `pi-agent-tick` when you want mirrored prompts, decision gates, status hooks, and configurable Pi behavior.

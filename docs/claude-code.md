@@ -12,34 +12,38 @@ Claude Code uses Agent Tick primarily through the local MCP adapter. Claude can 
 - `agent_tick_status_update` — send progress.
 - `agent_tick_steering` — ask a bounded question.
 - `agent_tick_sanction` — ask for approval before one specific action.
+
+Each MCP tool accepts `contentMode: "default" | "private" | "plain"`. Agents should normally omit `contentMode` and let Agent Tick follow CLI/workspace privacy settings. Use `private` only when explicitly forcing encryption, and use `plain` only when the user explicitly requests a plaintext override.
 - Optional native permission hook — route Claude Code `PermissionRequest` prompts through Agent Tick Sanctions.
 
 MCP does not automatically intercept Claude Code’s own native permission prompts. Install the optional permission hook only if you want those prompts routed through Agent Tick.
 
 ## Install
 
-Use the setup prompt from the Personal Console for first-time setup, or run a manual dry run:
+Use the setup prompt from the Personal Console for first-time setup. Before enabling rich message/tool mirroring, open the Native App and enable **Settings → General → Private encryption**; setup should recommend encrypted Activity as the default.
+
+For manual setup, run a dry run first:
 
 ```sh
-npx @self-deprecated/agent-tick install --target claude --dry-run
+npx @self-deprecated/agent-tick setup --target claude --dry-run
 ```
 
-Install after reviewing the plan:
+Set up after reviewing the plan:
 
 ```sh
-npx @self-deprecated/agent-tick install --target claude
+npx @self-deprecated/agent-tick setup --target claude
 ```
 
 Choose local project scope when you want this repository to carry the MCP config:
 
 ```sh
-npx @self-deprecated/agent-tick install --target claude --claude-scope local
+npx @self-deprecated/agent-tick setup --target claude --claude-scope local
 ```
 
 Choose global/user scope when this machine should use Agent Tick across Claude Code projects:
 
 ```sh
-npx @self-deprecated/agent-tick install --target claude --claude-scope global
+npx @self-deprecated/agent-tick setup --target claude --claude-scope global
 ```
 
 Verify:
@@ -54,7 +58,7 @@ claude mcp get agent-tick
 To route Claude Code native permission prompts such as Bash/Edit through Agent Tick:
 
 ```sh
-npx @self-deprecated/agent-tick install --target claude --claude-permission-hook
+npx @self-deprecated/agent-tick setup --target claude --claude-permission-hook
 ```
 
 Agent Tick returns allow/deny for Claude Code’s prompt. It does not run the command remotely.
@@ -93,7 +97,7 @@ If approved, Claude Code may run the command locally. If denied or timed out, it
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Claude cannot see Agent Tick tools | MCP entry missing or Claude needs reload | Run `claude mcp get agent-tick`, rerun the installer dry run, then reinstall. |
-| Claude still shows native permission prompts | MCP tools do not intercept native permission prompts | Install `--claude-permission-hook` if desired. |
-| Hook fails closed | Agent Tick CLI config/token missing or server unreachable | Run `agent-tick login`, `agent-tick install`, or `agent-tick config --server ... --token ...`. |
-| Agent Tick hook triggers a permission loop | Missing `Bash(agent-tick:*)` allow rule | Re-run installer with the optional hook flag and restart Claude Code. |
+| Claude cannot see Agent Tick tools | MCP entry missing or Claude needs reload | Run `claude mcp get agent-tick`, rerun the setup dry run, then set up again. |
+| Claude still shows native permission prompts | MCP tools do not intercept native permission prompts | Set up with `--claude-permission-hook` if desired. |
+| Hook fails closed | Agent Tick CLI config/token missing or server unreachable | Run `agent-tick login`, `agent-tick setup`, or `agent-tick config --server ... --token ...`. |
+| Agent Tick hook triggers a permission loop | Missing `Bash(agent-tick:*)` allow rule | Re-run setup with the optional hook flag and restart Claude Code. |

@@ -7,14 +7,14 @@ description: Configure Codex to use Agent Tick through the local MCP adapter.
 
 Codex can use Agent Tick through the local stdio MCP adapter launched with `agent-tick mcp`.
 
-Codex calls Agent Tick MCP tools for Status Updates, Steering, and Sanctions. Agent Tick returns bounded responses; Codex or the local shell still decides what to run.
+Codex calls Agent Tick MCP tools for Status Updates, Steering, and Sanctions. Each MCP tool accepts `contentMode: "default" | "private" | "plain"`, but Codex should normally omit it and let Agent Tick follow the configured/default privacy mode. Use `contentMode: "plain"` only when the user explicitly asks to override privacy. Agent Tick returns bounded responses; Codex or the local shell still decides what to run.
 
 ## Setup
 
-First configure the Agent Tick CLI:
+First configure the Agent Tick CLI. Before enabling rich message/tool mirroring, open the Native App and enable **Settings → General → Private encryption**; Agent Tick setup should recommend encrypted Activity as the default.
 
 ```sh
-npx @self-deprecated/agent-tick install
+npx @self-deprecated/agent-tick setup
 ```
 
 Or configure a server/token manually:
@@ -26,7 +26,7 @@ agent-tick config --server https://app.agenttick.sh --token agent_...
 Verify the CLI can reach Agent Tick:
 
 ```sh
-agent-tick status-update "Codex MCP preflight"
+agent-tick send status "Codex MCP preflight"
 agent-tick mcp --help
 ```
 
@@ -70,7 +70,7 @@ If Codex runs without a real thread ID, do not invent a random Session ID. Agent
 Ask Codex:
 
 ```text
-Use the Agent Tick MCP status tool to send: "Codex MCP preflight; no secrets included." Then continue.
+Use the Agent Tick MCP status tool to send: "Codex MCP preflight; no secrets included." Omit `contentMode` so Agent Tick follows the configured privacy default; pass `contentMode: "private"` only when explicitly forcing encryption, and do not pass `contentMode: "plain"` unless the user requested a plaintext override. Then continue.
 ```
 
 ## Verify Steering
@@ -100,7 +100,7 @@ The action must not be executed by Agent Tick. If denied, stop.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `agent-tick mcp` fails with config guidance | CLI config/token missing | Run `agent-tick install`, `agent-tick login`, or `agent-tick config --server ... --token ...`. |
+| `agent-tick mcp` fails with config guidance | CLI config/token missing | Run `agent-tick setup`, `agent-tick login`, or `agent-tick config --server ... --token ...`. |
 | Codex asks for approval before every Agent Tick tool call | Agent Tick MCP tools are not pre-approved in Codex | Approve only Agent Tick MCP tools, not broad shell access. |
 | Local prompt does not appear | MCP elicitations disabled or unsupported | Enable `mcp_elicitations` if available, or use the remote Agent Tick app/web request. |
 | Request times out or is denied | Human did not approve | Stop or choose a safe alternative. |

@@ -22,12 +22,16 @@ function isTurnStatusUpdate(status: StatusUpdateRecord) {
   return status.metadata?.event === "turn_end";
 }
 
+function encryptedLabel(label: string, contentMode?: string): string {
+  return contentMode === "private" ? `${label} 🔒` : label;
+}
+
 export function LatestStatusCard({ statusUpdates, compact = false, dismissedStatusID, onDismiss }: { statusUpdates: StatusUpdateRecord[]; compact?: boolean; dismissedStatusID?: string | null; onDismiss?: (statusID: string) => void }) {
   const latest = statusUpdates[0];
   if (!latest || latest.statusId === dismissedStatusID) return null;
   const isTurnHeartbeat = isTurnStatusUpdate(latest);
   const source = latest.clientName || latest.workingDirectory || latest.threadId;
-  const title = isTurnHeartbeat ? "Agent activity" : "Latest agent status";
+  const title = encryptedLabel(isTurnHeartbeat ? "Agent activity" : "Latest agent status", latest.contentMode);
   const state = isTurnHeartbeat ? "working" : latest.state;
   const message = isTurnHeartbeat ? "Pi is still working" : latest.message;
   const nextLine = isTurnHeartbeat ? `Last turn completed ${formatRelativeAge(latest.createdAt)}` : latest.nextStep ? `Next: ${latest.nextStep}` : null;

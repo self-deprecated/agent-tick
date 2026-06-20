@@ -28,6 +28,7 @@ const sidebars = {
       items: ['self-hosting-operator-reference']
     },
     'security',
+    'private-encryption',
     'philosophy',
     {
       type: 'category',

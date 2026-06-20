@@ -71,6 +71,7 @@ export function useMobileAccountSessionActions({
   setHistory,
 
   setLoadedSessionServerURL,
+  setLocalDevAppAccessUnlocked,
   setLocalStoreHostedSubscriptionActive,
   setLocalStoreLifetimeUnlocked,
   setLocalStoreTrialPurchased,
@@ -123,6 +124,7 @@ export function useMobileAccountSessionActions({
   setHistory: Dispatch<SetStateAction<MobileRequest[]>>;
 
   setLoadedSessionServerURL: Dispatch<SetStateAction<string>>;
+  setLocalDevAppAccessUnlocked: Dispatch<SetStateAction<boolean>>;
   setLocalStoreHostedSubscriptionActive: Dispatch<SetStateAction<boolean>>;
   setLocalStoreLifetimeUnlocked: Dispatch<SetStateAction<boolean>>;
   setLocalStoreTrialPurchased: Dispatch<SetStateAction<boolean>>;
@@ -199,6 +201,7 @@ export function useMobileAccountSessionActions({
     setLocalStoreTrialStartedAt(null);
     setLocalStoreTrialPurchased(false);
     setLocalStoreLifetimeUnlocked(false);
+    setLocalDevAppAccessUnlocked(false);
     setLocalStoreHostedSubscriptionActive(false);
     setStoreEntitlementsSettled(Platform.OS !== "ios" && Platform.OS !== "android");
     setPaywallConfig(null);
@@ -208,7 +211,7 @@ export function useMobileAccountSessionActions({
     saveDiagnosticsEnabled(false);
     recordDiagnostic("info", "debug", "local_test_state_reset");
     setDiagnosticsEventCount(diagnosticEvents().length);
-  }, [clearStoredSessionForServer, debugDefaultServer, onForgetClerkSession, savedAccounts, serverURL, setAccountPending, setConnectionStatus, setConnectionTokens, setCurrentAccountProfile, setDebugPaywallVisible, setDeviceID, setDiagnosticsEnabled, setDiagnosticsEventCount, setHistory, setLoadedSessionServerURL, setLocalStoreHostedSubscriptionActive, setLocalStoreLifetimeUnlocked, setLocalStoreTrialPurchased, setLocalStoreTrialStartedAt, setNotificationTargetID, setNotificationsEnabled, setPaywallConfig, setPaywallDismissedKey, setPersonalBillingStatus, setPushStatus, setRequests, setSavedAccounts, setSelectedID, setSelectedSourceID, setSelectedWorkspaceID, setServerURL, setStatusUpdates, setStoreEntitlementsSettled, setStoreProducts, setToken, setWorkspaces]);
+  }, [clearStoredSessionForServer, debugDefaultServer, onForgetClerkSession, savedAccounts, serverURL, setAccountPending, setConnectionStatus, setConnectionTokens, setCurrentAccountProfile, setDebugPaywallVisible, setDeviceID, setDiagnosticsEnabled, setDiagnosticsEventCount, setHistory, setLoadedSessionServerURL, setLocalDevAppAccessUnlocked, setLocalStoreHostedSubscriptionActive, setLocalStoreLifetimeUnlocked, setLocalStoreTrialPurchased, setLocalStoreTrialStartedAt, setNotificationTargetID, setNotificationsEnabled, setPaywallConfig, setPaywallDismissedKey, setPersonalBillingStatus, setPushStatus, setRequests, setSavedAccounts, setSelectedID, setSelectedSourceID, setSelectedWorkspaceID, setServerURL, setStatusUpdates, setStoreEntitlementsSettled, setStoreProducts, setToken, setWorkspaces]);
 
   const resetLocalTestState = useCallback(() => {
     Alert.alert(
@@ -402,7 +405,8 @@ export function useMobileAccountSessionActions({
     );
   }, [activeClerkSessionID, clearStoredSessionForServer, connectionStatusDisconnected, currentAccountProfile, onForgetClerkSession, runtimeAuthProvider, savedAccounts, sdk, serverURL, setAccountPending, setConnectionStatus, setConnectionTokens, setCurrentAccountProfile, setDeviceID, setDiagnosticsEventCount, setError, setHistory, setLoading, setPushStatus, setRequests, setSavedAccounts, setSelectedID, setSelectedWorkspaceID, setToken, setWorkspaces]);
 
-  const useHostedSignIn = useCallback(async () => {
+  const signInToServer = useCallback(async (targetServerURL: string) => {
+    const normalizedTarget = normalizeServerURL(targetServerURL);
     if (deviceID) {
       void bestEffortUnregisterDevice();
     }
@@ -418,9 +422,14 @@ export function useMobileAccountSessionActions({
     setHistory([]);
     setSelectedID(null);
     setConnectionStatus("checking");
-    const config = await fetchRuntimeAuthConfigIfAvailable(debugDefaultServer);
-    onRuntimeAuthConfig?.(debugDefaultServer, config);
-  }, [bestEffortUnregisterDevice, clearStoredSessionForServer, debugDefaultServer, deviceID, onRuntimeAuthConfig, setConnectionStatus, setCurrentAccountProfile, setDeviceID, setHistory, setLoadedSessionServerURL, setPushStatus, setRequests, setSelectedID, setSelectedWorkspaceID, setToken, setWorkspaces]);
+    setServerURL(normalizedTarget);
+    const config = await fetchRuntimeAuthConfigIfAvailable(normalizedTarget);
+    onRuntimeAuthConfig?.(normalizedTarget, config);
+  }, [bestEffortUnregisterDevice, clearStoredSessionForServer, deviceID, onRuntimeAuthConfig, setConnectionStatus, setCurrentAccountProfile, setDeviceID, setHistory, setLoadedSessionServerURL, setPushStatus, setRequests, setSelectedID, setSelectedWorkspaceID, setServerURL, setToken, setWorkspaces]);
+
+  const useHostedSignIn = useCallback(async () => {
+    await signInToServer(debugDefaultServer);
+  }, [debugDefaultServer, signInToServer]);
 
   const selectWorkspace = useCallback((workspaceID: string) => {
     if (workspaceID === selectedWorkspaceID) return;
@@ -467,6 +476,7 @@ export function useMobileAccountSessionActions({
     handleServerURLChange,
     resetLocalTestState,
     selectWorkspace,
+    signInToServer,
     signOutFromSettings,
     useHostedSignIn,
   };

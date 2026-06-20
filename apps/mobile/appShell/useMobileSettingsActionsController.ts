@@ -1,9 +1,20 @@
+import { useCallback } from "react";
+import { Alert } from "react-native";
+import { type AgentTickClient } from "@self-deprecated/agent-tick-sdk";
 import { useMobileConnectionActions } from "./useMobileConnectionActions";
 import { useMobilePushNotifications } from "./useMobilePushNotifications";
 import { useMobilePurchaseActions } from "./useMobilePurchaseActions";
 import { useMobileAccountSessionActions } from "./useMobileAccountSessionActions";
 import { useMobileDiagnosticsActions } from "./useMobileDiagnosticsActions";
 import { useMobilePairingAndDeepLinks } from "./useMobilePairingAndDeepLinks";
+
+type HostedDevGrantClient = Pick<AgentTickClient, "updatePersonalBilling">;
+
+export async function grantHostedDevResponseAccess(
+  sdk: HostedDevGrantClient,
+): Promise<void> {
+  await sdk.updatePersonalBilling({ event: "subscribe_monthly" });
+}
 
 type UseMobileSettingsActionsControllerInput =
   Parameters<typeof useMobileConnectionActions>[0] &
@@ -65,6 +76,7 @@ export function useMobileSettingsActionsController({
   setError,
   setHistory,
   setLoadedSessionServerURL,
+  setLocalDevAppAccessUnlocked,
   setLocalStoreHostedSubscriptionActive,
   setLocalStoreLifetimeUnlocked,
   setLocalStoreTrialPurchased,
@@ -165,6 +177,7 @@ export function useMobileSettingsActionsController({
     handleServerURLChange,
     resetLocalTestState,
     selectWorkspace,
+    signInToServer,
     signOutFromSettings,
     useHostedSignIn,
   } = useMobileAccountSessionActions({
@@ -193,6 +206,7 @@ export function useMobileSettingsActionsController({
     setError,
     setHistory,
     setLoadedSessionServerURL,
+    setLocalDevAppAccessUnlocked,
     setLocalStoreHostedSubscriptionActive,
     setLocalStoreLifetimeUnlocked,
     setLocalStoreTrialPurchased,
@@ -234,6 +248,28 @@ export function useMobileSettingsActionsController({
     setDiagnosticsEventCount,
     setDiagnosticsLastSentAt,
   });
+
+  const setLocalDevAppAccess = useCallback(async (unlocked: boolean) => {
+    if (!unlocked || !__DEV__) {
+      setLocalDevAppAccessUnlocked(false);
+      return;
+    }
+    setLocalDevAppAccessUnlocked(true);
+    if (isHostedAccount && runtimeAuthProvider === "clerk") {
+      try {
+        await grantHostedDevResponseAccess(sdk);
+        await refreshPersonalBilling({ configureStore: false });
+        Alert.alert("Dev app access granted", "Local app access and hosted dev billing access are active.");
+      } catch (err) {
+        Alert.alert(
+          "Hosted dev grant failed",
+          err instanceof Error
+            ? `${err.message}\n\nLocal app access is still active, but hosted responses require RevenueCat or server billing test mode.`
+            : "Local app access is still active, but hosted responses require RevenueCat or server billing test mode.",
+        );
+      }
+    }
+  }, [isHostedAccount, refreshPersonalBilling, runtimeAuthProvider, sdk, setLocalDevAppAccessUnlocked]);
 
   const { handlePairingScan, openScanner, pairDevice, scannerLocked } = useMobilePairingAndDeepLinks({
     currentAuthToken,
@@ -278,6 +314,7 @@ export function useMobileSettingsActionsController({
     purchaseLifetimeUnlock,
     restorePurchases,
     linkPurchasesToHostedAccount,
+    setLocalDevAppAccessUnlocked: setLocalDevAppAccess,
     subscribeHostedPersonal,
     manageSubscription,
     bestEffortUnregisterDevice,
@@ -288,6 +325,7 @@ export function useMobileSettingsActionsController({
     handleServerURLChange,
     resetLocalTestState,
     selectWorkspace,
+    signInToServer,
     signOutFromSettings,
     useHostedSignIn,
     toggleDiagnostics,

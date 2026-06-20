@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { translateSource } from "@agent-tick/i18n";
 import type { PaywallConfig, ProductKey, StoreProduct } from "./purchases";
 
@@ -78,9 +78,9 @@ export function NativePaywall({
             ) : null}
 
             <View style={styles.disclosureBox}>
-              <Text style={styles.disclosureText}>{tr(config?.trialNote ?? "Free App Store purchase. No subscription starts.")}</Text>
-              <Text style={styles.disclosureText}>{tr("Hosted subscriptions auto-renew until canceled in your App Store account settings.")}</Text>
-              <Text style={styles.disclosureText}>{tr(config?.footerNote ?? "Digital access uses App Store in-app purchases.")}</Text>
+              <Text style={styles.disclosureText}>{tr(config?.trialNote ?? trialNoteCopy())}</Text>
+              <Text style={styles.disclosureText}>{tr(Platform.OS === "android" ? "Hosted subscriptions auto-renew until canceled in your Google Play account settings." : "Hosted subscriptions auto-renew until canceled in your App Store account settings.")}</Text>
+              <Text style={styles.disclosureText}>{tr(config?.footerNote ?? footerNoteCopy())}</Text>
             </View>
 
             <View style={styles.actionRow}>
@@ -178,7 +178,7 @@ function actionForProduct(productKey: ProductKey, actions: Pick<NativePaywallPro
 function descriptionForProduct(productKey: ProductKey): string {
   switch (productKey) {
     case "trial_7_day":
-      return translateSource("Free App Store purchase. No subscription starts.");
+      return translateSource(trialNoteCopy());
     case "lifetime_unlock":
       return translateSource("Use the first-party app with self-hosted Agent Tick servers forever.");
     case "hosted_personal_monthly":
@@ -193,6 +193,18 @@ function badgeForProduct(productKey: ProductKey, config?: PaywallConfig | null):
   if (productKey === "hosted_personal_yearly") return config?.yearlyBadge;
   if (productKey === "trial_7_day") return "Free";
   return undefined;
+}
+
+function trialNoteCopy(): string {
+  return Platform.OS === "android"
+    ? "Free 7-day trial. No Google Play purchase starts."
+    : "Free App Store purchase. No subscription starts.";
+}
+
+function footerNoteCopy(): string {
+  return Platform.OS === "android"
+    ? "Paid digital access uses Google Play purchases."
+    : "Digital access uses App Store in-app purchases.";
 }
 
 function fallbackProduct(productKey: ProductKey): StoreProduct {

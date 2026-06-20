@@ -7,6 +7,11 @@ import { spawn } from "node:child_process";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const scriptPath = path.join(projectRoot, "scripts", "mobile-build-android-local.sh");
+const mobileAppConfig = JSON.parse(await readFile(path.join(projectRoot, "apps", "mobile", "app.json"), "utf8"));
+const mobileAppVersion = mobileAppConfig.expo.version;
+const defaultProductionArtifactPattern = new RegExp(
+  `--output .*apps/mobile/builds/agent-tick-android-production-v${mobileAppVersion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-20260612T110203Z\\.aab`,
+);
 
 async function writeExecutable(filePath, content) {
   await writeFile(filePath, content, { mode: 0o755 });
@@ -70,15 +75,16 @@ exit 0
     COREPACK_LOG: path.join(root, "corepack.log"),
     EAS_PROJECT_ROOT_LOG: path.join(root, "eas-project-root.log"),
     PNPM_PATH_LOG: path.join(root, "pnpm-path.log"),
+    AGENT_TICK_BUILD_TIMESTAMP: "20260612T110203Z",
   };
   delete env.EAS_BUILD_PROFILE;
 
   return { root, env };
 }
 
-function runScript(env) {
+function runScript(env, args = []) {
   return new Promise((resolve) => {
-    const child = spawn("bash", [scriptPath], {
+    const child = spawn("bash", [scriptPath, ...args], {
       cwd: projectRoot,
       env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -103,7 +109,9 @@ test("Android local build bootstrap tolerates yes SIGPIPE after sdkmanager accep
   assert.equal(result.signal, null);
   assert.equal(result.code, 0, result.stderr);
   assert.match(await readFile(env.SDKMANAGER_LOG, "utf8"), /--licenses/);
-  assert.match(await readFile(env.COREPACK_LOG, "utf8"), /eas-cli build --platform android --profile production --local/);
+  const corepackLog = await readFile(env.COREPACK_LOG, "utf8");
+  assert.match(corepackLog, /eas-cli build --platform android --profile production --local/);
+  assert.match(corepackLog, defaultProductionArtifactPattern);
   assert.equal((await readFile(env.EAS_PROJECT_ROOT_LOG, "utf8")).trim(), projectRoot);
   assert.equal((await readFile(env.PNPM_PATH_LOG, "utf8")).trim(), path.join(env.AGENT_TICK_LOCAL_TOOLS_BIN, "pnpm"));
 });
@@ -116,6 +124,19 @@ test("Android local build bootstrap still fails when sdkmanager license acceptan
 
   assert.equal(result.signal, null);
   assert.equal(result.code, 7);
+});
+
+test("Android local build output can be overridden", async () => {
+  const { env, root } = await makeHarness();
+  const customOutput = path.join(root, "custom-output.aab");
+
+  const result = await runScript(env, ["--output", customOutput]);
+
+  assert.equal(result.signal, null);
+  assert.equal(result.code, 0, result.stderr);
+  const corepackLog = await readFile(env.COREPACK_LOG, "utf8");
+  assert.match(corepackLog, new RegExp(`--output ${customOutput.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.doesNotMatch(corepackLog, defaultProductionArtifactPattern);
 });
 
 test("EAS archive ignores local Android SDK and Gradle tools", async () => {

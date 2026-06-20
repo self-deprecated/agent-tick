@@ -33,6 +33,11 @@ import {
   sessionTimelineItemKey,
   sessionTimelineRenderWindow,
   shouldAutoFocusSessionTimelineNewActivity,
+  toolActivityCallCountLabel,
+  toolActivityCountsLabel,
+  toolActivityGroupInProgress,
+  toolActivityGroupOutcomeLabel,
+  type SessionToolActivityGroup,
   type TimelineRenderWindow,
 } from "./sessionTimelineLogic";
 
@@ -48,6 +53,10 @@ function sessionTransitionRuntime() {
 function shouldSkipSessionLaneExpansionAnimation() {
   const runtime = sessionTransitionRuntime();
   return Boolean(runtime.jest || runtime.process?.env?.NODE_ENV === "test");
+}
+
+function encryptedLabel(label: string, contentMode?: string): string {
+  return contentMode === "private" ? `${label} 🔒` : label;
 }
 
 function isRequestPastDeadline(request: MobileRequest) {
@@ -82,6 +91,11 @@ export function SessionDetailTimeline({
   userAtTimelineEnd = false,
   collapseScrollProgress,
   collapseTargetViewportHeight,
+  messageBodiesExpanded,
+  messageBodiesFocusRevision,
+  pastRequestPresentation = "auto",
+  scrollEnabled = true,
+  showNewActivityNudge = true,
 }: {
   detail: SessionDetail;
   onRespond: (request: MobileRequest, choice: Choice) => void;
@@ -102,6 +116,11 @@ export function SessionDetailTimeline({
   userAtTimelineEnd?: boolean;
   collapseScrollProgress?: Animated.Value;
   collapseTargetViewportHeight?: number;
+  messageBodiesExpanded?: boolean;
+  messageBodiesFocusRevision?: number;
+  pastRequestPresentation?: "auto" | "collapsed";
+  scrollEnabled?: boolean;
+  showNewActivityNudge?: boolean;
 }) {
   const timeline = useMemo(() => orderedSessionTimeline(detail), [detail]);
   const timelineEnd = timeline[timeline.length - 1];
@@ -120,14 +139,20 @@ export function SessionDetailTimeline({
   const timelineScrollYRef = useRef(0);
   const timelineItemsTopRef = useRef(0);
   const requestLayoutYRef = useRef<Record<string, number>>({});
+  const statusLayoutYRef = useRef<Record<string, number>>({});
   const initialScrollDoneRef = useRef("");
+  const observedMessageBodiesFocusRevisionRef = useRef(0);
+  const pendingMessageBodiesFocusRevisionRef = useRef(0);
+  const pendingMessageBodiesFocusLayoutVersionRef = useRef(0);
+  const pendingMessageBodiesFocusContentHeightRef = useRef(0);
   const downNudge = useRef(new Animated.Value(0)).current;
   const timelineAtEnd = timelineViewportHeight > 0 && timelineContentHeight > 0
     ? timelineContentHeight <= timelineViewportHeight + timelineScrollY + 56
     : userAtTimelineEnd;
   const autoFocusNewActivity = shouldAutoFocusSessionTimelineNewActivity({ userIdle, userAtTimelineEnd: userAtTimelineEnd || timelineAtEnd });
   const hasNewActivity = Boolean(timelineEndKey && seenTimelineEndKey && timelineEndKey !== seenTimelineEndKey && !autoFocusNewActivity);
-  const showNewActivityHint = hasNewActivity && !timelineAtEnd;
+  const showNewActivityHint = showNewActivityNudge && hasNewActivity && !timelineAtEnd;
+  const latestExpandableStatusID = useMemo(() => latestExpandableStatusUpdateID(timeline), [timeline]);
 
   useEffect(() => {
     setFocusedRequestID(defaultFocusedRequestID);
@@ -135,6 +160,7 @@ export function SessionDetailTimeline({
     setSeenTimelineEndKey(timelineEndKey);
     initialScrollDoneRef.current = "";
     requestLayoutYRef.current = {};
+    statusLayoutYRef.current = {};
     timelineItemsTopRef.current = 0;
     setTimelineLayoutVersion((version) => version + 1);
   }, [detail.summary.sessionId]);
@@ -165,6 +191,25 @@ export function SessionDetailTimeline({
     initialScrollDoneRef.current = initialScrollKey;
     requestAnimationFrame(() => scrollViewRef.current?.scrollToEnd({ animated: false }));
   }, [defaultFocusedRequestID, detail.summary.sessionId, timelineContentHeight, timelineEndKey, timelineLayoutVersion, timelineViewportHeight]);
+
+  useEffect(() => {
+    if (!messageBodiesExpanded || !messageBodiesFocusRevision) return;
+    if (messageBodiesFocusRevision === observedMessageBodiesFocusRevisionRef.current) return;
+    observedMessageBodiesFocusRevisionRef.current = messageBodiesFocusRevision;
+    pendingMessageBodiesFocusRevisionRef.current = messageBodiesFocusRevision;
+    pendingMessageBodiesFocusLayoutVersionRef.current = timelineLayoutVersion;
+    pendingMessageBodiesFocusContentHeightRef.current = timelineContentHeight;
+  }, [messageBodiesExpanded, messageBodiesFocusRevision, timelineContentHeight, timelineLayoutVersion]);
+
+  useEffect(() => {
+    if (!messageBodiesExpanded || !pendingMessageBodiesFocusRevisionRef.current || !latestExpandableStatusID) return;
+    if (timelineLayoutVersion <= pendingMessageBodiesFocusLayoutVersionRef.current) return;
+    if (timelineContentHeight <= pendingMessageBodiesFocusContentHeightRef.current) return;
+    const y = statusLayoutYRef.current[latestExpandableStatusID];
+    if (typeof y !== "number") return;
+    pendingMessageBodiesFocusRevisionRef.current = 0;
+    requestAnimationFrame(() => requestAnimationFrame(() => scrollViewRef.current?.scrollTo({ y: Math.max(0, timelineItemsTopRef.current + y - 6), animated: true })));
+  }, [latestExpandableStatusID, messageBodiesExpanded, timelineContentHeight, timelineLayoutVersion]);
 
   const effectiveCollapseTargetViewportHeight = collapseTargetViewportHeight ?? timelineViewportHeight;
   useEffect(() => {
@@ -263,6 +308,7 @@ export function SessionDetailTimeline({
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         onScroll={handleTimelineScroll}
         ref={scrollViewRef}
+        scrollEnabled={scrollEnabled}
         scrollEventThrottle={120}
         style={[styles.requestScroll, styles.sessionTimelineScroll]}
       >
@@ -286,6 +332,10 @@ export function SessionDetailTimeline({
             requestLayoutYRef.current[requestID] = y;
             setTimelineLayoutVersion((version) => version + 1);
           }}
+          onStatusLayout={(statusID, y) => {
+            statusLayoutYRef.current[statusID] = y;
+            setTimelineLayoutVersion((version) => version + 1);
+          }}
           onRespond={onRespond}
           onSubmitQuestionnaire={onSubmitQuestionnaire}
           onTimelineLayout={(y) => {
@@ -293,6 +343,7 @@ export function SessionDetailTimeline({
             setTimelineLayoutVersion((version) => version + 1);
           }}
           onUnlockResponses={onUnlockResponses}
+          pastRequestPresentation={pastRequestPresentation}
           questionnaireAnswers={questionnaireAnswers}
           readOnly={readOnly}
           readOnlyReason={readOnlyReason}
@@ -302,6 +353,7 @@ export function SessionDetailTimeline({
           setReply={setReply}
           timeline={renderedTimeline}
           unlockResponsesLabel={unlockResponsesLabel}
+          messageBodiesExpanded={messageBodiesExpanded}
         />
       </ScrollView>
     </View>
@@ -315,6 +367,7 @@ export function SessionTimelineContent({
   onRequestLayout,
   onRespond,
   onSubmitQuestionnaire,
+  onStatusLayout,
   onTimelineLayout,
   pastRequestPresentation = "auto",
   choiceInteractionMode = "click-to-submit",
@@ -328,6 +381,7 @@ export function SessionTimelineContent({
   respondingRequestKeys = {},
   unlockResponsesLabel,
   onUnlockResponses,
+  messageBodiesExpanded,
 }: {
   timeline: ActivityItem[];
   focusedRequestID: string | null;
@@ -335,6 +389,7 @@ export function SessionTimelineContent({
   onRequestLayout?: (requestID: string, y: number) => void;
   onRespond: (request: MobileRequest, choice: Choice) => void;
   onSubmitQuestionnaire: (request: MobileRequest, answers?: Record<string, string[]>) => void;
+  onStatusLayout?: (statusID: string, y: number) => void;
   onTimelineLayout?: (y: number) => void;
   pastRequestPresentation?: "auto" | "collapsed";
   choiceInteractionMode?: ChoiceInteractionMode;
@@ -348,12 +403,13 @@ export function SessionTimelineContent({
   respondingRequestKeys?: Record<string, boolean | undefined>;
   unlockResponsesLabel?: string;
   onUnlockResponses?: () => void;
+  messageBodiesExpanded?: boolean;
 }) {
-  const timelineItems = useMemo(() => groupSessionTimelineItems(timeline), [timeline]);
+  const timelineItems = useMemo(() => groupSessionTimelineDisplayItems(groupSessionTimelineItems(timeline)), [timeline]);
   return (
     <View onLayout={(event) => onTimelineLayout?.(event.nativeEvent.layout.y)} style={styles.sessionTimelineItems}>
-      {timelineItems.map((item) => item.kind === "status_group" ? (
-        <SessionStatusTimelineGroup key={item.key} statusUpdates={item.statusUpdates} />
+      {timelineItems.map((item) => item.kind === "activity_group" ? (
+        <SessionActivityTimelineGroup key={item.key} groupKey={item.key} messageBodiesExpanded={messageBodiesExpanded} onStatusLayout={onStatusLayout} rows={item.rows} />
       ) : (
         <SessionRequestTimelineItem
           choiceInteractionMode={choiceInteractionMode}
@@ -381,20 +437,360 @@ export function SessionTimelineContent({
   );
 }
 
-function SessionStatusTimelineGroup({ statusUpdates }: { statusUpdates: StatusUpdateRecord[] }) {
+type SessionTimelineActivityRow =
+  | { kind: "status"; key: string; statusUpdates: StatusUpdateRecord[] }
+  | { kind: "tool"; key: string; group: SessionToolActivityGroup };
+
+type SessionTimelineDisplayItem =
+  | { kind: "activity_group"; key: string; rows: SessionTimelineActivityRow[] }
+  | Extract<ReturnType<typeof groupSessionTimelineItems>[number], { kind: "request" }>;
+
+function groupSessionTimelineDisplayItems(timelineItems: ReturnType<typeof groupSessionTimelineItems>): SessionTimelineDisplayItem[] {
+  const displayItems: SessionTimelineDisplayItem[] = [];
+  let rows: SessionTimelineActivityRow[] = [];
+  const flushRows = () => {
+    if (!rows.length) return;
+    displayItems.push({ kind: "activity_group", key: rows[0]?.key ?? "activity", rows });
+    rows = [];
+  };
+
+  for (const item of timelineItems) {
+    if (item.kind === "request") {
+      flushRows();
+      displayItems.push(item);
+      continue;
+    }
+    if (item.kind === "status_group") {
+      rows.push({ kind: "status", key: item.key, statusUpdates: item.statusUpdates });
+      continue;
+    }
+    rows.push({ kind: "tool", key: item.group.key, group: item.group });
+  }
+  flushRows();
+  return displayItems;
+}
+
+function statusMessageRole(statusUpdate: StatusUpdateRecord): "assistant" | "user" | "system" | undefined {
+  const privateContent = privateStatusContent(statusUpdate);
+  const role = privateContent?.status === "decrypted" ? privateContent.role : statusUpdate.metadata?.role;
+  return role === "assistant" || role === "user" || role === "system" ? role : undefined;
+}
+
+function statusContextUsageLabel(statusUpdate: StatusUpdateRecord): string | null {
+  const usage = statusUpdate.contextUsage;
+  if (!usage) return null;
+  const tokenText = usage.tokens === null ? "unknown" : usage.tokens >= 1000 ? `${Math.round(usage.tokens / 1000)}k` : String(usage.tokens);
+  const windowText = usage.contextWindow >= 1000 ? `${Math.round(usage.contextWindow / 1000)}k` : String(usage.contextWindow);
+  const percentText = usage.percent === null ? "unknown" : `${Math.round(usage.percent)}%`;
+  return `${tokenText} / ${windowText} · ${percentText}`;
+}
+
+function privateStatusContent(statusUpdate: StatusUpdateRecord) {
+  return (statusUpdate as StatusUpdateRecord & {
+    privateContent?:
+      | { status: "decrypted"; body?: string; preview?: string; role?: "assistant" | "user" | "system"; collapsedByDefault?: boolean; contentFormat?: "markdown" | "text" }
+      | { status: "unsupported" | "locked" | "error"; message: string };
+  }).privateContent;
+}
+
+function statusExpandableMessageBody(statusUpdate: StatusUpdateRecord): string | undefined {
+  const privateContent = privateStatusContent(statusUpdate);
+  if (privateContent?.status !== "decrypted" || !privateContent.body?.trim()) return undefined;
+  return privateContent.body.trim() === statusUpdate.message.trim() ? undefined : privateContent.body;
+}
+
+function statusHasExpandableMessageBody(statusUpdate: StatusUpdateRecord): boolean {
+  return Boolean(statusExpandableMessageBody(statusUpdate));
+}
+
+export function sessionHasExpandableMessageBodies(detail?: Pick<SessionDetail, "timeline">): boolean {
+  return Boolean(detail?.timeline.some((item) => item.kind === "status_update" && statusHasExpandableMessageBody(item.statusUpdate)));
+}
+
+function latestExpandableStatusUpdateID(timeline: ActivityItem[]): string | undefined {
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const item = timeline[index];
+    if (item?.kind === "status_update" && statusHasExpandableMessageBody(item.statusUpdate)) return item.statusUpdate.statusId;
+  }
+  return undefined;
+}
+
+function statusRoleLabel(statusUpdate: StatusUpdateRecord): string {
+  const privateContent = privateStatusContent(statusUpdate);
+  const metadataRole = statusUpdate.metadata?.role;
+  const role = privateContent?.status === "decrypted" ? privateContent.role : metadataRole;
+  if (role === "assistant") return encryptedLabel(translateSource("Assistant"), statusUpdate.contentMode);
+  if (role === "user") return encryptedLabel(translateSource("User"), statusUpdate.contentMode);
+  return encryptedLabel(translateSource("Status"), statusUpdate.contentMode);
+}
+
+function isMirroredMessageStatus(statusUpdate: StatusUpdateRecord): boolean {
+  const privateContent = privateStatusContent(statusUpdate);
+  return statusUpdate.metadata?.event === "message_end" || (privateContent?.status === "decrypted" && Boolean(privateContent.role));
+}
+
+function isRoutineLifecycleStatus(statusUpdate: StatusUpdateRecord): boolean {
+  const event = statusUpdate.metadata?.event;
+  if (event && ["before_agent_start", "agent_start", "agent_end", "session_shutdown", "turn_end", "working_heartbeat"].includes(event)) return true;
+  const message = statusUpdate.message.trim().toLowerCase();
+  return message === "working" || message === "finished; waiting" || message === "last turn completed; pi is still working";
+}
+
+function visibleStatusUpdatesForGroup(statusUpdates: StatusUpdateRecord[]): StatusUpdateRecord[] {
+  if (!statusUpdates.some(isMirroredMessageStatus)) return statusUpdates;
+  return statusUpdates.filter((statusUpdate) => !isRoutineLifecycleStatus(statusUpdate));
+}
+
+function privateToolActivityContent(toolActivity: Extract<ActivityItem, { kind: "tool_activity" }>["toolActivity"]) {
+  return (toolActivity as typeof toolActivity & {
+    privateContent?:
+      | { status: "decrypted"; detail?: Record<string, unknown> }
+      | { status: "unsupported" | "locked" | "error"; message: string };
+  }).privateContent;
+}
+
+type ToolActivityDisplayCall = {
+  key: string;
+  toolName: string;
+  title: string;
+  meta: string;
+  result?: string;
+  repairMessage?: string;
+};
+
+function toolActivityDetail(toolActivity: Extract<ActivityItem, { kind: "tool_activity" }>["toolActivity"]): Record<string, unknown> | undefined {
+  const privateContent = privateToolActivityContent(toolActivity);
+  return privateContent?.status === "decrypted" ? privateContent.detail : undefined;
+}
+
+function toolActivityRepairMessage(toolActivity: Extract<ActivityItem, { kind: "tool_activity" }>["toolActivity"]): string | undefined {
+  const privateContent = privateToolActivityContent(toolActivity);
+  return privateContent && privateContent.status !== "decrypted" ? privateContent.message : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function stringField(object: Record<string, unknown> | undefined, field: string): string | undefined {
+  const value = object?.[field];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function truncateMiddle(value: string, maxLength = 140): string {
+  if (value.length <= maxLength) return value;
+  const head = Math.ceil((maxLength - 1) * 0.62);
+  const tail = Math.floor((maxLength - 1) * 0.38);
+  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
+}
+
+function commandSnippet(command: string): string {
+  const normalized = command.replace(/\s+/g, " ").trim();
+  return truncateMiddle(normalized, 180);
+}
+
+function titleForToolCall(toolName: string, detail: Record<string, unknown> | undefined, fallbackSummary: string | undefined): string {
+  const input = asRecord(detail?.input);
+  if (toolName === "bash") {
+    const command = stringField(input, "command");
+    return command ? commandSnippet(command) : fallbackSummary || translateSource("Shell command");
+  }
+  if (toolName === "read") {
+    const path = stringField(input, "path");
+    return path ? `${translateSource("Read")} ${truncateMiddle(path)}` : fallbackSummary || translateSource("Read file");
+  }
+  if (toolName === "edit") {
+    const path = stringField(input, "path");
+    return path ? `${translateSource("Edited")} ${truncateMiddle(path)}` : fallbackSummary || translateSource("Edited file");
+  }
+  if (toolName === "write") {
+    const path = stringField(input, "path");
+    return path ? `${translateSource("Wrote")} ${truncateMiddle(path)}` : fallbackSummary || translateSource("Wrote file");
+  }
+  return fallbackSummary || toolName;
+}
+
+function toolCallOutcomeLabel(outcome: Extract<ActivityItem, { kind: "tool_activity" }>["toolActivity"]["outcome"] | undefined, running: boolean): string {
+  if (running) return translateSource("running");
+  if (outcome === "failed") return translateSource("failed");
+  if (outcome === "cancelled") return translateSource("cancelled");
+  return translateSource("completed");
+}
+
+function toolActivityDisplayCalls(toolActivities: Extract<ActivityItem, { kind: "tool_activity" }>["toolActivity"][]): ToolActivityDisplayCall[] {
+  const calls = new Map<string, Extract<ActivityItem, { kind: "tool_activity" }>["toolActivity"][]>();
+  const ordered = [...toolActivities].sort((left, right) => {
+    const leftTime = new Date(left.createdAt).getTime();
+    const rightTime = new Date(right.createdAt).getTime();
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return left.toolActivityId.localeCompare(right.toolActivityId);
+  });
+  for (const activity of ordered) {
+    const key = activity.toolCallId || activity.toolActivityId;
+    calls.set(key, [...(calls.get(key) ?? []), activity]);
+  }
+
+  return [...calls.entries()].map(([key, activities]) => {
+    const start = activities.find((activity) => activity.state === "started") ?? activities[0];
+    const finish = [...activities].reverse().find((activity) => activity.state === "finished");
+    const last = finish ?? activities[activities.length - 1] ?? start;
+    const toolName = start?.toolName ?? last?.toolName ?? translateSource("Tool");
+    const startDetail = start ? toolActivityDetail(start) : undefined;
+    const finishDetail = finish ? toolActivityDetail(finish) : undefined;
+    const running = Boolean(start && !finish);
+    const outcome = finish?.outcome;
+    const result = typeof finishDetail?.result === "string" && finishDetail.result.trim() ? finishDetail.result.trim() : undefined;
+    const repairMessage = activities.map(toolActivityRepairMessage).find(Boolean);
+    return {
+      key,
+      toolName,
+      title: titleForToolCall(toolName, startDetail ?? finishDetail, finish?.summary ?? start?.summary),
+      meta: [toolName, toolCallOutcomeLabel(outcome, running), last ? formatRequestTime(last.createdAt) : undefined].filter(Boolean).join(" · "),
+      ...(result ? { result } : {}),
+      ...(repairMessage ? { repairMessage } : {}),
+    };
+  });
+}
+
+function SessionToolActivityTimelineRow({ first, group }: { first: boolean; group: SessionToolActivityGroup }) {
+  const [expanded, setExpanded] = useState(false);
+  const counts = toolActivityCountsLabel(group.toolActivities);
+  const callCount = toolActivityCallCountLabel(group.toolActivities);
+  const outcome = toolActivityGroupOutcomeLabel(group.toolActivities);
+  const running = toolActivityGroupInProgress(group.toolActivities);
+  const title = running ? translateSource("Using tools…") : translateSource("Tools");
+  const firstTime = group.toolActivities[0]?.createdAt;
+  const detailsAvailable = group.toolActivities.some((activity) => activity.summary || privateToolActivityContent(activity));
   return (
-    <View style={styles.statusTimelineGroup}>
-      <Text style={styles.statusTimelineGroupLabel}>{translateSource("Status updates")}</Text>
-      {statusUpdates.map((statusUpdate, index) => (
-        <View key={statusUpdate.statusId} style={[styles.statusTimelineRow, index === 0 ? styles.statusTimelineRowFirst : null]}>
-          <Text style={styles.statusTimelineTime}>{formatRequestTime(statusUpdate.createdAt)}</Text>
-          <View style={styles.statusTimelineBody}>
-            <MarkdownInlineText text={statusUpdate.message} style={styles.statusTimelineMessage} />
-            {statusUpdate.nextStep ? <MarkdownInlineText text={`Next: ${statusUpdate.nextStep}`} style={styles.statusNext} /> : null}
+    <View style={[styles.statusTimelineRow, styles.statusMessageTimelineRow, styles.statusMessageTimelineRowTools, first ? styles.statusTimelineRowFirst : null]}>
+      <View style={styles.statusTimelineBody}>
+        <Pressable accessibilityRole="button" disabled={!detailsAvailable} onPress={() => setExpanded((value) => !value)} style={styles.toolActivitySummaryPressable}>
+          <View style={styles.statusMessageHeader}>
+            <Text style={[styles.statusMessageRole, styles.statusMessageRoleTools]}>{title}</Text>
+            <Text style={styles.statusMessageMeta}>{[firstTime ? formatRequestTime(firstTime) : undefined, running ? translateSource("running") : undefined].filter(Boolean).join(" · ")}</Text>
           </View>
-          <Text style={styles.statusTimelineState}>{statusUpdate.state}</Text>
-        </View>
+          <Text style={styles.statusTimelineMessage}>{`${callCount} · ${outcome}`}</Text>
+          {counts ? <Text style={styles.statusNext}>{counts}</Text> : null}
+        </Pressable>
+        {expanded ? toolActivityDisplayCalls(group.toolActivities).map((call) => (
+          <View key={call.key} style={styles.toolActivityInlineDetailRow}>
+            <View style={styles.statusTimelineBody}>
+              <Text style={styles.toolActivityInlineMeta}>{call.title}</Text>
+              <Text style={styles.toolActivityInlineCounts}>{call.meta}</Text>
+              {call.repairMessage ? <Text style={styles.toolActivityInlineCounts}>{call.repairMessage}</Text> : null}
+              {call.result ? <Text style={styles.statusTimelineMarkdownBody}>{call.result}</Text> : null}
+            </View>
+          </View>
+        )) : null}
+      </View>
+    </View>
+  );
+}
+
+type SessionTimelineVisibleActivityRow =
+  | { kind: "status"; key: string; statusUpdate: StatusUpdateRecord }
+  | { kind: "tool"; key: string; group: SessionToolActivityGroup };
+
+function SessionActivityTimelineGroup({ groupKey, messageBodiesExpanded, onStatusLayout, rows }: { groupKey: string; messageBodiesExpanded?: boolean; onStatusLayout?: (statusID: string, y: number) => void; rows: SessionTimelineActivityRow[] }) {
+  const groupLayoutYRef = useRef<number | null>(null);
+  const rowLayoutYRef = useRef<Record<string, number>>({});
+  const reportRowLayout = (statusID: string, rowY: number) => {
+    rowLayoutYRef.current[statusID] = rowY;
+    const groupY = groupLayoutYRef.current;
+    if (typeof groupY === "number") onStatusLayout?.(statusID, groupY + rowY);
+  };
+  const visibleRows: SessionTimelineVisibleActivityRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "status") {
+      for (const statusUpdate of visibleStatusUpdatesForGroup(row.statusUpdates)) {
+        visibleRows.push({ kind: "status", key: `${row.key}:${statusUpdate.statusId}`, statusUpdate });
+      }
+      continue;
+    }
+    visibleRows.push({ kind: "tool", key: row.key, group: row.group });
+  }
+  if (!visibleRows.length) return null;
+  const allConversationRows = visibleRows.every((row) => row.kind === "tool" || isMirroredMessageStatus(row.statusUpdate) || Boolean(privateStatusContent(row.statusUpdate)));
+  return (
+    <View
+      onLayout={(event) => {
+        groupLayoutYRef.current = event.nativeEvent.layout.y;
+        for (const row of visibleRows) {
+          if (row.kind !== "status") continue;
+          const rowY = rowLayoutYRef.current[row.statusUpdate.statusId];
+          if (typeof rowY === "number") onStatusLayout?.(row.statusUpdate.statusId, event.nativeEvent.layout.y + rowY);
+        }
+      }}
+      style={styles.statusTimelineGroup}
+    >
+      {allConversationRows ? null : <Text style={styles.statusTimelineGroupLabel}>{translateSource("Status updates")}</Text>}
+      {visibleRows.map((row, index) => row.kind === "status" ? (
+        <SessionStatusTimelineRow key={row.key} first={index === 0} messageBodiesExpanded={messageBodiesExpanded} onLayout={(y) => reportRowLayout(row.statusUpdate.statusId, y)} statusUpdate={row.statusUpdate} />
+      ) : (
+        <SessionToolActivityTimelineRow key={row.key} first={index === 0} group={row.group} />
       ))}
+    </View>
+  );
+}
+
+function SessionStatusTimelineRow({ first, messageBodiesExpanded, onLayout, statusUpdate }: { first: boolean; messageBodiesExpanded?: boolean; onLayout?: (y: number) => void; statusUpdate: StatusUpdateRecord }) {
+  const privateContent = privateStatusContent(statusUpdate);
+  const [localExpanded, setLocalExpanded] = useState(!privateContent || privateContent.status !== "decrypted" || privateContent.collapsedByDefault === false);
+  const expanded = messageBodiesExpanded ?? localExpanded;
+  const usesGlobalExpansion = messageBodiesExpanded !== undefined;
+  const body = statusExpandableMessageBody(statusUpdate);
+  const bodyIsHidden = Boolean(body && !expanded);
+  const usageLabel = statusContextUsageLabel(statusUpdate);
+  const repairMessage = privateContent && privateContent.status !== "decrypted" ? privateContent.message : undefined;
+  const roleLabel = statusRoleLabel(statusUpdate);
+  const conversationRow = isMirroredMessageStatus(statusUpdate) || Boolean(privateContent);
+  const toggleLabel = privateContent?.status === "decrypted" && privateContent.role === "user" ? {
+    show: translateSource("Show full message"),
+    hide: translateSource("Hide full message"),
+  } : {
+    show: translateSource("Show full reply"),
+    hide: translateSource("Hide full reply"),
+  };
+
+  if (conversationRow) {
+    const role = statusMessageRole(statusUpdate);
+    const meta = [formatRequestTime(statusUpdate.createdAt), statusUpdate.state, usageLabel].filter(Boolean).join(" · ");
+    return (
+      <View onLayout={(event) => onLayout?.(event.nativeEvent.layout.y)} style={[styles.statusTimelineRow, styles.statusMessageTimelineRow, role === "user" ? styles.statusMessageTimelineRowUser : styles.statusMessageTimelineRowAssistant, first ? styles.statusTimelineRowFirst : null]}>
+        <View style={styles.statusTimelineBody}>
+          <View style={styles.statusMessageHeader}>
+            <Text style={[styles.statusMessageRole, role === "user" ? styles.statusMessageRoleUser : styles.statusMessageRoleAssistant]}>{roleLabel}</Text>
+            <Text style={styles.statusMessageMeta}>{meta}</Text>
+          </View>
+          {!body || !expanded ? <MarkdownInlineText text={statusUpdate.message} style={styles.statusTimelineMessage} /> : null}
+          {repairMessage ? <MarkdownInlineText text={repairMessage} style={styles.statusNext} /> : null}
+          {body ? (
+            <View style={styles.statusFullReplyPanel}>
+              {expanded ? <MarkdownText text={body} paragraphStyle={styles.statusTimelineMarkdownBody} /> : null}
+              {!usesGlobalExpansion ? (
+                <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setLocalExpanded((value) => !value)} style={styles.statusFullReplyButton}>
+                  <Text style={styles.statusFullReplyButtonText}>{bodyIsHidden ? toggleLabel.show : toggleLabel.hide}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+          {statusUpdate.nextStep ? <MarkdownInlineText text={`Next: ${statusUpdate.nextStep}`} style={styles.statusNext} /> : null}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View onLayout={(event) => onLayout?.(event.nativeEvent.layout.y)} style={[styles.statusTimelineRow, first ? styles.statusTimelineRowFirst : null]}>
+      <Text style={styles.statusTimelineTime}>{formatRequestTime(statusUpdate.createdAt)}</Text>
+      <View style={styles.statusTimelineBody}>
+        <Text style={styles.statusTimelineGroupLabel}>{roleLabel}</Text>
+        <MarkdownInlineText text={statusUpdate.message} style={styles.statusTimelineMessage} />
+        {repairMessage ? <MarkdownInlineText text={repairMessage} style={styles.statusNext} /> : null}
+        {usageLabel ? <Text style={styles.statusNext}>{usageLabel}</Text> : null}
+        {statusUpdate.nextStep ? <MarkdownInlineText text={`Next: ${statusUpdate.nextStep}`} style={styles.statusNext} /> : null}
+      </View>
+      <Text style={styles.statusTimelineState}>{statusUpdate.state}</Text>
     </View>
   );
 }
@@ -461,7 +857,9 @@ function SessionRequestTimelineItem({
   const forceCollapsedPastRequest = pastRequestPresentation === "collapsed" && isPastRequest;
   const [expandedPastRequest, setExpandedPastRequest] = useState(!isPastRequest);
   const effectiveReadOnly = (readOnly && !request.isTest) || responding;
+  const canShowReadOnlyChoices = effectiveReadOnly && request.status === "pending" && !request.response && (request.choices?.length ?? 0) > 0;
   const canRespond = !effectiveReadOnly && requestCanRespond;
+  const canFocusRequest = requestCanRespond || canShowReadOnlyChoices;
   const staleWarning = requestStaleWarning(request);
   const requestUsesSteeringChoices = request.requestType === "steering" || isQuestionnaireRequest(request);
   const displayedQuestionnaireAnswers = isPastRequest && request.response?.answers ? request.response.answers : questionnaireAnswers;
@@ -556,7 +954,7 @@ function SessionRequestTimelineItem({
         </Pressable>
       ) : null}
       <View style={styles.statusCardHeader}>
-        <Text style={styles.statusLabel}>{requestUsesSteeringChoices ? translateSource("Steering Request") : translateSource("Sanction Request")}</Text>
+        <Text style={styles.statusLabel}>{encryptedLabel(requestUsesSteeringChoices ? translateSource("Steering Request") : translateSource("Sanction Request"), request.contentMode)}</Text>
         <Text style={styles.historyStatus}>{requestStatusLabel(request)}</Text>
       </View>
       {request.isTest || request.testLabel ? <Text style={styles.testRequestBadge}>{request.testLabel || translateSource("Test Request")}</Text> : null}
@@ -591,7 +989,9 @@ function SessionRequestTimelineItem({
         <View style={[styles.actions, styles.actionsInline]}>
           {effectiveReadOnly ? (
             <>
-              {isQuestionnaireRequest(request) ? requestQuestionnaireControls : null}
+              {isQuestionnaireRequest(request) ? requestQuestionnaireControls : canShowReadOnlyChoices ? (
+                <DirectChoiceCards choices={requestChoiceCards} disabled separateCancel={requestUsesSteeringChoices} onSubmit={submitChoice} />
+              ) : null}
               <View style={styles.readOnlyPanel}>
                 <Text style={styles.actionHint}>{responding ? translateSource("Sending response…") : readOnlyReason || translateSource("Responses require an active 7-day Trial, Hosted subscription, or Self-hosted Lifetime unlock.")}</Text>
                 {!responding && onUnlockResponses ? <Pressable onPress={onUnlockResponses} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{translateSource(unlockResponsesLabel ?? "Unlock responses")}</Text></Pressable> : null}
@@ -610,7 +1010,7 @@ function SessionRequestTimelineItem({
             <Text style={styles.actionHint}>{quorumProgressMessage(request) || translateSource("This request is read-only.")}</Text>
           )}
         </View>
-      ) : requestCanRespond ? (
+      ) : canFocusRequest ? (
         <Pressable accessibilityLabel={`Focus Request ${request.title}`} onPress={onFocus} style={[styles.secondaryButton, styles.focusRequestButton]}>
           <Text style={styles.secondaryButtonText}>{translateSource("Focus Request")}</Text>
         </Pressable>

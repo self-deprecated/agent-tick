@@ -77,10 +77,14 @@ function addToGroup(group: SessionGroup, item: ActivityItem): void {
 }
 
 function activitySessionId(item: ActivityItem): string | undefined {
-  return item.kind === 'request' ? item.request.sessionId : item.statusUpdate.sessionId;
+  return item.kind === 'request' ? item.request.sessionId : item.kind === 'status_update' ? item.statusUpdate.sessionId : item.toolActivity.sessionId;
 }
 
 function syntheticSourceKey(item: ActivityItem): string {
+  if (item.kind === 'tool_activity') {
+    const tool = item.toolActivity;
+    return [item.workspaceId, tool.agentTokenId, tool.agentTokenLabel].filter(Boolean).join('\u001f') || item.workspaceId;
+  }
   if (item.kind === 'request') {
     const requester = item.request.requester;
     const stable = [item.workspaceId, item.request.agentTokenId, requester.clientName, requester.host, requester.workingDirectory].filter(Boolean);
@@ -155,8 +159,8 @@ function pendingRequestSummaries(timeline: ActivityItem[]): SessionPendingReques
 
 function latestActivityAnchor(timeline: ActivityItem[], pendingRequests: SessionPendingRequestSummary[]): ActivityItem | undefined {
   const newestPending = pendingRequests[0];
-  if (!newestPending) return undefined;
-  return timeline.find((item) => item.kind === 'request' && item.request.id === newestPending.id);
+  if (newestPending) return timeline.find((item) => item.kind === 'request' && item.request.id === newestPending.id);
+  return [...timeline].reverse().find((item) => item.kind === 'status_update' || item.kind === 'tool_activity');
 }
 
 function deriveSessionState(timeline: ActivityItem[], now: Date): SessionState {
@@ -187,6 +191,15 @@ function latestActivityPreview(item: ActivityItem): SessionLatestActivity {
       ...(item.request.agentWaiter ? { agentWaiter: item.request.agentWaiter } : {})
     };
   }
+  if (item.kind === 'tool_activity') {
+    return {
+      kind: 'tool_activity',
+      id: item.id,
+      createdAt: item.createdAt,
+      preview: item.toolActivity.summary ?? `Tool activity: ${item.toolActivity.toolName}`,
+      state: item.toolActivity.outcome ?? item.toolActivity.state
+    };
+  }
   return {
     kind: 'status_update',
     id: item.id,
@@ -203,6 +216,8 @@ function sourceLabels(timeline: ActivityItem[]): string[] {
       addLabel(labels, item.request.requester.clientName);
       addLabel(labels, item.request.requester.name);
       addLabel(labels, item.request.requester.host);
+    } else if (item.kind === 'tool_activity') {
+      addLabel(labels, item.toolActivity.agentTokenLabel);
     } else {
       addLabel(labels, item.statusUpdate.clientName);
       addLabel(labels, item.statusUpdate.agentTokenLabel);

@@ -4,7 +4,7 @@ import type { PersonalBillingStatus } from "@self-deprecated/agent-tick-shared";
 import { trialRemainingLabel, type NativeAppEntitlementState } from "../AppLogic";
 import type { RuntimeAuthConfig, SavedMobileAccount } from "../mobileAuth";
 import type { StoreProduct } from "../purchases";
-import { SettingsScreen, type AvailabilityState, type ConnectionStatus, type NotificationStatus, type PushStatus } from "../SettingsScreen";
+import { SettingsScreen, type AvailabilityState, type ConnectionStatus, type NotificationStatus, type PrivateEncryptionStatus, type PushStatus } from "../SettingsScreen";
 import type { AgentTickAppProps } from "./AgentTickAppProps";
 import { recordDiagnostic } from "../diagnostics";
 
@@ -30,18 +30,21 @@ type AgentTickSettingsRouteProps = {
     signOutFromSettings: VoidAction;
     token: string;
     useHostedSignIn: VoidAction;
+    signInToServer: (serverURL: string) => void;
     workspaces: WorkspaceMemberRecord[];
   };
   billingProps: {
     entitlementSourceDiagnostics: string[];
     hostedPersonalCurrentlyActive: boolean;
     linkPurchasesToHostedAccount: VoidAction;
+    localDevAppAccessUnlocked: boolean;
     manageSubscription: VoidAction;
     nativeEntitlement: NativeAppEntitlementState;
     personalBillingStatus: PersonalBillingStatus | null;
     purchaseAccountReady: boolean;
     purchaseLifetimeUnlock: VoidAction;
     restorePurchases: VoidAction;
+    setLocalDevAppAccessUnlocked: (unlocked: boolean) => void;
     showDebugHostedExpiryWarning: VoidAction;
     showNativePaywall: (placement: "settings_access") => void;
     storeProducts: StoreProduct[];
@@ -66,6 +69,11 @@ type AgentTickSettingsRouteProps = {
     activeLocale: AgentTickAppProps["activeLocale"];
     localePreference: AgentTickAppProps["localePreference"];
     onLocalePreferenceChange: AgentTickAppProps["onLocalePreferenceChange"];
+  };
+  privateEncryptionProps?: {
+    status: PrivateEncryptionStatus;
+    refresh: VoidAction;
+    repairRegistration: VoidAction;
   };
   notificationProps: {
     notificationStatus: NotificationStatus;
@@ -93,6 +101,7 @@ export function AgentTickSettingsRoute({
   localeProps,
   notificationProps,
   pairingProps,
+  privateEncryptionProps,
   settingsViewTarget,
 }: AgentTickSettingsRouteProps) {
   const {
@@ -110,6 +119,7 @@ export function AgentTickSettingsRoute({
     selectedWorkspaceID,
     serverURL,
     setToken,
+    signInToServer,
     signOutFromSettings,
     token,
     useHostedSignIn,
@@ -119,12 +129,14 @@ export function AgentTickSettingsRoute({
     entitlementSourceDiagnostics,
     hostedPersonalCurrentlyActive,
     linkPurchasesToHostedAccount,
+    localDevAppAccessUnlocked,
     manageSubscription,
     nativeEntitlement,
     personalBillingStatus,
     purchaseAccountReady,
     purchaseLifetimeUnlock,
     restorePurchases,
+    setLocalDevAppAccessUnlocked,
     showDebugHostedExpiryWarning,
     showNativePaywall,
     storeProducts,
@@ -196,8 +208,13 @@ export function AgentTickSettingsRoute({
       onSendTestNotification={() => void sendTestNotification()}
       onShowHostedExpiryWarning={showDebugHostedExpiryWarning}
       onShowNativePaywall={() => showNativePaywall("settings_access")}
+      localDevAppAccessUnlocked={localDevAppAccessUnlocked}
+      onSetLocalDevAppAccessUnlocked={setLocalDevAppAccessUnlocked}
       nativeAppEntitlement={nativeEntitlement}
       personalBillingStatus={personalBillingStatus}
+      privateEncryptionStatus={privateEncryptionProps?.status}
+      onRefreshPrivateEncryptionStatus={privateEncryptionProps ? () => void privateEncryptionProps.refresh() : undefined}
+      onRepairPrivateEncryptionRegistration={privateEncryptionProps ? () => void privateEncryptionProps.repairRegistration() : undefined}
       entitlementSourceDiagnostics={entitlementSourceDiagnostics}
       storeProducts={storeProducts}
       trialRemainingLabel={trialRemainingLabel(nativeEntitlement.trialRemainingMs)}
@@ -209,6 +226,7 @@ export function AgentTickSettingsRoute({
       onManageSubscription={manageSubscription}
       onScanPairing={openScanner}
       onUseHosted={() => void useHostedSignIn()}
+      onSignInToServer={(serverURL) => void signInToServer(serverURL)}
       pairingCode={pairingCode}
       pushStatus={pushStatus}
       diagnosticsEnabled={diagnosticsEnabled}

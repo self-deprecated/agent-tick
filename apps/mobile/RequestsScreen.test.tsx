@@ -104,6 +104,31 @@ function statusUpdate(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function toolActivity(overrides: Record<string, unknown> = {}) {
+  const toolActivityId = typeof overrides.toolActivityId === "string" ? overrides.toolActivityId : "tool_1";
+  const createdAt = typeof overrides.createdAt === "string" ? overrides.createdAt : "2026-04-19T12:00:00Z";
+  return {
+    kind: "tool_activity",
+    id: toolActivityId,
+    workspaceId: "wsp_personal",
+    createdAt,
+    toolActivity: {
+      toolActivityId,
+      workspaceId: "wsp_personal",
+      agentTokenId: "agent_platform",
+      sessionId: "session_1",
+      toolCallId: "call_1",
+      toolName: "bash",
+      state: "finished",
+      outcome: "success",
+      summary: "bash finished",
+      contentMode: "private",
+      createdAt,
+      ...overrides,
+    },
+  };
+}
+
 describe("runtime auth config resilience", () => {
   const originalFetch = global.fetch;
 
@@ -255,6 +280,54 @@ describe("SessionApprovalFlow", () => {
     expect(screen.queryByText(/^All \(/)).toBeNull();
   });
 
+  it("uses one Session header toggle for mirrored message bodies", () => {
+    const summary = sessionSummary({ sessionId: "session_chat", title: "Chat Session" });
+    renderSessionApprovalFlow({
+      summaries: [summary],
+      details: { session_chat: sessionDetail([
+        { kind: "status_update", statusUpdate: statusUpdate({
+          statusId: "st_user_body",
+          state: "working",
+          message: "Short user preview",
+          contentMode: "private",
+          metadata: { event: "message_end", role: "user" },
+          privateContent: {
+            status: "decrypted",
+            body: "Long user message body",
+            role: "user",
+            collapsedByDefault: true,
+            contentFormat: "markdown",
+          },
+        }) },
+        { kind: "status_update", statusUpdate: statusUpdate({
+          statusId: "st_assistant_body",
+          state: "waiting",
+          message: "Short assistant preview",
+          contentMode: "private",
+          metadata: { event: "message_end", role: "assistant" },
+          privateContent: {
+            status: "decrypted",
+            body: "Long assistant reply body",
+            role: "assistant",
+            collapsedByDefault: true,
+            contentFormat: "markdown",
+          },
+        }) },
+      ], { sessionId: "session_chat", title: "Chat Session" }) },
+    });
+
+    expect(screen.getByText("Expand")).toBeTruthy();
+    expect(screen.queryByText("Show full message")).toBeNull();
+    expect(screen.queryByText("Show full reply")).toBeNull();
+    expect(screen.queryByText("Long user message body")).toBeNull();
+
+    fireEvent.press(screen.getByText("Expand"));
+
+    expect(screen.getByText("Collapse")).toBeTruthy();
+    expect(screen.getByText("Long user message body")).toBeTruthy();
+    expect(screen.getByText("Long assistant reply body")).toBeTruthy();
+  });
+
   it("does not control Stack scroll offset during live scroll", () => {
     const { UNSAFE_getAllByType } = render(
       <SessionStackScreen
@@ -337,7 +410,18 @@ describe("SessionApprovalFlow", () => {
     renderSessionApprovalFlow({
       summaries: [sessionSummary({ sessionId: "session_a", title: "Deploy Session" }), sessionSummary({ sessionId: "session_b", title: "Test Session" })],
       details: {
-        session_a: sessionDetail([{ kind: "request", request: request({ id: "req_a", title: "Approve deploy", choices: [{ id: "approve", label: "Approve", kind: "approve" }], createdAt: "2026-04-19T12:03:00Z" }) }], { sessionId: "session_a" }),
+        session_a: sessionDetail([
+          { kind: "request", request: request({ id: "req_a", title: "Approve deploy", choices: [{ id: "approve", label: "Approve", kind: "approve" }], createdAt: "2026-04-19T12:03:00Z" }) },
+          { kind: "status_update", statusUpdate: statusUpdate({
+            statusId: "st_reply",
+            message: "Short reply preview",
+            contentMode: "private",
+            metadata: { event: "message_end", role: "assistant" },
+            privateContent: { status: "decrypted", body: "Long reply body", role: "assistant", collapsedByDefault: true, contentFormat: "markdown" },
+            createdAt: "2026-04-19T12:03:30Z",
+          }) },
+          toolActivity({ toolActivityId: "tool_overview", toolCallId: "call_overview", toolName: "bash", summary: "bash finished", createdAt: "2026-04-19T12:03:40Z" }),
+        ], { sessionId: "session_a" }),
         session_b: sessionDetail([{ kind: "status_update", statusUpdate: statusUpdate({ statusId: "st_b", message: "Watching", createdAt: "2026-04-19T12:04:00Z" }) }], { sessionId: "session_b" }),
       },
       localState,
@@ -346,9 +430,61 @@ describe("SessionApprovalFlow", () => {
     });
 
     expect(screen.queryByLabelText("Open Session Pi · 14:03")).toBeNull();
+    expect(screen.getByText("bash ×1")).toBeTruthy();
+    expect(screen.queryByText("Show full reply")).toBeNull();
     fireEvent.press(screen.getByText("Approve"));
     expect(onRespond).toHaveBeenCalledWith(expect.objectContaining({ id: "req_a" }), expect.objectContaining({ id: "approve" }));
     expect(onSelectSession).not.toHaveBeenCalled();
+  });
+
+  it("auto-expands mirrored message bodies when entering full Session detail and collapses them on return", () => {
+    function Harness() {
+      const [selectedSessionID, setSelectedSessionID] = React.useState<string | null>("session_a");
+      const detail = sessionDetail([
+        { kind: "status_update", statusUpdate: statusUpdate({
+          statusId: "st_auto_expand",
+          state: "waiting",
+          message: "Short assistant preview",
+          contentMode: "private",
+          metadata: { event: "message_end", role: "assistant" },
+          privateContent: { status: "decrypted", body: "Long assistant body shown on entry", role: "assistant", collapsedByDefault: true, contentFormat: "markdown" },
+        }) },
+      ], { sessionId: "session_a", title: "Current Session" });
+      return (
+        <SessionApprovalFlow
+          summaries={[sessionSummary({ sessionId: "session_a", title: "Current Session" }), sessionSummary({ sessionId: "session_b", title: "Other Session" })]}
+          selectedSessionID={selectedSessionID}
+          details={{ session_a: detail }}
+          onSelectSession={setSelectedSessionID}
+          onExitSessionDetail={() => setSelectedSessionID(null)}
+          onToggleLaneSize={jest.fn()}
+          onReorderSession={jest.fn()}
+          onRespond={jest.fn()}
+          onSubmitQuestionnaire={jest.fn()}
+          questionnaireAnswers={{}}
+          setQuestionnaireAnswer={jest.fn()}
+          reply=""
+          setReply={jest.fn()}
+          confirmBeforeSubmit={false}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    expect(screen.getByText("Collapse")).toBeTruthy();
+    expect(screen.getByText("Long assistant body shown on entry")).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Collapse"));
+    expect(screen.getByText("Expand")).toBeTruthy();
+    expect(screen.queryByText("Long assistant body shown on entry")).toBeNull();
+
+    fireEvent.press(screen.getByText("Expand"));
+    expect(screen.getByText("Long assistant body shown on entry")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("Back to Session Stack"));
+
+    expect(screen.queryByText("Long assistant body shown on entry")).toBeNull();
+    expect(screen.queryByText("Collapse")).toBeNull();
   });
 
   it("returns from a selected full Session detail to the Session Stack", () => {
@@ -533,6 +669,139 @@ describe("SessionDetailTimeline", () => {
     expect(alertSpy).not.toHaveBeenCalled();
     expect(onRespond).toHaveBeenCalledWith(expect.objectContaining({ id: "req_steer" }), expect.objectContaining({ id: "keep" }));
     alertSpy.mockRestore();
+  });
+
+  it("renders decrypted private Status Update previews, full replies, roles, next steps, and context usage", () => {
+    renderSessionDetail(sessionDetail([
+      { kind: "status_update", statusUpdate: statusUpdate({
+        statusId: "st_private_reply",
+        state: "waiting",
+        message: "Assistant found the production credential rotation plan",
+        nextStep: "Review encrypted full reply",
+        contentMode: "private",
+        contextUsage: { tokens: 42000, contextWindow: 200000, percent: 21 },
+        privateContent: {
+          status: "decrypted",
+          body: "Full assistant reply with sensitive implementation details and rollout notes.",
+          role: "assistant",
+          collapsedByDefault: true,
+          contentFormat: "markdown",
+        },
+      }) },
+    ]));
+
+    expect(screen.getByText("Assistant 🔒")).toBeTruthy();
+    expect(screen.getByText("Assistant found the production credential rotation plan")).toBeTruthy();
+    expect(screen.queryByText("Full assistant reply with sensitive implementation details and rollout notes.")).toBeNull();
+    expect(screen.getByText(/42k \/ 200k · 21%/)).toBeTruthy();
+    expect(screen.getByText("Next: Review encrypted full reply")).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Show full reply"));
+    expect(screen.getByText("Full assistant reply with sensitive implementation details and rollout notes.")).toBeTruthy();
+    expect(screen.getByText("Hide full reply")).toBeTruthy();
+  });
+
+  it("renders mirrored user messages full-width and hides adjacent routine lifecycle status rows", () => {
+    renderSessionDetail(sessionDetail([
+      { kind: "status_update", statusUpdate: statusUpdate({
+        statusId: "st_working",
+        state: "working",
+        message: "Working on: please keep this out of the compact timeline",
+        metadata: { event: "before_agent_start" },
+      }) },
+      { kind: "status_update", statusUpdate: statusUpdate({
+        statusId: "st_user",
+        state: "working",
+        message: "Please investigate the deploy failure",
+        contentMode: "private",
+        metadata: { event: "message_end", role: "user" },
+        privateContent: {
+          status: "decrypted",
+          body: "Please investigate the deploy failure with the full log context.",
+          role: "user",
+          collapsedByDefault: true,
+          contentFormat: "markdown",
+        },
+      }) },
+      { kind: "status_update", statusUpdate: statusUpdate({
+        statusId: "st_done",
+        state: "waiting",
+        message: "Finished; waiting",
+        metadata: { event: "agent_end" },
+      }) },
+    ]));
+
+    expect(screen.queryByText("Working on: please keep this out of the compact timeline")).toBeNull();
+    expect(screen.queryByText("Finished; waiting")).toBeNull();
+    expect(screen.getByText("User 🔒")).toBeTruthy();
+    expect(screen.getByText("Please investigate the deploy failure")).toBeTruthy();
+    expect(screen.getByText("Show full message")).toBeTruthy();
+  });
+
+  it("does not offer to expand a mirrored message when the full body is already shown", () => {
+    renderSessionDetail(sessionDetail([
+      { kind: "status_update", statusUpdate: statusUpdate({
+        statusId: "st_user_short",
+        state: "working",
+        message: "continue",
+        contentMode: "private",
+        metadata: { event: "message_end", role: "user" },
+        privateContent: {
+          status: "decrypted",
+          body: "continue",
+          role: "user",
+          collapsedByDefault: true,
+          contentFormat: "markdown",
+        },
+      }) },
+    ]));
+
+    expect(screen.getByText("continue")).toBeTruthy();
+    expect(screen.queryByText("Show full message")).toBeNull();
+  });
+
+  it("keeps expanded Tool Activity open when later timeline rows arrive and expands from the row header", () => {
+    const props = {
+      onRespond: jest.fn(),
+      onSubmitQuestionnaire: jest.fn(),
+      questionnaireAnswers: {},
+      setQuestionnaireAnswer: jest.fn(),
+      reply: "",
+      setReply: jest.fn(),
+      confirmBeforeSubmit: false,
+    };
+    const toolRows = [
+      toolActivity({
+        toolActivityId: "tool_start",
+        state: "started",
+        outcome: undefined,
+        summary: "bash started",
+        createdAt: "2026-04-19T12:00:00Z",
+        privateContent: { status: "decrypted", detail: { input: { command: "corepack pnpm test" } } },
+      }),
+      toolActivity({
+        toolActivityId: "tool_finish",
+        state: "finished",
+        outcome: "failed",
+        summary: "bash failed",
+        createdAt: "2026-04-19T12:00:01Z",
+        privateContent: { status: "decrypted", detail: { result: "test failed" } },
+      }),
+    ];
+    const rendered = render(<SessionDetailTimeline detail={sessionDetail(toolRows)} {...props} />);
+
+    fireEvent.press(screen.getByText("Tools"));
+    expect(screen.getByText("corepack pnpm test")).toBeTruthy();
+    expect(screen.getByText("test failed")).toBeTruthy();
+
+    rendered.rerender(<SessionDetailTimeline detail={sessionDetail([
+      ...toolRows,
+      { kind: "status_update", statusUpdate: statusUpdate({ statusId: "st_later", message: "New message arrived", createdAt: "2026-04-19T12:00:02Z" }) },
+    ])} {...props} />);
+
+    expect(screen.getByText("corepack pnpm test")).toBeTruthy();
+    expect(screen.getByText("test failed")).toBeTruthy();
+    expect(screen.getByText("New message arrived")).toBeTruthy();
   });
 
   it("collapses fulfilled Session Requests to the title and answer, then expands context and options", () => {
@@ -759,6 +1028,32 @@ describe("SessionDetailTimeline", () => {
     expect(screen.getByText("Start a Trial to respond.")).toBeTruthy();
     fireEvent.press(screen.getByText("Start Trial"));
     expect(onUnlockResponses).toHaveBeenCalled();
+  });
+
+  it("can focus and show disabled private Request choices when Session responses are locked", () => {
+    const onRespond = jest.fn();
+    const onUnlockResponses = jest.fn();
+    renderSessionDetail(sessionDetail([
+      { kind: "request", request: request({
+        id: "req_private_locked",
+        requestType: "steering",
+        title: "Private Request",
+        body: "This Private Request could not be decrypted with this phone's private key.",
+        contentMode: "private",
+        privateContent: { status: "locked", message: "This Private Request could not be decrypted with this phone's private key." },
+        choices: [{ id: "vitest", label: "Vitest", kind: "approve" }, { id: "cancel", label: "Cancel", kind: "deny" }],
+      }) },
+    ]), { readOnly: true, readOnlyReason: "Start a Trial to respond.", onRespond, onUnlockResponses });
+
+    expect(screen.queryByText("Vitest")).toBeNull();
+    fireEvent.press(screen.getByText("Focus Request"));
+    expect(screen.getByText("Steering Request 🔒")).toBeTruthy();
+    expect(screen.getByText("This Private Request could not be decrypted with this phone's private key.")).toBeTruthy();
+    expect(screen.getByText("Vitest")).toBeTruthy();
+    fireEvent.press(screen.getByText("Vitest"));
+    fireEvent.press(screen.getByText("Start Trial"));
+    expect(onRespond).not.toHaveBeenCalled();
+    expect(onUnlockResponses).toHaveBeenCalledTimes(1);
   });
 
   it("lets setup Test Requests respond while non-test Requests are entitlement gated", () => {
@@ -1190,6 +1485,28 @@ describe("RequestsScreen quorum-aware Request UI", () => {
 
     expect(screen.getByText("Hosted service is inactive.")).toBeTruthy();
     expect(screen.getByText("View App access")).toBeTruthy();
+    fireEvent.press(screen.getByText("Approve"));
+    fireEvent.press(screen.getByText("View App access"));
+    expect(onRespond).not.toHaveBeenCalled();
+    expect(onUnlockResponses).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows disabled choices for encrypted requests when responses are locked", () => {
+    const onRespond = jest.fn();
+    const onUnlockResponses = jest.fn();
+    renderRequest(request({
+      contentMode: "private",
+      title: "Private Request",
+      body: "This Private Request could not be decrypted with this phone's private key.",
+      privateContent: { status: "locked", message: "This Private Request could not be decrypted with this phone's private key." },
+    }), onRespond, {
+      readOnly: true,
+      readOnlyReason: "Hosted service is inactive.",
+      unlockResponsesLabel: "View App access",
+      onUnlockResponses,
+    });
+
+    expect(screen.getByText("This Private Request could not be decrypted with this phone's private key.")).toBeTruthy();
     fireEvent.press(screen.getByText("Approve"));
     fireEvent.press(screen.getByText("View App access"));
     expect(onRespond).not.toHaveBeenCalled();

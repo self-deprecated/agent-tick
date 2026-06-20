@@ -19,6 +19,7 @@
 		selectedTestAgentTokenId = '',
 		testBusy = '',
 		lastTest,
+		testError = '',
 		onSelectTestAgent,
 		onDisconnectDevice,
 		onAssignTokenRule,
@@ -44,6 +45,7 @@
 		selectedTestAgentTokenId?: string;
 		testBusy?: '' | 'status' | 'steering' | 'sanction';
 		lastTest?: SendTestActivityResponse & { sentAt: string };
+		testError?: string;
 		onSelectTestAgent: (agentTokenId: string) => void;
 		onDisconnectDevice: (device: DeviceRecord) => void | Promise<void>;
 		onAssignTokenRule?: (token: AgentTokenRecord, routingRuleId: string) => void | Promise<void>;
@@ -68,7 +70,7 @@
 	let phoneReady = $derived(Boolean(pushReadyDevices.length));
 	let testRequirements = $derived(phoneReady ? [] : ['a push-ready Approval Device']);
 	let phoneStateLabel = $derived(phoneReady ? 'Push ready' : activeDevices.length ? 'Push not registered' : 'No push-ready Approval Device');
-	let setupPrompt = $derived(`Connect Agent Tick for this Workspace. Use server ${serverUrl}. Install the Agent Tick setup skill from https://agenttick.sh/skill, sign in, create or connect an Agent Token named after this machine, then send a Test Request.`);
+	let setupPrompt = $derived(`Connect Agent Tick for this Workspace. Use server ${serverUrl}. Install the Agent Tick setup skill from https://agenttick.sh/skill, sign in, create or connect an Agent Token named after this machine, ask me to enable Private encryption in the Native App at Settings → General before rich mirroring, offer agent-tick features with private Activity as the recommended default, then send a Test Request.`);
 	let routingRulesById = $derived(Object.fromEntries(routingRules.map((rule) => [rule.routingRuleId, rule])));
 	let sharedRoutingRules = $derived(workspace?.type === 'shared' ? routingRules : []);
 	let assignedAgentsByRule = $derived(Object.fromEntries(sharedRoutingRules.map((rule) => [rule.routingRuleId, connectedTokens.filter((token) => token.routingRuleId === rule.routingRuleId)])));
@@ -406,6 +408,9 @@
 		</div>
 		{#if lastTest}
 			<p class="success">Sent {lastTest.kind} test at {new Date(lastTest.sentAt).toLocaleTimeString()} · {lastTest.status}</p>
+		{/if}
+		{#if testError}
+			<p class="error" role="alert">Test activity failed: {testError}</p>
 		{/if}
 	</aside>
 </section>

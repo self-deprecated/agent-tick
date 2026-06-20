@@ -32,6 +32,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -50,6 +56,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check fetchPnpmDeps hash
+        run: nix run .#check-pnpm-deps-hash
 
       - name: Build public packages
         run: |
@@ -139,7 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           changelog="https://github.com/${REPOSITORY}/releases/tag/${RELEASE_TAG}"
-          node packages/cli/dist/index.js sanction \
+          node packages/cli/dist/index.js send sanction \
             --title "Publish Agent Tick npm packages ${RELEASE_TAG}?" \
             --body "Repository: ${REPOSITORY}\nTargets: npm ${PACKAGE_TARGETS}\nChangelog: ${changelog}\nCommit: ${COMMIT_SHA}" \
             --command "pnpm publish shared, sdk, then cli with --access public --provenance --no-git-checks" \

@@ -4,7 +4,7 @@ import type { ServerConfig } from '../config.js';
 import type { AuthContext } from '../auth/context.js';
 
 export function hostedPersonalApplies(config: ServerConfig, auth: AuthContext): boolean {
-  return config.mode === 'clerk' && auth.workspaceType === 'personal' && Boolean(auth.userId || auth.creatorUserId);
+  return config.hostedService && config.mode === 'clerk' && auth.workspaceType === 'personal' && Boolean(auth.userId || auth.creatorUserId);
 }
 
 export async function hostedPersonalForAuth(config: ServerConfig, store: AgentTickStore, auth: AuthContext, now = new Date()): Promise<HostedPersonalStatus | null> {
@@ -25,21 +25,11 @@ export async function requireHostedPersonalRouting(config: ServerConfig, store: 
 export async function requireHostedPersonalResponse(config: ServerConfig, store: AgentTickStore, auth: AuthContext, request?: Pick<RequestRecord, 'isTest'>): Promise<HostedPersonalStatus | null> {
   const status = await hostedPersonalForAuth(config, store, auth);
   if (!status || status.responsesEnabled) return status;
-  const userId = auth.userId ?? auth.creatorUserId;
-  if (userId && await hasActiveAppAccessPurchaseAttempt(store, userId)) return status;
   // Fresh hosted Personal accounts get one app-local response before the mobile
   // app moves itself into read-only/App access mode. Do not persist that
   // allowance server-side: an app reset should make onboarding fresh again.
   if (!request?.isTest && status.lifecycle === 'fresh') return status;
   throw entitlementError(status.lifecycle === 'read_only_grace' ? 'Hosted service is in read-only grace. Renew to respond.' : 'Hosted service is inactive. Renew or switch to self-hosted use.');
-}
-
-async function hasActiveAppAccessPurchaseAttempt(store: AgentTickStore, userId: string): Promise<boolean> {
-  const now = new Date().toISOString();
-  const trialAttempts = await store.listActiveBillingPurchaseAttempts(userId, 'native_app_trial', now);
-  if (trialAttempts.length > 0) return true;
-  const hostedAttempts = await store.listActiveBillingPurchaseAttempts(userId, 'hosted_personal', now);
-  return hostedAttempts.length > 0;
 }
 
 async function nativeTrialStatus(store: AgentTickStore, userId: string, now: Date): Promise<NativeTrialStatus> {

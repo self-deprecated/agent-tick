@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
 import { styles } from "../mobileStyles";
+import { knownServerLabel, type KnownServer } from "../knownServers";
 import { hostedServerURL, normalizeServerURL, type RuntimeAuthConfig } from "../mobileAuth";
 import { fetchRuntimeAuthConfigIfAvailable } from "./runtimeAuthConfigCache";
-
-const defaultServer = hostedServerURL;
+import { ServerPicker } from "./ServerPicker";
+import { useKnownServers, isKnownInsecureServer } from "./useKnownServers";
 
 export function HostedFirstOnboardingScreen({
   error,
@@ -15,28 +16,33 @@ export function HostedFirstOnboardingScreen({
   error: string;
   onServerSelected: (serverURL: string, authConfig: RuntimeAuthConfig | null) => void;
 }) {
-  const [customServerURL, setCustomServerURL] = useState("");
+  const { knownServers, verify, record, remove } = useKnownServers();
+  const [selectedServerURL, setSelectedServerURL] = useState(hostedServerURL);
   const [submitting, setSubmitting] = useState(false);
-  const [customError, setCustomError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const retryHosted = async () => {
+  const selected = knownServers.find((server) => server.url === normalizeServerURL(selectedServerURL)) as KnownServer | undefined;
+  const selectedLabel = knownServerLabel(selected ?? { url: selectedServerURL });
+  const signInProgress = submitting ? "Checking…" : `Sign in to ${selectedLabel}`;
+
+  const signInToSelected = async () => {
+    const serverURL = normalizeServerURL(selectedServerURL);
     setSubmitting(true);
-    setCustomError(null);
-    const config = await fetchRuntimeAuthConfigIfAvailable(defaultServer);
+    setSubmitError(null);
+    const allowInsecure = await isKnownInsecureServer(serverURL);
+    const config = await fetchRuntimeAuthConfigIfAvailable(serverURL, { allowInsecure });
     if (config) {
-      onServerSelected(defaultServer, config);
+      await record(serverURL, { authProvider: config.authProvider });
+      onServerSelected(serverURL, config);
     } else {
-      setCustomError("Could not reach agenttick.sh");
+      setSubmitError(`Could not reach ${serverURL}. Check the address or your connection.`);
     }
     setSubmitting(false);
   };
 
-  const useSelfHostedServer = async () => {
-    const nextServerURL = normalizeServerURL(customServerURL);
-    setSubmitting(true);
-    setCustomError(null);
-    onServerSelected(nextServerURL, await fetchRuntimeAuthConfigIfAvailable(nextServerURL));
-    setSubmitting(false);
+  const recordServer = async (serverURL: string, options: { authProvider: RuntimeAuthConfig["authProvider"]; insecureConfirmed?: boolean }) => {
+    await record(serverURL, options);
+    setSelectedServerURL(serverURL);
   };
 
   return (
@@ -46,28 +52,22 @@ export function HostedFirstOnboardingScreen({
         <Text style={styles.brand}>Agent Tick</Text>
         <Text style={styles.detailTitle}>Sign in to Agent Tick</Text>
         <Text style={styles.bodyText}>
-          The mobile app signs in to agenttick.sh by default. Use a custom server only when you self-host Agent Tick.
+          The mobile app signs in to agenttick.sh by default. Pick a remembered server, or add your own self-hosted Agent Tick server.
         </Text>
         <Text style={styles.errorText}>{error}</Text>
-        {customError ? <Text style={styles.errorText}>{customError}</Text> : null}
-        <Pressable disabled={submitting} onPress={() => void retryHosted()} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>{submitting ? "Checking…" : "Retry sign-in"}</Text>
+        {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
+        <ServerPicker
+          knownServers={knownServers}
+          selectedServerURL={selectedServerURL}
+          onSelectServer={setSelectedServerURL}
+          onVerifyServer={verify}
+          onRecordServer={recordServer}
+          onRemoveServer={(url) => void remove(url)}
+        />
+        <Pressable disabled={submitting} onPress={() => void signInToSelected()} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>{signInProgress}</Text>
         </Pressable>
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Self-hosted server URL</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            inputMode="url"
-            onChangeText={setCustomServerURL}
-            placeholder="https://tick.example.com"
-            style={styles.input}
-            value={customServerURL}
-          />
-          <Pressable disabled={submitting} onPress={() => void useSelfHostedServer()} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Use Self-hosted Server</Text>
-          </Pressable>
-        </View>
+        {submitting ? <ActivityIndicator /> : null}
       </View>
     </View>
   );

@@ -8,6 +8,9 @@
       "node": "22.19.0",
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "development"
+      },
       "ios": {
         "simulator": false
       }

@@ -5,6 +5,7 @@ import { recordDiagnostic } from "../diagnostics";
 import { fetchRuntimeAuthConfig, normalizeServerURL, type RuntimeAuthConfig } from "../mobileAuth";
 import type { ConnectionStatus } from "../SettingsScreen";
 import { cachedRuntimeAuthConfig, writeRuntimeAuthConfigCache } from "./runtimeAuthConfigCache";
+import { isKnownInsecureServer } from "./useKnownServers";
 
 export function useRuntimeAuthConfigRefresh({
   serverURL,
@@ -45,7 +46,7 @@ export function useRuntimeAuthConfigRefresh({
     let cancelled = false;
     const loadRuntimeAuthConfig = async () => {
       try {
-        const nextConfig = await fetchRuntimeAuthConfig(serverURL);
+        const nextConfig = await fetchRuntimeAuthConfig(serverURL, fetch, { allowInsecure: await isKnownInsecureServer(serverURL) });
         await writeRuntimeAuthConfigCache(serverURL, nextConfig);
         if (cancelled) return;
         setRuntimeAuthConfig(nextConfig);

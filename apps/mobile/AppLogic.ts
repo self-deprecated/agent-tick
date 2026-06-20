@@ -17,6 +17,21 @@ export function currentSavedAccounts(accounts: SavedMobileAccount[], current: Cu
   return accounts.filter((account) => isCurrentSavedAccount(account, current));
 }
 
+export function shouldKeepSavedBootstrapServer(input: {
+  savedServerURL: string;
+  defaultServerURL: string;
+  savedAuthConfig?: { authProvider?: string } | null;
+  hasSavedLocalSession: boolean;
+  storedConnections: Array<Pick<SavedMobileAccount, "authProvider" | "serverURL">>;
+}): boolean {
+  const savedServerURL = normalizeServerURL(input.savedServerURL);
+  if (savedServerURL === normalizeServerURL(input.defaultServerURL)) return true;
+  if (input.savedAuthConfig?.authProvider === "clerk") {
+    return input.storedConnections.some((connection) => connection.authProvider === "clerk" && normalizeServerURL(connection.serverURL) === savedServerURL);
+  }
+  return input.hasSavedLocalSession;
+}
+
 export function isCurrentSavedAccount(account: SavedMobileAccount, current: CurrentSavedAccountContext): boolean {
   if (account.authProvider !== current.authProvider || normalizeServerURL(account.serverURL) !== normalizeServerURL(current.serverURL)) return false;
   if (account.authProvider === "clerk") {

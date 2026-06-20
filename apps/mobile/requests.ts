@@ -2,7 +2,16 @@ import { translateSource } from "@agent-tick/i18n";
 import type { RequestRecord, RespondRequest } from "@self-deprecated/agent-tick-sdk";
 import type { Choice, ResponseRecord } from "@self-deprecated/agent-tick-shared";
 
-export type MobileRequest = RequestRecord & { connectionID?: string; connectionLabel?: string; connectionServerURL?: string; workspaceMemberCount?: number };
+export type MobileRequest = Omit<RequestRecord, "contentMode"> & {
+  contentMode?: RequestRecord["contentMode"];
+  connectionID?: string;
+  connectionLabel?: string;
+  connectionServerURL?: string;
+  workspaceMemberCount?: number;
+  privateContent?:
+    | { status: "decrypted" }
+    | { status: "unsupported" | "locked" | "error"; message: string };
+};
 export type RequestResponse = RespondRequest;
 export type RequestChoice = Choice;
 export type RequestSourceGroup = {
@@ -242,6 +251,7 @@ export function requestResponsibilityLabel(request: MobileRequest) {
 
 export function canRespondToRequest(request: MobileRequest) {
   if (request.status !== "pending" || request.response) return false;
+  if (request.contentMode === "private" && request.privateContent?.status !== "decrypted") return false;
   if (isQuestionnaireRequest(request)) return true;
   const quorum = request.quorum;
   if (!quorum) return true;

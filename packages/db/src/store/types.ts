@@ -11,7 +11,9 @@ import type {
   CreateRequest,
   CreateRoutingRule,
   CreateStatusUpdate,
+  CreateToolActivity,
   DeviceCredential,
+  DevicePublicKeyRecord,
   DeviceRecord,
   ExternalApproverInviteCredential,
   ExternalApproverInviteRecord,
@@ -27,13 +29,16 @@ import type {
   RoutingRuleRecord,
   SessionMetadata,
   StatusUpdateRecord,
+  ToolActivityRecord,
   UpdateAgentToken,
   UpdateRoutingRule,
+  UpdateWorkspace,
   WorkspaceMemberKind,
   WorkspaceMemberRecord,
   WorkspaceRecord,
   WorkspaceRole,
-  WorkspaceType
+  WorkspaceType,
+  PrivateRequestsPolicy
 } from '@self-deprecated/agent-tick-shared';
 
 export type {
@@ -49,7 +54,9 @@ export type {
   CreateRequest,
   CreateRoutingRule,
   CreateStatusUpdate,
+  CreateToolActivity,
   DeviceCredential,
+  DevicePublicKeyRecord,
   DeviceRecord,
   ExternalApproverInviteCredential,
   ExternalApproverInviteRecord,
@@ -65,17 +72,23 @@ export type {
   RoutingRuleRecord,
   SessionMetadata,
   StatusUpdateRecord,
+  ToolActivityRecord,
   UpdateAgentToken,
   UpdateRoutingRule,
+  UpdateWorkspace,
   WorkspaceMemberKind,
   WorkspaceMemberRecord,
   WorkspaceRecord,
   WorkspaceRole,
-  WorkspaceType
+  WorkspaceType,
+  PrivateRequestsPolicy
 } from '@self-deprecated/agent-tick-shared';
 export const DEFAULT_USER_ID = 'usr_default';
 export const DEFAULT_WORKSPACE_ID = 'wsp_default';
 export const DEFAULT_REQUEST_WAITER_LEASE_MS = 60_000;
+// Waiter bearer credentials roll forward on each successful waiter renewal so
+// integrations can wait overnight without exposing an indefinitely-valid token.
+export const DEFAULT_REQUEST_WAITER_CREDENTIAL_TTL_MS = 65 * 60_000;
 
 export interface PostgresPoolOptions {
   max?: number;
@@ -91,6 +104,32 @@ export interface OpenStoreOptions {
 }
 
 export type Awaitable<T> = T | Promise<T>;
+
+/**
+ * Result of a read-only schema compatibility check.
+ *
+ * `ok: false` means the deployed schema is missing columns the running code
+ * requires. The store must not mutate schema to repair this; callers surface it
+ * as a `schema_mismatch` readiness/startup failure so operators can run
+ * migrations or roll back.
+ */
+export interface SchemaCompatibilityMissingColumn {
+  table: string;
+  column: string;
+}
+
+export type SchemaCompatibilityResult =
+  | { ok: true }
+  | { ok: false; code: 'schema_mismatch'; missing: SchemaCompatibilityMissingColumn[] };
+
+/**
+ * Result of the synthetic Activity write-path canary. `ok: false` includes a
+ * safe public code (`schema_mismatch` for drift, `write_failed` otherwise); the
+ * server log keeps request ids and detail for correlation.
+ */
+export type ActivityWriteCanaryResult =
+  | { ok: true }
+  | { ok: false; code: 'schema_mismatch' | 'write_failed' };
 
 export interface ClerkIdentityProfile {
   issuer: string;
@@ -142,6 +181,14 @@ export interface CreateStatusUpdateInput extends CreateStatusUpdate {
   testLabel?: string;
 }
 
+export interface CreateToolActivityInput extends CreateToolActivity {
+  workspaceId: string;
+  agentTokenId?: string;
+  agentTokenLabel?: string;
+  routingRuleId?: string;
+  userId?: string;
+}
+
 export interface CreateRequestInput extends CreateRequest {
   workspaceId?: string;
   agentTokenId?: string;
@@ -158,6 +205,34 @@ export interface DeviceRegistrationInput {
   installationId?: string;
   expoPushToken?: string;
 }
+
+export interface RegisterDevicePublicKeyInput {
+  deviceId: string;
+  userId: string;
+  algorithm: 'p256-ecdh-hkdf-sha256';
+  publicKey: string;
+}
+
+export interface PrivateRequestPrepareInput {
+  workspaceId: string;
+  agentTokenId?: string;
+  routingRuleId?: string;
+}
+
+export type PrivateStatusUpdatePrepareInput = PrivateRequestPrepareInput;
+
+export interface PrivateRequestPrepareRecord {
+  contentMode: 'private';
+  workspaceId: string;
+  routingRuleId?: string;
+  required: boolean;
+  recipientVersion: string;
+  recipientUserIds: string[];
+  deviceKeys: DevicePublicKeyRecord[];
+  unavailableRecipients: Array<{ userId: string; reason: string }>;
+}
+
+export type PrivateStatusUpdatePrepareRecord = PrivateRequestPrepareRecord;
 
 export interface DeviceTokenAuth {
   source: 'device';
@@ -440,6 +515,7 @@ export interface CleanupExpiredSecretsResult {
 export interface RetentionPolicy {
   requestsDays?: number;
   statusUpdatesDays?: number;
+  toolActivitiesDays?: number;
   auditEventsDays?: number;
   unregisteredDevicesDays?: number;
 }
@@ -447,6 +523,7 @@ export interface RetentionPolicy {
 export interface CleanupRetentionResult {
   requests: number;
   statusUpdates: number;
+  toolActivities: number;
   auditEvents: number;
   devices: number;
 }
@@ -464,7 +541,20 @@ export interface UpdateWorkspaceEntitlementInput {
 
 export interface AsyncAgentTickStore {
   ping(): Awaitable<void>;
+  /**
+   * Read-only check that the deployed schema has every column the running code
+   * requires. Does not mutate schema. Returns `{ ok: true }` when compatible
+   * (for example, after the SQLite full-schema path runs).
+   */
+  verifySchemaCompatibility(): Awaitable<SchemaCompatibilityResult>;
+  /**
+   * Synthetic Activity write-path canary. Runs the real Status Update + Request
+   * creation inside a rolled-back transaction with an ephemeral canary Workspace
+   * so nothing persists or notifies. Returns a safe pass/fail classification.
+   */
+  runActivityWriteCanary(now?: string): Awaitable<ActivityWriteCanaryResult>;
   close(): Awaitable<void>;
+  setPrivateRequestPolicy(policy: PrivateRequestsPolicy): Awaitable<void>;
   migrate(now?: string): Awaitable<void>;
   ensureSingleTenantDefaults(now?: string): Awaitable<void>;
   cleanupExpiredSecrets(now?: string): Awaitable<CleanupExpiredSecretsResult>;
@@ -484,7 +574,7 @@ export interface AsyncAgentTickStore {
   upsertClerkWorkspaceMember(clerkOrganizationId: string, clerkMembershipId: string | undefined, userId: string, role: WorkspaceRole | string, now?: string): Awaitable<WorkspaceMemberRecord>;
   removeClerkWorkspaceMember(clerkOrganizationId: string, userIdOrMembershipId: string, now?: string): Awaitable<void>;
   revokeUserAccess(userId: string, now?: string): Awaitable<void>;
-  updateWorkspace(workspaceId: string, name: string, now?: string): Awaitable<WorkspaceRecord | null>;
+  updateWorkspace(workspaceId: string, input: UpdateWorkspace | string, now?: string): Awaitable<WorkspaceRecord | null>;
   updateWorkspaceEntitlement(workspaceId: string, input: UpdateWorkspaceEntitlementInput, now?: string): Awaitable<WorkspaceRecord | null>;
   workspaceResponsesEntitled(workspaceId: string, now?: string): Awaitable<boolean>;
   addWorkspaceMemberByEmail(workspaceId: string, email: string, role?: WorkspaceRole | string, now?: string, memberKind?: WorkspaceMemberKind): Awaitable<WorkspaceMemberRecord>;
@@ -531,10 +621,17 @@ export interface AsyncAgentTickStore {
   createStatusUpdate(input: CreateStatusUpdateInput, now?: string): Awaitable<StatusUpdateRecord>;
   getStatusUpdate(statusId: string, workspaceId: string): Awaitable<StatusUpdateRecord | null>;
   listLatestStatusUpdates(workspaceId: string, limit?: number): Awaitable<StatusUpdateRecord[]>;
+  createToolActivity(input: CreateToolActivityInput, now?: string): Awaitable<ToolActivityRecord>;
+  getToolActivity(toolActivityId: string, workspaceId: string): Awaitable<ToolActivityRecord | null>;
+  listLatestToolActivities(workspaceId: string, limit?: number): Awaitable<ToolActivityRecord[]>;
   listActivityForUser(userId: string, workspaceId?: string, limit?: number, now?: string): Awaitable<ActivityItem[]>;
   pendingRequestCountForUser(userId: string, workspaceId?: string, now?: string): Awaitable<number>;
   registerDevice(input: DeviceRegistrationInput, now?: string): Awaitable<DeviceRecord>;
   listDevicesForUser(userId: string): Awaitable<DeviceRecord[]>;
+  registerDevicePublicKey(input: RegisterDevicePublicKeyInput, now?: string): Awaitable<DevicePublicKeyRecord>;
+  listDevicePublicKeysForUser(userId: string): Awaitable<DevicePublicKeyRecord[]>;
+  preparePrivateRequest(input: PrivateRequestPrepareInput, now?: string): Awaitable<PrivateRequestPrepareRecord>;
+  preparePrivateStatusUpdate(input: PrivateStatusUpdatePrepareInput, now?: string): Awaitable<PrivateStatusUpdatePrepareRecord>;
   listPushDevicesForRequestRecipients(requestId: string): Awaitable<DeviceRecord[]>;
   listPushDevicesForAudienceChannel(channelId: string): Awaitable<DeviceRecord[]>;
   listPushDevicesForUsers(userIds: string[]): Awaitable<DeviceRecord[]>;

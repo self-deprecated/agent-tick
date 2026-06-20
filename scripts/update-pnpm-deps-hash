@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ ! -f pnpm-lock.yaml ] || [ ! -f flake.nix ]; then
+  if [ -f projects/agent-tick/pnpm-lock.yaml ] && [ -f projects/agent-tick/flake.nix ]; then
+    cd projects/agent-tick
+  else
+    echo "error: run from the Agent Tick flake root (or the mono-sd root)" >&2
+    exit 1
+  fi
+fi
+
+mode="update"
+if [ "${1:-}" = "--check" ]; then
+  mode="check"
+  shift
+fi
+
+trigger_attr="${1:-agent-tick-cli}"
+verify_attrs_text="${VERIFY_ATTRS:-agent-tick-cli agent-tick-docs-node-modules agent-tick-server-node-modules}"
+IFS=' ' read -r -a verify_attrs <<< "$verify_attrs_text"
+
+set_pnpm_deps_hash() {
+  local replacement="$1"
+  python3 - "$replacement" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path("flake.nix")
+replacement = sys.argv[1]
+text = path.read_text()
+pattern = r'pnpmDepsHash = (?:(?:"[^"]*")|lib\.fakeHash);'
+matches = list(re.finditer(pattern, text))
+if len(matches) != 1:
+    print(f"error: expected exactly one pnpmDepsHash assignment, found {len(matches)}", file=sys.stderr)
+    sys.exit(1)
+updated = re.sub(pattern, f"pnpmDepsHash = {replacement};", text, count=1)
+path.write_text(updated)
+PY
+}
+
+get_current_hash() {
+  python3 - <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path("flake.nix").read_text()
+match = re.search(r'pnpmDepsHash = "([^"]*)";', text)
+if not match:
+    print("error: expected a quoted pnpmDepsHash assignment", file=sys.stderr)
+    sys.exit(1)
+print(match.group(1))
+PY
+}
+
+extract_got_hash() {
+  local log_path="$1"
+  python3 - "$log_path" <<'PY'
+import pathlib
+import re
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+matches = re.findall(r'got:\s*(sha256-[^\s]+)', text)
+if not matches:
+    sys.exit(1)
+print(matches[-1])
+PY
+}
+
+current_hash="$(get_current_hash)"
+backup="$(mktemp)"
+build_log="$(mktemp)"
+restore_original_on_error=1
+cp flake.nix "$backup"
+cleanup() {
+  local status="$?"
+  if [ "$mode" = "check" ] || { [ "$status" -ne 0 ] && [ "$restore_original_on_error" -eq 1 ]; }; then
+    cp "$backup" flake.nix
+  fi
+  rm -f "$backup" "$build_log"
+}
+trap cleanup EXIT
+
+echo "Setting pnpmDepsHash to lib.fakeHash..."
+set_pnpm_deps_hash "lib.fakeHash"
+
+echo "Building .#${trigger_attr} to get the real fetchPnpmDeps hash..."
+set +e
+nix build ".#${trigger_attr}" --no-link --print-build-logs 2>&1 | tee "$build_log"
+build_status="${PIPESTATUS[0]}"
+set -e
+
+if [ "$build_status" -eq 0 ]; then
+  echo "error: build unexpectedly succeeded with lib.fakeHash" >&2
+  cp "$backup" flake.nix
+  exit 1
+fi
+
+if ! new_hash="$(extract_got_hash "$build_log")"; then
+  echo "error: could not find a 'got: sha256-...' hash in Nix output" >&2
+  cp "$backup" flake.nix
+  exit 1
+fi
+
+if [ "$mode" = "check" ]; then
+  if [ "$new_hash" != "$current_hash" ]; then
+    echo "error: pnpmDepsHash is out of date" >&2
+    echo "  current: ${current_hash}" >&2
+    echo "      got: ${new_hash}" >&2
+    echo "Run: nix run .#update-pnpm-deps-hash" >&2
+    exit 1
+  fi
+
+  echo "pnpmDepsHash is up to date: ${current_hash}"
+  exit 0
+fi
+
+echo "Updating pnpmDepsHash to ${new_hash}..."
+set_pnpm_deps_hash "\"${new_hash}\""
+
+restore_original_on_error=0
+
+echo "Verifying affected packages: ${verify_attrs[*]}"
+for attr in "${verify_attrs[@]}"; do
+  nix build ".#${attr}" --no-link --print-build-logs
+done
+
+echo "pnpmDepsHash is up to date: ${new_hash}"

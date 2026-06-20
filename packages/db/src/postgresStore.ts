@@ -7,19 +7,23 @@ import {
   CreateRequestSchema,
   CreateRoutingRuleSchema,
   CreateStatusUpdateSchema,
+  CreateToolActivitySchema,
   RequestRecordSchema,
   RespondRequestSchema,
   RoutingRuleRecordSchema,
   semanticStatusUpdateState,
   statusUpdateStateBehavior,
+  ToolActivityRecordSchema,
   type CreateRoutingRule,
   type UpdateRoutingRule,
   type WorkspaceMemberKind,
   type WorkspaceRole,
-  type WorkspaceType
+  type WorkspaceType,
+  type PrivateRequestsPolicy
 } from '@self-deprecated/agent-tick-shared';
 import { PostgresStoreConnection, type PostgresStoreOptions } from './postgres.js';
 import {
+  DEFAULT_REQUEST_WAITER_CREDENTIAL_TTL_MS,
   DEFAULT_REQUEST_WAITER_LEASE_MS,
   DEFAULT_USER_ID,
   DEFAULT_WORKSPACE_ID,
@@ -36,9 +40,16 @@ import {
   type CreateExternalApproverInviteInput,
   type CreateRequestInput,
   type CreateStatusUpdateInput,
+  type CreateToolActivityInput,
   type DeviceCredential,
+  type DevicePublicKeyRecord,
   type DeviceRecord,
   type DeviceRegistrationInput,
+  type RegisterDevicePublicKeyInput,
+  type PrivateRequestPrepareInput,
+  type PrivateRequestPrepareRecord,
+  type PrivateStatusUpdatePrepareInput,
+  type PrivateStatusUpdatePrepareRecord,
   type DeviceTokenAuth,
   type EventTicketAuth,
   type EventTicketInput,
@@ -75,25 +86,31 @@ import {
   type ResponseRecord,
   type RoutingRuleRecord,
   type StatusUpdateRecord,
+  type ToolActivityRecord,
   type TransferAccountBoundBillingPurchasesInput,
   type TransferAccountBoundBillingPurchasesResult,
   type UpdateAgentToken,
   type UpdatePersonalEntitlementInput,
+  type UpdateWorkspace,
   type UpdateWorkspaceEntitlementInput,
   type UpsertBillingIdentityConflictInput,
   type UpsertBillingProductInput,
   type UpsertBillingTransactionInput,
   type UpsertBillingTransactionResult,
+  type ActivityWriteCanaryResult,
   type UserProfileRecord,
   type WorkspaceMemberRecord,
   type WorkspaceRecord
 } from './store/types.js';
+import { CANARY_TEST_LABEL, classifyCanaryWriteError } from './canary.js';
 
 /**
  * PostgreSQL store implementation slice for identity, Workspaces, Routing
  * Rules, External Approvers, and Audience Channels.
  */
 export class PostgresAgentTickStore extends PostgresStoreConnection {
+  private privateRequestPolicy: PrivateRequestsPolicy = 'off';
+
   private get db() {
     return this.pool;
   }
@@ -102,11 +119,52 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     return new PostgresAgentTickStore(options);
   }
 
+  setPrivateRequestPolicy(policy: PrivateRequestsPolicy): void {
+    this.privateRequestPolicy = policy;
+  }
+
   async ensureSingleTenantDefaults(now = new Date().toISOString()): Promise<void> {
     await this.db.query(`INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES ($1, '', false, 'Local user', $2, $3) ON CONFLICT (id) DO NOTHING`, [DEFAULT_USER_ID, now, now]);
     await this.db.query(`INSERT INTO workspaces(workspace_id, type, name, created_at, updated_at) VALUES ($1, 'personal', 'Personal', $2, $3) ON CONFLICT (workspace_id) DO NOTHING`, [DEFAULT_WORKSPACE_ID, now, now]);
     await this.db.query(`INSERT INTO workspace_members(workspace_id, user_id, role, status, created_at, updated_at) VALUES ($1, $2, 'owner', 'active', $3, $4) ON CONFLICT (workspace_id, user_id) DO NOTHING`, [DEFAULT_WORKSPACE_ID, DEFAULT_USER_ID, now, now]);
     await this.ensurePersonalEntitlementRow(DEFAULT_USER_ID, now);
+  }
+
+  /**
+   * Synthetic Activity write-path canary. Creates an ephemeral canary personal
+   * Workspace + member and inserts a canary status_updates + requests row
+   * (exercising the evolved Activity columns) inside a transaction that is
+   * forced to roll back, so nothing persists or notifies. Returns a safe
+   * pass/fail classification.
+   */
+  async runActivityWriteCanary(now = new Date().toISOString()): Promise<ActivityWriteCanaryResult> {
+    const rollback = Symbol('agentTickCanaryRollback');
+    const canaryUser = id('usr');
+    const canaryWorkspace = id('wsp');
+    const canaryStatus = id('stat');
+    const canaryRequest = id('req');
+    try {
+      await this.transaction(async () => {
+        await this.db.query(`INSERT INTO users(id, email, email_verified, name, created_at, updated_at) VALUES ($1, '', false, $2, $3, $3)`, [canaryUser, CANARY_TEST_LABEL, now]);
+        await this.db.query(`INSERT INTO workspaces(workspace_id, type, name, created_at, updated_at) VALUES ($1, 'personal', $2, $3, $3)`, [canaryWorkspace, CANARY_TEST_LABEL, now]);
+        await this.db.query(`INSERT INTO workspace_members(workspace_id, user_id, role, status, created_at, updated_at) VALUES ($1, $2, 'owner', 'active', $3, $3)`, [canaryWorkspace, canaryUser, now]);
+        await this.db.query(
+          `INSERT INTO status_updates(status_id, workspace_id, message, state, content_mode, encrypted_payload_json, private_recipient_version, context_usage_json, created_at, is_test, test_label)
+           VALUES ($1,$2,$3,'done','plain',NULL,NULL,'{}',$4,true,$5)`,
+          [canaryStatus, canaryWorkspace, CANARY_TEST_LABEL, now, CANARY_TEST_LABEL]
+        );
+        await this.db.query(
+          `INSERT INTO requests(id, workspace_id, requester_json, request_type, title, choices_json, status, content_mode, encrypted_payload_json, private_recipient_version, private_unavailable_recipients_json, created_at, is_test, test_label)
+           VALUES ($1,$2,$3,'sanction',$4,$5,'pending','plain',NULL,NULL,'[]',$6,true,$7)`,
+          [canaryRequest, canaryWorkspace, JSON.stringify({ name: CANARY_TEST_LABEL }), CANARY_TEST_LABEL, JSON.stringify([{ id: 'approve', label: 'Approve' }]), now, CANARY_TEST_LABEL]
+        );
+        throw rollback;
+      });
+      return { ok: false, code: 'write_failed' };
+    } catch (error) {
+      if (error === rollback) return { ok: true };
+      return { ok: false, code: classifyCanaryWriteError(error) };
+    }
   }
 
   async loginOrCreateClerkIdentity(profile: ClerkIdentityProfile, now = new Date().toISOString()): Promise<HumanIdentityResult> {
@@ -204,7 +262,8 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
   async createSharedWorkspaceForUser(userId: string, name: string, now = new Date().toISOString(), clerkOrganizationId?: string): Promise<WorkspaceMemberRecord> {
     await this.ensureUserExists(userId, now);
     const workspaceId = id('wsp');
-    await this.db.query('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)', [workspaceId, 'shared', name.trim(), clerkOrganizationId ?? null, now, now]);
+    const privateRequestsRequired = this.privateRequestPolicy !== 'off';
+    await this.db.query('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, private_requests_required, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [workspaceId, 'shared', name.trim(), clerkOrganizationId ?? null, privateRequestsRequired, now, now]);
     await this.db.query('INSERT INTO workspace_members(workspace_id, user_id, role, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)', [workspaceId, userId, 'owner', 'active', now, now]);
     await this.writeAuditEvent(workspaceId, userId, 'workspace.created', workspaceId, { name: name.trim(), type: 'shared', clerkOrganizationId }, now);
     return this.workspaceMemberOrThrow(userId, workspaceId);
@@ -223,7 +282,8 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
         return mapWorkspace((await this.workspaceRow(existing.workspaceId))!);
       }
       const workspaceId = id('wsp');
-      await this.db.query('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6)', [workspaceId, 'shared', name.trim(), clerkOrganizationId, now, now]);
+      const privateRequestsRequired = this.privateRequestPolicy !== 'off';
+      await this.db.query('INSERT INTO workspaces(workspace_id, type, name, clerk_organization_id, private_requests_required, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [workspaceId, 'shared', name.trim(), clerkOrganizationId, privateRequestsRequired, now, now]);
       if (ownerUserId) {
         await this.ensureUserExists(ownerUserId, now);
         await this.db.query('INSERT INTO workspace_members(workspace_id, user_id, role, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(workspace_id, user_id) DO NOTHING', [workspaceId, ownerUserId, 'owner', 'active', now, now]);
@@ -255,11 +315,14 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     await this.db.query('UPDATE approval_devices SET unregistered_at = COALESCE(unregistered_at, $1), updated_at = $2 WHERE user_id = $3', [now, now, userId]);
   }
 
-  async updateWorkspace(workspaceId: string, name: string, now = new Date().toISOString()): Promise<WorkspaceRecord | null> {
+  async updateWorkspace(workspaceId: string, input: UpdateWorkspace | string, now = new Date().toISOString()): Promise<WorkspaceRecord | null> {
     const workspace = await this.workspaceRow(workspaceId);
     if (!workspace) return null;
-    if (workspace.type === 'personal') throw new Error('Personal Workspace cannot be renamed');
-    await this.db.query('UPDATE workspaces SET name = $1, updated_at = $2 WHERE workspace_id = $3', [name.trim(), now, workspaceId]);
+    const update = typeof input === 'string' ? { name: input } : input;
+    if (workspace.type === 'personal' && update.name !== undefined) throw new Error('Personal Workspace cannot be renamed');
+    const name = update.name?.trim() ?? workspace.name;
+    const privateRequestsRequired = update.privateRequestsRequired ?? Boolean(workspace.private_requests_required);
+    await this.db.query('UPDATE workspaces SET name = $1, private_requests_required = $2, updated_at = $3 WHERE workspace_id = $4', [name, privateRequestsRequired, now, workspaceId]);
     return mapWorkspace((await this.workspaceRow(workspaceId))!);
   }
 
@@ -334,7 +397,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     }
     assertValidRoutingRuleRecipients(memberships, parsed.requiredResponseMode, parsed.requiredResponseCount);
     const routingRuleId = id('rul');
-    await this.db.query('INSERT INTO routing_rules(routing_rule_id, workspace_id, name, required_response_mode, required_response_count, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [routingRuleId, parsed.workspaceId, parsed.name.trim(), parsed.requiredResponseMode, parsed.requiredResponseCount, now, now]);
+    await this.db.query('INSERT INTO routing_rules(routing_rule_id, workspace_id, name, required_response_mode, required_response_count, private_requests_required, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [routingRuleId, parsed.workspaceId, parsed.name.trim(), parsed.requiredResponseMode, parsed.requiredResponseCount, parsed.privateRequestsRequired ?? false, now, now]);
     await this.insertRoutingRuleRecipients(routingRuleId, recipients, now);
     await this.writeAuditEvent(parsed.workspaceId, DEFAULT_USER_ID, 'routing_rule.created', routingRuleId, { name: parsed.name.trim() }, now);
     return (await this.getRoutingRule(routingRuleId))!;
@@ -355,6 +418,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     const name = input.name?.trim() ?? existing.name;
     const mode = input.requiredResponseMode ?? existing.requiredResponseMode;
     const count = input.requiredResponseCount ?? existing.requiredResponseCount;
+    const privateRequestsRequired = input.privateRequestsRequired ?? existing.privateRequestsRequired ?? false;
     const recipients = input.recipientUserIds ? unique(input.recipientUserIds) : existing.recipientUserIds;
     if (!recipients.length) throw new Error('Routing Rules must have at least one recipient');
     const memberships = [] as HumanIdentityResult[];
@@ -364,7 +428,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
       memberships.push(membership);
     }
     assertValidRoutingRuleRecipients(memberships, mode, count);
-    await this.db.query('UPDATE routing_rules SET name = $1, required_response_mode = $2, required_response_count = $3, updated_at = $4 WHERE routing_rule_id = $5', [name, mode, count, now, routingRuleId]);
+    await this.db.query('UPDATE routing_rules SET name = $1, required_response_mode = $2, required_response_count = $3, private_requests_required = $4, updated_at = $5 WHERE routing_rule_id = $6', [name, mode, count, privateRequestsRequired, now, routingRuleId]);
     if (input.recipientUserIds) {
       await this.db.query('DELETE FROM routing_rule_recipients WHERE routing_rule_id = $1', [routingRuleId]);
       await this.insertRoutingRuleRecipients(routingRuleId, recipients, now);
@@ -559,16 +623,37 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     const route = parsed.deliveryKind === 'audience_channel'
       ? await this.routeForAudienceRequest(workspaceId, parsed.audienceChannelId)
       : await this.routeForActivity(workspaceId, input.agentTokenId, input.routingRuleId);
+    let recipientUserIds = route.recipientUserIds;
+    let requiredResponseCount = route.requiredResponseCount;
+    let privateUnavailableRecipients: Array<{ userId: string; reason: string }> = [];
+    if ((parsed.contentMode ?? 'plain') === 'private') {
+      if (parsed.deliveryKind === 'audience_channel') throw codedError('private Requests cannot use Audience Channels', 'bad_request', 400);
+      const deviceKeys = await this.deviceKeysForRecipients(route.recipientUserIds);
+      const version = privateRecipientVersion(route.recipientUserIds, deviceKeys);
+      if (parsed.privateRecipientVersion && parsed.privateRecipientVersion !== version) throw codedError('Private Request recipients changed; prepare encryption again', 'recipients_changed', 409);
+      const expectedDeviceKeyIds = new Set(deviceKeys.map((key) => key.deviceKeyId));
+      const envelopeDeviceKeyIds = new Set(parsed.encryptedPayload?.keyEnvelopes.map((envelope) => envelope.deviceKeyId) ?? []);
+      const missing = [...expectedDeviceKeyIds].filter((deviceKeyId) => !envelopeDeviceKeyIds.has(deviceKeyId));
+      const extra = [...envelopeDeviceKeyIds].filter((deviceKeyId) => !expectedDeviceKeyIds.has(deviceKeyId));
+      if (missing.length || extra.length) throw codedError('Private Request key envelopes do not match current recipient device keys', 'recipients_changed', 409);
+      const availableUsers = new Set(deviceKeys.map((key) => key.userId));
+      recipientUserIds = route.recipientUserIds.filter((userId) => availableUsers.has(userId));
+      privateUnavailableRecipients = route.recipientUserIds.filter((userId) => !availableUsers.has(userId)).map((userId) => ({ userId, reason: 'no_device_key' }));
+      if (!recipientUserIds.length) throw codedError('No recipient has a usable Private Request device key', 'private_recipients_unavailable', 409);
+      requiredResponseCount = Math.min(route.requiredResponseCount, recipientUserIds.length);
+    } else if (await this.privateRequired(workspaceId, route.routingRuleId)) {
+      throw codedError('Private Requests are required for this Workspace or Routing Rule', 'private_required', 409);
+    }
     const requestId = id('req');
     const choices = defaultChoices(parsed.requestType, parsed.choices);
     const requester = { ...parsed.requester, ...(input.agentTokenId ? { agentTokenId: input.agentTokenId } : {}) };
-    await this.db.query(`INSERT INTO requests(id, workspace_id, agent_token_id, routing_rule_id, session_id, session_metadata_json, requester_json, request_type, delivery_kind, response_policy, audience_channel_id, closes_at, tie_policy, title, body, command, choices_json, questions_json, default_choice, allow_freeform_reply, deadline, risk, metadata_json, status, required_response_count, aggregate_result_json, created_at, is_test, test_label)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'pending',$24,$25,$26,$27,$28)`, [
-      requestId, workspaceId, input.agentTokenId ?? null, route.routingRuleId ?? null, parsed.sessionId ?? null, JSON.stringify(parsed.session ?? {}), JSON.stringify(requester), parsed.requestType, parsed.deliveryKind, parsed.responsePolicy, parsed.audienceChannelId ?? null, parsed.closesAt ?? null, parsed.tiePolicy ?? null, parsed.title, parsed.body ?? null, parsed.command ?? null, JSON.stringify(choices), JSON.stringify(parsed.questions ?? []), parsed.defaultChoice ?? null, parsed.allowFreeformReply ?? false, parsed.deadline ?? null, parsed.risk ?? null, JSON.stringify(parsed.metadata ?? {}), route.requiredResponseCount, null, now, input.isTest ?? false, input.testLabel ?? null
+    await this.db.query(`INSERT INTO requests(id, workspace_id, agent_token_id, routing_rule_id, session_id, session_metadata_json, requester_json, request_type, delivery_kind, response_policy, audience_channel_id, closes_at, tie_policy, title, body, command, choices_json, questions_json, default_choice, allow_freeform_reply, deadline, risk, metadata_json, content_mode, encrypted_payload_json, private_recipient_version, private_unavailable_recipients_json, status, required_response_count, aggregate_result_json, created_at, is_test, test_label)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'pending',$28,$29,$30,$31,$32)`, [
+      requestId, workspaceId, input.agentTokenId ?? null, route.routingRuleId ?? null, parsed.sessionId ?? null, JSON.stringify(parsed.session ?? {}), JSON.stringify(requester), parsed.requestType, parsed.deliveryKind, parsed.responsePolicy, parsed.audienceChannelId ?? null, parsed.closesAt ?? null, parsed.tiePolicy ?? null, parsed.title, parsed.body ?? null, parsed.command ?? null, JSON.stringify(choices), JSON.stringify(parsed.questions ?? []), parsed.defaultChoice ?? null, parsed.allowFreeformReply ?? false, parsed.deadline ?? null, parsed.risk ?? null, JSON.stringify(parsed.metadata ?? {}), parsed.contentMode ?? 'plain', parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null, parsed.privateRecipientVersion ?? null, JSON.stringify(privateUnavailableRecipients), requiredResponseCount, null, now, input.isTest ?? false, input.testLabel ?? null
     ]);
-    await this.insertRequestRecipients(requestId, route.recipientUserIds, now);
+    await this.insertRequestRecipients(requestId, recipientUserIds, now);
     if (input.agentTokenId) await this.db.query('UPDATE agent_tokens SET last_activity_at = $1 WHERE agent_token_id = $2', [now, input.agentTokenId]);
-    await this.writeAuditEvent(workspaceId, input.userId ?? input.agentTokenId ?? DEFAULT_USER_ID, input.isTest ? 'request.test_created' : 'request.created', requestId, { title: parsed.title }, now);
+    await this.writeAuditEvent(workspaceId, input.userId ?? input.agentTokenId ?? DEFAULT_USER_ID, input.isTest ? 'request.test_created' : 'request.created', requestId, (parsed.contentMode ?? 'plain') === 'private' ? { contentMode: 'private' } : { title: parsed.title }, now);
     return this.requestOrThrow(requestId, input.userId, now);
   }
 
@@ -658,7 +743,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
   async createRequestWaiterToken(requestId: string, workspaceId: string, agentTokenId: string, requestDeadline?: string, now = new Date().toISOString()): Promise<RequestWaiterTokenRecord> {
     const token = `wait_${crypto.randomBytes(24).toString('base64url')}`;
     const waiterId = id('waiter');
-    const expiresAt = addMs(requestDeadline && Date.parse(requestDeadline) > Date.parse(now) ? requestDeadline : now, 65 * 60_000);
+    const expiresAt = addMs(requestDeadline && Date.parse(requestDeadline) > Date.parse(now) ? requestDeadline : now, DEFAULT_REQUEST_WAITER_CREDENTIAL_TTL_MS);
     const leaseExpiresAt = addMs(now, DEFAULT_REQUEST_WAITER_LEASE_MS);
     await this.db.query(`INSERT INTO request_waiters(waiter_id, request_id, workspace_id, agent_token_id, transport, state, last_seen_at, lease_expires_at, credential_expires_at, created_at, updated_at) VALUES ($1,$2,$3,$4,'long_poll','waiting',$5,$6,$7,$8,$9)`, [waiterId, requestId, workspaceId, agentTokenId, now, leaseExpiresAt, expiresAt, now, now]);
     await this.db.query('INSERT INTO request_waiter_tokens(token_hash, waiter_id, request_id, workspace_id, agent_token_id, expires_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [hashSecret(token), waiterId, requestId, workspaceId, agentTokenId, expiresAt, now]);
@@ -673,7 +758,9 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
   }
 
   async renewRequestWaiter(waiterId: string, leaseExpiresAt: string, now = new Date().toISOString()): Promise<RequestWaiterRecord | null> {
-    await this.db.query(`UPDATE request_waiters SET state = CASE WHEN state IN ('stopped', 'errored') THEN state ELSE 'waiting' END, last_seen_at = CASE WHEN state IN ('stopped', 'errored') THEN last_seen_at ELSE $1 END, lease_expires_at = CASE WHEN state IN ('stopped', 'errored') THEN lease_expires_at ELSE $2 END, updated_at = $3 WHERE waiter_id = $4`, [now, leaseExpiresAt, now, waiterId]);
+    const credentialExpiresAt = addMs(now, DEFAULT_REQUEST_WAITER_CREDENTIAL_TTL_MS);
+    await this.db.query(`UPDATE request_waiters SET state = CASE WHEN state IN ('stopped', 'errored') THEN state ELSE 'waiting' END, last_seen_at = CASE WHEN state IN ('stopped', 'errored') THEN last_seen_at ELSE $1 END, lease_expires_at = CASE WHEN state IN ('stopped', 'errored') THEN lease_expires_at ELSE $2 END, credential_expires_at = CASE WHEN state IN ('stopped', 'errored') OR credential_expires_at > $3 THEN credential_expires_at ELSE $3 END, updated_at = $4 WHERE waiter_id = $5`, [now, leaseExpiresAt, credentialExpiresAt, now, waiterId]);
+    await this.db.query(`UPDATE request_waiter_tokens SET expires_at = CASE WHEN expires_at > $1 THEN expires_at ELSE $1 END WHERE waiter_id = $2 AND EXISTS (SELECT 1 FROM request_waiters WHERE waiter_id = $2 AND state NOT IN ('stopped', 'errored'))`, [credentialExpiresAt, waiterId]);
     return this.requestWaiterById(waiterId);
   }
 
@@ -691,11 +778,25 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
   async createStatusUpdate(input: CreateStatusUpdateInput, now = new Date().toISOString()): Promise<StatusUpdateRecord> {
     const parsed = CreateStatusUpdateSchema.parse(input);
     const route = await this.routeForActivity(input.workspaceId, input.agentTokenId, input.routingRuleId);
+    let recipientUserIds = route.recipientUserIds;
+    if ((parsed.contentMode ?? 'plain') === 'private') {
+      const deviceKeys = await this.deviceKeysForRecipients(route.recipientUserIds);
+      const version = privateRecipientVersion(route.recipientUserIds, deviceKeys);
+      if (parsed.privateRecipientVersion && parsed.privateRecipientVersion !== version) throw codedError('Private Status Update recipients changed; prepare encryption again', 'recipients_changed', 409);
+      const expectedDeviceKeyIds = new Set(deviceKeys.map((key) => key.deviceKeyId));
+      const envelopeDeviceKeyIds = new Set(parsed.encryptedPayload?.keyEnvelopes.map((envelope) => envelope.deviceKeyId) ?? []);
+      const missing = [...expectedDeviceKeyIds].filter((deviceKeyId) => !envelopeDeviceKeyIds.has(deviceKeyId));
+      const extra = [...envelopeDeviceKeyIds].filter((deviceKeyId) => !expectedDeviceKeyIds.has(deviceKeyId));
+      if (missing.length || extra.length) throw codedError('Private Status Update key envelopes do not match current recipient device keys', 'recipients_changed', 409);
+      const availableUsers = new Set(deviceKeys.map((key) => key.userId));
+      recipientUserIds = route.recipientUserIds.filter((userId) => availableUsers.has(userId));
+      if (!recipientUserIds.length) throw codedError('No recipient has a usable Private Status Update device key', 'private_recipients_unavailable', 409);
+    }
     const statusId = id('stat');
     const sessionId = parsed.sessionId ?? parsed.threadId;
-    await this.db.query(`INSERT INTO status_updates(status_id, workspace_id, agent_token_id, routing_rule_id, thread_id, session_id, session_metadata_json, message, state, next_step, host, working_directory, client_name, metadata_json, created_at, is_test, test_label)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`, [statusId, input.workspaceId, input.agentTokenId ?? null, route.routingRuleId ?? null, parsed.threadId ?? null, sessionId ?? null, JSON.stringify(parsed.session ?? {}), parsed.message, parsed.state, parsed.nextStep ?? null, parsed.host ?? null, parsed.workingDirectory ?? null, parsed.clientName ?? null, JSON.stringify(parsed.metadata ?? {}), now, input.isTest ?? false, input.testLabel ?? null]);
-    await this.insertStatusUpdateRecipients(statusId, route.recipientUserIds, now);
+    await this.db.query(`INSERT INTO status_updates(status_id, workspace_id, agent_token_id, routing_rule_id, thread_id, session_id, session_metadata_json, message, state, next_step, host, working_directory, client_name, metadata_json, content_mode, encrypted_payload_json, private_recipient_version, context_usage_json, created_at, is_test, test_label)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`, [statusId, input.workspaceId, input.agentTokenId ?? null, route.routingRuleId ?? null, parsed.threadId ?? null, sessionId ?? null, JSON.stringify(parsed.session ?? {}), parsed.message, parsed.state, parsed.nextStep ?? null, parsed.host ?? null, parsed.workingDirectory ?? null, parsed.clientName ?? null, JSON.stringify(parsed.metadata ?? {}), parsed.contentMode ?? 'plain', parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null, parsed.privateRecipientVersion ?? null, JSON.stringify(parsed.contextUsage ?? {}), now, input.isTest ?? false, input.testLabel ?? null]);
+    await this.insertStatusUpdateRecipients(statusId, recipientUserIds, now);
     if (input.agentTokenId) await this.db.query('UPDATE agent_tokens SET last_activity_at = $1 WHERE agent_token_id = $2', [now, input.agentTokenId]);
     await this.writeAuditEvent(input.workspaceId, input.userId ?? input.agentTokenId ?? DEFAULT_USER_ID, input.isTest ? 'status_update.test_created' : 'status_update.created', statusId, { state: parsed.state }, now);
     return this.statusUpdateOrThrow(statusId);
@@ -710,15 +811,53 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     return Promise.all((await this.all<StatusUpdateRow>(STATUS_UPDATE_SELECT + ' WHERE su.workspace_id = $1 ORDER BY su.created_at DESC LIMIT $2', [workspaceId, clampLimit(limit)])).map((row) => this.mapStatusUpdate(row)));
   }
 
+  async createToolActivity(input: CreateToolActivityInput, now = new Date().toISOString()): Promise<ToolActivityRecord> {
+    const parsed = CreateToolActivitySchema.parse(input);
+    const route = await this.routeForActivity(input.workspaceId, input.agentTokenId, input.routingRuleId);
+    let recipientUserIds = route.recipientUserIds;
+    if ((parsed.contentMode ?? 'plain') === 'private') {
+      const deviceKeys = await this.deviceKeysForRecipients(route.recipientUserIds);
+      const version = privateRecipientVersion(route.recipientUserIds, deviceKeys);
+      if (parsed.privateRecipientVersion && parsed.privateRecipientVersion !== version) throw codedError('Private Tool Activity recipients changed; prepare encryption again', 'recipients_changed', 409);
+      const expectedDeviceKeyIds = new Set(deviceKeys.map((key) => key.deviceKeyId));
+      const envelopeDeviceKeyIds = new Set(parsed.encryptedPayload?.keyEnvelopes.map((envelope) => envelope.deviceKeyId) ?? []);
+      const missing = [...expectedDeviceKeyIds].filter((deviceKeyId) => !envelopeDeviceKeyIds.has(deviceKeyId));
+      const extra = [...envelopeDeviceKeyIds].filter((deviceKeyId) => !expectedDeviceKeyIds.has(deviceKeyId));
+      if (missing.length || extra.length) throw codedError('Private Tool Activity key envelopes do not match current recipient device keys', 'recipients_changed', 409);
+      const availableUsers = new Set(deviceKeys.map((key) => key.userId));
+      recipientUserIds = route.recipientUserIds.filter((userId) => availableUsers.has(userId));
+      if (!recipientUserIds.length) throw codedError('No recipient has a usable Private Tool Activity device key', 'private_recipients_unavailable', 409);
+    }
+    const toolActivityId = id('toolact');
+    const sessionId = parsed.sessionId ?? parsed.threadId ?? `agent:${input.agentTokenId ?? input.userId ?? input.workspaceId}`;
+    await this.db.query(`INSERT INTO tool_activities(tool_activity_id, workspace_id, agent_token_id, routing_rule_id, thread_id, session_id, turn_id, tool_call_id, tool_name, state, outcome, summary, metadata_json, content_mode, encrypted_payload_json, private_recipient_version, started_at, finished_at, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`, [toolActivityId, input.workspaceId, input.agentTokenId ?? null, route.routingRuleId ?? null, parsed.threadId ?? null, sessionId, parsed.turnId ?? null, parsed.toolCallId ?? null, parsed.toolName, parsed.state, parsed.outcome ?? null, parsed.summary ?? null, JSON.stringify(parsed.metadata ?? {}), parsed.contentMode ?? 'plain', parsed.encryptedPayload ? JSON.stringify(parsed.encryptedPayload) : null, parsed.privateRecipientVersion ?? null, parsed.startedAt ?? null, parsed.finishedAt ?? null, now]);
+    await this.insertToolActivityRecipients(toolActivityId, recipientUserIds, now);
+    if (input.agentTokenId) await this.db.query('UPDATE agent_tokens SET last_activity_at = $1 WHERE agent_token_id = $2', [now, input.agentTokenId]);
+    await this.writeAuditEvent(input.workspaceId, input.userId ?? input.agentTokenId ?? DEFAULT_USER_ID, 'tool_activity.created', toolActivityId, { toolName: parsed.toolName, state: parsed.state, outcome: parsed.outcome ?? null }, now);
+    return this.toolActivityOrThrow(toolActivityId);
+  }
+
+  async getToolActivity(toolActivityId: string, workspaceId: string): Promise<ToolActivityRecord | null> {
+    const row = await this.one<ToolActivityRow>(TOOL_ACTIVITY_SELECT + ' WHERE ta.tool_activity_id = $1 AND ta.workspace_id = $2', [toolActivityId, workspaceId]);
+    return row ? this.mapToolActivity(row) : null;
+  }
+
+  async listLatestToolActivities(workspaceId: string, limit = 20): Promise<ToolActivityRecord[]> {
+    return Promise.all((await this.all<ToolActivityRow>(TOOL_ACTIVITY_SELECT + ' WHERE ta.workspace_id = $1 ORDER BY ta.created_at DESC LIMIT $2', [workspaceId, clampLimit(limit)])).map((row) => this.mapToolActivity(row)));
+  }
+
   async listActivityForUser(userId: string, workspaceId?: string, limit = 50, now = new Date().toISOString()): Promise<ActivityItem[]> {
     await this.expirePendingRequests(now);
     const boundedLimit = clampLimit(limit, 1000);
     const requestRows = workspaceId ? await this.all<RequestRow>(REQUEST_SELECT + ` JOIN request_recipients rr ON rr.request_id = r.id WHERE rr.user_id = $1 AND r.workspace_id = $2 ORDER BY r.created_at DESC LIMIT $3`, [userId, workspaceId, boundedLimit]) : await this.all<RequestRow>(REQUEST_SELECT + ` JOIN request_recipients rr ON rr.request_id = r.id WHERE rr.user_id = $1 ORDER BY r.created_at DESC LIMIT $2`, [userId, boundedLimit]);
     const statusRows = workspaceId ? await this.all<StatusUpdateRow>(STATUS_UPDATE_SELECT + ` JOIN status_update_recipients sur ON sur.status_id = su.status_id WHERE sur.user_id = $1 AND su.workspace_id = $2 ORDER BY su.created_at DESC LIMIT $3`, [userId, workspaceId, boundedLimit]) : await this.all<StatusUpdateRow>(STATUS_UPDATE_SELECT + ` JOIN status_update_recipients sur ON sur.status_id = su.status_id WHERE sur.user_id = $1 ORDER BY su.created_at DESC LIMIT $2`, [userId, boundedLimit]);
+    const toolRows = workspaceId ? await this.all<ToolActivityRow>(TOOL_ACTIVITY_SELECT + ` JOIN tool_activity_recipients tar ON tar.tool_activity_id = ta.tool_activity_id WHERE tar.user_id = $1 AND ta.workspace_id = $2 ORDER BY ta.created_at DESC LIMIT $3`, [userId, workspaceId, boundedLimit]) : await this.all<ToolActivityRow>(TOOL_ACTIVITY_SELECT + ` JOIN tool_activity_recipients tar ON tar.tool_activity_id = ta.tool_activity_id WHERE tar.user_id = $1 ORDER BY ta.created_at DESC LIMIT $2`, [userId, boundedLimit]);
     const statusItems = await Promise.all(statusRows.map(async (row) => ({ kind: 'status_update' as const, id: row.status_id, workspaceId: row.workspace_id, createdAt: row.created_at, statusUpdate: await this.mapStatusUpdate(row) })));
+    const toolItems = await Promise.all(toolRows.map(async (row) => ({ kind: 'tool_activity' as const, id: row.tool_activity_id, workspaceId: row.workspace_id, createdAt: row.created_at, toolActivity: await this.mapToolActivity(row) })));
     const mappedRequests = await this.mapRequests(requestRows, userId, now);
     const requestItems = requestRows.map((row, index) => ({ kind: 'request' as const, id: row.id, workspaceId: row.workspace_id, createdAt: row.created_at, request: mappedRequests[index]! }));
-    return [...requestItems, ...statusItems].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, clampLimit(limit));
+    return [...requestItems, ...statusItems, ...toolItems].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, clampLimit(limit));
   }
 
   async pendingRequestCountForUser(userId: string, workspaceId?: string, now = new Date().toISOString()): Promise<number> {
@@ -750,6 +889,34 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
   }
 
   async listDevicesForUser(userId: string): Promise<DeviceRecord[]> { return (await this.all<DeviceRow>('SELECT * FROM approval_devices WHERE user_id = $1 AND unregistered_at IS NULL ORDER BY created_at DESC', [userId])).map(mapDevice); }
+  async registerDevicePublicKey(input: RegisterDevicePublicKeyInput, now = new Date().toISOString()): Promise<DevicePublicKeyRecord> {
+    const device = await this.deviceOrThrow(input.deviceId, input.userId);
+    const fingerprint = hashSecret(`${input.algorithm}:${input.publicKey}`);
+    const existing = await this.one<DeviceKeyRow>('SELECT * FROM approval_device_keys WHERE device_id = $1 AND algorithm = $2 AND public_key_fingerprint = $3', [device.deviceId, input.algorithm, fingerprint]);
+    if (existing) {
+      await this.db.query('UPDATE approval_device_keys SET public_key = $1, revoked_at = NULL, updated_at = $2 WHERE device_key_id = $3', [input.publicKey, now, existing.device_key_id]);
+      return mapDeviceKey((await this.one<DeviceKeyRow>('SELECT * FROM approval_device_keys WHERE device_key_id = $1', [existing.device_key_id]))!);
+    }
+    const deviceKeyId = id('devkey');
+    await this.db.query('INSERT INTO approval_device_keys(device_key_id, device_id, user_id, algorithm, public_key, public_key_fingerprint, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [deviceKeyId, device.deviceId, input.userId, input.algorithm, input.publicKey, fingerprint, now, now]);
+    return mapDeviceKey((await this.one<DeviceKeyRow>('SELECT * FROM approval_device_keys WHERE device_key_id = $1', [deviceKeyId]))!);
+  }
+  async listDevicePublicKeysForUser(userId: string): Promise<DevicePublicKeyRecord[]> {
+    return (await this.all<DeviceKeyRow>(`SELECT k.* FROM approval_device_keys k JOIN approval_devices d ON d.device_id = k.device_id WHERE k.user_id = $1 AND k.revoked_at IS NULL AND d.unregistered_at IS NULL ORDER BY k.created_at ASC`, [userId])).map(mapDeviceKey);
+  }
+  async preparePrivateRequest(input: PrivateRequestPrepareInput): Promise<PrivateRequestPrepareRecord> {
+    return this.preparePrivateActivity(input);
+  }
+  async preparePrivateStatusUpdate(input: PrivateStatusUpdatePrepareInput): Promise<PrivateStatusUpdatePrepareRecord> {
+    return this.preparePrivateActivity(input, false);
+  }
+  private async preparePrivateActivity(input: PrivateRequestPrepareInput, requiredOverride?: boolean): Promise<PrivateRequestPrepareRecord> {
+    const route = await this.routeForActivity(input.workspaceId, input.agentTokenId, input.routingRuleId);
+    const deviceKeys = await this.deviceKeysForRecipients(route.recipientUserIds);
+    const available = new Set(deviceKeys.map((key) => key.userId));
+    const unavailableRecipients = route.recipientUserIds.filter((userId) => !available.has(userId)).map((userId) => ({ userId, reason: 'no_device_key' }));
+    return { contentMode: 'private', workspaceId: input.workspaceId, ...(route.routingRuleId ? { routingRuleId: route.routingRuleId } : {}), required: requiredOverride ?? await this.privateRequired(input.workspaceId, route.routingRuleId), recipientVersion: privateRecipientVersion(route.recipientUserIds, deviceKeys), recipientUserIds: [...available], deviceKeys, unavailableRecipients };
+  }
   async listPushDevicesForRequestRecipients(requestId: string): Promise<DeviceRecord[]> { return uniqueDevicesByPushToken(await this.all<DeviceRow>(`SELECT d.* FROM approval_devices d JOIN request_recipients rr ON rr.user_id = d.user_id WHERE rr.request_id = $1 AND d.unregistered_at IS NULL AND d.expo_push_token IS NOT NULL AND d.expo_push_token <> '' ORDER BY d.updated_at DESC, d.created_at DESC`, [requestId])); }
   async listPushDevicesForAudienceChannel(channelId: string): Promise<DeviceRecord[]> { return uniqueDevicesByPushToken(await this.all<DeviceRow>(`SELECT d.* FROM approval_devices d JOIN audience_subscriptions aus ON aus.user_id = d.user_id WHERE aus.channel_id = $1 AND aus.status = 'active' AND d.unregistered_at IS NULL AND d.expo_push_token IS NOT NULL AND d.expo_push_token <> '' ORDER BY d.updated_at DESC, d.created_at DESC`, [channelId])); }
   async listPushDevicesForUsers(userIds: string[]): Promise<DeviceRecord[]> { if (!userIds.length) return []; return uniqueDevicesByPushToken(await this.all<DeviceRow>(`SELECT * FROM approval_devices WHERE user_id = ANY($1) AND unregistered_at IS NULL AND expo_push_token IS NOT NULL AND expo_push_token <> '' ORDER BY updated_at DESC, created_at DESC`, [userIds])); }
@@ -788,9 +955,10 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
   async cleanupRetention(policy: RetentionPolicy = {}, now = new Date().toISOString()): Promise<CleanupRetentionResult> {
     const requests = await this.deleteOlderThan('requests', 'created_at', policy.requestsDays, now);
     const statusUpdates = await this.deleteOlderThan('status_updates', 'created_at', policy.statusUpdatesDays, now);
+    const toolActivities = await this.deleteOlderThan('tool_activities', 'created_at', policy.toolActivitiesDays ?? policy.statusUpdatesDays, now);
     const auditEvents = await this.deleteOlderThan('audit_events', 'created_at', policy.auditEventsDays, now);
     const devices = await this.deleteOlderThan('approval_devices', 'unregistered_at', policy.unregisteredDevicesDays, now, 'unregistered_at IS NOT NULL');
-    return { requests, statusUpdates, auditEvents, devices };
+    return { requests, statusUpdates, toolActivities, auditEvents, devices };
   }
 
   async deleteWorkspaceData(workspaceId: string, now = new Date().toISOString()): Promise<DeleteWorkspaceDataResult> {
@@ -944,6 +1112,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
     await this.db.query('DELETE FROM mobile_diagnostics WHERE user_id = $1', [userId]);
     await this.db.query('DELETE FROM availability WHERE user_id = $1', [userId]);
     await this.db.query('DELETE FROM status_update_recipients WHERE user_id = $1', [userId]);
+    await this.db.query('DELETE FROM tool_activity_recipients WHERE user_id = $1', [userId]);
     await this.db.query('DELETE FROM request_recipients WHERE user_id = $1', [userId]);
     await this.db.query('DELETE FROM routing_rule_recipients WHERE user_id = $1', [userId]);
     await this.db.query('DELETE FROM responses WHERE user_id = $1', [userId]);
@@ -961,6 +1130,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
       await this.db.query('DELETE FROM mobile_diagnostics WHERE user_id = $1', [userId]);
       await this.db.query('DELETE FROM availability WHERE user_id = $1', [userId]);
       await this.db.query('DELETE FROM status_update_recipients WHERE user_id = $1', [userId]);
+      await this.db.query('DELETE FROM tool_activity_recipients WHERE user_id = $1', [userId]);
       await this.db.query('DELETE FROM request_recipients WHERE user_id = $1', [userId]);
       await this.db.query('DELETE FROM responses WHERE user_id = $1', [userId]);
       await this.db.query('DELETE FROM routing_rule_recipients WHERE user_id = $1', [userId]);
@@ -1039,10 +1209,35 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
       FROM unnest($3::text[]) AS recipients(user_id)`, [requestId, now, recipientUserIds]);
   }
 
+  private async deviceKeysForRecipients(recipientUserIds: string[]): Promise<DevicePublicKeyRecord[]> {
+    if (!recipientUserIds.length) return [];
+    return (await this.all<DeviceKeyRow>(`
+      SELECT k.* FROM approval_device_keys k
+      JOIN approval_devices d ON d.device_id = k.device_id
+      WHERE k.revoked_at IS NULL AND d.unregistered_at IS NULL AND k.user_id = ANY($1)
+      ORDER BY k.user_id ASC, k.created_at ASC
+    `, [recipientUserIds])).map(mapDeviceKey);
+  }
+
+  private async privateRequired(workspaceId: string, routingRuleId?: string): Promise<boolean> {
+    if (this.privateRequestPolicy === 'forced') return true;
+    const workspace = await this.workspaceRow(workspaceId);
+    if (workspace?.private_requests_required) return true;
+    if (!routingRuleId) return false;
+    const row = await this.one<{ private_requests_required: boolean }>('SELECT private_requests_required FROM routing_rules WHERE routing_rule_id = $1 AND workspace_id = $2', [routingRuleId, workspaceId]);
+    return Boolean(row?.private_requests_required);
+  }
+
   private async insertStatusUpdateRecipients(statusId: string, recipientUserIds: string[], now: string): Promise<void> {
     if (!recipientUserIds.length) return;
     await this.db.query(`INSERT INTO status_update_recipients(status_id, user_id, created_at)
       SELECT $1, user_id, $2 FROM unnest($3::text[]) AS recipients(user_id)`, [statusId, now, recipientUserIds]);
+  }
+
+  private async insertToolActivityRecipients(toolActivityId: string, recipientUserIds: string[], now: string): Promise<void> {
+    if (!recipientUserIds.length) return;
+    await this.db.query(`INSERT INTO tool_activity_recipients(tool_activity_id, user_id, created_at)
+      SELECT $1, user_id, $2 FROM unnest($3::text[]) AS recipients(user_id)`, [toolActivityId, now, recipientUserIds]);
   }
 
   private async expirePendingRequests(now: string): Promise<void> {
@@ -1134,6 +1329,10 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
       ...(row.deadline ? { deadline: row.deadline } : {}),
       ...(row.risk ? { risk: row.risk } : {}),
       metadata: JSON.parse(row.metadata_json || '{}'),
+      contentMode: row.content_mode as 'plain' | 'private',
+      ...(row.encrypted_payload_json ? { encryptedPayload: JSON.parse(row.encrypted_payload_json) } : {}),
+      ...(row.private_recipient_version ? { privateRecipientVersion: row.private_recipient_version } : {}),
+      privateUnavailableRecipients: JSON.parse(row.private_unavailable_recipients_json || '[]'),
       status: row.status,
       createdAt: row.created_at,
       ...(row.responded_at ? { respondedAt: row.responded_at } : {}),
@@ -1176,7 +1375,40 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
   private async mapStatusUpdate(row: StatusUpdateRow): Promise<StatusUpdateRecord> {
     const recipientUserIds = (await this.all<{ user_id: string }>('SELECT user_id FROM status_update_recipients WHERE status_id = $1 ORDER BY created_at ASC', [row.status_id])).map((recipient) => recipient.user_id);
     const semantic = semanticStatusUpdateState(row.state);
-    return { statusId: row.status_id, workspaceId: row.workspace_id, ...(row.agent_token_id ? { agentTokenId: row.agent_token_id } : {}), ...(row.agent_token_label ? { agentTokenLabel: row.agent_token_label } : {}), ...(row.routing_rule_id ? { routingRuleId: row.routing_rule_id } : {}), ...(row.thread_id ? { threadId: row.thread_id } : {}), ...(row.session_id ? { sessionId: row.session_id } : {}), session: JSON.parse(row.session_metadata_json || '{}'), message: row.message, state: row.state, ...(semantic ? { semanticState: semantic } : {}), stateBehavior: statusUpdateStateBehavior(row.state), ...(row.next_step ? { nextStep: row.next_step } : {}), ...(row.host ? { host: row.host } : {}), ...(row.working_directory ? { workingDirectory: row.working_directory } : {}), ...(row.client_name ? { clientName: row.client_name } : {}), metadata: JSON.parse(row.metadata_json || '{}'), recipientUserIds, createdAt: row.created_at, isTest: row.is_test, ...(row.test_label ? { testLabel: row.test_label } : {}) };
+    return { statusId: row.status_id, workspaceId: row.workspace_id, ...(row.agent_token_id ? { agentTokenId: row.agent_token_id } : {}), ...(row.agent_token_label ? { agentTokenLabel: row.agent_token_label } : {}), ...(row.routing_rule_id ? { routingRuleId: row.routing_rule_id } : {}), ...(row.thread_id ? { threadId: row.thread_id } : {}), ...(row.session_id ? { sessionId: row.session_id } : {}), session: JSON.parse(row.session_metadata_json || '{}'), message: row.message, state: row.state, ...(semantic ? { semanticState: semantic } : {}), stateBehavior: statusUpdateStateBehavior(row.state), ...(row.next_step ? { nextStep: row.next_step } : {}), ...(row.host ? { host: row.host } : {}), ...(row.working_directory ? { workingDirectory: row.working_directory } : {}), ...(row.client_name ? { clientName: row.client_name } : {}), metadata: JSON.parse(row.metadata_json || '{}'), contentMode: row.content_mode as 'plain' | 'private', ...(row.encrypted_payload_json ? { encryptedPayload: JSON.parse(row.encrypted_payload_json) } : {}), ...(row.private_recipient_version ? { privateRecipientVersion: row.private_recipient_version } : {}), ...(Object.keys(JSON.parse(row.context_usage_json || '{}')).length ? { contextUsage: JSON.parse(row.context_usage_json || '{}') } : {}), recipientUserIds, createdAt: row.created_at, isTest: row.is_test, ...(row.test_label ? { testLabel: row.test_label } : {}) };
+  }
+
+  private async toolActivityOrThrow(toolActivityId: string): Promise<ToolActivityRecord> {
+    const row = await this.one<ToolActivityRow>(TOOL_ACTIVITY_SELECT + ' WHERE ta.tool_activity_id = $1', [toolActivityId]);
+    if (!row) throw new Error('Tool Activity not found');
+    return this.mapToolActivity(row);
+  }
+
+  private async mapToolActivity(row: ToolActivityRow): Promise<ToolActivityRecord> {
+    const recipientUserIds = (await this.all<{ user_id: string }>('SELECT user_id FROM tool_activity_recipients WHERE tool_activity_id = $1 ORDER BY created_at ASC', [row.tool_activity_id])).map((recipient) => recipient.user_id);
+    return ToolActivityRecordSchema.parse({
+      toolActivityId: row.tool_activity_id,
+      workspaceId: row.workspace_id,
+      ...(row.agent_token_id ? { agentTokenId: row.agent_token_id } : {}),
+      ...(row.agent_token_label ? { agentTokenLabel: row.agent_token_label } : {}),
+      ...(row.routing_rule_id ? { routingRuleId: row.routing_rule_id } : {}),
+      ...(row.thread_id ? { threadId: row.thread_id } : {}),
+      sessionId: row.session_id,
+      ...(row.turn_id ? { turnId: row.turn_id } : {}),
+      ...(row.tool_call_id ? { toolCallId: row.tool_call_id } : {}),
+      toolName: row.tool_name,
+      state: row.state,
+      ...(row.outcome ? { outcome: row.outcome } : {}),
+      ...(row.summary ? { summary: row.summary } : {}),
+      metadata: JSON.parse(row.metadata_json || '{}'),
+      contentMode: row.content_mode,
+      ...(row.encrypted_payload_json ? { encryptedPayload: JSON.parse(row.encrypted_payload_json) } : {}),
+      ...(row.private_recipient_version ? { privateRecipientVersion: row.private_recipient_version } : {}),
+      recipientUserIds,
+      ...(row.started_at ? { startedAt: row.started_at } : {}),
+      ...(row.finished_at ? { finishedAt: row.finished_at } : {}),
+      createdAt: row.created_at
+    });
   }
 
   private async deviceOrThrow(deviceId: string, userId: string): Promise<DeviceRecord> {
@@ -1226,6 +1458,7 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
       requiredResponseMode: row.required_response_mode,
       requiredResponseCount: requiredCount(row.required_response_mode, row.required_response_count, recipientUserIds.length),
       recipientUserIds,
+      ...(row.private_requests_required ? { privateRequestsRequired: true } : {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     });
@@ -1302,21 +1535,23 @@ export class PostgresAgentTickStore extends PostgresStoreConnection {
 }
 
 interface UserRow { id: string; email: string | null; email_verified: boolean; name: string | null; sign_in_method: string | null }
-interface WorkspaceRow { workspace_id: string; type: string; name: string; clerk_organization_id: string | null; responses_entitled_until: string | null; created_at: string; updated_at: string }
+interface WorkspaceRow { workspace_id: string; type: string; name: string; clerk_organization_id: string | null; responses_entitled_until: string | null; private_requests_required: boolean; created_at: string; updated_at: string }
 interface WorkspaceMemberRow extends WorkspaceRow { user_id: string; role: string; status: string; member_kind: string; email: string | null; display_name: string | null; clerk_membership_id: string | null }
-interface RoutingRuleRow { routing_rule_id: string; workspace_id: string; name: string; required_response_mode: string; required_response_count: number; created_at: string; updated_at: string }
+interface RoutingRuleRow { routing_rule_id: string; workspace_id: string; name: string; required_response_mode: string; required_response_count: number; private_requests_required: boolean; created_at: string; updated_at: string }
 interface AudienceChannelRow { channel_id: string; workspace_id: string; name: string; slug: string | null; visibility: string; status: string; created_by_user_id: string; created_at: string; updated_at: string }
 interface AudienceSubscriptionRow { channel_id: string; user_id: string; status: string; created_at: string; updated_at: string }
 interface ExternalApproverRow { external_approver_id: string; workspace_id: string; external_subject: string | null; display_name: string | null; user_id: string | null; routing_rule_id: string | null; agent_token_id: string | null; created_by_user_id: string; created_at: string; updated_at: string }
 interface ExternalApproverInviteRow { invite_id: string; workspace_id: string; workspace_name: string | null; external_approver_id: string | null; external_subject: string | null; display_name: string | null; created_by_user_id: string; accepted_by_user_id: string | null; expires_at: string; accepted_at: string | null; revoked_at: string | null; created_at: string; updated_at: string }
 interface AgentTokenRow { agent_token_id: string; workspace_id: string; workspace_type: string; creator_user_id: string | null; routing_rule_id: string | null; bound_recipient_user_id: string | null; label: string; scopes_json: string; last_activity_at: string | null; last_check_in_at: string | null; created_at: string; revoked_at: string | null }
-interface RequestRow { id: string; workspace_id: string; workspace_type: string; workspace_responses_entitled_until: string | null; agent_token_id: string | null; routing_rule_id: string | null; session_id: string | null; session_metadata_json: string; requester_json: string; request_type: string; delivery_kind: string; response_policy: string; audience_channel_id: string | null; closes_at: string | null; tie_policy: string | null; aggregate_result_json: string | null; title: string; body: string | null; command: string | null; choices_json: string; questions_json: string; default_choice: string | null; allow_freeform_reply: boolean; deadline: string | null; risk: string | null; metadata_json: string; status: string; required_response_count: number; created_at: string; responded_at: string | null; response_json: string | null; final_choice_id: string | null; is_test: boolean; test_label: string | null }
+interface RequestRow { id: string; workspace_id: string; workspace_type: string; workspace_responses_entitled_until: string | null; agent_token_id: string | null; routing_rule_id: string | null; session_id: string | null; session_metadata_json: string; requester_json: string; request_type: string; delivery_kind: string; response_policy: string; audience_channel_id: string | null; closes_at: string | null; tie_policy: string | null; aggregate_result_json: string | null; title: string; body: string | null; command: string | null; choices_json: string; questions_json: string; default_choice: string | null; allow_freeform_reply: boolean; deadline: string | null; risk: string | null; metadata_json: string; content_mode: string; encrypted_payload_json: string | null; private_recipient_version: string | null; private_unavailable_recipients_json: string; status: string; required_response_count: number; created_at: string; responded_at: string | null; response_json: string | null; final_choice_id: string | null; is_test: boolean; test_label: string | null }
 interface RequestRecipientRow { request_id: string; user_id: string; has_active_device: boolean; responded_at: string | null; created_at: string; updated_at: string }
 interface ResponseRow { response_id: string; request_id: string; user_id: string; source: string; choice_id: string | null; message: string | null; answers_json: string | null; final: boolean; created_at: string }
 interface RequestWaiterRow { waiter_id: string; request_id: string; workspace_id: string; agent_token_id: string; client_run_id: string | null; transport: string; state: string; last_seen_at: string; lease_expires_at: string; credential_expires_at: string; stopped_at: string | null; stop_reason: string | null; error_code: string | null; error_message: string | null; created_at: string; updated_at: string }
 interface WaiterTokenRow { token_hash: string; waiter_id: string; request_id: string; workspace_id: string; agent_token_id: string; expires_at: string; created_at: string; last_used_at: string | null }
-interface StatusUpdateRow { status_id: string; workspace_id: string; agent_token_id: string | null; agent_token_label: string | null; routing_rule_id: string | null; thread_id: string | null; session_id: string | null; session_metadata_json: string; message: string; state: string; next_step: string | null; host: string | null; working_directory: string | null; client_name: string | null; metadata_json: string; created_at: string; is_test: boolean; test_label: string | null }
+interface StatusUpdateRow { status_id: string; workspace_id: string; agent_token_id: string | null; agent_token_label: string | null; routing_rule_id: string | null; thread_id: string | null; session_id: string | null; session_metadata_json: string; message: string; state: string; next_step: string | null; host: string | null; working_directory: string | null; client_name: string | null; metadata_json: string; content_mode: string; encrypted_payload_json: string | null; private_recipient_version: string | null; context_usage_json: string; created_at: string; is_test: boolean; test_label: string | null }
+interface ToolActivityRow { tool_activity_id: string; workspace_id: string; agent_token_id: string | null; agent_token_label: string | null; routing_rule_id: string | null; thread_id: string | null; session_id: string; turn_id: string | null; tool_call_id: string | null; tool_name: string; state: string; outcome: string | null; summary: string | null; metadata_json: string; content_mode: string; encrypted_payload_json: string | null; private_recipient_version: string | null; started_at: string | null; finished_at: string | null; created_at: string }
 interface DeviceRow { device_id: string; user_id: string; name: string; platform: string | null; installation_id: string | null; expo_push_token: string | null; created_at: string; updated_at: string; unregistered_at: string | null }
+interface DeviceKeyRow { device_key_id: string; device_id: string; user_id: string; algorithm: string; public_key: string; public_key_fingerprint: string; created_at: string; updated_at: string; revoked_at: string | null }
 interface PairingRow { user_id: string; workspace_id: string }
 interface EventTicketRow { source: string; workspace_id: string; user_id: string }
 interface AvailabilityRow { user_id: string; workspace_id: string; state: string; last_seen_at: string | null; updated_at: string }
@@ -1330,7 +1565,7 @@ interface BillingReceiptOwnerRow { provider: string; environment: string; platfo
 interface BillingIdentityConflictRow { id: string; user_id: string; provider: string; environment: string; platform: string; product_key: string; entitlement_key: string; receipt_key: string; code: string; created_at: string; updated_at: string }
 
 const WORKSPACE_MEMBER_SELECT = `
-  SELECT w.workspace_id, w.type, w.name, w.clerk_organization_id, w.created_at, w.updated_at,
+  SELECT w.workspace_id, w.type, w.name, w.clerk_organization_id, w.responses_entitled_until, w.private_requests_required, w.created_at, w.updated_at,
          wm.user_id, wm.role, wm.status, wm.member_kind, wm.clerk_membership_id,
          u.email, u.name AS display_name
   FROM workspace_members wm
@@ -1352,6 +1587,12 @@ const STATUS_UPDATE_SELECT = `
   LEFT JOIN agent_tokens at ON at.agent_token_id = su.agent_token_id
 `;
 
+const TOOL_ACTIVITY_SELECT = `
+  SELECT ta.*, at.label AS agent_token_label
+  FROM tool_activities ta
+  LEFT JOIN agent_tokens at ON at.agent_token_id = ta.agent_token_id
+`;
+
 const AGENT_TOKEN_SELECT = `
   SELECT at.agent_token_id, at.workspace_id, w.type AS workspace_type, at.creator_user_id, at.routing_rule_id, at.bound_recipient_user_id, at.label, at.scopes_json, at.last_activity_at, at.last_check_in_at, at.created_at, at.revoked_at
   FROM agent_tokens at
@@ -1363,7 +1604,7 @@ function mapUserProfile(row: UserRow): UserProfileRecord {
 }
 
 function mapWorkspace(row: WorkspaceRow): WorkspaceRecord {
-  return { workspaceId: row.workspace_id, type: row.type as WorkspaceType, name: row.name, ...(row.clerk_organization_id ? { clerkOrganizationId: row.clerk_organization_id } : {}), ...(row.responses_entitled_until ? { responsesEntitledUntil: row.responses_entitled_until } : {}), createdAt: row.created_at, updatedAt: row.updated_at };
+  return { workspaceId: row.workspace_id, type: row.type as WorkspaceType, name: row.name, ...(row.clerk_organization_id ? { clerkOrganizationId: row.clerk_organization_id } : {}), ...(row.responses_entitled_until ? { responsesEntitledUntil: row.responses_entitled_until } : {}), ...(row.private_requests_required ? { privateRequestsRequired: true } : {}), createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 function mapWorkspaceMember(row: WorkspaceMemberRow): WorkspaceMemberRecord {
@@ -1394,6 +1635,10 @@ function mapAgentToken(row: AgentTokenRow): AgentTokenRecord {
 
 function mapDevice(row: DeviceRow): DeviceRecord {
   return { deviceId: row.device_id, userId: row.user_id, name: row.name, ...(row.platform ? { platform: row.platform } : {}), ...(row.installation_id ? { installationId: row.installation_id } : {}), ...(row.expo_push_token ? { expoPushToken: row.expo_push_token } : {}), createdAt: row.created_at, updatedAt: row.updated_at, ...(row.unregistered_at ? { unregisteredAt: row.unregistered_at } : {}) };
+}
+
+function mapDeviceKey(row: DeviceKeyRow): DevicePublicKeyRecord {
+  return { deviceKeyId: row.device_key_id, deviceId: row.device_id, userId: row.user_id, algorithm: row.algorithm as DevicePublicKeyRecord['algorithm'], publicKey: row.public_key, publicKeyFingerprint: row.public_key_fingerprint, createdAt: row.created_at, updatedAt: row.updated_at, ...(row.revoked_at ? { revokedAt: row.revoked_at } : {}) };
 }
 
 function uniqueDevicesByPushToken(rows: DeviceRow[]): DeviceRecord[] {
@@ -1487,6 +1732,16 @@ function coalesceNullableInput(value: string | null | undefined, fallback: strin
 function normalizeEmail(email: string): string { return email.trim().toLowerCase(); }
 function id(prefix: string): string { return `${prefix}_${crypto.randomBytes(12).toString('base64url')}`; }
 function hashSecret(secret: string): string { return crypto.createHash('sha256').update(secret).digest('base64url'); }
+function privateRecipientVersion(recipientUserIds: string[], deviceKeys: DevicePublicKeyRecord[]): string {
+  const payload = JSON.stringify({ recipients: [...recipientUserIds].sort(), deviceKeys: deviceKeys.map((key) => ({ id: key.deviceKeyId, userId: key.userId, fingerprint: key.publicKeyFingerprint })).sort((a, b) => a.id.localeCompare(b.id)) });
+  return crypto.createHash('sha256').update(payload).digest('base64url');
+}
+function codedError(message: string, code: string, statusCode: number): Error & { code: string; statusCode: number } {
+  const error = new Error(message) as Error & { code: string; statusCode: number };
+  error.code = code;
+  error.statusCode = statusCode;
+  return error;
+}
 function addMs(value: string, ms: number): string { return new Date(Date.parse(value) + ms).toISOString(); }
 function externalApproverInviteDeepLink(token: string, publicURL?: string): string { return `${publicURL?.replace(/\/$/, '') ?? 'agent-tick://external-approver-invite'}/external-approver-invites/${token}`; }
 

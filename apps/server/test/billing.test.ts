@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentTickStore, DEFAULT_USER_ID } from '@agent-tick/db';
 import { hostedPersonalStatus } from '@self-deprecated/agent-tick-shared';
-import { cancelPurchaseAttempt, getPersonalBillingStatus, normalizeRevenueCatEvent, normalizeRevenueCatTransferEvent, preflightPurchase, recordRevenueCatTransfer, recordVerifiedTransaction } from '../src/services/billing.js';
+import { billingProducts, cancelPurchaseAttempt, getPersonalBillingStatus, normalizeRevenueCatEvent, normalizeRevenueCatTransferEvent, preflightPurchase, productKeyFromStoreProductId, recordRevenueCatTransfer, recordVerifiedTransaction, startNativeTrial } from '../src/services/billing.js';
 
 let store: AgentTickStore | undefined;
 
@@ -22,6 +22,25 @@ afterEach(() => {
 });
 
 describe('personal billing purchase ordering', () => {
+  it('publishes Android Play product IDs and base plans that match the Play Console catalog', async () => {
+    const localStore = testStore();
+
+    const products = await billingProducts(localStore, now.toISOString());
+
+    expect(products).toEqual(expect.arrayContaining([
+      expect.objectContaining({ productKey: 'trial_7_day', appleProductId: 'ai.selfdeprecated.agenttick.initial_trial.7' }),
+      expect.objectContaining({ productKey: 'lifetime_unlock', googleProductId: 'ai.selfdeprecated.agenttick.lifetime_unlock' }),
+      expect.objectContaining({ productKey: 'hosted_personal_monthly', googleProductId: 'ai.selfdeprecated.agenttick.hosted', googleBasePlanId: 'hosted-personal-monthly' }),
+      expect.objectContaining({ productKey: 'hosted_personal_yearly', googleProductId: 'ai.selfdeprecated.agenttick.hosted', googleBasePlanId: 'hosted-personal-yearly' }),
+    ]));
+    expect(products.find((product) => product.productKey === 'trial_7_day')?.googleProductId).toBeUndefined();
+  });
+
+  it('maps RevenueCat Google Play subscription product/base-plan IDs to hosted product keys', () => {
+    expect(productKeyFromStoreProductId('ai.selfdeprecated.agenttick.hosted', 'hosted-personal-monthly')).toBe('hosted_personal_monthly');
+    expect(productKeyFromStoreProductId('ai.selfdeprecated.agenttick.hosted', 'hosted-personal-yearly')).toBe('hosted_personal_yearly');
+  });
+
   it('allows hosted subscription purchases without lifetime unlock', async () => {
     const localStore = testStore();
 
@@ -96,6 +115,21 @@ describe('personal billing purchase ordering', () => {
       routingEnabled: false,
     });
     expect(status.purchaseAvailability.trial_7_day).toMatchObject({ allowed: false, reason: 'trial_already_started' });
+  });
+
+  it('grants the Android native trial without a Play Billing purchase', async () => {
+    const localStore = testStore();
+
+    const status = await startNativeTrial(localStore, revenueCatConfig, DEFAULT_USER_ID, 'android', now);
+
+    expect(status.activeEntitlements.trial7Day).toMatchObject({
+      active: true,
+      originProvider: 'google',
+      originPlatform: 'android',
+      purchasedAt: '2026-05-10T00:00:00.000Z',
+      expiresAt: '2026-05-17T00:00:00.000Z',
+    });
+    await expect(startNativeTrial(localStore, revenueCatConfig, DEFAULT_USER_ID, 'android', now)).rejects.toMatchObject({ code: 'trial_already_started' });
   });
 
   it('derives the 7-day trial from the RevenueCat purchase timestamp', async () => {
@@ -506,6 +540,28 @@ describe('personal billing purchase ordering', () => {
     expect(await localStore.listBillingTransactionsForUser(destinationUserId)).toEqual([expect.objectContaining({ entitlementKey: 'native_app_trial' })]);
   });
 
+  it('normalizes RevenueCat hosted Google Play product and base plan IDs', () => {
+    expect(normalizeRevenueCatEvent({
+      event: {
+        type: 'INITIAL_PURCHASE',
+        app_user_id: DEFAULT_USER_ID,
+        product_id: 'ai.selfdeprecated.agenttick.hosted',
+        base_plan_id: 'hosted-personal-yearly',
+        purchased_at_ms: Date.parse('2026-05-08T00:00:00.000Z'),
+        expiration_at_ms: Date.parse('2027-05-08T00:00:00.000Z'),
+        store: 'PLAY_STORE',
+        transaction_id: 'txn_hosted_yearly',
+        environment: 'SANDBOX',
+      }
+    })).toMatchObject({
+      userId: DEFAULT_USER_ID,
+      productKey: 'hosted_personal_yearly',
+      entitlementKey: 'hosted_personal',
+      platform: 'android',
+      status: 'purchased',
+    });
+  });
+
   it('normalizes RevenueCat trial webhook product IDs', () => {
     expect(normalizeRevenueCatEvent({
       event: {
@@ -524,5 +580,192 @@ describe('personal billing purchase ordering', () => {
       purchasedAt: '2026-05-08T00:00:00.000Z',
       status: 'purchased',
     });
+  });
+
+  it('ignores RevenueCat dashboard test webhooks that do not describe Agent Tick products or entitlements', () => {
+    expect(normalizeRevenueCatEvent({
+      api_version: '1.0',
+      event: {
+        aliases: ['c3eec5a1-16f0-4573-8f0e-65da453dc836', '39e01cf9-ce4e-4c1c-800a-96023dbdfac7'],
+        app_id: 'app2aa13aaee0',
+        app_user_id: 'c3eec5a1-16f0-4573-8f0e-65da453dc836',
+        commission_percentage: null,
+        country_code: 'US',
+        currency: null,
+        entitlement_id: null,
+        entitlement_ids: null,
+        environment: 'SANDBOX',
+        event_timestamp_ms: 1781864417587,
+        expiration_at_ms: 1781871617587,
+        id: '8BF72BC9-F4EE-4934-8077-680FD716A3A1',
+        is_family_share: null,
+        metadata: null,
+        offer_code: null,
+        original_app_user_id: 'c3eec5a1-16f0-4573-8f0e-65da453dc836',
+        original_transaction_id: null,
+        period_type: 'NORMAL',
+        presented_offering_id: null,
+        price: null,
+        price_in_purchased_currency: null,
+        product_id: 'test_product',
+        purchased_at_ms: 1781864417587,
+        renewal_number: null,
+        store: 'APP_STORE',
+        subscriber_attributes: {
+          '$displayName': { updated_at_ms: 1781864417587, value: 'Mister Mistoffelees' },
+          '$email': { updated_at_ms: 1781864417587, value: 'tuxedo@revenuecat.com' },
+          '$phoneNumber': { updated_at_ms: 1781864417587, value: '+19795551234' },
+          my_custom_attribute_1: { updated_at_ms: 1781864417587, value: 'catnip' },
+        },
+        takehome_percentage: null,
+        tax_percentage: null,
+        transaction_id: null,
+        type: 'TEST',
+      }
+    })).toBeNull();
+  });
+
+  it('normalizes manually granted RevenueCat hosted entitlement webhooks without store product IDs', () => {
+    expect(normalizeRevenueCatEvent({
+      event: {
+        id: 'evt_manual_hosted_grant',
+        type: 'INITIAL_PURCHASE',
+        app_user_id: DEFAULT_USER_ID,
+        entitlement_ids: ['hosted_personal'],
+        purchased_at_ms: Date.parse('2026-05-08T00:00:00.000Z'),
+        expiration_at_ms: Date.parse('2026-06-08T00:00:00.000Z'),
+        store: 'PROMOTIONAL',
+        environment: 'PRODUCTION',
+      }
+    })).toMatchObject({
+      userId: DEFAULT_USER_ID,
+      productKey: 'hosted_personal_monthly',
+      entitlementKey: 'hosted_personal',
+      purchasedAt: '2026-05-08T00:00:00.000Z',
+      expiresAt: '2026-06-08T00:00:00.000Z',
+      status: 'purchased',
+    });
+  });
+
+  it('activates hosted access from manually granted RevenueCat hosted entitlements with an expiry', async () => {
+    const localStore = testStore();
+    const transaction = normalizeRevenueCatEvent({
+      event: {
+        id: 'evt_manual_hosted_active',
+        type: 'INITIAL_PURCHASE',
+        app_user_id: DEFAULT_USER_ID,
+        entitlement_ids: ['hosted_personal'],
+        purchased_at_ms: Date.parse('2026-05-08T00:00:00.000Z'),
+        expiration_at_ms: Date.parse('2026-06-08T00:00:00.000Z'),
+        store: 'PROMOTIONAL',
+        environment: 'PRODUCTION',
+      }
+    });
+    expect(transaction).not.toBeNull();
+
+    await recordVerifiedTransaction(localStore, transaction!, now);
+
+    const status = await getPersonalBillingStatus(localStore, DEFAULT_USER_ID, revenueCatConfig, now);
+    expect(status.activeEntitlements.hostedPersonal).toMatchObject({
+      active: true,
+      originProvider: 'revenuecat',
+      originPlatform: 'unknown',
+      expiresAt: '2026-06-08T00:00:00.000Z',
+    });
+    expect(status.hostedPersonal).toMatchObject({ lifecycle: 'active', responsesEnabled: true, routingEnabled: true });
+  });
+
+  it('activates hosted access from full RevenueCat manual entitlement payloads with promotional product IDs', async () => {
+    const localStore = testStore();
+    const transaction = normalizeRevenueCatEvent({
+      api_version: '1.0',
+      event: {
+        aliases: [DEFAULT_USER_ID],
+        app_id: 'app2aa13aaee0',
+        app_user_id: DEFAULT_USER_ID,
+        commission_percentage: null,
+        country_code: 'US',
+        currency: null,
+        entitlement_id: 'hosted_personal',
+        entitlement_ids: ['hosted_personal'],
+        environment: 'PRODUCTION',
+        event_timestamp_ms: Date.parse('2026-05-10T12:00:00.000Z'),
+        expiration_at_ms: Date.parse('2026-06-10T12:00:00.000Z'),
+        id: 'evt_revenuecat_manual_hosted_monthly_full',
+        is_family_share: null,
+        metadata: null,
+        offer_code: null,
+        original_app_user_id: DEFAULT_USER_ID,
+        original_transaction_id: null,
+        period_type: 'NORMAL',
+        presented_offering_id: null,
+        price: null,
+        price_in_purchased_currency: null,
+        product_id: 'rc_promo_hosted_personal_monthly',
+        purchased_at_ms: Date.parse('2026-05-10T12:00:00.000Z'),
+        renewal_number: null,
+        store: 'APP_STORE',
+        subscriber_attributes: {},
+        takehome_percentage: null,
+        tax_percentage: null,
+        transaction_id: null,
+        type: 'INITIAL_PURCHASE',
+      }
+    });
+    expect(transaction).toMatchObject({
+      userId: DEFAULT_USER_ID,
+      productKey: 'hosted_personal_monthly',
+      entitlementKey: 'hosted_personal',
+      platform: 'ios',
+      purchasedAt: '2026-05-10T12:00:00.000Z',
+      expiresAt: '2026-06-10T12:00:00.000Z',
+      status: 'purchased',
+    });
+
+    await recordVerifiedTransaction(localStore, transaction!, now);
+
+    const status = await getPersonalBillingStatus(localStore, DEFAULT_USER_ID, revenueCatConfig, now);
+    expect(status.activeEntitlements.hostedPersonal).toMatchObject({ active: true, expiresAt: '2026-06-10T12:00:00.000Z' });
+    expect(status.hostedPersonal).toMatchObject({ lifecycle: 'active', responsesEnabled: true, routingEnabled: true });
+  });
+
+  it('updates manually granted RevenueCat hosted entitlements when a later webhook expires them', async () => {
+    const localStore = testStore();
+    const active = normalizeRevenueCatEvent({
+      event: {
+        id: 'evt_manual_hosted_active_before_expiry',
+        type: 'INITIAL_PURCHASE',
+        app_user_id: DEFAULT_USER_ID,
+        entitlement_ids: ['hosted_personal'],
+        product_id: 'rc_promo_hosted_personal_monthly',
+        purchased_at_ms: Date.parse('2026-05-08T00:00:00.000Z'),
+        expiration_at_ms: Date.parse('2026-06-08T00:00:00.000Z'),
+        store: 'PROMOTIONAL',
+        environment: 'PRODUCTION',
+      }
+    });
+    const expired = normalizeRevenueCatEvent({
+      event: {
+        id: 'evt_manual_hosted_expired_after_grant',
+        type: 'EXPIRATION',
+        app_user_id: DEFAULT_USER_ID,
+        entitlement_ids: ['hosted_personal'],
+        product_id: 'rc_promo_hosted_personal_monthly',
+        purchased_at_ms: Date.parse('2026-05-08T00:00:00.000Z'),
+        expiration_at_ms: Date.parse('2026-05-09T00:00:00.000Z'),
+        event_timestamp_ms: Date.parse('2026-05-09T00:00:00.000Z'),
+        store: 'PROMOTIONAL',
+        environment: 'PRODUCTION',
+      }
+    });
+    await recordVerifiedTransaction(localStore, active!, now);
+    await recordVerifiedTransaction(localStore, expired!, now);
+
+    const transactions = await localStore.listBillingTransactionsForUser(DEFAULT_USER_ID);
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0]).toMatchObject({ status: 'expired', expiresAt: '2026-05-09T00:00:00.000Z' });
+    const status = await getPersonalBillingStatus(localStore, DEFAULT_USER_ID, revenueCatConfig, now);
+    expect(status.activeEntitlements.hostedPersonal.active).toBe(false);
+    expect(status.hostedPersonal).toMatchObject({ lifecycle: 'expired', responsesEnabled: false });
   });
 });

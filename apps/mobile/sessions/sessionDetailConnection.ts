@@ -38,6 +38,15 @@ export function updateSessionDetailsRequest(
 
 export function attachSessionDetailConnection(detail: SessionDetail, summary: MobileSessionSummary): MobileSessionDetail {
   const timeline = detail.timeline.map((item): ActivityItem => {
+    if (item.kind === "status_update") {
+      return {
+        ...item,
+        statusUpdate: {
+          ...item.statusUpdate,
+          ...(summary.connectionID ? { connectionID: summary.connectionID } : {}),
+        },
+      } as ActivityItem;
+    }
     if (item.kind !== "request") return item;
     return {
       ...item,

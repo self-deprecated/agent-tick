@@ -42,7 +42,20 @@ tasks:
     desc: Run Agent Tick end-of-turn checks when Agent Tick changed
     whenChanged:
       - projects/agent-tick/**
-    run: sd agent-tick docker-config && sd agent-tick i18n-audit && sd agent-tick i18n-audit-test && sd agent-tick full-check && sd agent-tick mobile bundle-check
+    run: sd agent-tick docker-config && sd agent-tick nix/pnpm-deps-check && sd agent-tick i18n-audit && sd agent-tick i18n-audit-test && sd agent-tick full-check && sd agent-tick mobile bundle-check
+
+  nix/pnpm-deps-check:
+    desc: Verify the Nix fetchPnpmDeps hash matches the current pnpm-lock.yaml
+    whenChanged:
+      - projects/agent-tick/package.json
+      - projects/agent-tick/pnpm-lock.yaml
+      - projects/agent-tick/pnpm-workspace.yaml
+      - projects/agent-tick/flake.nix
+      - projects/agent-tick/scripts/update-pnpm-deps-hash
+      - projects/agent-tick/apps/**/package.json
+      - projects/agent-tick/packages/**/package.json
+      - projects/agent-tick/sites/**/package.json
+    run: nix run .#check-pnpm-deps-hash
 
   docker-config:
     desc: Validate Docker Compose configuration
@@ -172,6 +185,71 @@ tasks:
         trap - EXIT
       done
 
+  android/setup:
+    desc: Install Android SDK packages and create the Agent Tick emulator AVD
+    run: bash scripts/mobile-android-setup.sh
+
+  android/start-emulator:
+    desc: Start the Agent Tick Android emulator and wait for boot completion
+    run: bash scripts/mobile-android-start-emulator.sh
+
+  android/keyboard-smoke:
+    desc: Install an Android APK and verify the self-hosted server form stays visible after the soft keyboard opens
+    run: bash scripts/mobile-android-keyboard-smoke.sh
+
+  android/keyboard-smoke-fast:
+    desc: Run the self-hosted form keyboard smoke against the already-installed Android app
+    env:
+      AGENT_TICK_ANDROID_UI_SKIP_INSTALL: "1"
+    run: bash scripts/mobile-android-keyboard-smoke.sh
+
+  android/keyboard-smoke-watch:
+    desc: Run the fast Android keyboard smoke and open screenshots as they are captured
+    env:
+      AGENT_TICK_ANDROID_UI_SKIP_INSTALL: "1"
+      AGENT_TICK_ANDROID_UI_OPEN_SCREENSHOTS: "1"
+      AGENT_TICK_ANDROID_UI_OPEN_ARTIFACT_DIR: "1"
+      AGENT_TICK_ANDROID_UI_ARTIFACT_DIR: "/tmp/agent-tick-android-keyboard-smoke-watch"
+    run: rm -rf "$AGENT_TICK_ANDROID_UI_ARTIFACT_DIR" && bash scripts/mobile-android-keyboard-smoke.sh
+
+  android/local-integration-smoke:
+    desc: Start a local backend and verify the Android app can connect to it through adb reverse
+    run: bash scripts/mobile-android-local-integration-smoke.sh
+
+  android/local-integration-smoke-fast:
+    desc: Run the local backend Android integration smoke against the already-installed app
+    env:
+      AGENT_TICK_ANDROID_UI_SKIP_INSTALL: "1"
+    run: bash scripts/mobile-android-local-integration-smoke.sh
+
+  android/local-integration-smoke-watch:
+    desc: Run the fast local backend Android integration smoke and open screenshots as they are captured
+    env:
+      AGENT_TICK_ANDROID_UI_SKIP_INSTALL: "1"
+      AGENT_TICK_ANDROID_UI_OPEN_SCREENSHOTS: "1"
+      AGENT_TICK_ANDROID_UI_OPEN_ARTIFACT_DIR: "1"
+      AGENT_TICK_ANDROID_UI_ARTIFACT_DIR: "/tmp/agent-tick-android-local-integration-smoke-watch"
+    run: rm -rf "$AGENT_TICK_ANDROID_UI_ARTIFACT_DIR" && bash scripts/mobile-android-local-integration-smoke.sh
+
+  android/clerk-signin-smoke:
+    desc: Install an Android APK and drive the Clerk sign-in path for AGENT_TICK_ANDROID_CLERK_SERVER_URL, defaulting to hosted Agent Tick
+    run: bash scripts/mobile-android-clerk-signin-smoke.sh
+
+  android/clerk-signin-smoke-fast:
+    desc: Drive the Clerk sign-in path against the already-installed Android app
+    env:
+      AGENT_TICK_ANDROID_UI_SKIP_INSTALL: "1"
+    run: bash scripts/mobile-android-clerk-signin-smoke.sh
+
+  android/clerk-signin-smoke-watch:
+    desc: Run the fast Clerk sign-in smoke and open screenshots as they are captured
+    env:
+      AGENT_TICK_ANDROID_UI_SKIP_INSTALL: "1"
+      AGENT_TICK_ANDROID_UI_OPEN_SCREENSHOTS: "1"
+      AGENT_TICK_ANDROID_UI_OPEN_ARTIFACT_DIR: "1"
+      AGENT_TICK_ANDROID_UI_ARTIFACT_DIR: "/tmp/agent-tick-android-clerk-signin-smoke-watch"
+    run: rm -rf "$AGENT_TICK_ANDROID_UI_ARTIFACT_DIR" && bash scripts/mobile-android-clerk-signin-smoke.sh
+
   mobile/build:
     desc: Build the mobile app
     dir: apps/mobile
@@ -284,7 +362,7 @@ tasks:
 
   cli/sanction:
     desc: Run a CLI sanction smoke test
-    run: node packages/cli/dist/index.js sanction --title 'Run command?' --body 'Agent Tick test sanction from the CLI' --command 'npm install'
+    run: node packages/cli/dist/index.js send sanction --title 'Run command?' --body 'Agent Tick test sanction from the CLI' --command 'npm install'
 
   sdk/publish:
     desc: Publish the Agent Tick SDK package

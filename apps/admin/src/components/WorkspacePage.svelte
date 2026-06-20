@@ -16,7 +16,8 @@
 		clerkSignedIn = false,
 		currentUser,
 		onUpdateOwnAvailability,
-		onOpenConnections
+		onOpenConnections,
+		onTogglePrivateRequestsRequired
 	}: {
 		workspace?: WorkspaceMemberRecord;
 		workspaceMembers?: WorkspaceMemberWithAvailability[];
@@ -30,11 +31,15 @@
 		currentUser?: MeResponse;
 		onUpdateOwnAvailability: (value: string) => void | Promise<void>;
 		onOpenConnections: () => void;
+		onTogglePrivateRequestsRequired: (required: boolean) => void | Promise<void>;
 	} = $props();
 
 	let isSharedWorkspace = $derived(workspace?.type === 'shared');
 	let canManageWorkspace = $derived(isSharedWorkspace && (workspace?.role === 'owner' || workspace?.role === 'admin'));
 	let activeMemberCount = $derived(workspaceMemberCountsById[selectedWorkspaceId] ?? workspaceMembers.filter((member) => member.status !== 'removed').length);
+	let serverForcesPrivateRequests = $derived(currentUser?.privateRequestsPolicy === 'forced');
+	let privateRequestsToggleLocked = $derived(serverForcesPrivateRequests || !canManageWorkspace);
+	let privateRequestsEffective = $derived(serverForcesPrivateRequests || Boolean(workspace?.privateRequestsRequired));
 
 	function workspaceLabel(): string {
 		if (!workspace) return 'Workspace';
@@ -120,6 +125,17 @@
 					<dt>Seat limit</dt><dd>{billingStatus.limits.seats ?? 'Not capped'}</dd>
 				{/if}
 			</dl>
+			{#if isSharedWorkspace}
+				<label class="inline-field" style="display:flex;align-items:center;gap:.5rem;min-width:auto">
+					<input type="checkbox" checked={privateRequestsEffective} disabled={privateRequestsToggleLocked} onchange={() => { if (!privateRequestsToggleLocked) void onTogglePrivateRequestsRequired(!privateRequestsEffective); }} />
+					<span>Require Private Requests (end-to-end encrypted)</span>
+				</label>
+				{#if serverForcesPrivateRequests}
+					<p class="warning">Required server-wide by the operator. Plain CLI requests are rejected until the agent uses Private Request encryption.</p>
+				{:else}
+					<p>When enabled, plain CLI requests are rejected until the agent uses Private Request encryption.</p>
+				{/if}
+			{/if}
 			{#if isSharedWorkspace && billingStatus?.entitlement?.responsesEnabled === false}
 				<p class="warning">Shared Workspace billing is separate from Personal Workspace purchases. Members cannot respond while payment is required.</p>
 			{/if}

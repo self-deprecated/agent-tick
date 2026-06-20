@@ -17,9 +17,11 @@ import {
 } from "../requests";
 import type { ConnectionStatus, PushStatus } from "../SettingsScreen";
 import { fetchRuntimeAuthConfig, type RuntimeAuthConfig } from "../mobileAuth";
+import { ensurePrivateRequestDeviceKeyRegistered } from "../mobilePrivateRequests";
 import { notifyForNewRequests } from "./mobileNotificationHelpers";
 import { selectRequestID } from "./mobileActivityHelpers";
 import { writeRuntimeAuthConfigCache } from "./runtimeAuthConfigCache";
+import { isKnownInsecureServer } from "./useKnownServers";
 
 type LoadOptions = { visible?: boolean };
 
@@ -149,6 +151,8 @@ export function useMobilePairingAndDeepLinks({
       setToken(credential.token);
       setPushStatus("idle");
       setPairingCode("");
+      const credentialClient = new AgentTickClient({ baseUrl: activeServerURL, tokenProvider: () => credential.token });
+      await ensurePrivateRequestDeviceKeyRegistered(credentialClient, credential.deviceId).catch(() => undefined);
       await loadWithCredentials(activeServerURL, credential.token);
       Alert.alert("Paired", "This device can now receive Requests.");
       setScreen("requests");
@@ -209,7 +213,7 @@ export function useMobilePairingAndDeepLinks({
     }
     if (payload.serverURL && payload.authProvider === "clerk") {
       try {
-        const config = await fetchRuntimeAuthConfig(payload.serverURL);
+        const config = await fetchRuntimeAuthConfig(payload.serverURL, fetch, { allowInsecure: await isKnownInsecureServer(payload.serverURL) });
         await writeRuntimeAuthConfigCache(payload.serverURL, config);
         setRuntimeAuthConfig(config);
         onRuntimeAuthConfig?.(payload.serverURL, config);

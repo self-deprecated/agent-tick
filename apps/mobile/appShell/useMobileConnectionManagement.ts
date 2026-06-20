@@ -6,6 +6,7 @@ import { useClerkSessionReset } from "./useClerkSessionReset";
 import { useSavedAccountPending } from "./useSavedAccountPending";
 import { useSavedAccountRemoval } from "./useSavedAccountRemoval";
 import { useMobileWorkspaces } from "./useMobileWorkspaces";
+import { useMobilePrivateRequestKeyRegistration } from "./useMobilePrivateRequestKeyRegistration";
 
 type UseMobileConnectionManagementInput =
   Parameters<typeof useMobileSessionRestore>[0] &
@@ -164,6 +165,20 @@ export function useMobileConnectionManagement({
     setCurrentAccountProfile,
     setSelectedWorkspaceID,
     setWorkspaces,
+  });
+
+  useMobilePrivateRequestKeyRegistration({
+    activeConnectionID,
+    connectionTokens,
+    currentAuthToken,
+    deviceID,
+    savedAccounts,
+    selectedWorkspaceID,
+    serverURL,
+    settingsLoaded,
+    setDeviceID,
+    setDiagnosticsEventCount,
+    setSavedAccounts,
   });
 
   return {

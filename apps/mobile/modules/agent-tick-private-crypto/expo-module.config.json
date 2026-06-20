@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["AgentTickPrivateCryptoModule"]
+  },
+  "android": {
+    "modules": ["ai.selfdeprecated.agenttick.privatecrypto.AgentTickPrivateCryptoModule"]
+  }
+}

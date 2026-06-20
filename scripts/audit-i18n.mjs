@@ -121,7 +121,7 @@ function walk(dir, extensions) {
 
 function normalizeText(value) {
   return String(value)
-    .replace(/\$\{[^}]+\}/g, ' $ ')
+    .replace(/\$\{[^}]*\}/g, ' $ ')
     .replace(/\{[^}]+\}/g, ' $ ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -134,6 +134,7 @@ function isCandidate(value) {
   if (text.length < 2) return false;
   if (!/[A-Za-z]/.test(text)) return false;
   if (/^#[0-9a-f]{3,8}$/i.test(text)) return false;
+  if (/^```[a-z0-9_-]*\s+\$\s+```$/i.test(text)) return false;
   if (/^\[[a-z_ -]+\]$/i.test(text)) return false;
   if (/redacted/i.test(text)) return false;
   if (/^(https?:|mailto:|agent-tick\.|agent_tick_|__agent_tick_|[a-z0-9_.-]+\/[a-z0-9_.-]+$)/i.test(text)) return false;
@@ -149,11 +150,17 @@ function keyName(name) {
   return '';
 }
 
+function templateExpressionText(node) {
+  let text = node.head.text;
+  for (const span of node.templateSpans) text += '${}' + span.literal.text;
+  return text;
+}
+
 function literalText(node, source) {
   if (!node) return undefined;
   if (ts.isStringLiteralLike(node)) return node.text;
   if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (ts.isTemplateExpression(node)) return node.getText(source).replace(/`/g, '');
+  if (ts.isTemplateExpression(node)) return templateExpressionText(node);
   return undefined;
 }
 
@@ -403,12 +410,30 @@ function extractSvelte(file) {
   return collector;
 }
 
+function unescapePoString(value) {
+  let result = '';
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if (char !== '\\' || i === value.length - 1) {
+      result += char;
+      continue;
+    }
+    const next = value[i + 1];
+    i += 1;
+    if (next === 'n') result += '\n';
+    else if (next === 't') result += '\t';
+    else if (next === 'r') result += '\r';
+    else result += next;
+  }
+  return result;
+}
+
 function extractPoMsgids(file) {
   if (!pathExists(file)) return new Set();
   const text = fs.readFileSync(file, 'utf8');
   const ids = new Set();
   for (const match of text.matchAll(/^msgid "((?:[^"\\]|\\.)*)"$/gm)) {
-    const value = match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+    const value = unescapePoString(match[1]);
     if (value) ids.add(value);
   }
   return ids;
@@ -433,10 +458,17 @@ function collect() {
   return collector;
 }
 
+function escapeTaggedTemplate(value) {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$\{/g, '\\${');
+}
+
 function formatMarker(strings, header) {
   const escaped = [...strings]
     .sort((a, b) => a.localeCompare(b))
-    .map((value) => `  msg\`${value.replace(/`/g, '\\`').replace(/\$\{/g, '\\${')}\`,`);
+    .map((value) => `  msg\`${escapeTaggedTemplate(value)}\`,`);
   return `${header}\nimport { msg } from "@lingui/core/macro";\n\nexport const i18nMessages = [\n${escaped.join('\n')}\n];\n`;
 }
 

@@ -28,6 +28,7 @@ export function useAgentTickBillingAccessState({
     debugPaywallVisible: billingState.debugPaywallVisible,
     hasRequestAuth: selectionState.hasRequestAuth,
     localStoreHostedSubscriptionActive: billingState.localStoreHostedSubscriptionActive,
+    localDevAppAccessUnlocked: billingState.localDevAppAccessUnlocked,
     localStoreLifetimeUnlocked: billingState.localStoreLifetimeUnlocked,
     localStoreTrialPurchased: billingState.localStoreTrialPurchased,
     localStoreTrialStartedAt: billingState.localStoreTrialStartedAt,

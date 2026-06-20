@@ -25,31 +25,30 @@ export const DEFAULT_BILLING_PRODUCTS: UpsertBillingProductInput[] = [
     productKey: 'trial_7_day',
     kind: 'non_consumable',
     entitlementKey: 'native_app_trial',
-    appleProductId: 'ai.selfdeprecated.agenttick.initial_trial.7',
-    googleProductId: 'trial_7_day'
+    appleProductId: 'ai.selfdeprecated.agenttick.initial_trial.7'
   },
   {
     productKey: 'lifetime_unlock',
     kind: 'non_consumable',
     entitlementKey: 'lifetime_app_unlock',
     appleProductId: 'ai.selfdeprecated.agenttick.lifetime_unlock',
-    googleProductId: 'lifetime_unlock'
+    googleProductId: 'ai.selfdeprecated.agenttick.lifetime_unlock'
   },
   {
     productKey: 'hosted_personal_monthly',
     kind: 'subscription',
     entitlementKey: 'hosted_personal',
     appleProductId: 'ai.selfdeprecated.agenttick.hosted_personal_monthly',
-    googleProductId: 'hosted_personal',
-    googleBasePlanId: 'monthly'
+    googleProductId: 'ai.selfdeprecated.agenttick.hosted',
+    googleBasePlanId: 'hosted-personal-monthly'
   },
   {
     productKey: 'hosted_personal_yearly',
     kind: 'subscription',
     entitlementKey: 'hosted_personal',
     appleProductId: 'ai.selfdeprecated.agenttick.hosted_personal_yearly',
-    googleProductId: 'hosted_personal',
-    googleBasePlanId: 'yearly'
+    googleProductId: 'ai.selfdeprecated.agenttick.hosted',
+    googleBasePlanId: 'hosted-personal-yearly'
   }
 ];
 
@@ -157,6 +156,28 @@ export async function getPersonalBillingStatus(store: AgentTickStore, userId: st
     purchaseAvailability,
     billingConflicts
   };
+}
+
+export async function startNativeTrial(store: AgentTickStore, config: Pick<ServerConfig, 'billingProvider'>, userId: string, platform: BillingPlatform, now = new Date()): Promise<PersonalBillingStatus> {
+  if (platform !== 'android') throw billingError(400, 'unsupported_platform', 'Backend-granted native trials are only available on Android');
+  const entitlement = await recomputePersonalEntitlement(store, userId, now);
+  const activeEntitlements = await activeEntitlementsForUser(store, userId, entitlement, now);
+  const availability = await purchaseAvailabilityForProduct(store, userId, 'trial_7_day', entitlement, activeEntitlements, config, now, platform);
+  if (!availability.allowed) throw billingError(409, availability.reason ?? 'purchase_not_allowed', purchaseBlockedMessage(availability.reason, availability.originPlatform));
+  const syntheticTransactionId = `native_trial_android_${crypto.createHash('sha256').update(userId).digest('base64url').slice(0, 24)}`;
+  await recordVerifiedTransaction(store, {
+    userId,
+    provider: 'google',
+    environment: 'unknown',
+    productKey: 'trial_7_day',
+    entitlementKey: 'native_app_trial',
+    platform,
+    providerTransactionId: syntheticTransactionId,
+    providerOriginalTransactionId: syntheticTransactionId,
+    status: 'purchased',
+    purchasedAt: now.toISOString(),
+  }, now);
+  return getPersonalBillingStatus(store, userId, config, now);
 }
 
 export async function preflightPurchase(store: AgentTickStore, config: Pick<ServerConfig, 'billingProvider'>, userId: string, platform: BillingPlatform, productKey: BillingProductKey, now = new Date()): Promise<PurchasePreflightResult> {
@@ -392,12 +413,13 @@ export function normalizeRevenueCatEvent(payload: unknown): VerifiedBillingTrans
   if (eventType === 'TRANSFER' && !stringField(event.product_id)) return null;
 
   const userId = stringField(event.app_user_id) || stringField(event.original_app_user_id);
-  const productKey = productKeyFromStoreProductId(stringField(event.product_id), stringField(event.base_plan_id) || stringField(event.google_base_plan_id));
+  const productKey = productKeyFromRevenueCatEvent(event);
   if (!productKey) return null;
   if (!userId) throw billingError(400, 'bad_request', 'RevenueCat event is missing app_user_id');
 
-  const providerTransactionId = stringField(event.transaction_id) || stringField(event.id);
-  const providerOriginalTransactionId = stringField(event.original_transaction_id);
+  const manualReceiptKey = manualRevenueCatEntitlementReceiptKey(event, userId, productKey);
+  const providerTransactionId = stringField(event.transaction_id) || manualReceiptKey || stringField(event.id);
+  const providerOriginalTransactionId = stringField(event.original_transaction_id) || manualReceiptKey;
   const providerPurchaseToken = stringField(event.purchase_token) || stringField(event.store_transaction_id);
   const purchasedAt = millisToISOString(numberField(event.purchased_at_ms) ?? numberField(event.event_timestamp_ms));
   const expiresAt = millisToISOString(numberField(event.expiration_at_ms));
@@ -438,14 +460,54 @@ export function productKeyFromStoreProductId(productId: string | undefined, base
   if (normalized === 'ai.selfdeprecated.agenttick.lifetime_unlock' || normalized === 'lifetime_unlock' || normalized === 'lifetime') return 'lifetime_unlock';
   if (normalized === 'ai.selfdeprecated.agenttick.hosted_personal_monthly' || normalized === 'hosted_personal_monthly' || normalized === 'hosted_personal:monthly' || normalized === 'monthly') return 'hosted_personal_monthly';
   if (normalized === 'ai.selfdeprecated.agenttick.hosted_personal_yearly' || normalized === 'hosted_personal_yearly' || normalized === 'hosted_personal:yearly' || normalized === 'hosted_personal:annual' || normalized === 'yearly' || normalized === 'annual') return 'hosted_personal_yearly';
-  if (normalized === 'hosted_personal' && normalizedBasePlan === 'monthly') return 'hosted_personal_monthly';
-  if (normalized === 'hosted_personal' && (normalizedBasePlan === 'yearly' || normalizedBasePlan === 'annual')) return 'hosted_personal_yearly';
+  if ((normalized === 'hosted_personal' || normalized === 'ai.selfdeprecated.agenttick.hosted') && (normalizedBasePlan === 'monthly' || normalizedBasePlan === 'hosted-personal-monthly')) return 'hosted_personal_monthly';
+  if ((normalized === 'hosted_personal' || normalized === 'ai.selfdeprecated.agenttick.hosted') && (normalizedBasePlan === 'yearly' || normalizedBasePlan === 'annual' || normalizedBasePlan === 'hosted-personal-yearly')) return 'hosted_personal_yearly';
   return null;
 }
 
 export function entitlementKeyForProduct(productKey: BillingProductKey): BillingEntitlementKey {
   if (productKey === 'trial_7_day') return 'native_app_trial';
   return productKey === 'lifetime_unlock' ? 'lifetime_app_unlock' : 'hosted_personal';
+}
+
+function productKeyFromRevenueCatEvent(event: Record<string, unknown>): BillingProductKey | null {
+  const storeProduct = productKeyFromStoreProductId(stringField(event.product_id), stringField(event.base_plan_id) || stringField(event.google_base_plan_id));
+  if (storeProduct) return storeProduct;
+
+  const entitlementIds = [
+    ...stringArrayField(event.entitlement_ids),
+    ...stringArrayField(event.entitlements),
+    ...(stringField(event.entitlement_id) ? [stringField(event.entitlement_id)!] : []),
+  ].map((entitlement) => entitlement.trim().toLowerCase());
+  if (entitlementIds.some((entitlement) => entitlement === 'hosted_personal' || entitlement === 'hosted personal service')) {
+    return productKeyFromManualRevenueCatProduct(stringField(event.product_id)) ?? 'hosted_personal_monthly';
+  }
+  if (entitlementIds.some((entitlement) => entitlement === 'lifetime_app_unlock' || entitlement === 'lifetime_unlock')) {
+    return 'lifetime_unlock';
+  }
+  if (entitlementIds.some((entitlement) => entitlement === 'native_app_trial' || entitlement === 'trial_7_day')) {
+    return 'trial_7_day';
+  }
+  return null;
+}
+
+function productKeyFromManualRevenueCatProduct(productId: string | undefined): Extract<BillingProductKey, 'hosted_personal_monthly' | 'hosted_personal_yearly'> | null {
+  const normalized = productId?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes('year') || normalized.includes('annual')) return 'hosted_personal_yearly';
+  if (normalized.includes('month')) return 'hosted_personal_monthly';
+  return null;
+}
+
+function manualRevenueCatEntitlementReceiptKey(event: Record<string, unknown>, userId: string, productKey: BillingProductKey): string | undefined {
+  if (productKeyFromStoreProductId(stringField(event.product_id), stringField(event.base_plan_id) || stringField(event.google_base_plan_id))) return undefined;
+  const entitlementIds = [
+    ...stringArrayField(event.entitlement_ids),
+    ...stringArrayField(event.entitlements),
+    ...(stringField(event.entitlement_id) ? [stringField(event.entitlement_id)!] : []),
+  ].map((entitlement) => entitlement.trim().toLowerCase());
+  if (entitlementIds.length === 0) return undefined;
+  return `revenuecat_manual_entitlement:${userId}:${productKey}:${entitlementIds.join(',')}`;
 }
 
 function productGroupForProduct(productKey: BillingProductKey): BillingProductGroup {

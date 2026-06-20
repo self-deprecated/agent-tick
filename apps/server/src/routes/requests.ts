@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { CreateRequestSchema, ReportRequestWaiterErrorSchema, RespondRequestSchema, StopRequestWaiterSchema, type RequestRecord } from '@self-deprecated/agent-tick-shared';
+import { CreateRequestSchema, PreparePrivateRequestSchema, ReportRequestWaiterErrorSchema, RespondRequestSchema, StopRequestWaiterSchema, type RequestRecord } from '@self-deprecated/agent-tick-shared';
 import { DEFAULT_REQUEST_WAITER_LEASE_MS, type AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import type { RequestNotifier } from '../services/notifications.js';
@@ -19,6 +19,23 @@ export async function registerRequestRoutes(app: FastifyInstance, { config, stor
   app.get('/v1/requests', async (request) => {
     const auth = await requireHuman(request, config, store);
     return store.listRequestsForUser(auth.userId ?? 'usr_default', await workspaceFilter(request.query, store, auth), undefined, limitFromQuery(request.query));
+  });
+
+  app.post('/v1/private-requests/prepare', async (request) => {
+    const auth = await requireAuth(request, config, store);
+    await requireRoutingEntitlement(config, store, auth);
+    const input = PreparePrivateRequestSchema.parse(request.body);
+    if ((input.deliveryKind ?? 'routed_members') === 'audience_channel') {
+      const error = new Error('Private Requests cannot use Audience Channels') as Error & { statusCode?: number; code?: string };
+      error.statusCode = 400;
+      error.code = 'bad_request';
+      throw error;
+    }
+    return store.preparePrivateRequest({
+      workspaceId: auth.workspaceId,
+      ...(auth.agentTokenId ? { agentTokenId: auth.agentTokenId } : {}),
+      ...(input.routingRuleId ?? auth.routingRuleId ? { routingRuleId: input.routingRuleId ?? auth.routingRuleId } : {})
+    });
   });
 
   app.post('/v1/requests', async (request) => {

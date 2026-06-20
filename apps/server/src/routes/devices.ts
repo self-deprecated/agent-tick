@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { RegisterDeviceSchema, UpdateDeviceNameSchema, UpdateDevicePushTokenSchema } from '@self-deprecated/agent-tick-shared';
+import { RegisterDevicePublicKeySchema, RegisterDeviceSchema, UpdateDeviceNameSchema, UpdateDevicePushTokenSchema } from '@self-deprecated/agent-tick-shared';
 import type { AsyncAgentTickStore as AgentTickStore } from '@agent-tick/db';
 import type { ServerConfig } from '../config.js';
 import { requireHuman, requirePrivilegedHuman } from '../auth/context.js';
@@ -18,8 +18,8 @@ export async function registerDeviceRoutes(app: FastifyInstance, { config, store
 
   app.post('/v1/devices/register', async (request) => {
     const auth = await requireHuman(request, config, store);
-    await requireHostedPersonalRouting(config, store, auth);
     const input = RegisterDeviceSchema.parse(request.body);
+    if (input.expoPushToken) await requireHostedPersonalRouting(config, store, auth);
     const device = await store.registerDevice({
       userId: auth.userId ?? 'usr_default',
       deviceName: input.deviceName,
@@ -28,6 +28,23 @@ export async function registerDeviceRoutes(app: FastifyInstance, { config, store
       ...(input.expoPushToken ? { expoPushToken: input.expoPushToken } : {})
     });
     return { deviceId: device.deviceId };
+  });
+
+  app.post('/v1/devices/:id/public-key', async (request, reply) => {
+    const auth = await requireHuman(request, config, store);
+    const { id } = request.params as { id: string };
+    const input = RegisterDevicePublicKeySchema.parse(request.body);
+    const device = await store.getDeviceForUser(id, auth.userId ?? 'usr_default');
+    if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
+    return store.registerDevicePublicKey({ deviceId: id, userId: auth.userId ?? 'usr_default', algorithm: input.algorithm ?? 'p256-ecdh-hkdf-sha256', publicKey: input.publicKey });
+  });
+
+  app.get('/v1/devices/:id/public-keys', async (request, reply) => {
+    const auth = await requireHuman(request, config, store);
+    const { id } = request.params as { id: string };
+    const device = await store.getDeviceForUser(id, auth.userId ?? 'usr_default');
+    if (!device) return reply.status(404).send({ error: { code: 'not_found', message: 'Device not found', requestId: request.id } });
+    return (await store.listDevicePublicKeysForUser(auth.userId ?? 'usr_default')).filter((key) => key.deviceId === id);
   });
 
   app.patch('/v1/devices/:id', async (request, reply) => {

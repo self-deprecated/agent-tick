@@ -27,6 +27,7 @@ export function useMobileBillingAccessState({
   debugPaywallVisible,
   hasRequestAuth,
   localStoreHostedSubscriptionActive,
+  localDevAppAccessUnlocked,
   localStoreLifetimeUnlocked,
   localStoreTrialPurchased,
   localStoreTrialStartedAt,
@@ -53,6 +54,7 @@ export function useMobileBillingAccessState({
   debugPaywallVisible: boolean;
   hasRequestAuth: boolean;
   localStoreHostedSubscriptionActive: boolean;
+  localDevAppAccessUnlocked: boolean;
   localStoreLifetimeUnlocked: boolean;
   localStoreTrialPurchased: boolean;
   localStoreTrialStartedAt: string | null;
@@ -73,8 +75,8 @@ export function useMobileBillingAccessState({
     now: new Date(),
     trialStartedAt: personalBillingStatus?.activeEntitlements.trial7Day.purchasedAt ?? connectedBillingEntitlementGrant.trialStartedAt ?? localStoreTrialStartedAt,
     trialPurchased: Boolean(localStoreTrialPurchased || connectedBillingEntitlementGrant.trialPurchased || personalBillingStatus?.activeEntitlements.trial7Day.purchasedAt || personalBillingStatus?.purchaseAvailability.trial_7_day.reason === "trial_already_started"),
-    lifetimeUnlocked: Boolean(localStoreLifetimeUnlocked || connectedBillingEntitlementGrant.lifetimeUnlocked || personalBillingStatus?.activeEntitlements.lifetimeUnlock.active || personalBillingStatus?.entitlement.appUnlockedAt),
-    hostedSubscriptionActive: Boolean(connectedBillingEntitlementGrant.hostedSubscriptionActive || personalBillingStatus?.activeEntitlements.hostedPersonal.active),
+    lifetimeUnlocked: Boolean(localDevAppAccessUnlocked || localStoreLifetimeUnlocked || connectedBillingEntitlementGrant.lifetimeUnlocked || personalBillingStatus?.activeEntitlements.lifetimeUnlock.active || personalBillingStatus?.entitlement.appUnlockedAt),
+    hostedSubscriptionActive: Boolean(localDevAppAccessUnlocked || connectedBillingEntitlementGrant.hostedSubscriptionActive || personalBillingStatus?.activeEntitlements.hostedPersonal.active),
   });
   const isHostedAccount = normalizeServerURL(serverURL) === normalizeServerURL(hostedServerURL);
   const selectedRequestHosted = selected ? requestUsesHostedServer(selected, serverURL) : isHostedAccount;
@@ -99,6 +101,7 @@ export function useMobileBillingAccessState({
     `RevenueCat appUserID: ${revenueCatAppUserID ?? storeCustomerInfo?.appUserID ?? "unknown"}`,
     `RevenueCat originalAppUserId: ${storeCustomerInfo?.originalAppUserId ?? "unknown"}`,
     `Local store: trial=${localStoreTrialPurchased ? "purchased" : "none"}${localStoreTrialStartedAt ? ` @ ${localStoreTrialStartedAt}` : ""}, lifetime=${localStoreLifetimeUnlocked ? "active" : "inactive"}, hosted=${localStoreHostedSubscriptionActive ? "active (diagnostic only)" : "inactive"}`,
+    `Developer override: app access=${localDevAppAccessUnlocked ? "active" : "inactive"}`,
     `Server hosted: ${personalBillingStatus?.hostedPersonal.lifecycle ?? "unknown"}, responses=${personalBillingStatus?.hostedPersonal.responsesEnabled === true ? "yes" : "no"}, routing=${personalBillingStatus?.hostedPersonal.routingEnabled === true ? "yes" : "no"}, push=${personalBillingStatus?.hostedPersonal.pushEnabled === true ? "yes" : "no"}`,
     `Decision: self-hosted=${nativeEntitlement.selfHostedResponsesUnlocked ? "unlocked" : "read-only"}, hosted=${responseAccess.hostedResponsesUnlocked ? "unlocked" : "read-only"}`,
   ];

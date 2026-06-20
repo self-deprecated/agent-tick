@@ -37,6 +37,7 @@ scratch/
 *.tsbuildinfo
 *.apk
 *.aab
+apps/mobile/builds/
 
 # Local secrets/config
 .env

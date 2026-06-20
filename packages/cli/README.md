@@ -4,27 +4,27 @@ Command-line status update, steering, and sanction interface for Agent Tick.
 
 ## Quickstart
 
-Primary setup is the prompt-based skill at <https://agenttick.sh/skill.md>. For manual CLI setup, run the published npm installer:
+Primary setup is the prompt-based skill at <https://agenttick.sh/skill.md>. For manual CLI setup, run the published npm CLI:
 
 ```sh
-npx @self-deprecated/agent-tick install
+npx @self-deprecated/agent-tick setup
 ```
 
 Or install globally first:
 
 ```sh
 npm install -g @self-deprecated/agent-tick
-agent-tick install
+agent-tick setup
 ```
 
-The installer opens Agent Tick in your browser, saves a local Agent Tick token, detects local coding agents, and installs supported integrations. Claude Code and Codex are supported via MCP Adapter, Claude Code native permission hooks are optional, and Pi is supported as a Native Extension.
+Setup opens Agent Tick in your browser, saves a local Agent Tick token, detects local coding agents, and installs supported integrations. Before enabling rich message/tool mirroring, open the Native App and enable **Settings → General → Private encryption**; Agent Tick setup should recommend encrypted Activity as the default. Claude Code and Codex are supported via MCP Adapter, Claude Code native permission hooks are optional, and Pi is supported as a Native Extension.
 
 ## Use
 
 Create a Sanction Request and wait for a Response:
 
 ```sh
-agent-tick sanction \
+agent-tick send sanction \
   --title "Deploy production?" \
   --body "Deploy commit abc123" \
   --command "deploy production"
@@ -33,13 +33,13 @@ agent-tick sanction \
 Create a Sanction Request that includes a command:
 
 ```sh
-agent-tick sanction --title "Run migration?" -- ./migrate.sh
+agent-tick send sanction --title "Run migration?" -- ./migrate.sh
 ```
 
 Ask a steering question with structured choices:
 
 ```sh
-agent-tick steering \
+agent-tick send steering \
   --title "Which rollout?" \
   --choice canary="Canary" \
   --choice cancel:deny="Cancel" \
@@ -52,10 +52,27 @@ Send a Status Update without creating a Request:
 
 ```sh
 AGENT_TICK_SESSION_ID=codex_019e9c78-ab9c-73b0-b21c-ce18a32c8499 \
-  agent-tick status-update --session-title "Test failure triage" --state working "Checking test failures"
+  agent-tick send status --session-title "Test failure triage" --state working "Checking test failures"
 ```
 
-Pass `--session` or `AGENT_TICK_SESSION_ID` to `status-update`, `steering`, and `sanction` only when the value is a real host chat/thread/session ID. Agent Tick can also detect known host IDs such as Codex `CODEX_THREAD_ID`. If no real host chat ID is available, omit explicit `sessionId`; Agent Tick groups best-effort by source metadata such as agent/client name, host, and working directory. Do not generate random Session IDs for generic CLI/MCP calls. Pass `--session-title` or `AGENT_TICK_SESSION_TITLE` for an optional chat/run label. Use only `working`, `waiting`, `blocked`, `done`, and `failed` as semantic Status Update states. Custom state strings remain accepted for compatibility, but Agent Tick treats them as display-only labels. Put custom reasons in the message or safe metadata, and do not send `waiting` merely because a Request was created.
+Pass `--session` or `AGENT_TICK_SESSION_ID` to `send status`, `send steering`, and `send sanction` only when the value is a real host chat/thread/session ID. Agent Tick can also detect known host IDs such as Codex `CODEX_THREAD_ID`. If no real host chat ID is available, omit explicit `sessionId`; Agent Tick groups best-effort by source metadata such as agent/client name, host, and working directory. Do not generate random Session IDs for generic CLI/MCP calls. Pass `--session-title` or `AGENT_TICK_SESSION_TITLE` for an optional chat/run label. Use only `working`, `waiting`, `blocked`, `done`, and `failed` as semantic Status Update states. Custom state strings remain accepted for compatibility, but Agent Tick treats them as display-only labels. Put custom reasons in the message or safe metadata, and do not send `waiting` merely because a Request was created.
+
+Configure Agent Tick lifecycle updates and optional message mirroring for supported agent integrations:
+
+```sh
+agent-tick features show
+agent-tick features tui
+agent-tick features enable message-mirroring
+agent-tick features disable heartbeat
+```
+
+`agent-tick features` and `agent-tick features tui` open an interactive selector: move with ↑/↓ or j/k, Space/Enter toggles the focused row and advances, `p` switches privacy mode, `e` edits a draft JSON config, `s` saves and quits, and `q` quits without saving. If there are unsaved changes, `q` asks you to confirm discard. The focused row explains what gets sent now: disabled, generic/plain, or encrypted private content.
+
+After enabling **Private encryption** in the Native App at **Settings → General**, make encrypted Activity the default:
+
+```sh
+agent-tick features set privacy.defaultContentMode private
+```
 
 Run the local stdio MCP adapter from an MCP-capable agent config:
 
@@ -87,10 +104,10 @@ approval_mode = "approve"
 
 Codex local elicitation also requires Codex settings that allow MCP elicitations. `localElicitation: "auto"` is the default and recommended mode: it shows both the local Codex dialog and a remote Agent Tick mobile/web Request, with the first answer winning. Use `localElicitation: "only"` only when testing the local Codex dialog, and `localElicitation: "off"` only when testing remote Agent Tick mobile/web Requests.
 
-For Claude Code, the installer configures MCP by default:
+For Claude Code, setup configures MCP by default:
 
 ```sh
-agent-tick install --target claude
+agent-tick setup --target claude
 claude mcp get agent-tick
 ```
 
@@ -99,7 +116,7 @@ Claude MCP tool calls should pass `sessionId: "claude_${CLAUDE_SESSION_ID}"` on 
 To also route Claude Code native permission prompts through Agent Tick, opt in explicitly:
 
 ```sh
-agent-tick install --target claude --claude-permission-hook
+agent-tick setup --target claude --claude-permission-hook
 ```
 
 Browser sign-in without installing integrations:

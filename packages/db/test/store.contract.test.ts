@@ -146,11 +146,21 @@ export function defineStoreContractTests(harness: StoreContractHarness): void {
         const status = await store.createStatusUpdate({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, message: 'Running tests', state: 'working', sessionId: 'run_123' }, '2026-05-08T00:01:00.000Z');
         expect(await store.getStatusUpdate(status.statusId, DEFAULT_WORKSPACE_ID)).toMatchObject({ sessionId: 'run_123', message: 'Running tests' });
         expect((await store.listActivityForUser(DEFAULT_USER_ID, DEFAULT_WORKSPACE_ID)).map((item) => item.id)).toContain(status.statusId);
+        const toolActivity = await store.createToolActivity({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, sessionId: 'run_123', turnId: 'turn_1', toolCallId: 'call_1', toolName: 'bash', state: 'finished', outcome: 'success', summary: 'Ran validation' }, '2026-05-08T00:01:30.000Z');
+        expect(await store.getToolActivity(toolActivity.toolActivityId, DEFAULT_WORKSPACE_ID)).toMatchObject({ sessionId: 'run_123', toolName: 'bash', outcome: 'success', recipientUserIds: [DEFAULT_USER_ID] });
+        expect(await store.listLatestToolActivities(DEFAULT_WORKSPACE_ID)).toEqual([expect.objectContaining({ toolActivityId: toolActivity.toolActivityId, summary: 'Ran validation' })]);
+        expect((await store.listActivityForUser(DEFAULT_USER_ID, DEFAULT_WORKSPACE_ID)).find((item) => item.id === toolActivity.toolActivityId)).toMatchObject({ kind: 'tool_activity', toolActivity: { toolName: 'bash' } });
 
         const device = await store.registerDevice({ userId: DEFAULT_USER_ID, deviceName: 'phone', installationId: 'install_contract', expoPushToken: 'ExponentPushToken[contract]' }, '2026-05-08T00:02:00.000Z');
         const updatedDevice = await store.registerDevice({ userId: DEFAULT_USER_ID, deviceName: 'phone renamed', installationId: 'install_contract', expoPushToken: 'ExponentPushToken[contract2]' }, '2026-05-08T00:03:00.000Z');
         expect(updatedDevice.deviceId).toBe(device.deviceId);
         expect(await store.listDevicesForUser(DEFAULT_USER_ID)).toEqual([expect.objectContaining({ deviceId: device.deviceId, expoPushToken: 'ExponentPushToken[contract2]' })]);
+        const deviceKey = await store.registerDevicePublicKey({ deviceId: device.deviceId, userId: DEFAULT_USER_ID, algorithm: 'p256-ecdh-hkdf-sha256', publicKey: 'test-spki' }, '2026-05-08T00:03:30.000Z');
+        expect(await store.listDevicePublicKeysForUser(DEFAULT_USER_ID)).toEqual([expect.objectContaining({ deviceKeyId: deviceKey.deviceKeyId, publicKey: 'test-spki' })]);
+        const preparedPrivate = await store.preparePrivateRequest({ workspaceId: DEFAULT_WORKSPACE_ID });
+        expect(preparedPrivate).toMatchObject({ contentMode: 'private', recipientUserIds: [DEFAULT_USER_ID], deviceKeys: [expect.objectContaining({ deviceKeyId: deviceKey.deviceKeyId })] });
+        const privateRequest = await store.createRequest({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, requester: { name: 'Pi' }, requestType: 'sanction', title: 'Private Request', choices: [{ id: 'approve', label: 'Approve', kind: 'approve' }, { id: 'deny', label: 'Deny', kind: 'deny' }], contentMode: 'private', privateRecipientVersion: preparedPrivate.recipientVersion, encryptedPayload: { version: 1, algorithm: 'aes-256-gcm', nonce: 'nonce', ciphertext: 'ciphertext', tag: 'tag', keyEnvelopes: [{ deviceKeyId: deviceKey.deviceKeyId, algorithm: 'p256-ecdh-hkdf-sha256+aes-256-gcm', ephemeralPublicKey: 'ephemeral', nonce: 'wrapnonce', ciphertext: 'wrapped', tag: 'wraptag' }] } }, '2026-05-08T00:03:40.000Z');
+        expect(privateRequest).toMatchObject({ contentMode: 'private', title: 'Private Request', encryptedPayload: expect.any(Object), recipients: [expect.objectContaining({ userId: DEFAULT_USER_ID })] });
 
         const ticket = await store.createEventTicket({ source: 'mobile', workspaceId: DEFAULT_WORKSPACE_ID, userId: DEFAULT_USER_ID }, '2026-05-08T00:04:00.000Z');
         expect(await store.verifyEventTicket(ticket.ticket, '2026-05-08T00:04:01.000Z')).toMatchObject({ source: 'mobile', userId: DEFAULT_USER_ID });
@@ -184,6 +194,10 @@ export function defineStoreContractTests(harness: StoreContractHarness): void {
         expect(await store.verifyRequestWaiterToken(waiter.token, request.id, '2026-05-08T00:01:20.000Z')).toMatchObject({ waiterId: waiter.waiterId, requestId: request.id, agentTokenId: credential.agentTokenId });
         await store.renewRequestWaiter(waiter.waiterId, '2026-05-08T00:04:00.000Z', '2026-05-08T00:03:00.000Z');
         expect(await store.getRequestForWorkspace(request.id, DEFAULT_WORKSPACE_ID, undefined, '2026-05-08T00:03:30.000Z')).toMatchObject({ agentWaiter: { state: 'waiting', lastSeenAt: '2026-05-08T00:03:00.000Z', leaseExpiresAt: '2026-05-08T00:04:00.000Z' } });
+
+        await store.renewRequestWaiter(waiter.waiterId, '2026-05-08T01:08:00.000Z', '2026-05-08T01:05:30.000Z');
+        expect(await store.verifyRequestWaiterToken(waiter.token, request.id, '2026-05-08T01:07:00.000Z')).toMatchObject({ waiterId: waiter.waiterId, requestId: request.id, agentTokenId: credential.agentTokenId });
+        expect(await store.getRequestForWorkspace(request.id, DEFAULT_WORKSPACE_ID, undefined, '2026-05-08T01:07:00.000Z')).toMatchObject({ agentWaiter: { state: 'waiting', lastSeenAt: '2026-05-08T01:05:30.000Z', leaseExpiresAt: '2026-05-08T01:08:00.000Z', credentialExpiresAt: '2026-05-08T02:10:30.000Z' } });
       });
     });
   });

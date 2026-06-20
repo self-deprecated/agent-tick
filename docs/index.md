@@ -27,6 +27,7 @@ Agent Tick routes requests and returns bounded responses. It does **not** execut
 | --- | --- |
 | Connect my first machine | [Quick Start](./quick-start.md) |
 | Understand the app screens | [Native App](./native-app.md) and [Personal Console](./personal-console.md) |
+| Understand Private Requests and private Status Updates | [Private encryption](./private-encryption.md) |
 | Configure Claude Code, Codex, Pi, or other tools | [Coding-agent integrations](./coding-agent-integrations.md) |
 | Try Agent Tick from a terminal | [CLI](./cli.md) |
 | Use Agent Tick with a team | [Workspaces](./workspaces.md) |

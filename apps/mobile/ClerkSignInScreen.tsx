@@ -2,8 +2,11 @@ import { AuthView } from "@clerk/expo/native";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { fetchRuntimeAuthConfig, normalizeServerURL, type RuntimeAuthConfig } from "./mobileAuth";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { fetchRuntimeAuthConfig, normalizeServerURL, serverURLPolicyError, type RuntimeAuthConfig } from "./mobileAuth";
+import { knownServerLabel, type KnownServer } from "./knownServers";
+import { ServerPicker } from "./appShell/ServerPicker";
+import { useKnownServers, isKnownInsecureServer } from "./appShell/useKnownServers";
 
 type ClerkSignInScreenProps = {
   serverURL: string;
@@ -13,15 +16,24 @@ type ClerkSignInScreenProps = {
   addAccountHint?: boolean;
   onAuthViewOpen?: () => void;
   onCancel?: () => void;
+  onSignInSelected?: () => void;
   onServerSelected?: (serverURL: string, authConfig: RuntimeAuthConfig | null) => void;
 };
 
-export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", initialShowAuthView = false, authMode = "signInOrUp", addAccountHint = false, onAuthViewOpen, onCancel, onServerSelected }: ClerkSignInScreenProps) {
-  const [customServerURL, setCustomServerURL] = useState(selfHostedInitialURL);
-  const [selfHostedOpen, setSelfHostedOpen] = useState(false);
+function signInTargetLabel(serverURL: string, knownServer?: KnownServer): string {
+  return knownServerLabel(knownServer ?? { url: serverURL });
+}
+
+export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", initialShowAuthView = false, authMode = "signInOrUp", addAccountHint = false, onAuthViewOpen, onCancel, onSignInSelected, onServerSelected }: ClerkSignInScreenProps) {
+  const { knownServers, verify, record, remove } = useKnownServers();
+  const [selectedServerURL, setSelectedServerURL] = useState(normalizeServerURL(serverURL));
   const [showAuthView, setShowAuthView] = useState(initialShowAuthView);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedServerURL(normalizeServerURL(serverURL));
+  }, [serverURL]);
 
   useEffect(() => {
     if (initialShowAuthView) onAuthViewOpen?.();
@@ -29,16 +41,41 @@ export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", initia
 
   const openAuthView = () => {
     onAuthViewOpen?.();
+    if (onSignInSelected) {
+      onSignInSelected();
+      return;
+    }
     setShowAuthView(true);
   };
 
-  const useSelfHostedServer = async () => {
-    const nextServerURL = normalizeServerURL(customServerURL);
-    setSubmitting(true);
+  const selectedKnownServer = knownServers.find((server) => server.url === normalizeServerURL(selectedServerURL));
+  const selectedLabel = signInTargetLabel(selectedServerURL, selectedKnownServer);
+  const currentServerURL = normalizeServerURL(serverURL);
+
+  const signInToSelected = async () => {
+    const targetServerURL = normalizeServerURL(selectedServerURL);
     setError(null);
+
+    // Selecting the server this screen is already bound to opens Clerk native
+    // auth directly. Any other server must re-bootstrap so the ClerkProvider
+    // can mount with that server's publishable key (or fall back to token flow).
+    if (targetServerURL === currentServerURL) {
+      openAuthView();
+      return;
+    }
+
+    const allowInsecure = await isKnownInsecureServer(targetServerURL);
+    const policyError = serverURLPolicyError(targetServerURL, { allowInsecure });
+    if (policyError) {
+      setError(policyError);
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      const config = await fetchRuntimeAuthConfig(nextServerURL);
-      onServerSelected?.(nextServerURL, config);
+      const config = await fetchRuntimeAuthConfig(targetServerURL, fetch, { allowInsecure });
+      await record(targetServerURL, { authProvider: config.authProvider });
+      onServerSelected?.(targetServerURL, config);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read server auth config");
     } finally {
@@ -46,9 +83,14 @@ export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", initia
     }
   };
 
+  const recordServer = async (nextServerURL: string, options: { authProvider: RuntimeAuthConfig["authProvider"]; insecureConfirmed?: boolean }) => {
+    await record(nextServerURL, options);
+    setSelectedServerURL(nextServerURL);
+  };
+
   if (showAuthView) {
     return (
-      <View style={styles.shell}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.shell}>
         <StatusBar style="dark" />
         <View style={styles.nativeHeader}>
           <Pressable onPress={() => { if (onCancel) onCancel(); else setShowAuthView(false); }} style={styles.backButton}>
@@ -61,57 +103,37 @@ export function ClerkSignInScreen({ serverURL, selfHostedInitialURL = "", initia
         <View style={styles.nativeAuthFrame}>
           <AuthView mode={authMode} isDismissable={Boolean(onCancel)} />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
   return (
-    <View style={styles.shell}>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.shell}>
       <StatusBar style="dark" />
       <View style={styles.landingContent}>
         <View style={styles.hero}>
           <Text style={styles.title}>Agent Tick</Text>
-          <Text style={styles.subtitle}>{serverURL}</Text>
-          <Text style={styles.bodyText}>Sign in to the hosted Agent Tick service, or connect this app to your own self-hosted server.</Text>
+          <Text style={styles.subtitle}>{selectedKnownServer?.url ?? selectedServerURL}</Text>
+          <Text style={styles.bodyText}>Sign in to the hosted Agent Tick service, or pick a self-hosted server. Agent Tick checks the server after you press sign in and adapts to the sign-in method it advertises.</Text>
         </View>
-        <Pressable onPress={openAuthView} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Sign in to agenttick.sh</Text>
+        <Pressable accessibilityLabel={`Sign in to ${selectedLabel}`} disabled={submitting} onPress={() => void signInToSelected()} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonText}>{submitting ? "Checking…" : `Sign in to ${selectedLabel}`}</Text>
         </Pressable>
+        {submitting ? <ActivityIndicator /> : null}
       </View>
       <View style={styles.selfHostedPanel}>
-        {selfHostedOpen ? (
-          <View style={styles.selfHostedForm}>
-            <Text style={styles.bodyText}>Self-hosting Agent Tick?</Text>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Server URL</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                inputMode="url"
-                onChangeText={setCustomServerURL}
-                placeholder="https://tick.example.com"
-                style={styles.input}
-                value={customServerURL}
-              />
-            </View>
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            <View style={styles.buttonRow}>
-              <Pressable disabled={submitting} onPress={() => void useSelfHostedServer()} style={styles.primaryButtonCompact}>
-                <Text style={styles.primaryButtonText}>{submitting ? "Checking…" : "Continue"}</Text>
-              </Pressable>
-              <Pressable disabled={submitting} onPress={() => setSelfHostedOpen(false)} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </Pressable>
-            </View>
-            {submitting ? <ActivityIndicator /> : null}
-          </View>
-        ) : (
-          <Pressable onPress={() => setSelfHostedOpen(true)} style={styles.linkButton}>
-            <Text style={styles.linkButtonText}>Use a self-hosted server instead</Text>
-          </Pressable>
-        )}
+        <ServerPicker
+          knownServers={knownServers}
+          selectedServerURL={selectedServerURL}
+          onSelectServer={setSelectedServerURL}
+          onVerifyServer={verify}
+          onRecordServer={recordServer}
+          onRemoveServer={(url) => void remove(url)}
+          initialDraftURL={selfHostedInitialURL}
+        />
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -149,28 +171,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#ded6c6",
     borderTopWidth: 1,
     padding: 20,
-  },
-  selfHostedForm: {
     gap: 10,
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  label: {
-    color: "#545044",
-    fontSize: 13,
-    fontWeight: "800",
-    textTransform: "uppercase",
-  },
-  input: {
-    backgroundColor: "#ffffff",
-    borderColor: "#ded6c6",
-    borderRadius: 8,
-    borderWidth: 1,
-    color: "#202124",
-    fontSize: 16,
-    minHeight: 48,
-    paddingHorizontal: 12,
   },
   title: {
     color: "#202124",
@@ -190,10 +191,6 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     textAlign: "center",
   },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
   primaryButton: {
     alignItems: "center",
     backgroundColor: "#202124",
@@ -202,45 +199,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 14,
   },
-  primaryButtonCompact: {
-    alignItems: "center",
-    backgroundColor: "#202124",
-    borderRadius: 8,
-    flex: 1,
-    minHeight: 48,
-    justifyContent: "center",
-    paddingHorizontal: 14,
-  },
   primaryButtonText: {
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "900",
   },
-  secondaryButton: {
-    alignItems: "center",
-    borderColor: "#202124",
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    minHeight: 48,
-    justifyContent: "center",
-    paddingHorizontal: 14,
-  },
   secondaryButtonText: {
     color: "#202124",
     fontSize: 15,
     fontWeight: "900",
-  },
-  linkButton: {
-    alignItems: "center",
-    minHeight: 44,
-    justifyContent: "center",
-  },
-  linkButtonText: {
-    color: "#202124",
-    fontSize: 15,
-    fontWeight: "900",
-    textDecorationLine: "underline",
   },
   errorText: {
     color: "#9b1c1c",

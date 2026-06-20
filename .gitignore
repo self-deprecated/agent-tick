@@ -21,6 +21,7 @@ package-lock.json
 apps/mobile/.env
 apps/mobile/build-*.apk
 apps/mobile/build-*.aab
+apps/mobile/builds/
 apps/server/public/admin/*
 !apps/server/public/admin/.gitkeep
 agent-tick.json

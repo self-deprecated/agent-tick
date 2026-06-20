@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { MeResponse } from "@self-deprecated/agent-tick-sdk";
 import { localeName, supportedLocales, translateSource, type LocalePreference, type SupportedLocale } from "@agent-tick/i18n";
 import type { PersonalBillingStatus } from "@self-deprecated/agent-tick-shared";
 import type { StoreProduct } from "./purchases";
 import { entitlementStatusCopy, formatHostedDate, hostedUsageExpiry, type HostedUsageExpiry } from "./AppLogic";
-import type { SavedMobileAccount } from "./mobileAuth";
+import { knownServerLabel, type KnownServer } from "./knownServers";
+import { fetchRuntimeAuthConfig, serverURLPolicyError, type RuntimeAuthConfig, type SavedMobileAccount } from "./mobileAuth";
+import { ServerPicker } from "./appShell/ServerPicker";
+import { useKnownServers, isKnownInsecureServer } from "./appShell/useKnownServers";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -22,6 +26,28 @@ export type ConnectionStatus = "checking" | "connected" | "disconnected";
 export type NotificationStatus = "checking" | "granted" | "denied" | "undetermined";
 export type PushStatus = "idle" | "registered" | "unsupported" | "failed";
 export type AvailabilityState = "available" | "busy" | "do-not-disturb" | "off-call";
+export type PrivateEncryptionConnectionStatusKind = "registered" | "not_registered" | "different_key" | "missing_device" | "missing_credential" | "device_not_found" | "unsupported" | "error";
+export type PrivateEncryptionConnectionStatus = {
+  id: string;
+  label: string;
+  serverURL: string;
+  workspaceID?: string;
+  deviceID?: string;
+  status: PrivateEncryptionConnectionStatusKind;
+  statusLabel: string;
+  message: string;
+  publicKeyFingerprint?: string;
+  updatedAt?: string;
+};
+export type PrivateEncryptionStatus = {
+  state: "idle" | "checking" | "ready" | "warning" | "not_setup" | "unsupported" | "error";
+  summary: string;
+  detail: string;
+  connections: PrivateEncryptionConnectionStatus[];
+  checkedAt?: string;
+  refreshing?: boolean;
+  repairing?: boolean;
+};
 type SettingsView = "home" | "account" | "accounts" | "access" | "general" | "developer" | "notifications" | "self-hosted";
 
 const AVAILABILITY_SETTINGS_ENABLED = false;
@@ -29,6 +55,9 @@ const LEGAL_LINKS = {
   privacy: "https://agenttick.sh/privacy",
   terms: "https://agenttick.sh/terms",
   support: "https://agenttick.sh/support",
+} as const;
+const DOC_LINKS = {
+  privateEncryption: "https://docs.agenttick.sh/private-encryption",
 } as const;
 
 type WorkspaceMembership = {
@@ -56,6 +85,23 @@ export function ConnectionBadge({ status }: { status: ConnectionStatus }) {
       />
       <Text style={styles.connectionText}>{label}</Text>
     </View>
+  );
+}
+
+function KeyboardAwareSettingsScroll({ children, scrollRef }: { children: ReactNode; scrollRef: RefObject<ScrollView | null> }) {
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.settingsPane}>
+      <ScrollView
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        keyboardShouldPersistTaps="handled"
+        ref={scrollRef}
+        contentContainerStyle={[styles.settingsContent, styles.keyboardAwareSettingsContent]}
+        style={styles.settingsPane}
+      >
+        {children}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -90,8 +136,13 @@ export function SettingsScreen({
   onSendTestNotification,
   onShowHostedExpiryWarning,
   onShowNativePaywall,
+  localDevAppAccessUnlocked = false,
+  onSetLocalDevAppAccessUnlocked,
   nativeAppEntitlement,
   personalBillingStatus,
+  privateEncryptionStatus,
+  onRefreshPrivateEncryptionStatus,
+  onRepairPrivateEncryptionRegistration,
   entitlementSourceDiagnostics = [],
   storeProducts = [],
   trialRemainingLabel = "",
@@ -103,6 +154,7 @@ export function SettingsScreen({
   onManageSubscription,
   onScanPairing,
   onUseHosted,
+  onSignInToServer,
   pairingCode,
   pushStatus,
   diagnosticsEnabled = false,
@@ -149,8 +201,13 @@ export function SettingsScreen({
   onSendTestNotification: () => void;
   onShowHostedExpiryWarning?: () => void;
   onShowNativePaywall?: () => void;
+  localDevAppAccessUnlocked?: boolean;
+  onSetLocalDevAppAccessUnlocked?: (unlocked: boolean) => void;
   nativeAppEntitlement?: { trialActive: boolean; trialPurchased: boolean; lifetimeUnlocked: boolean; readOnly: boolean; hostedSubscriptionActive: boolean; trialRemainingMs?: number };
   personalBillingStatus?: PersonalBillingStatus | null;
+  privateEncryptionStatus?: PrivateEncryptionStatus;
+  onRefreshPrivateEncryptionStatus?: () => void;
+  onRepairPrivateEncryptionRegistration?: () => void;
   entitlementSourceDiagnostics?: string[];
   storeProducts?: StoreProduct[];
   trialRemainingLabel?: string;
@@ -163,6 +220,7 @@ export function SettingsScreen({
   onScanPairing: () => void;
   onSignInAnotherClerkAccount?: () => void;
   onUseHosted?: () => void;
+  onSignInToServer?: (serverURL: string) => void;
   pairingCode: string;
   pushStatus: PushStatus;
   diagnosticsEnabled?: boolean;
@@ -185,6 +243,10 @@ export function SettingsScreen({
   const [languageOpen, setLanguageOpen] = useState(false);
   const [entitlementDiagnosticsOpen, setEntitlementDiagnosticsOpen] = useState(false);
   const [diagnosticLogsOpen, setDiagnosticLogsOpen] = useState(false);
+  const { knownServers, verify: verifyKnownServer, record: recordKnownServer, remove: removeKnownServer } = useKnownServers();
+  const [serverPickerError, setServerPickerError] = useState<string | null>(null);
+  const [serverPickerChecking, setServerPickerChecking] = useState(false);
+  const [selectedPickerServerURL, setSelectedPickerServerURL] = useState(serverURL);
   const scrollRef = useRef<ScrollView | null>(null);
   const isClerkMode = authProvider === "clerk";
   const isPaired = isClerkMode || !!deviceID;
@@ -194,6 +256,10 @@ export function SettingsScreen({
   const trackButton = (button: string, metadata?: Record<string, unknown>) => {
     onDiagnosticEvent?.("button", button, { settingsView, ...metadata });
   };
+
+  useEffect(() => {
+    setSelectedPickerServerURL(normalizeServerURL(serverURL));
+  }, [serverURL]);
 
   useEffect(() => {
     setSettingsView(settingsViewTarget);
@@ -268,7 +334,7 @@ export function SettingsScreen({
       {showTrialOffer ? (
         <View style={styles.purchaseCard}>
           <Text style={styles.workspaceName}>{tr("7-day Trial")}</Text>
-          <Text style={styles.workspaceMeta}>{tr("Start with a free App Store purchase. No subscription starts.")}</Text>
+          <Text style={styles.workspaceMeta}>{tr(Platform.OS === "android" ? "Start with a free 7-day trial. No Google Play purchase starts." : "Start with a free App Store purchase. No subscription starts.")}</Text>
           <Text style={styles.priceText}>{priceForProduct(storeProducts, "trial_7_day") ?? tr("Free")}</Text>
           {trialAvailability?.reason && !nativeAppEntitlement.trialPurchased ? <Text style={styles.pairingHint}>{purchaseAvailabilityCopy(trialAvailability.reason)}</Text> : null}
           <Pressable disabled={trialBlocked} onPress={() => onShowNativePaywall?.()} style={[styles.primaryButton, trialBlocked ? styles.disabledButton : null]}>
@@ -490,6 +556,8 @@ export function SettingsScreen({
     </View>
   );
 
+  const showLocalDevAppAccess = Boolean(onSetLocalDevAppAccessUnlocked) && __DEV__;
+
   const developerSection = (
     <View style={styles.settingsSection}>
       <Text style={styles.sectionHeading}>{tr("Developer")}</Text>
@@ -504,6 +572,15 @@ export function SettingsScreen({
           <Text style={styles.secondaryActionText}>{tr("Show hosted expiry warning")}</Text>
         </Pressable>
       </View>
+      {showLocalDevAppAccess ? (
+        <>
+          <Text style={styles.label}>{tr("Local dev app access")}</Text>
+          <Text style={styles.pairingHint}>{tr("Overrides app response access on this development install only. Use this when local RevenueCat offerings are unavailable.")}</Text>
+          <Pressable onPress={() => { trackButton("debug_toggle_local_dev_app_access", { next: !localDevAppAccessUnlocked }); onSetLocalDevAppAccessUnlocked?.(!localDevAppAccessUnlocked); }} style={styles.secondaryActionButton}>
+            <Text style={styles.secondaryActionText}>{localDevAppAccessUnlocked ? tr("Disable local dev access") : tr("Grant local dev access")}</Text>
+          </Pressable>
+        </>
+      ) : null}
       {onResetLocalTestState ? (
         <>
           <Text style={styles.label}>{tr("Local test reset")}</Text>
@@ -586,9 +663,77 @@ export function SettingsScreen({
     </View>
   );
 
+  const privateEncryptionSection = (
+    <View style={styles.settingsSection}>
+      <Text style={styles.sectionHeading}>{tr("Private encryption")}</Text>
+      <Text style={styles.pairingHint}>
+        {privateEncryptionStatus?.summary ?? tr("Checking whether this phone can decrypt Private Requests and private Status Updates.")}
+      </Text>
+      <Text style={styles.pairingHint}>
+        {privateEncryptionStatus?.detail ?? tr("Agent Tick never shows or exports this phone's private key.")}
+      </Text>
+      <Text style={styles.pairingHint}>
+        {tr("This app generates one private encryption install key on this phone. Each connected Agent Tick server receives the same matching public key so future private Activity can be encrypted for this phone.")}
+      </Text>
+      <Pressable accessibilityRole="link" onPress={() => { void openLegalLink("Private encryption docs", DOC_LINKS.privateEncryption); }} style={styles.docsLinkButton}>
+        <Text style={styles.docsLinkText}>{tr("Learn more")}</Text>
+      </Pressable>
+      {privateEncryptionStatus?.checkedAt ? (
+        <Text style={styles.workspaceMeta}>{tr("Checked:")} {formatSettingsTimestamp(privateEncryptionStatus.checkedAt)}</Text>
+      ) : null}
+      <View style={styles.workspaceList}>
+        {privateEncryptionStatus?.connections.length ? privateEncryptionStatus.connections.map((connection) => (
+          <View key={connection.id} style={styles.encryptionConnectionCard}>
+            <View style={styles.encryptionConnectionHeader}>
+              <View style={styles.navRowText}>
+                <Text style={styles.workspaceName}>{connection.label}</Text>
+                <Text style={styles.workspaceMeta}>{connection.serverURL}</Text>
+              </View>
+              <View style={[styles.encryptionStatusPill, encryptionStatusPillStyle(connection.status)]}>
+                <Text style={[styles.encryptionStatusPillText, encryptionStatusPillTextStyle(connection.status)]}>{tr(connection.statusLabel)}</Text>
+              </View>
+            </View>
+            <Text style={styles.pairingHint}>{tr(connection.message)}</Text>
+            <View style={styles.diagnosticDetails}>
+              {connection.deviceID ? <Text style={styles.diagnosticLine}>{tr("Device:")} {shortIdentifier(connection.deviceID)}</Text> : null}
+              {connection.workspaceID ? <Text style={styles.diagnosticLine}>{tr("Workspace:")} {shortIdentifier(connection.workspaceID)}</Text> : null}
+              {connection.publicKeyFingerprint ? <Text style={styles.diagnosticLine}>{tr("Key fingerprint:")} {shortIdentifier(connection.publicKeyFingerprint)}</Text> : null}
+              {connection.updatedAt ? <Text style={styles.diagnosticLine}>{tr("Server updated:")} {formatSettingsTimestamp(connection.updatedAt)}</Text> : null}
+            </View>
+          </View>
+        )) : (
+          <View style={styles.encryptionConnectionCard}>
+            <Text style={styles.workspaceName}>{tr("No server registrations checked")}</Text>
+            <Text style={styles.workspaceMeta}>{tr("Pair or sign in to an Agent Tick server to check whether this phone's public key is registered there.")}</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.notificationActions}>
+        <Pressable
+          accessibilityState={{ disabled: Boolean(privateEncryptionStatus?.refreshing || privateEncryptionStatus?.repairing || !onRefreshPrivateEncryptionStatus) }}
+          disabled={Boolean(privateEncryptionStatus?.refreshing || privateEncryptionStatus?.repairing || !onRefreshPrivateEncryptionStatus)}
+          onPress={() => { trackButton("refresh_private_encryption_status"); onRefreshPrivateEncryptionStatus?.(); }}
+          style={[styles.secondaryActionButton, privateEncryptionStatus?.refreshing || privateEncryptionStatus?.repairing || !onRefreshPrivateEncryptionStatus ? styles.secondaryActionButtonDisabled : null]}
+        >
+          <Text style={[styles.secondaryActionText, privateEncryptionStatus?.refreshing || privateEncryptionStatus?.repairing || !onRefreshPrivateEncryptionStatus ? styles.secondaryActionTextDisabled : null]}>{privateEncryptionStatus?.refreshing ? tr("Checking…") : tr("Refresh")}</Text>
+        </Pressable>
+        <Pressable
+          accessibilityState={{ disabled: Boolean(privateEncryptionStatus?.refreshing || privateEncryptionStatus?.repairing || !onRepairPrivateEncryptionRegistration) }}
+          disabled={Boolean(privateEncryptionStatus?.refreshing || privateEncryptionStatus?.repairing || !onRepairPrivateEncryptionRegistration)}
+          onPress={() => { trackButton("repair_private_encryption_registration"); onRepairPrivateEncryptionRegistration?.(); }}
+          style={[styles.secondaryActionButton, privateEncryptionStatus?.refreshing || privateEncryptionStatus?.repairing || !onRepairPrivateEncryptionRegistration ? styles.secondaryActionButtonDisabled : null]}
+        >
+          <Text style={[styles.secondaryActionText, privateEncryptionStatus?.refreshing || privateEncryptionStatus?.repairing || !onRepairPrivateEncryptionRegistration ? styles.secondaryActionTextDisabled : null]}>{privateEncryptionStatus?.repairing ? tr("Repairing…") : tr("Repair registration")}</Text>
+        </Pressable>
+      </View>
+      <Text style={styles.workspaceMeta}>{tr("Repairing registration syncs this phone's current public key with each connection and affects future private Activity.")}</Text>
+    </View>
+  );
+
   const generalSections = (
     <>
       {languageSection}
+      {privateEncryptionSection}
       {legalSection}
 
     </>
@@ -667,8 +812,71 @@ export function SettingsScreen({
     </View>
   ) : null;
 
+  const selectedPickerServer = knownServers.find((server) => server.url === normalizeServerURL(selectedPickerServerURL)) as KnownServer | undefined;
+  const pickerTargetLabel = knownServerLabel(selectedPickerServer ?? { url: selectedPickerServerURL });
+  const pickerSignInLabel = serverPickerChecking ? tr("Checking…") : `Sign in to ${pickerTargetLabel}`;
+
+  const handleRecordKnownServer = async (url: string, options: { authProvider: RuntimeAuthConfig["authProvider"]; insecureConfirmed?: boolean }) => {
+    setServerPickerError(null);
+    await recordKnownServer(url, options);
+    setSelectedPickerServerURL(url);
+  };
+
+  const handleSignInToSelectedServer = async () => {
+    const target = normalizeServerURL(selectedPickerServerURL);
+    const allowInsecure = await isKnownInsecureServer(target);
+    const policyError = serverURLPolicyError(target, { allowInsecure });
+    if (policyError) {
+      setServerPickerError(policyError);
+      return;
+    }
+    setServerPickerChecking(true);
+    setServerPickerError(null);
+    try {
+      const config = await fetchRuntimeAuthConfig(target, fetch, { allowInsecure });
+      await recordKnownServer(target, { authProvider: config.authProvider });
+      trackButton("sign_in_to_server", { target, authProvider: config.authProvider });
+      if (config.authProvider === "clerk") {
+        // Re-bootstrap so the ClerkProvider mounts with this server's key.
+        onSignInToServer?.(target);
+      } else {
+        // Local/token server: switch the active server in-session; the pairing
+        // and token sections below handle sign-in for that server.
+        setServerURL(target);
+      }
+    } catch (err) {
+      setServerPickerError(err instanceof Error ? err.message : tr("Could not read server auth config"));
+    } finally {
+      setServerPickerChecking(false);
+    }
+  };
+
   const selfHostedSetupSections = (
     <>
+      <View style={styles.settingsSection}>
+        <Text style={styles.sectionHeading}>{tr("Server")}</Text>
+        <Text style={styles.pairingHint}>
+          {tr("Pick a remembered server or add your own. Agent Tick checks the server and adapts to its sign-in method (Clerk or token/pairing).")}
+        </Text>
+        <ServerPicker
+          knownServers={knownServers}
+          selectedServerURL={selectedPickerServerURL}
+          onSelectServer={setSelectedPickerServerURL}
+          onVerifyServer={verifyKnownServer}
+          onRecordServer={handleRecordKnownServer}
+          onRemoveServer={(url) => void removeKnownServer(url)}
+        />
+        <Pressable
+          accessibilityLabel={pickerSignInLabel}
+          disabled={serverPickerChecking}
+          onPress={() => void handleSignInToSelectedServer()}
+          style={styles.primaryButton}
+        >
+          <Text style={styles.primaryButtonText}>{pickerSignInLabel}</Text>
+        </Pressable>
+        {serverPickerError ? <Text style={styles.errorText}>{serverPickerError}</Text> : null}
+      </View>
+
       <View style={styles.settingsSection}>
         <Text style={styles.sectionHeading}>{tr("Pairing")}</Text>
         <Text style={styles.pairingHint}>
@@ -695,8 +903,10 @@ export function SettingsScreen({
             inputMode="url"
             onChangeText={setServerURL}
             placeholder="https://tick.example.com"
+            returnKeyType="go"
             style={styles.input}
             value={serverURL}
+            onSubmitEditing={onCheck}
           />
         </View>
         <Pressable onPress={() => { trackButton("check_connection_unpaired"); onCheck(); }} style={styles.primaryButton}>
@@ -748,11 +958,7 @@ export function SettingsScreen({
 
   if (settingsView === "accounts") {
     return (
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={styles.settingsContent}
-        style={styles.settingsPane}
-      >
+      <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
         <View style={styles.settingsSection}>
           <Pressable accessibilityLabel={tr("‹ Connections")} accessibilityRole="button" onPress={() => { trackButton("accounts_back"); setSettingsView("account"); }} style={styles.backButton}>
             <Text style={styles.secondaryActionText}>{tr("‹ Connections")}</Text>
@@ -804,49 +1010,49 @@ export function SettingsScreen({
             <Text style={styles.secondaryActionText}>{tr("Add self-hosted connection")}</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </KeyboardAwareSettingsScroll>
     );
   }
 
   if (settingsView === "access") {
     return (
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
+      <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
         {renderBackButton()}
         {appAccessSection}
-      </ScrollView>
+      </KeyboardAwareSettingsScroll>
     );
   }
 
   if (settingsView === "general") {
     return (
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
+      <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
         {renderBackButton()}
         {generalSections}
-      </ScrollView>
+      </KeyboardAwareSettingsScroll>
     );
   }
 
   if (settingsView === "developer") {
     return (
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
+      <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
         {renderBackButton()}
         {developerSection}
-      </ScrollView>
+      </KeyboardAwareSettingsScroll>
     );
   }
 
   if (settingsView === "notifications") {
     return (
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
+      <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
         {renderBackButton()}
         {notificationsSection}
-      </ScrollView>
+      </KeyboardAwareSettingsScroll>
     );
   }
 
   if (isPaired && settingsView === "account") {
     return (
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
+      <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
         <View style={styles.settingsSection}>
           <Pressable accessibilityLabel={tr("‹ Settings")} accessibilityRole="button" onPress={() => { trackButton("account_back"); setSettingsView("home"); }} style={styles.backButton}>
             <Text style={styles.secondaryActionText}>{tr("‹ Settings")}</Text>
@@ -890,26 +1096,22 @@ export function SettingsScreen({
         </View>
         {workspaceSection}
         {availabilitySection}
-      </ScrollView>
+      </KeyboardAwareSettingsScroll>
     );
   }
 
   if (settingsView === "self-hosted") {
     return (
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.settingsContent} style={styles.settingsPane}>
+      <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
         {renderBackButton()}
         {selfHostedSetupSections}
-      </ScrollView>
+      </KeyboardAwareSettingsScroll>
     );
   }
 
   if (isPaired) {
     return (
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={styles.settingsContent}
-        style={styles.settingsPane}
-      >
+      <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
         <View style={styles.settingsSection}>
           <Text style={styles.sectionHeading}>{tr("Settings")}</Text>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -926,16 +1128,12 @@ export function SettingsScreen({
           {renderNavItem("Notifications", notificationsEnabled ? "Request alerts and push status" : "Request alerts are off in Agent Tick", "notifications", "open_notifications_settings")}
           {renderNavItem("Developer", "Debug tools and diagnostics", "developer", "open_developer_settings")}
         </View>
-      </ScrollView>
+      </KeyboardAwareSettingsScroll>
     );
   }
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      contentContainerStyle={styles.settingsContent}
-      style={styles.settingsPane}
-    >
+    <KeyboardAwareSettingsScroll scrollRef={scrollRef}>
       <View style={styles.settingsSection}>
         <Text style={styles.sectionHeading}>{tr("Choose account type")}</Text>
         <Text style={styles.pairingHint}>{tr("Use the hosted Agent Tick service, or connect this app to your own self-hosted server.")}</Text>
@@ -969,7 +1167,7 @@ export function SettingsScreen({
         {renderNavItem("Notifications", notificationsEnabled ? "Request alerts and push status" : "Request alerts are off in Agent Tick", "notifications", "open_notifications_settings")}
         {renderNavItem("Developer", "Debug tools and diagnostics", "developer", "open_developer_settings")}
       </View>
-    </ScrollView>
+    </KeyboardAwareSettingsScroll>
   );
 }
 
@@ -1084,6 +1282,27 @@ function availabilityLabel(state: AvailabilityState) {
   }
 }
 
+function shortIdentifier(value: string): string {
+  if (value.length <= 18) return value;
+  return `${value.slice(0, 8)}…${value.slice(-6)}`;
+}
+
+function formatSettingsTimestamp(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
+
+function encryptionStatusPillStyle(status: PrivateEncryptionConnectionStatusKind) {
+  if (status === "registered") return styles.encryptionStatusPillOk;
+  if (status === "not_registered" || status === "different_key") return styles.encryptionStatusPillWarn;
+  return styles.encryptionStatusPillBad;
+}
+
+function encryptionStatusPillTextStyle(status: PrivateEncryptionConnectionStatusKind) {
+  return status === "registered" ? styles.encryptionStatusPillOkText : styles.encryptionStatusPillAlertText;
+}
+
 const styles = StyleSheet.create({
   settingsPane: {
     flex: 1,
@@ -1092,6 +1311,9 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 20,
     paddingBottom: 32,
+  },
+  keyboardAwareSettingsContent: {
+    paddingBottom: 120,
   },
   settingsSection: {
     backgroundColor: "#ffffff",
@@ -1288,6 +1510,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  docsLinkButton: {
+    alignSelf: "flex-start",
+    minHeight: 34,
+    justifyContent: "center",
+  },
+  docsLinkText: {
+    color: "#202124",
+    fontSize: 15,
+    fontWeight: "900",
+    textDecorationLine: "underline",
+  },
   notificationStatus: {
     color: "#202124",
     fontSize: 18,
@@ -1443,6 +1676,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 8,
     padding: 12,
+  },
+  encryptionConnectionCard: {
+    borderColor: "#ded6c6",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 12,
+  },
+  encryptionConnectionHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+  },
+  encryptionStatusPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  encryptionStatusPillOk: {
+    backgroundColor: "#e5f4ef",
+    borderColor: "#1f6f5b",
+  },
+  encryptionStatusPillWarn: {
+    backgroundColor: "#fff6d8",
+    borderColor: "#b98600",
+  },
+  encryptionStatusPillBad: {
+    backgroundColor: "#f8e4df",
+    borderColor: "#a33b2f",
+  },
+  encryptionStatusPillText: {
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  encryptionStatusPillOkText: {
+    color: "#1f6f5b",
+  },
+  encryptionStatusPillAlertText: {
+    color: "#202124",
   },
   accountSelectArea: {
     gap: 3,

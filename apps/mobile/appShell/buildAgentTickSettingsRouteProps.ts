@@ -12,6 +12,7 @@ type DiagnosticsProps = SettingsRouteProps["diagnosticsProps"];
 type LocaleProps = SettingsRouteProps["localeProps"];
 type NotificationProps = SettingsRouteProps["notificationProps"];
 type PairingProps = SettingsRouteProps["pairingProps"];
+type PrivateEncryptionProps = SettingsRouteProps["privateEncryptionProps"];
 type SettingsActions = Pick<
   ReturnType<typeof useMobileSettingsActionsController>,
   | "checkConnection"
@@ -24,6 +25,7 @@ type SettingsActions = Pick<
   | "purchaseLifetimeUnlock"
   | "restorePurchases"
   | "linkPurchasesToHostedAccount"
+  | "setLocalDevAppAccessUnlocked"
   | "subscribeHostedPersonal"
   | "manageSubscription"
   | "clearHostedLoginSession"
@@ -31,6 +33,7 @@ type SettingsActions = Pick<
   | "handleServerURLChange"
   | "resetLocalTestState"
   | "selectWorkspace"
+  | "signInToServer"
   | "signOutFromSettings"
   | "useHostedSignIn"
   | "toggleDiagnostics"
@@ -57,6 +60,7 @@ export type BuildAgentTickSettingsRoutePropsInput = {
   hostedPersonalCurrentlyActive: BillingProps["hostedPersonalCurrentlyActive"];
   loading: ConnectionProps["loading"];
   localePreference: LocaleProps["localePreference"];
+  localDevAppAccessUnlocked: BillingProps["localDevAppAccessUnlocked"];
   nativeEntitlement: BillingProps["nativeEntitlement"];
   notificationStatus: NotificationProps["notificationStatus"];
   notificationsEnabled: NotificationProps["notificationsEnabled"];
@@ -64,6 +68,7 @@ export type BuildAgentTickSettingsRoutePropsInput = {
   onLocalePreferenceChange: LocaleProps["onLocalePreferenceChange"];
   pairingCode: PairingProps["pairingCode"];
   personalBillingStatus: BillingProps["personalBillingStatus"];
+  privateEncryptionProps?: PrivateEncryptionProps;
   purchaseAccountReady: BillingProps["purchaseAccountReady"];
   pushStatus: NotificationProps["pushStatus"];
   removeSavedAccount: AccountServerProps["removeSavedAccount"];
@@ -96,6 +101,7 @@ export function buildAgentTickSettingsRouteProps({
   hostedPersonalCurrentlyActive,
   loading,
   localePreference,
+  localDevAppAccessUnlocked,
   nativeEntitlement,
   notificationStatus,
   notificationsEnabled,
@@ -103,6 +109,7 @@ export function buildAgentTickSettingsRouteProps({
   onLocalePreferenceChange,
   pairingCode,
   personalBillingStatus,
+  privateEncryptionProps,
   purchaseAccountReady,
   pushStatus,
   removeSavedAccount,
@@ -128,6 +135,7 @@ export function buildAgentTickSettingsRouteProps({
     purchaseLifetimeUnlock,
     restorePurchases,
     linkPurchasesToHostedAccount,
+    setLocalDevAppAccessUnlocked,
     subscribeHostedPersonal,
     manageSubscription,
     clearHostedLoginSession,
@@ -135,6 +143,7 @@ export function buildAgentTickSettingsRouteProps({
     handleServerURLChange,
     resetLocalTestState,
     selectWorkspace,
+    signInToServer,
     signOutFromSettings,
     useHostedSignIn,
     toggleDiagnostics,
@@ -159,6 +168,7 @@ export function buildAgentTickSettingsRouteProps({
       selectedWorkspaceID,
       serverURL,
       setToken,
+      signInToServer,
       signOutFromSettings,
       token,
       useHostedSignIn,
@@ -168,12 +178,14 @@ export function buildAgentTickSettingsRouteProps({
       entitlementSourceDiagnostics,
       hostedPersonalCurrentlyActive,
       linkPurchasesToHostedAccount,
+      localDevAppAccessUnlocked,
       manageSubscription,
       nativeEntitlement,
       personalBillingStatus,
       purchaseAccountReady,
       purchaseLifetimeUnlock,
       restorePurchases,
+      setLocalDevAppAccessUnlocked,
       showDebugHostedExpiryWarning,
       showNativePaywall,
       storeProducts,
@@ -214,6 +226,7 @@ export function buildAgentTickSettingsRouteProps({
       pairDevice,
       setPairingCode,
     },
+    ...(privateEncryptionProps ? { privateEncryptionProps } : {}),
     settingsViewTarget,
   };
 }

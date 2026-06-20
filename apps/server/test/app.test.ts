@@ -1,9 +1,16 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { AgentTickStore, DEFAULT_WORKSPACE_ID } from '@agent-tick/db';
+import type { EncryptedRequestPayload, PrivateRequestsPolicy } from '@self-deprecated/agent-tick-shared';
 import { buildApp } from '../src/app.js';
+import { mintMobileSession } from '../src/auth/mobileSession.js';
 import { loadConfig } from '../src/config.js';
+import { emailDomainAllowedForBillingDevGrant } from '../src/routes/billing.js';
+import { createPrivateRequestInput, createPrivateStatusUpdateInput } from '../../../packages/cli/src/privateRequests.js';
 
 let app: FastifyInstance | undefined;
 let store: AgentTickStore | undefined;
@@ -23,9 +30,95 @@ function testStore(): AgentTickStore {
   return next;
 }
 
-async function buildSingle(localStore = testStore()) {
-  app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: localStore });
+async function buildSingle(localStore = testStore(), policy: PrivateRequestsPolicy = 'off') {
+  localStore.setPrivateRequestPolicy(policy);
+  app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_PRIVATE_REQUESTS_POLICY: policy }), store: localStore });
   return app;
+}
+
+function hostedClerkConfig(extra: Record<string, string> = {}) {
+  return loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret', AGENT_TICK_HOSTED_SERVICE: '1', ...extra });
+}
+
+function selfHostedClerkConfig(extra: Record<string, string> = {}) {
+  return loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret', AGENT_TICK_PUBLIC_URL: 'https://at.example.com', ...extra });
+}
+
+function hostedClerkProdLikeConfig(extra: Record<string, string> = {}) {
+  return loadConfig({
+    AGENT_TICK_MODE: 'clerk',
+    AGENT_TICK_SESSION_SECRET: 'test-session-secret',
+    AGENT_TICK_HOSTED_SERVICE: '1',
+    AGENT_TICK_BILLING_PROVIDER: 'revenuecat',
+    AGENT_TICK_CLERK_PUBLISHABLE_KEY: 'pk_test_dummy',
+    AGENT_TICK_CLERK_SECRET_KEY: 'sk_test_dummy',
+    ...extra
+  });
+}
+
+function generatedP256KeyPair() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return { privateKey, publicKey: Buffer.from(publicKey.export({ format: 'der', type: 'spki' })).toString('base64url') };
+}
+
+function mobileSessionForEmail(localStore: AgentTickStore, config: ReturnType<typeof loadConfig>, email: string) {
+  const identity = localStore.loginOrCreateClerkIdentity({ issuer: 'test-clerk', subject: email, email, emailVerified: true, name: 'Test User' });
+  return mintMobileSession({
+    source: 'clerk',
+    isHuman: true,
+    userId: identity.userId,
+    workspaceId: identity.workspaceId,
+    workspaceType: identity.workspaceType,
+    role: identity.role,
+    memberKind: identity.memberKind,
+    provider: 'clerk',
+    providerIssuer: 'test-clerk',
+    providerSubject: email,
+  }, config);
+}
+
+function encryptedPayloadForTest(deviceKeyId: string): EncryptedRequestPayload {
+  return {
+    version: 1,
+    algorithm: 'aes-256-gcm',
+    nonce: 'nonce',
+    ciphertext: 'ciphertext',
+    tag: 'tag',
+    keyEnvelopes: [{ deviceKeyId, algorithm: 'p256-ecdh-hkdf-sha256+aes-256-gcm', ephemeralPublicKey: 'ephemeral', nonce: 'wrapnonce', ciphertext: 'wrapped', tag: 'wraptag' }]
+  };
+}
+
+async function registerStorePrivateRequestDeviceKey(store: AgentTickStore, userId: string) {
+  const device = store.registerDevice({ userId, deviceName: `Private Test Device ${userId}`, platform: 'ios', installationId: `private-test-${userId}-${crypto.randomUUID()}` });
+  const keyPair = generatedP256KeyPair();
+  const key = store.registerDevicePublicKey({ deviceId: device.deviceId, userId, algorithm: 'p256-ecdh-hkdf-sha256', publicKey: keyPair.publicKey });
+  return { device, key, ...keyPair };
+}
+
+async function registerPrivateRequestDeviceKey(server: FastifyInstance) {
+  const registeredDevice = await server.inject({ method: 'POST', url: '/v1/devices/register', payload: { deviceName: 'Private Test iPhone', platform: 'ios', installationId: `private-test-${crypto.randomUUID()}` } });
+  expect(registeredDevice.statusCode).toBe(200);
+  const deviceId = registeredDevice.json().deviceId as string;
+  const keyPair = generatedP256KeyPair();
+  const registeredKey = await server.inject({ method: 'POST', url: `/v1/devices/${deviceId}/public-key`, payload: { algorithm: 'p256-ecdh-hkdf-sha256', publicKey: keyPair.publicKey } });
+  expect(registeredKey.statusCode).toBe(200);
+  return { deviceId, deviceKeyId: registeredKey.json().deviceKeyId as string, ...keyPair };
+}
+
+function decryptPrivateRequestPayload(payload: EncryptedRequestPayload, deviceKeyId: string, privateKey: crypto.KeyObject) {
+  const envelope = payload.keyEnvelopes.find((candidate) => candidate.deviceKeyId === deviceKeyId);
+  if (!envelope) throw new Error(`missing envelope for ${deviceKeyId}`);
+  const ephemeralPublicKey = crypto.createPublicKey({ key: Buffer.from(envelope.ephemeralPublicKey, 'base64url'), format: 'der', type: 'spki' });
+  const sharedSecret = crypto.diffieHellman({ privateKey, publicKey: ephemeralPublicKey });
+  const wrappingKey = Buffer.from(crypto.hkdfSync('sha256', sharedSecret, Buffer.alloc(0), Buffer.from(`agent-tick-private-request:${deviceKeyId}`, 'utf8'), 32));
+  const wrappedDecipher = crypto.createDecipheriv('aes-256-gcm', wrappingKey, Buffer.from(envelope.nonce, 'base64url'));
+  wrappedDecipher.setAAD(Buffer.from(deviceKeyId, 'utf8'));
+  wrappedDecipher.setAuthTag(Buffer.from(envelope.tag, 'base64url'));
+  const contentKey = Buffer.concat([wrappedDecipher.update(Buffer.from(envelope.ciphertext, 'base64url')), wrappedDecipher.final()]);
+
+  const contentDecipher = crypto.createDecipheriv('aes-256-gcm', contentKey, Buffer.from(payload.nonce, 'base64url'));
+  contentDecipher.setAuthTag(Buffer.from(payload.tag, 'base64url'));
+  return JSON.parse(Buffer.concat([contentDecipher.update(Buffer.from(payload.ciphertext, 'base64url')), contentDecipher.final()]).toString('utf8')) as unknown;
 }
 
 describe('server Workspace routing API', () => {
@@ -46,13 +139,58 @@ describe('server Workspace routing API', () => {
     });
   });
 
+  it('keeps hosted service gates explicit to first-party hosted deployments', () => {
+    expect(loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_PUBLIC_URL: 'https://at.example.com' })).toMatchObject({ hostedService: false });
+    expect(loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_PUBLIC_URL: 'https://app.agenttick.sh' })).toMatchObject({ hostedService: true });
+    expect(loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_PUBLIC_URL: 'https://app.agenttick.sh', AGENT_TICK_HOSTED_SERVICE: 'false' })).toMatchObject({ hostedService: false });
+  });
+
   it('serves health, well-known app association, and public auth config', async () => {
     const server = await buildSingle();
-    expect((await server.inject({ method: 'GET', url: '/healthz' })).json()).toMatchObject({ status: 'ok', version: '1.1.0' });
+    expect((await server.inject({ method: 'GET', url: '/healthz' })).json()).toMatchObject({ status: 'ok', version: '1.3.1' });
     const association = await server.inject({ method: 'GET', url: '/.well-known/apple-app-site-association' });
     expect(association.headers['content-type']).toContain('application/json');
     expect(association.json()).toEqual({ webcredentials: { apps: ['2559B88H6C.ai.selfdeprecated.agenttick'] } });
     expect((await server.inject({ method: 'GET', url: '/v1/auth/config' })).json()).toEqual({ mode: 'single', authProvider: 'local' });
+  });
+
+  it('serves the admin SPA shell without reusable cache validators', async () => {
+    const adminDistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-tick-admin-'));
+    try {
+      fs.mkdirSync(path.join(adminDistDir, 'assets'));
+      fs.writeFileSync(path.join(adminDistDir, 'index.html'), '<!doctype html><script type="module" src="/assets/index-new.js"></script>');
+      fs.writeFileSync(path.join(adminDistDir, 'assets', 'index-new.js'), 'console.log("new admin bundle");');
+
+      app = await buildApp({
+        config: loadConfig({ AGENT_TICK_MODE: 'single', AGENT_TICK_ADMIN_DIST: adminDistDir }),
+        store: testStore()
+      });
+
+      const staleReload = await app.inject({
+        method: 'GET',
+        url: '/',
+        headers: { accept: 'text/html', 'if-modified-since': 'Thu, 01 Jan 1970 00:00:01 GMT' }
+      });
+      expect(staleReload.statusCode).toBe(200);
+      expect(staleReload.headers['cache-control']).toBe('no-store');
+      expect(staleReload.headers['last-modified']).toBeUndefined();
+      expect(staleReload.body).toContain('/assets/index-new.js');
+
+      const fallback = await app.inject({ method: 'GET', url: '/sign-in', headers: { accept: 'text/html' } });
+      expect(fallback.statusCode).toBe(200);
+      expect(fallback.headers['cache-control']).toBe('no-store');
+      expect(fallback.body).toContain('/assets/index-new.js');
+
+      const asset = await app.inject({ method: 'GET', url: '/assets/index-new.js' });
+      expect(asset.statusCode).toBe(200);
+      expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+
+      const missingAsset = await app.inject({ method: 'GET', url: '/assets/index-old.js' });
+      expect(missingAsset.statusCode).toBe(404);
+      expect(missingAsset.headers['cache-control']).toBe('no-store');
+    } finally {
+      fs.rmSync(adminDistDir, { recursive: true, force: true });
+    }
   });
 
   it('serves mobile update policy in public auth config when configured', async () => {
@@ -76,7 +214,7 @@ describe('server Workspace routing API', () => {
   });
 
   it('exchanges test Clerk login tokens for mobile sessions with Workspace context', async () => {
-    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }), store: testStore() });
+    app = await buildApp({ config: selfHostedClerkConfig(), store: testStore() });
     const exchange = await app.inject({ method: 'POST', url: '/v1/auth/mobile-session', payload: { clerkToken: 'test_mobile_user' } });
     expect(exchange.statusCode).toBe(200);
     expect(exchange.json()).toMatchObject({ token: expect.stringMatching(/^ey/), userId: expect.stringMatching(/^usr_/), workspaceId: expect.stringMatching(/^wsp_/), role: 'owner' });
@@ -86,9 +224,57 @@ describe('server Workspace routing API', () => {
     expect(me.json()).toMatchObject({ userId: exchange.json().userId, workspaceId: exchange.json().workspaceId, role: 'owner' });
   });
 
+  it('lets self-hosted Clerk users register push devices without hosted billing', async () => {
+    app = await buildApp({ config: selfHostedClerkConfig({ AGENT_TICK_BILLING_PROVIDER: 'revenuecat' }), store: testStore() });
+    const exchange = await app.inject({ method: 'POST', url: '/v1/auth/mobile-session', payload: { clerkToken: 'test_self_hosted_clerk_mobile_user' } });
+    expect(exchange.statusCode).toBe(200);
+
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/v1/devices/register',
+      headers: { authorization: `Bearer ${exchange.json().token}` },
+      payload: { deviceName: 'Self-hosted iPhone', platform: 'ios', installationId: 'self-hosted-test', expoPushToken: 'ExponentPushToken[self-hosted]' }
+    });
+
+    expect(registered.statusCode).toBe(200);
+    expect(registered.json()).toMatchObject({ deviceId: expect.stringMatching(/^dev_/) });
+  });
+
+  it('lets fresh hosted Clerk users register encryption-only devices before hosted billing is active', async () => {
+    app = await buildApp({ config: hostedClerkConfig(), store: testStore() });
+    const exchange = await app.inject({ method: 'POST', url: '/v1/auth/mobile-session', payload: { clerkToken: 'test_hosted_fresh_mobile_user' } });
+    expect(exchange.statusCode).toBe(200);
+
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/v1/devices/register',
+      headers: { authorization: `Bearer ${exchange.json().token}` },
+      payload: { deviceName: 'Hosted iPhone', platform: 'ios', installationId: 'hosted-test' }
+    });
+
+    expect(registered.statusCode).toBe(200);
+    expect(registered.json()).toMatchObject({ deviceId: expect.stringMatching(/^dev_/) });
+  });
+
+  it('keeps fresh hosted Clerk users gated from push device registration', async () => {
+    app = await buildApp({ config: hostedClerkConfig(), store: testStore() });
+    const exchange = await app.inject({ method: 'POST', url: '/v1/auth/mobile-session', payload: { clerkToken: 'test_hosted_fresh_mobile_user' } });
+    expect(exchange.statusCode).toBe(200);
+
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/v1/devices/register',
+      headers: { authorization: `Bearer ${exchange.json().token}` },
+      payload: { deviceName: 'Hosted iPhone', platform: 'ios', installationId: 'hosted-test', expoPushToken: 'ExponentPushToken[hosted]' }
+    });
+
+    expect(registered.statusCode).toBe(402);
+    expect(registered.json()).toMatchObject({ error: { code: 'hosted_personal_inactive' } });
+  });
+
   it('deletes a Clerk-backed account and revokes hosted access', async () => {
     const localStore = testStore();
-    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }), store: localStore });
+    app = await buildApp({ config: hostedClerkConfig(), store: localStore });
     const exchange = await app.inject({ method: 'POST', url: '/v1/auth/mobile-session', payload: { clerkToken: 'test_delete_user' } });
     const { token, userId, workspaceId } = exchange.json() as { token: string; userId: string; workspaceId: string };
     localStore.registerDevice({ userId, deviceName: 'iPhone', expoPushToken: 'ExponentPushToken[test]' });
@@ -177,7 +363,7 @@ describe('server Workspace routing API', () => {
 
   it('lets fresh Personal Workspace Agent Tokens create activity and does not persist the app-local first response server-side', async () => {
     const localStore = testStore();
-    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }), store: localStore });
+    app = await buildApp({ config: hostedClerkConfig(), store: localStore });
     const exchange = await app.inject({ method: 'POST', url: '/v1/auth/mobile-session', payload: { clerkToken: 'test_inactive_hosted_user' } });
     const { token, userId, workspaceId } = exchange.json() as { token: string; userId: string; workspaceId: string };
     const credential = localStore.createAgentToken({ workspaceId, creatorUserId: userId, label: 'Pi' });
@@ -197,6 +383,38 @@ describe('server Workspace routing API', () => {
     expect(secondResponse.statusCode).toBe(200);
     expect(secondResponse.json()).toMatchObject({ status: 'responded', response: { choiceId: 'approve' } });
     expect(localStore.verifyAgentToken(credential.token)).toMatchObject({ agentTokenId: credential.agentTokenId, creatorUserId: userId });
+  });
+
+  it('allows hosted billing dev grants only for configured verified email domains', async () => {
+    const localStore = testStore();
+    const config = hostedClerkProdLikeConfig({ AGENT_TICK_BILLING_DEV_GRANT_EMAIL_DOMAINS: 'allowed.test' });
+    app = await buildApp({ config, store: localStore });
+    const allowedToken = mobileSessionForEmail(localStore, config, 'person@allowed.test');
+    const blockedToken = mobileSessionForEmail(localStore, config, 'person@blocked.test');
+
+    const allowed = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/personal',
+      headers: { authorization: `Bearer ${allowedToken}` },
+      payload: { event: 'subscribe_monthly' }
+    });
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/v1/billing/personal',
+      headers: { authorization: `Bearer ${blockedToken}` },
+      payload: { event: 'subscribe_monthly' }
+    });
+
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({ hostedPersonal: { lifecycle: 'active', responsesEnabled: true } });
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.json()).toMatchObject({ error: { code: 'billing_test_mode_required' } });
+  });
+
+  it('matches billing dev grant email domains by exact domain or subdomain suffix', () => {
+    expect(emailDomainAllowedForBillingDevGrant('person@allowed.test', ['allowed.test'])).toBe(true);
+    expect(emailDomainAllowedForBillingDevGrant('person@sub.allowed.test', ['allowed.test'])).toBe(true);
+    expect(emailDomainAllowedForBillingDevGrant('person@notallowed.test', ['allowed.test'])).toBe(false);
   });
 
   it('routes Personal Workspace Status Updates and Requests to the sole human', async () => {
@@ -224,6 +442,508 @@ describe('server Workspace routing API', () => {
       expect.objectContaining({ kind: 'request', id: created.json().request.id, request: expect.objectContaining({ status: 'responded' }) }),
       expect.objectContaining({ kind: 'status_update', id: status.json().statusId })
     ]);
+  });
+
+  it('ingests Tool Activity as structured Session Activity without request notifications', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Pi' });
+    const notified: string[] = [];
+    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'single' }), store: localStore, notifier: { notifyRequestCreated: async (request) => { notified.push(request.id); } } });
+
+    const status = await app.inject({ method: 'POST', url: '/v1/status-updates', headers: { authorization: `Bearer ${credential.token}` }, payload: { message: 'Running tests', state: 'working', sessionId: 'run_tools', clientName: 'Pi' } });
+    expect(status.statusCode).toBe(200);
+    const tool = await app.inject({ method: 'POST', url: '/v1/tool-activities', headers: { authorization: `Bearer ${credential.token}` }, payload: { sessionId: 'run_tools', turnId: 'turn_1', toolCallId: 'call_1', toolName: 'bash', state: 'finished', outcome: 'success', summary: 'Ran validation' } });
+    expect(tool.statusCode).toBe(200);
+    expect(tool.json()).toMatchObject({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, sessionId: 'run_tools', toolName: 'bash', state: 'finished', outcome: 'success', recipientUserIds: ['usr_default'] });
+    expect(notified).toEqual([]);
+
+    const activity = await app.inject({ method: 'GET', url: '/v1/activity/history' });
+    expect(activity.statusCode).toBe(200);
+    expect(activity.json()).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'tool_activity', id: tool.json().toolActivityId, toolActivity: expect.objectContaining({ toolName: 'bash' }) })]));
+
+    const sessions = await app.inject({ method: 'GET', url: '/v1/sessions?limit=100' });
+    const session = sessions.json().find((candidate: { title: string }) => candidate.title === 'Running tests');
+    expect(session).toMatchObject({ latestActivity: { kind: 'tool_activity', id: tool.json().toolActivityId, preview: 'Ran validation' } });
+    const detail = await app.inject({ method: 'GET', url: `/v1/sessions/${session.sessionId}?limit=100` });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().timeline.map((item: { kind: string }) => item.kind)).toEqual(['status_update', 'tool_activity']);
+  });
+
+  it('validates Tool Activity ingestion payloads and requires Agent Token auth', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Pi' });
+    const server = await buildSingle(localStore);
+
+    const human = await server.inject({ method: 'POST', url: '/v1/tool-activities', payload: { sessionId: 'run_tools', toolName: 'bash', state: 'started' } });
+    expect(human.statusCode).toBe(403);
+    expect(human.json()).toMatchObject({ error: { code: 'forbidden' } });
+
+    const invalidName = await server.inject({ method: 'POST', url: '/v1/tool-activities', headers: { authorization: `Bearer ${credential.token}` }, payload: { sessionId: 'run_tools', toolName: 'bad tool', state: 'started' } });
+    expect(invalidName.statusCode).toBe(400);
+
+    const impossibleStarted = await server.inject({ method: 'POST', url: '/v1/tool-activities', headers: { authorization: `Bearer ${credential.token}` }, payload: { sessionId: 'run_tools', toolName: 'bash', state: 'started', outcome: 'success' } });
+    expect(impossibleStarted.statusCode).toBe(400);
+
+    const impossibleFinished = await server.inject({ method: 'POST', url: '/v1/tool-activities', headers: { authorization: `Bearer ${credential.token}` }, payload: { sessionId: 'run_tools', toolName: 'bash', state: 'finished' } });
+    expect(impossibleFinished.statusCode).toBe(400);
+
+    const unsupportedContentMode = await server.inject({ method: 'POST', url: '/v1/tool-activities', headers: { authorization: `Bearer ${credential.token}` }, payload: { sessionId: 'run_tools', toolName: 'bash', state: 'started', contentMode: 'details' } });
+    expect(unsupportedContentMode.statusCode).toBe(400);
+
+    const oversizedSummary = await server.inject({ method: 'POST', url: '/v1/tool-activities', headers: { authorization: `Bearer ${credential.token}` }, payload: { sessionId: 'run_tools', toolName: 'bash', state: 'started', summary: 'x'.repeat(1001) } });
+    expect(oversizedSummary.statusCode).toBe(400);
+  });
+
+  it('routes Shared Workspace Tool Activity through assigned Routing Rules', async () => {
+    const server = await buildSingle();
+    const workspace = await server.inject({ method: 'POST', url: '/v1/workspaces', payload: { name: 'Production' } });
+    const workspaceId = workspace.json().workspaceId as string;
+    const token = await server.inject({ method: 'POST', url: '/v1/agent-tokens', headers: { 'x-agent-tick-workspace-id': workspaceId }, payload: { workspaceId, label: 'Deploy bot' } });
+
+    const unrouted = await server.inject({ method: 'POST', url: '/v1/tool-activities', headers: { authorization: `Bearer ${token.json().token}` }, payload: { sessionId: 'run_shared_tools', toolName: 'bash', state: 'started' } });
+    expect(unrouted.statusCode).toBe(409);
+    expect(unrouted.json()).toMatchObject({ error: { code: 'routing_required' } });
+
+    const rule = await server.inject({ method: 'POST', url: '/v1/routing-rules', headers: { 'x-agent-tick-workspace-id': workspaceId }, payload: { workspaceId, name: 'Release', recipientUserIds: ['usr_default'], requiredResponseMode: 'any_one' } });
+    await server.inject({ method: 'PATCH', url: `/v1/agent-tokens/${token.json().agentTokenId}`, headers: { 'x-agent-tick-workspace-id': workspaceId }, payload: { routingRuleId: rule.json().routingRuleId } });
+
+    const routed = await server.inject({ method: 'POST', url: '/v1/tool-activities', headers: { authorization: `Bearer ${token.json().token}` }, payload: { sessionId: 'run_shared_tools', toolName: 'bash', state: 'finished', outcome: 'success', summary: 'Built release' } });
+    expect(routed.statusCode).toBe(200);
+    expect(routed.json()).toMatchObject({ workspaceId, routingRuleId: rule.json().routingRuleId, recipientUserIds: ['usr_default'] });
+
+    const sessions = await server.inject({ method: 'GET', url: `/v1/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, headers: { 'x-agent-tick-workspace-id': workspaceId } });
+    expect(sessions.statusCode).toBe(200);
+    expect(sessions.json()).toEqual([expect.objectContaining({ latestActivity: expect.objectContaining({ kind: 'tool_activity', preview: 'Built release' }) })]);
+  });
+
+  it('creates server-opaque Private Status Updates with full reply content encrypted', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Pi' });
+    const server = await buildSingle(localStore);
+    const { deviceKeyId, privateKey } = await registerPrivateRequestDeviceKey(server);
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-status-updates/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: {} });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({ contentMode: 'private', deviceKeys: [expect.objectContaining({ deviceKeyId })] });
+
+    const secretPreview = 'Assistant found the production credential rotation plan';
+    const secretBody = 'Full assistant reply with **sensitive implementation details** and rollout notes.';
+    const input = createPrivateStatusUpdateInput({
+      threadId: 'pi:/repo',
+      sessionId: 'pi_session_1',
+      message: 'Assistant replied',
+      state: 'waiting',
+      nextStep: 'Waiting for human review',
+      contextUsage: { tokens: 42000, contextWindow: 200000, percent: 21 }
+    }, {
+      schemaVersion: 1,
+      kind: 'status_update',
+      message: secretPreview,
+      body: secretBody,
+      nextStep: 'Review encrypted full reply',
+      role: 'assistant',
+      presentation: { collapsedByDefault: true, contentFormat: 'markdown' }
+    }, prepared.json());
+
+    const created = await server.inject({ method: 'POST', url: '/v1/status-updates', headers: { authorization: `Bearer ${credential.token}` }, payload: input });
+    expect(created.statusCode).toBe(200);
+    const status = created.json();
+    expect(status).toMatchObject({ contentMode: 'private', message: 'Assistant replied', state: 'waiting', contextUsage: { tokens: 42000, contextWindow: 200000, percent: 21 }, recipientUserIds: ['usr_default'] });
+    expect(JSON.stringify(status)).not.toContain(secretPreview);
+    expect(JSON.stringify(status)).not.toContain(secretBody);
+
+    const stored = localStore.db.prepare('SELECT * FROM status_updates WHERE status_id = ?').get(status.statusId);
+    expect(JSON.stringify(stored)).not.toContain(secretPreview);
+    expect(JSON.stringify(stored)).not.toContain(secretBody);
+    expect(decryptPrivateRequestPayload(status.encryptedPayload as EncryptedRequestPayload, deviceKeyId, privateKey)).toMatchObject({
+      kind: 'status_update',
+      message: secretPreview,
+      body: secretBody,
+      nextStep: 'Review encrypted full reply',
+      role: 'assistant',
+      presentation: { collapsedByDefault: true, contentFormat: 'markdown' }
+    });
+  });
+
+  it('creates a server-opaque Private Request through prepare, device-key registration, encryption, and response', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Pi' });
+    const server = await buildSingle(localStore);
+    const secretTitle = 'Secret deploy production build 123?';
+    const secretBody = 'This body must not be stored as server-readable Request text.';
+    const secretCommand = 'deploy --target production --build 123';
+
+    const registeredDevice = await server.inject({ method: 'POST', url: '/v1/devices/register', payload: { deviceName: 'Private Test iPhone', platform: 'ios', installationId: 'private-test-device' } });
+    expect(registeredDevice.statusCode).toBe(200);
+    const deviceId = registeredDevice.json().deviceId as string;
+    const { publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const publicKeySPKI = Buffer.from(publicKey.export({ format: 'der', type: 'spki' })).toString('base64url');
+
+    const registeredKey = await server.inject({ method: 'POST', url: `/v1/devices/${deviceId}/public-key`, payload: { algorithm: 'p256-ecdh-hkdf-sha256', publicKey: publicKeySPKI } });
+    expect(registeredKey.statusCode).toBe(200);
+    expect(registeredKey.json()).toMatchObject({ deviceId, userId: 'usr_default', algorithm: 'p256-ecdh-hkdf-sha256', publicKey: publicKeySPKI });
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'sanction' } });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({ contentMode: 'private', workspaceId: DEFAULT_WORKSPACE_ID, recipientUserIds: ['usr_default'], unavailableRecipients: [], deviceKeys: [expect.objectContaining({ deviceKeyId: registeredKey.json().deviceKeyId })] });
+
+    const privateInput = createPrivateRequestInput({
+      requester: { name: 'Pi', host: 'lattice', workingDirectory: '/repo', clientName: 'Pi' },
+      requestType: 'sanction',
+      title: secretTitle,
+      body: secretBody,
+      command: secretCommand,
+      choices: [{ id: 'approve', label: 'Approve production deploy', kind: 'approve' }, { id: 'deny', label: 'Deny production deploy', kind: 'deny' }]
+    }, prepared.json());
+    const serializedPrivateInput = JSON.stringify(privateInput);
+    expect(serializedPrivateInput).not.toContain(secretTitle);
+    expect(serializedPrivateInput).not.toContain(secretBody);
+    expect(serializedPrivateInput).not.toContain(secretCommand);
+
+    const created = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: privateInput });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      request: {
+        workspaceId: DEFAULT_WORKSPACE_ID,
+        title: 'Private Request',
+        contentMode: 'private',
+        encryptedPayload: { keyEnvelopes: [expect.objectContaining({ deviceKeyId: registeredKey.json().deviceKeyId })] },
+        recipients: [expect.objectContaining({ userId: 'usr_default' })]
+      },
+      waiter: { token: expect.stringMatching(/^wait_/) }
+    });
+    expect(created.json().request.body).toBeUndefined();
+    expect(created.json().request.command).toBeUndefined();
+    expect(JSON.stringify(created.json())).not.toContain(secretTitle);
+    expect(JSON.stringify(created.json())).not.toContain(secretBody);
+    expect(JSON.stringify(created.json())).not.toContain(secretCommand);
+
+    const stored = localStore.db.prepare('SELECT title, body, command, encrypted_payload_json FROM requests WHERE id = ?').get(created.json().request.id) as { title: string; body: string | null; command: string | null; encrypted_payload_json: string };
+    expect(stored).toMatchObject({ title: 'Private Request', body: null, command: null, encrypted_payload_json: expect.any(String) });
+    expect(JSON.stringify(stored)).not.toContain(secretTitle);
+    expect(JSON.stringify(stored)).not.toContain(secretBody);
+    expect(JSON.stringify(stored)).not.toContain(secretCommand);
+
+    const responded = await server.inject({ method: 'POST', url: `/v1/requests/${created.json().request.id}/responses`, payload: { choiceId: 'approve' } });
+    expect(responded.statusCode).toBe(200);
+    expect(responded.json()).toMatchObject({ id: created.json().request.id, status: 'responded', response: { choiceId: 'approve' }, contentMode: 'private' });
+  });
+
+  it('encrypts one Private Request for multiple device clients and both can decrypt it', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Pi' });
+    const server = await buildSingle(localStore);
+    const firstClient = await registerPrivateRequestDeviceKey(server);
+    const secondClient = await registerPrivateRequestDeviceKey(server);
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'steering' } });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({
+      recipientUserIds: ['usr_default'],
+      deviceKeys: expect.arrayContaining([
+        expect.objectContaining({ deviceKeyId: firstClient.deviceKeyId }),
+        expect.objectContaining({ deviceKeyId: secondClient.deviceKeyId })
+      ])
+    });
+
+    const privateInput = createPrivateRequestInput({
+      requester: { name: 'Pi', host: 'lattice' },
+      requestType: 'steering',
+      title: 'Choose secret rollout path',
+      body: 'Only device clients should read this plan.',
+      choices: [
+        { id: 'blue', label: 'Roll out blue environment', kind: 'approve' },
+        { id: 'green', label: 'Roll out green environment', kind: 'approve' },
+        { id: 'cancel', label: 'Cancel rollout', kind: 'deny' }
+      ]
+    }, prepared.json());
+    expect(privateInput.encryptedPayload?.keyEnvelopes.map((envelope) => envelope.deviceKeyId).sort()).toEqual([firstClient.deviceKeyId, secondClient.deviceKeyId].sort());
+
+    const created = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: privateInput });
+    expect(created.statusCode).toBe(200);
+    const encryptedPayload = created.json().request.encryptedPayload as EncryptedRequestPayload;
+    expect(encryptedPayload.keyEnvelopes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ deviceKeyId: firstClient.deviceKeyId }),
+      expect.objectContaining({ deviceKeyId: secondClient.deviceKeyId })
+    ]));
+
+    for (const client of [firstClient, secondClient]) {
+      expect(decryptPrivateRequestPayload(encryptedPayload, client.deviceKeyId, client.privateKey)).toMatchObject({
+        title: 'Choose secret rollout path',
+        body: 'Only device clients should read this plan.',
+        choices: [
+          expect.objectContaining({ id: 'blue', label: 'Roll out blue environment' }),
+          expect.objectContaining({ id: 'green', label: 'Roll out green environment' }),
+          expect.objectContaining({ id: 'cancel', label: 'Cancel rollout' })
+        ]
+      });
+    }
+  });
+
+  it('encrypts one Private Request for multiple Workspace recipients and both users can decrypt it', async () => {
+    const localStore = testStore();
+    const server = await buildSingle(localStore);
+    const shared = localStore.createSharedWorkspaceForUser('usr_default', 'Multi-user private recipients');
+    const bob = localStore.addWorkspaceMemberByEmail(shared.workspaceId, 'bob-private-all@example.com');
+    const rule = localStore.createRoutingRule({ workspaceId: shared.workspaceId, name: 'All recipients', recipientUserIds: ['usr_default', bob.userId], requiredResponseMode: 'exact', requiredResponseCount: 2 });
+    const credential = localStore.createAgentToken({ workspaceId: shared.workspaceId, label: 'Multi-user bot', routingRuleId: rule.routingRuleId });
+    const defaultKey = await registerStorePrivateRequestDeviceKey(localStore, 'usr_default');
+    const bobKey = await registerStorePrivateRequestDeviceKey(localStore, bob.userId);
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'sanction' } });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({
+      recipientUserIds: expect.arrayContaining(['usr_default', bob.userId]),
+      unavailableRecipients: [],
+      deviceKeys: expect.arrayContaining([
+        expect.objectContaining({ deviceKeyId: defaultKey.key.deviceKeyId }),
+        expect.objectContaining({ deviceKeyId: bobKey.key.deviceKeyId })
+      ])
+    });
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/v1/requests',
+      headers: { authorization: `Bearer ${credential.token}` },
+      payload: createPrivateRequestInput({ requester: { name: 'Multi-user bot' }, requestType: 'sanction', title: 'Approve shared secret?', body: 'Both routed Workspace members can read this.' }, prepared.json())
+    });
+    expect(created.statusCode).toBe(200);
+    const encryptedPayload = created.json().request.encryptedPayload as EncryptedRequestPayload;
+    expect(created.json()).toMatchObject({ request: { recipients: expect.arrayContaining([expect.objectContaining({ userId: 'usr_default' }), expect.objectContaining({ userId: bob.userId })]), quorum: { requiredResponseCount: 2 } } });
+    expect(decryptPrivateRequestPayload(encryptedPayload, defaultKey.key.deviceKeyId, defaultKey.privateKey)).toMatchObject({ title: 'Approve shared secret?', body: 'Both routed Workspace members can read this.' });
+    expect(decryptPrivateRequestPayload(encryptedPayload, bobKey.key.deviceKeyId, bobKey.privateKey)).toMatchObject({ title: 'Approve shared secret?', body: 'Both routed Workspace members can read this.' });
+  });
+
+  it('surfaces mixed recipient key availability and routes only encryptable recipients', async () => {
+    const localStore = testStore();
+    const server = await buildSingle(localStore);
+    const shared = localStore.createSharedWorkspaceForUser('usr_default', 'Mixed private recipients');
+    const bob = localStore.addWorkspaceMemberByEmail(shared.workspaceId, 'bob-private@example.com');
+    const rule = localStore.createRoutingRule({ workspaceId: shared.workspaceId, name: 'Mixed recipients', recipientUserIds: ['usr_default', bob.userId], requiredResponseMode: 'exact', requiredResponseCount: 2 });
+    const credential = localStore.createAgentToken({ workspaceId: shared.workspaceId, label: 'Mixed bot', routingRuleId: rule.routingRuleId });
+    const defaultKey = await registerStorePrivateRequestDeviceKey(localStore, 'usr_default');
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'sanction' } });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({
+      required: false,
+      recipientUserIds: ['usr_default'],
+      unavailableRecipients: [{ userId: bob.userId, reason: 'no_device_key' }],
+      deviceKeys: [expect.objectContaining({ deviceKeyId: defaultKey.key.deviceKeyId })]
+    });
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/v1/requests',
+      headers: { authorization: `Bearer ${credential.token}` },
+      payload: createPrivateRequestInput({ requester: { name: 'Mixed bot' }, requestType: 'sanction', title: 'Encrypt for available recipients' }, prepared.json())
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({
+      request: {
+        contentMode: 'private',
+        recipients: [expect.objectContaining({ userId: 'usr_default' })],
+        privateUnavailableRecipients: [{ userId: bob.userId, reason: 'no_device_key' }],
+        quorum: { requiredResponseCount: 1 }
+      }
+    });
+    expect(created.json().request.recipients).toHaveLength(1);
+  });
+
+  it('reports no-key private routing as unavailable before creation', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'No key bot' });
+    const server = await buildSingle(localStore);
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'sanction' } });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({ recipientUserIds: [], deviceKeys: [], unavailableRecipients: [{ userId: 'usr_default', reason: 'no_device_key' }] });
+    expect(() => createPrivateRequestInput({ requester: { name: 'No key bot' }, requestType: 'sanction', title: 'Cannot encrypt' }, prepared.json())).toThrow(/no recipient has a usable/i);
+  });
+
+  it('rejects stale Private Request prepares and mismatched key envelopes', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Pi' });
+    const server = await buildSingle(localStore);
+    const firstClient = await registerPrivateRequestDeviceKey(server);
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'sanction' } });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({ deviceKeys: [expect.objectContaining({ deviceKeyId: firstClient.deviceKeyId })] });
+
+    const basePrivateInput = createPrivateRequestInput({ requester: { name: 'Pi' }, requestType: 'sanction', title: 'Sensitive action' }, prepared.json());
+    const secondClient = await registerPrivateRequestDeviceKey(server);
+    const staleCreate = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: basePrivateInput });
+    expect(staleCreate.statusCode).toBe(409);
+    expect(staleCreate.json()).toMatchObject({ error: { code: 'recipients_changed' } });
+
+    const refreshed = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'sanction' } });
+    expect(refreshed.statusCode).toBe(200);
+    const refreshedInput = createPrivateRequestInput({ requester: { name: 'Pi' }, requestType: 'sanction', title: 'Sensitive action' }, refreshed.json());
+    const missingEnvelopeInput = {
+      ...refreshedInput,
+      encryptedPayload: { ...refreshedInput.encryptedPayload!, keyEnvelopes: refreshedInput.encryptedPayload!.keyEnvelopes.filter((envelope) => envelope.deviceKeyId !== secondClient.deviceKeyId) }
+    };
+    const missingEnvelope = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: missingEnvelopeInput });
+    expect(missingEnvelope.statusCode).toBe(409);
+    expect(missingEnvelope.json()).toMatchObject({ error: { code: 'recipients_changed' } });
+
+    const extraEnvelopeInput = {
+      ...refreshedInput,
+      encryptedPayload: {
+        ...refreshedInput.encryptedPayload!,
+        keyEnvelopes: [...refreshedInput.encryptedPayload!.keyEnvelopes, { ...refreshedInput.encryptedPayload!.keyEnvelopes[0], deviceKeyId: 'devkey_unknown' }]
+      }
+    };
+    const extraEnvelope = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: extraEnvelopeInput });
+    expect(extraEnvelope.statusCode).toBe(409);
+    expect(extraEnvelope.json()).toMatchObject({ error: { code: 'recipients_changed' } });
+  });
+
+  it('applies Routing Rule private-required updates immediately', async () => {
+    const localStore = testStore();
+    const server = await buildSingle(localStore);
+    const { deviceKeyId } = await registerPrivateRequestDeviceKey(server);
+    const createdWorkspace = await server.inject({ method: 'POST', url: '/v1/workspaces', payload: { name: 'Updated routing privacy' } });
+    const workspaceId = createdWorkspace.json().workspaceId as string;
+    const rule = await server.inject({ method: 'POST', url: '/v1/routing-rules', headers: { 'x-agent-tick-workspace-id': workspaceId }, payload: { workspaceId, name: 'Mutable privacy', recipientUserIds: ['usr_default'], requiredResponseMode: 'any_one', requiredResponseCount: 1 } });
+    const routingRuleId = rule.json().routingRuleId as string;
+    const credential = localStore.createAgentToken({ workspaceId, label: 'Mutable privacy bot', routingRuleId });
+
+    const initiallyPlain = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: { requester: { name: 'Bot' }, requestType: 'sanction', title: 'Plain before update' } });
+    expect(initiallyPlain.statusCode).toBe(200);
+
+    const enabled = await server.inject({ method: 'PATCH', url: `/v1/routing-rules/${routingRuleId}`, headers: { 'x-agent-tick-workspace-id': workspaceId }, payload: { privateRequestsRequired: true } });
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json()).toMatchObject({ privateRequestsRequired: true });
+    const blocked = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: { requester: { name: 'Bot' }, requestType: 'sanction', title: 'Plain after update' } });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json()).toMatchObject({ error: { code: 'private_required' } });
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'sanction' } });
+    expect(prepared.json()).toMatchObject({ required: true, deviceKeys: [expect.objectContaining({ deviceKeyId })] });
+
+    const disabled = await server.inject({ method: 'PATCH', url: `/v1/routing-rules/${routingRuleId}`, headers: { 'x-agent-tick-workspace-id': workspaceId }, payload: { privateRequestsRequired: false } });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json()).not.toHaveProperty('privateRequestsRequired');
+    const plainAgain = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: { requester: { name: 'Bot' }, requestType: 'sanction', title: 'Plain after disable' } });
+    expect(plainAgain.statusCode).toBe(200);
+    expect(plainAgain.json()).toMatchObject({ request: { contentMode: 'plain' } });
+  });
+
+  it('enforces Workspace-required Private Requests and accepts prepared encrypted Requests', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Pi' });
+    const server = await buildSingle(localStore);
+    const { deviceKeyId } = await registerPrivateRequestDeviceKey(server);
+
+    const enabled = await server.inject({ method: 'PATCH', url: `/v1/workspaces/${DEFAULT_WORKSPACE_ID}`, payload: { privateRequestsRequired: true } });
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json()).toMatchObject({ workspaceId: DEFAULT_WORKSPACE_ID, privateRequestsRequired: true });
+
+    const plaintext = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: { requester: { name: 'Pi' }, requestType: 'sanction', title: 'Plain deploy?' } });
+    expect(plaintext.statusCode).toBe(409);
+    expect(plaintext.json()).toMatchObject({ error: { code: 'private_required' } });
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${credential.token}` }, payload: { requestType: 'sanction' } });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({ required: true, recipientUserIds: ['usr_default'], deviceKeys: [expect.objectContaining({ deviceKeyId })] });
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/v1/requests',
+      headers: { authorization: `Bearer ${credential.token}` },
+      payload: createPrivateRequestInput({ requester: { name: 'Pi' }, requestType: 'sanction', title: 'Encrypted deploy?' }, prepared.json())
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({ request: { contentMode: 'private', encryptedPayload: { keyEnvelopes: [expect.objectContaining({ deviceKeyId })] } } });
+  });
+
+  it('enforces Routing Rule-required Private Requests only for Agent Connections bound to that rule', async () => {
+    const localStore = testStore();
+    const server = await buildSingle(localStore);
+    const { deviceKeyId } = await registerPrivateRequestDeviceKey(server);
+    const createdWorkspace = await server.inject({ method: 'POST', url: '/v1/workspaces', payload: { name: 'Private routing' } });
+    expect(createdWorkspace.statusCode).toBe(200);
+    const workspaceId = createdWorkspace.json().workspaceId as string;
+
+    const rule = await server.inject({
+      method: 'POST',
+      url: '/v1/routing-rules',
+      headers: { 'x-agent-tick-workspace-id': workspaceId },
+      payload: { workspaceId, name: 'Production approvals', recipientUserIds: ['usr_default'], requiredResponseMode: 'any_one', requiredResponseCount: 1, privateRequestsRequired: true }
+    });
+    expect(rule.statusCode).toBe(200);
+    const routingRuleId = rule.json().routingRuleId as string;
+    expect(rule.json()).toMatchObject({ routingRuleId, privateRequestsRequired: true });
+    const plainRule = await server.inject({
+      method: 'POST',
+      url: '/v1/routing-rules',
+      headers: { 'x-agent-tick-workspace-id': workspaceId },
+      payload: { workspaceId, name: 'Routine approvals', recipientUserIds: ['usr_default'], requiredResponseMode: 'any_one', requiredResponseCount: 1 }
+    });
+    expect(plainRule.statusCode).toBe(200);
+    expect(plainRule.json()).not.toHaveProperty('privateRequestsRequired');
+
+    const plainCredential = localStore.createAgentToken({ workspaceId, label: 'Plain bot', routingRuleId: plainRule.json().routingRuleId });
+    const routedCredential = localStore.createAgentToken({ workspaceId, label: 'Private bot', routingRuleId });
+
+    const plainAllowed = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${plainCredential.token}` }, payload: { requester: { name: 'Plain bot' }, requestType: 'sanction', title: 'Plain allowed?' } });
+    expect(plainAllowed.statusCode).toBe(200);
+    expect(plainAllowed.json()).toMatchObject({ request: { workspaceId, routingRuleId: plainRule.json().routingRuleId, contentMode: 'plain' } });
+
+    const routedPlain = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${routedCredential.token}` }, payload: { requester: { name: 'Private bot' }, requestType: 'sanction', title: 'Plain blocked?' } });
+    expect(routedPlain.statusCode).toBe(409);
+    expect(routedPlain.json()).toMatchObject({ error: { code: 'private_required' } });
+
+    const prepared = await server.inject({ method: 'POST', url: '/v1/private-requests/prepare', headers: { authorization: `Bearer ${routedCredential.token}` }, payload: { requestType: 'sanction' } });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({ required: true, routingRuleId, recipientUserIds: ['usr_default'], deviceKeys: [expect.objectContaining({ deviceKeyId })] });
+
+    const routedPrivate = await server.inject({
+      method: 'POST',
+      url: '/v1/requests',
+      headers: { authorization: `Bearer ${routedCredential.token}` },
+      payload: createPrivateRequestInput({ requester: { name: 'Private bot' }, requestType: 'sanction', title: 'Encrypted allowed?' }, prepared.json())
+    });
+    expect(routedPrivate.statusCode).toBe(200);
+    expect(routedPrivate.json()).toMatchObject({ request: { workspaceId, routingRuleId, contentMode: 'private', recipients: [expect.objectContaining({ userId: 'usr_default' })] } });
+  });
+
+  it('enforces server-wide forced Private Requests and forbids disabling the toggle', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Pi' });
+    const server = await buildSingle(localStore, 'forced');
+
+    const me = await server.inject({ method: 'GET', url: '/v1/me' });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ privateRequestsPolicy: 'forced' });
+
+    const plaintext = await server.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: { requester: { name: 'Pi' }, requestType: 'sanction', title: 'Plain deploy?' } });
+    expect(plaintext.statusCode).toBe(409);
+    expect(plaintext.json()).toMatchObject({ error: { code: 'private_required' } });
+
+    const disabled = await server.inject({ method: 'PATCH', url: `/v1/workspaces/${DEFAULT_WORKSPACE_ID}`, payload: { privateRequestsRequired: false } });
+    expect(disabled.statusCode).toBe(409);
+    expect(disabled.json()).toMatchObject({ error: { code: 'private_required_forced' } });
+  });
+
+  it('seeds privateRequestsRequired on new Workspaces under the default policy and allows toggling', async () => {
+    const localStore = testStore();
+    const server = await buildSingle(localStore, 'default');
+
+    const me = await server.inject({ method: 'GET', url: '/v1/me' });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ privateRequestsPolicy: 'default' });
+
+    const created = await server.inject({ method: 'POST', url: '/v1/workspaces', payload: { name: 'Default policy workspace' } });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({ privateRequestsRequired: true });
+
+    // default policy is not forced: the toggle can still be changed (no 409 private_required_forced)
+    const toggled = await server.inject({ method: 'PATCH', url: `/v1/workspaces/${DEFAULT_WORKSPACE_ID}`, payload: { privateRequestsRequired: false } });
+    expect(toggled.statusCode).toBe(200);
+    expect(toggled.json()).not.toHaveProperty('privateRequestsRequired');
   });
 
   it('exposes derived Session summaries and timeline detail', async () => {
@@ -406,7 +1126,7 @@ describe('server Workspace routing API', () => {
     const localStore = testStore();
     const identity = localStore.loginOrCreateClerkIdentity({ issuer: 'agent-tick-test', subject: 'shared_billing_owner', email: 'shared-billing-owner@example.test', emailVerified: true, name: 'Shared Billing Owner' }, '2026-05-08T00:30:00.000Z');
     const shared = localStore.createSharedWorkspaceForUser(identity.userId, 'Fresh Workspace', '2026-05-08T00:31:00.000Z');
-    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }), store: localStore });
+    app = await buildApp({ config: hostedClerkConfig(), store: localStore });
 
     const personalBilling = await app.inject({ method: 'GET', url: '/v1/billing', headers: { authorization: 'Bearer test_shared_billing_owner' } });
     expect(personalBilling.statusCode).toBe(200);
@@ -429,7 +1149,7 @@ describe('server Workspace routing API', () => {
     const shared = localStore.createSharedWorkspaceForUser(identity.userId, 'Unpaid Workspace', '2026-05-08T00:31:00.000Z');
     const rule = localStore.createRoutingRule({ workspaceId: shared.workspaceId, name: 'Owner approvals', recipientUserIds: [identity.userId], requiredResponseMode: 'any_one' }, '2026-05-08T00:32:00.000Z');
     const credential = localStore.createAgentToken({ workspaceId: shared.workspaceId, creatorUserId: identity.userId, label: 'Shared bot', routingRuleId: rule.routingRuleId }, '2026-05-08T00:33:00.000Z');
-    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }), store: localStore });
+    app = await buildApp({ config: hostedClerkConfig(), store: localStore });
 
     const created = await app.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: { requester: { name: 'Shared bot' }, requestType: 'sanction', title: 'Shared action?' } });
     expect(created.statusCode).toBe(402);
@@ -443,7 +1163,7 @@ describe('server Workspace routing API', () => {
     localStore.updateWorkspaceEntitlement(shared.workspaceId, { responsesEntitledUntil: '2099-06-08T00:31:00.000Z' }, '2026-05-08T00:31:30.000Z');
     const rule = localStore.createRoutingRule({ workspaceId: shared.workspaceId, name: 'Owner approvals', recipientUserIds: [identity.userId], requiredResponseMode: 'any_one' }, '2026-05-08T00:32:00.000Z');
     const credential = localStore.createAgentToken({ workspaceId: shared.workspaceId, creatorUserId: identity.userId, label: 'Shared bot', routingRuleId: rule.routingRuleId }, '2026-05-08T00:33:00.000Z');
-    app = await buildApp({ config: loadConfig({ AGENT_TICK_MODE: 'clerk', AGENT_TICK_TEST_AUTH: '1', AGENT_TICK_SESSION_SECRET: 'test-session-secret' }), store: localStore });
+    app = await buildApp({ config: hostedClerkConfig(), store: localStore });
 
     const created = await app.inject({ method: 'POST', url: '/v1/requests', headers: { authorization: `Bearer ${credential.token}` }, payload: { requester: { name: 'Shared bot' }, requestType: 'sanction', title: 'Shared action?' } });
     expect(created.statusCode).toBe(200);

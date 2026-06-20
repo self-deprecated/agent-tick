@@ -52,6 +52,7 @@ export function useMobileRealtimeActivityController({
 }: UseMobileRealtimeActivityControllerInput) {
   const { load } = useMobileActivityLoad({
     authProvider,
+    deviceID,
     didPrimeNotifications,
     didShowNotificationSettingsReminder,
     notificationsEnabled,
@@ -81,6 +82,7 @@ export function useMobileRealtimeActivityController({
   const { loadSessionDetailForSummary } = useSessionDetailLoading({
     sdk,
     savedAccounts,
+    deviceID,
     hasRequestAuth,
     selectedSessionID,
     sessionSummaries,

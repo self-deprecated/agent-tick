@@ -120,6 +120,7 @@ export function RequestsScreen({
   const requestCanRespond = canRespondToRequest(selected);
   const responding = Boolean(respondingRequestKeys[mobileRequestKey(selected)]);
   const effectiveReadOnly = (readOnly && !selected.isTest) || responding;
+  const canShowReadOnlyChoices = effectiveReadOnly && selected.status === "pending" && !selected.response && (selected.choices?.length ?? 0) > 0;
   const responsibilityLabel = responsibility === translateSource("Your response is needed") && requestCanRespond
     ? ""
     : responsibility;
@@ -199,7 +200,7 @@ export function RequestsScreen({
                 <Text style={styles.choiceText}>{translateSource("Submit Answers")}</Text>
               </Pressable>
             </>
-          ) : requestCanRespond ? (
+          ) : requestCanRespond || canShowReadOnlyChoices ? (
             <DirectChoiceCards
               choices={selectedChoiceCards}
               disabled

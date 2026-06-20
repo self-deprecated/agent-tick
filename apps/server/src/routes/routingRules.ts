@@ -46,6 +46,7 @@ export async function registerRoutingRuleRoutes(app: FastifyInstance, { config, 
     const auth = await requireWorkspaceAdmin(request, config, store);
     const input = CreateRoutingRuleSchema.parse(request.body);
     if (input.workspaceId !== auth.workspaceId) throw httpError(403, 'forbidden', 'Select the Workspace before changing routing');
+    if (config.privateRequestsPolicy === 'forced' && input.privateRequestsRequired === false) throw httpError(409, 'private_required_forced', 'Private Requests are required server-wide and cannot be disabled for this Routing Rule');
     const rule = await store.createRoutingRule(input);
     await auditUnhealthyRouteSave(store, auth.userId ?? 'usr_default', rule);
     return rule;
@@ -58,6 +59,7 @@ export async function registerRoutingRuleRoutes(app: FastifyInstance, { config, 
     if (!existing) return reply.status(404).send({ error: { code: 'not_found', message: 'Routing Rule not found', requestId: request.id } });
     if (existing.workspaceId !== auth.workspaceId) return reply.status(403).send({ error: { code: 'forbidden', message: 'Select the Workspace before changing routing', requestId: request.id } });
     const input = UpdateRoutingRuleSchema.parse(request.body);
+    if (config.privateRequestsPolicy === 'forced' && input.privateRequestsRequired === false) throw httpError(409, 'private_required_forced', 'Private Requests are required server-wide and cannot be disabled for this Routing Rule');
     const rule = await store.updateRoutingRule(id, input);
     if (rule) await auditUnhealthyRouteSave(store, auth.userId ?? 'usr_default', rule);
     return rule;

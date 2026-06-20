@@ -161,6 +161,11 @@ def validation_errors(app_json: dict[str, Any], eas_json: dict[str, Any], packag
         require(camera.get("microphonePermission") is False, "expo-camera microphonePermission must be false", errors)
         require(camera.get("recordAudioAndroid") is False, "expo-camera recordAudioAndroid must be false", errors)
     require(
+        isinstance(android, dict) and android.get("googleServicesFile") == "./google-services.json",
+        "app.json android.googleServicesFile must point at ./google-services.json for Android FCM push registration",
+        errors,
+    )
+    require(
         isinstance(android, dict) and android.get("permissions") == EXPECTED_ANDROID_PERMISSIONS,
         "app.json android.permissions must only request CAMERA for QR pairing",
         errors,

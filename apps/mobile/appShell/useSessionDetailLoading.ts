@@ -4,6 +4,7 @@ import { AgentTickClient } from "@self-deprecated/agent-tick-sdk";
 import { isMobileSessionDetailFresh } from "../AppLogic";
 import { diagnosticEvents, recordDiagnostic } from "../diagnostics";
 import { getStoredConnectionToken } from "./mobileSessionClientHelpers";
+import { decryptMobileSessionDetail } from "../mobilePrivateRequests";
 import { attachSessionDetailConnection } from "../sessions/sessionDetailConnection";
 import { sessionStackSessionKey } from "../sessionStackState";
 import type { SavedMobileAccount } from "../mobileAuth";
@@ -14,6 +15,7 @@ import { hashDiagnosticID } from "./clerkSessionHelpers";
 export type UseSessionDetailLoadingOptions = {
   sdk: AgentTickClient;
   savedAccounts: SavedMobileAccount[];
+  deviceID: string;
   hasRequestAuth: boolean;
   selectedSessionID: string | null;
   sessionSummaries: MobileSessionSummary[];
@@ -26,6 +28,7 @@ export type UseSessionDetailLoadingOptions = {
 export function useSessionDetailLoading({
   sdk,
   savedAccounts,
+  deviceID,
   hasRequestAuth,
   selectedSessionID,
   sessionSummaries,
@@ -48,13 +51,15 @@ export function useSessionDetailLoading({
         });
       }
       const detail = await detailClient.getSession(summary.sessionId, { workspaceId: summary.workspaceID || undefined, limit: 100 });
+      const connectedDetail = attachSessionDetailConnection(detail, summary);
+      const decryptedDetail = await decryptMobileSessionDetail(connectedDetail, { activeDeviceID: deviceID || undefined, savedAccounts });
       if (cancelled()) return;
-      setSessionDetails((current) => ({ ...current, [sessionStackSessionKey(summary)]: attachSessionDetailConnection(detail, summary) }));
+      setSessionDetails((current) => ({ ...current, [sessionStackSessionKey(summary)]: decryptedDetail }));
     } catch (err) {
       recordDiagnostic("warn", "sessions", "detail_load_failed", { sessionIDHash: hashDiagnosticID(summary.sessionId), message: err instanceof Error ? err.message : String(err), status: apiStatus(err) });
       setDiagnosticsEventCount(diagnosticEvents().length);
     }
-  }, [savedAccounts, sdk, setDiagnosticsEventCount, setSessionDetails]);
+  }, [deviceID, savedAccounts, sdk, setDiagnosticsEventCount, setSessionDetails]);
 
   useEffect(() => {
     if (!selectedSessionID || !hasRequestAuth) return;
@@ -69,7 +74,7 @@ export function useSessionDetailLoading({
   }, [hasRequestAuth, loadSessionDetailForSummary, selectedSessionID, sessionDetails, sessionSummaries]);
 
   useEffect(() => {
-    if (!hasRequestAuth || selectedSessionID || visibleSessionSummaries.length <= 1) return;
+    if (!hasRequestAuth || selectedSessionID) return;
     const summariesNeedingDetail = visibleSessionSummaries
       .filter((summary) => !isMobileSessionDetailFresh(summary, sessionDetails[sessionStackSessionKey(summary)]))
       .slice(0, 8);

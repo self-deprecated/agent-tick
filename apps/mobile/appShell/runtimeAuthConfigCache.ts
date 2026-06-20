@@ -41,9 +41,9 @@ export async function writeRuntimeAuthConfigCache(serverURL: string, authConfig:
   await cacheRuntimeAuthConfig(serverURL, authConfig);
 }
 
-export async function fetchRuntimeAuthConfigIfAvailable(serverURL: string): Promise<RuntimeAuthConfig | null> {
+export async function fetchRuntimeAuthConfigIfAvailable(serverURL: string, options?: { allowInsecure?: boolean }): Promise<RuntimeAuthConfig | null> {
   try {
-    const authConfig = await fetchRuntimeAuthConfig(serverURL);
+    const authConfig = await fetchRuntimeAuthConfig(serverURL, fetch, options);
     await cacheRuntimeAuthConfig(serverURL, authConfig);
     return authConfig;
   } catch {

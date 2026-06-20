@@ -45,7 +45,9 @@
 	let fallbackRequests = $derived(activity.filter((item) => item.kind === 'request').map((item) => item.request));
 	let requests = $derived(usesSessions ? timelineRequests : fallbackRequests);
 	let pendingRequests = $derived(requests.filter((request) => request.status === 'pending'));
-	let recentActivity = $derived(activity.filter((item) => item.kind === 'status_update' || item.request.status !== 'pending'));
+	let recentActivity = $derived(activity.filter((item) => item.kind === 'status_update' || item.kind === 'tool_activity' || item.request.status !== 'pending'));
+	let groupedRecentActivity = $derived(groupToolActivityItems(recentActivity));
+	let groupedTimeline = $derived(groupToolActivityItems(timeline));
 	let selectedRequest = $derived(requests.find((request) => request.id === selectedRequestId) ?? pendingRequests[0] ?? requests[0]);
 
 	function missingDeviceRecipients(request: RequestRecord): number {
@@ -82,8 +84,63 @@
 		return `${pending}${waiterText}${sources}${new Date(session.updatedAt).toLocaleString()}`;
 	}
 
+	type ToolActivityGroup = { kind: 'tool_group'; key: string; tools: Extract<ActivityItem, { kind: 'tool_activity' }>[] };
+	type GroupedActivityItem = Exclude<ActivityItem, { kind: 'tool_activity' }> | ToolActivityGroup;
+
+	function groupToolActivityItems(items: ActivityItem[]): GroupedActivityItem[] {
+		const grouped: GroupedActivityItem[] = [];
+		let tools: Extract<ActivityItem, { kind: 'tool_activity' }>[] = [];
+		let segment = 0;
+		let groupKey = '';
+		const flushTools = () => {
+			if (!tools.length) return;
+			const first = tools[0];
+			const last = tools[tools.length - 1];
+			grouped.push({ kind: 'tool_group', key: `tools:${groupKey}:${first?.id ?? 'first'}:${last?.id ?? 'last'}:${tools.length}`, tools });
+			tools = [];
+			groupKey = '';
+		};
+		for (const item of items) {
+			if (item.kind === 'tool_activity') {
+				const nextGroupKey = item.toolActivity.turnId ? `turn:${item.toolActivity.turnId}` : `segment:${segment}`;
+				if (tools.length && groupKey !== nextGroupKey) flushTools();
+				groupKey = nextGroupKey;
+				tools.push(item);
+				continue;
+			}
+			flushTools();
+			grouped.push(item);
+			segment += 1;
+		}
+		flushTools();
+		return grouped;
+	}
+
+	function toolCounts(tools: Extract<ActivityItem, { kind: 'tool_activity' }>[]): string {
+		const counts = new Map<string, Set<string>>();
+		for (const item of tools) {
+			const set = counts.get(item.toolActivity.toolName) ?? new Set<string>();
+			set.add(item.toolActivity.toolCallId || item.toolActivity.toolActivityId);
+			counts.set(item.toolActivity.toolName, set);
+		}
+		return [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([name, calls]) => `${name} ×${calls.size}`).join(', ');
+	}
+
+	function toolGroupState(tools: Extract<ActivityItem, { kind: 'tool_activity' }>[]): string {
+		const finished = new Set(tools.filter((item) => item.toolActivity.state === 'finished' && item.toolActivity.toolCallId).map((item) => item.toolActivity.toolCallId as string));
+		if (tools.some((item) => item.toolActivity.outcome === 'failed')) return 'Failed';
+		if (tools.some((item) => item.toolActivity.outcome === 'cancelled')) return 'Cancelled';
+		if (tools.some((item) => item.toolActivity.state === 'started' && (!item.toolActivity.toolCallId || !finished.has(item.toolActivity.toolCallId)))) return 'Running';
+		return 'Complete';
+	}
+
+	function toolGroupTitle(tools: Extract<ActivityItem, { kind: 'tool_activity' }>[]): string {
+		return toolGroupState(tools) === 'Running' ? 'Using tools…' : 'Tools used';
+	}
+
 	function timelineLabel(item: SessionDetail['timeline'][number]): string {
 		if (item.kind === 'status_update') return `Status Update · ${item.statusUpdate.state} · ${new Date(item.createdAt).toLocaleString()}`;
+		if (item.kind === 'tool_activity') return `Tool Activity · ${item.toolActivity.outcome ?? item.toolActivity.state} · ${new Date(item.createdAt).toLocaleString()}`;
 		const waiter = requestWaiterLivenessLabel(item.request);
 		return `Request · ${item.request.status}${waiter ? ` · ${waiter}` : ''} · ${new Date(item.createdAt).toLocaleString()}`;
 	}
@@ -149,11 +206,16 @@
 				{#if recentActivity.length === 0 && pendingRequests.length === 0}
 					<p class="empty">You’re ready. Agent activity will appear here; use the Native App for day-to-day approvals.</p>
 				{/if}
-				{#each recentActivity as item (item.kind + item.id)}
+				{#each groupedRecentActivity as item (item.kind === 'tool_group' ? item.key : item.kind + item.id)}
 					{#if item.kind === 'status_update'}
 						<div class="activity-row">
 							<span><strong>{item.statusUpdate.message}</strong><small>Status Update · {item.statusUpdate.state} · {new Date(item.createdAt).toLocaleString()}</small></span>
 							{#if item.statusUpdate.isTest}<span class="status-pill">Test</span>{/if}
+						</div>
+					{:else if item.kind === 'tool_group'}
+						<div class="activity-row tool-activity-row">
+							<span><strong>{toolGroupTitle(item.tools)} · {toolCounts(item.tools)}</strong><small>Tool Activity · {toolGroupState(item.tools)} · {new Date(item.tools[0]?.createdAt ?? Date.now()).toLocaleString()}</small></span>
+							<span class="status-pill">Tools</span>
 						</div>
 					{:else}
 						<button class="activity-row" class:active={selectedRequest?.id === item.request.id} onclick={() => onSelectRequest(item.request.id)}>
@@ -174,11 +236,16 @@
 			{#if timeline.length === 0}
 				<p class="subtle">Open a Session to inspect Status Updates, Requests, and Responses in timeline order.</p>
 			{/if}
-			{#each timeline as item (item.kind + item.id)}
+			{#each groupedTimeline as item (item.kind === 'tool_group' ? item.key : item.kind + item.id)}
 				{#if item.kind === 'status_update'}
 					<div class="activity-row">
 						<span><strong>{item.statusUpdate.message}</strong><small>{timelineLabel(item)}</small></span>
 						{#if item.statusUpdate.isTest}<span class="status-pill">Test</span>{/if}
+					</div>
+				{:else if item.kind === 'tool_group'}
+					<div class="activity-row tool-activity-row">
+						<span><strong>{toolGroupTitle(item.tools)} · {toolCounts(item.tools)}</strong><small>Tool Activity · {toolGroupState(item.tools)} · {new Date(item.tools[0]?.createdAt ?? Date.now()).toLocaleString()}</small></span>
+						<span class="status-pill">Tools</span>
 					</div>
 				{:else}
 					<button class="activity-row" class:active={selectedRequest?.id === item.request.id} onclick={() => onSelectRequest(item.request.id)}>

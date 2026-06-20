@@ -16,6 +16,7 @@ import {
   BillingPurchasePreflightRequestSchema,
   BillingPurchasePreflightResponseSchema,
   BillingStatusSchema,
+  BillingTrialStartRequestSchema,
   CreateAgentTokenSchema,
   CreateAudienceChannelSchema,
   CreateExternalApproverInviteSchema,
@@ -27,9 +28,11 @@ import {
   CreateRoutingRuleSchema,
   CreateSharedWorkspaceSchema,
   CreateStatusUpdateSchema,
+  CreateToolActivitySchema,
   DeleteMeResponseSchema,
   DeleteRoutingRuleResponseSchema,
   DeviceCredentialSchema,
+  DevicePublicKeyRecordSchema,
   ExternalApproverInviteCredentialSchema,
   ExternalApproverInviteRecordSchema,
   ExternalApproverRecordSchema,
@@ -47,8 +50,13 @@ import {
   PairDeviceRequestSchema,
   PairingTokenSchema,
   PendingActivityCountSchema,
+  PreparePrivateRequestSchema,
+  PreparePrivateStatusUpdateSchema,
+  PrivateRequestPrepareResponseSchema,
+  PrivateStatusUpdatePrepareResponseSchema,
   PersonalBillingStatusSchema,
   PersonalBillingUpdateSchema,
+  RegisterDevicePublicKeySchema,
   RegisterDeviceResponseSchema,
   RegisterDeviceSchema,
   ReadyResponseSchema,
@@ -65,6 +73,7 @@ import {
   SessionDetailSchema,
   SessionSummarySchema,
   StatusUpdateRecordSchema,
+  ToolActivityRecordSchema,
   UpdateAgentTokenSchema,
   UpdateDeviceNameSchema,
   UpdateDevicePushTokenSchema,
@@ -89,6 +98,7 @@ import {
   type BillingPurchasePreflightRequest,
   type BillingPurchasePreflightResponse,
   type BillingStatus,
+  type BillingTrialStartRequest,
   type CreateAgentToken,
   type CreateAudienceChannel,
   type CreateExternalApprover,
@@ -100,9 +110,11 @@ import {
   type CreateRoutingRule,
   type CreateSharedWorkspace,
   type CreateStatusUpdate,
+  type CreateToolActivity,
   type DeleteMeResponse,
   type DeleteRoutingRuleResponse,
   type DeviceCredential,
+  type DevicePublicKeyRecord,
   type DeviceRecord,
   type EventPollEvent,
   type ExternalApproverInviteCredential,
@@ -122,8 +134,13 @@ import {
   type PairingToken,
   type PendingActivityCount,
   type PersonalBillingStatus,
+  type PreparePrivateRequest,
+  type PreparePrivateStatusUpdate,
+  type PrivateRequestPrepareResponse,
+  type PrivateStatusUpdatePrepareResponse,
   type PersonalBillingUpdate,
   type RegisterDevice,
+  type RegisterDevicePublicKey,
   type RegisterDeviceResponse,
   type ReadyResponse,
   type ReportRequestWaiterError,
@@ -141,6 +158,7 @@ import {
   type SessionDetail,
   type SessionSummary,
   type StatusUpdateRecord,
+  type ToolActivityRecord,
   type UpdateAgentToken,
   type UpdateDeviceName,
   type UpdateDevicePushToken,
@@ -297,6 +315,9 @@ export class AgentTickClient {
   preflightPurchase(input: BillingPurchasePreflightRequest): Promise<BillingPurchasePreflightResponse> {
     return this.#request('POST', '/v1/billing/purchases/preflight', BillingPurchasePreflightResponseSchema, { body: BillingPurchasePreflightRequestSchema.parse(input), includeWorkspace: false });
   }
+  startNativeTrial(input: BillingTrialStartRequest): Promise<PersonalBillingStatus> {
+    return this.#request('POST', '/v1/billing/purchases/start-trial', PersonalBillingStatusSchema, { body: BillingTrialStartRequestSchema.parse(input), includeWorkspace: false });
+  }
   cancelPurchaseAttempt(input: BillingPurchaseAttemptCancelRequest): Promise<BillingPurchaseAttemptCancelResponse> {
     return this.#request('POST', '/v1/billing/purchases/cancel', BillingPurchaseAttemptCancelResponseSchema, { body: BillingPurchaseAttemptCancelRequestSchema.parse(input), includeWorkspace: false });
   }
@@ -307,12 +328,17 @@ export class AgentTickClient {
   createStatusUpdate(input: CreateStatusUpdate): Promise<StatusUpdateRecord> {
     return this.#request('POST', '/v1/status-updates', StatusUpdateRecordSchema, { body: CreateStatusUpdateSchema.parse(input) });
   }
+  createToolActivity(input: CreateToolActivity): Promise<ToolActivityRecord> {
+    return this.#request('POST', '/v1/tool-activities', ToolActivityRecordSchema, { body: CreateToolActivitySchema.parse(input) });
+  }
   listStatusUpdates(options: { limit?: number } = {}): Promise<StatusUpdateRecord[]> {
     const params = new URLSearchParams();
     if (options.limit !== undefined) params.set('limit', String(options.limit));
     return this.#request('GET', `/v1/status-updates${querySuffix(params)}`, StatusUpdateRecordSchema.array());
   }
 
+  preparePrivateRequest(input: PreparePrivateRequest = {}): Promise<PrivateRequestPrepareResponse> { return this.#request('POST', '/v1/private-requests/prepare', PrivateRequestPrepareResponseSchema, { body: PreparePrivateRequestSchema.parse(input) }); }
+  preparePrivateStatusUpdate(input: PreparePrivateStatusUpdate = {}): Promise<PrivateStatusUpdatePrepareResponse> { return this.#request('POST', '/v1/private-status-updates/prepare', PrivateStatusUpdatePrepareResponseSchema, { body: PreparePrivateStatusUpdateSchema.parse(input) }); }
   createRequest(input: CreateRequest): Promise<CreateRequestResponse> { return this.#request('POST', '/v1/requests', CreateRequestResponseSchema, { body: CreateRequestSchema.parse(input) }); }
   listRequests(options: { workspaceId?: string } = {}): Promise<RequestRecord[]> {
     const params = new URLSearchParams();
@@ -475,6 +501,8 @@ export class AgentTickClient {
   pairDevice(input: PairDeviceRequest): Promise<DeviceCredential> { return this.#request('POST', '/v1/devices/pair', DeviceCredentialSchema, { body: PairDeviceRequestSchema.parse(input), includeWorkspace: false }); }
   registerDevice(input: RegisterDevice): Promise<RegisterDeviceResponse> { return this.#request('POST', '/v1/devices/register', RegisterDeviceResponseSchema, { body: RegisterDeviceSchema.parse(input) }); }
   listDevices(): Promise<DeviceRecord[]> { return this.#request('GET', '/v1/devices', DeviceRecordSchema.array()); }
+  registerDevicePublicKey(deviceId: string, input: RegisterDevicePublicKey): Promise<DevicePublicKeyRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/public-key`, DevicePublicKeyRecordSchema, { body: RegisterDevicePublicKeySchema.parse(input) }); }
+  listDevicePublicKeys(deviceId: string): Promise<DevicePublicKeyRecord[]> { return this.#request('GET', `/v1/devices/${encodeURIComponent(deviceId)}/public-keys`, DevicePublicKeyRecordSchema.array()); }
   renameDevice(deviceId: string, name: string): Promise<DeviceRecord> { return this.#request('PATCH', `/v1/devices/${encodeURIComponent(deviceId)}`, DeviceRecordSchema, { body: UpdateDeviceNameSchema.parse({ name }) }); }
   updateDevicePushToken(deviceId: string, input: UpdateDevicePushToken): Promise<DeviceRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/push-token`, DeviceRecordSchema, { body: UpdateDevicePushTokenSchema.parse(input) }); }
   unpairDevice(deviceId: string): Promise<DeviceRecord> { return this.#request('POST', `/v1/devices/${encodeURIComponent(deviceId)}/unpair`, DeviceRecordSchema, { body: {} }); }
@@ -603,6 +631,7 @@ export type {
   BillingPurchasePreflightRequest,
   BillingPurchasePreflightResponse,
   BillingStatus,
+  BillingTrialStartRequest,
   CreateAgentToken,
   CreateAudienceChannel,
   CreateExternalApprover,
@@ -614,6 +643,7 @@ export type {
   CreateRoutingRule,
   CreateSharedWorkspace,
   CreateStatusUpdate,
+  CreateToolActivity,
   DeleteMeResponse,
   DeleteRoutingRuleResponse,
   DeviceCredential,
@@ -636,6 +666,8 @@ export type {
   PairingToken,
   PendingActivityCount,
   PersonalBillingStatus,
+  PreparePrivateStatusUpdate,
+  PrivateStatusUpdatePrepareResponse,
   PersonalBillingUpdate,
   RegisterDevice,
   RegisterDeviceResponse,
@@ -655,6 +687,7 @@ export type {
   SessionDetail,
   SessionSummary,
   StatusUpdateRecord,
+  ToolActivityRecord,
   UpdateAgentToken,
   UpdateDeviceName,
   UpdateDevicePushToken,

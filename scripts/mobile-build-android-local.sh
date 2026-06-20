@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 profile="${EAS_BUILD_PROFILE:-production}"
+extra_args=("$@")
 
 if ! command -v java >/dev/null 2>&1; then
   cat >&2 <<'EOF'
@@ -62,9 +63,33 @@ org.gradle.workers.max=2
 android.lint.execution.in-process=false
 EOF
 
+has_output=0
+for arg in "${extra_args[@]}"; do
+  if [[ "$arg" == "--output" || "$arg" == --output=* ]]; then
+    has_output=1
+    break
+  fi
+done
+
+if [[ "$has_output" -eq 0 ]]; then
+  app_version="$(node -e 'const fs = require("fs"); const config = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(config.expo?.version || "unknown");' "$repo_root/apps/mobile/app.json")"
+  timestamp="${AGENT_TICK_BUILD_TIMESTAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
+  safe_profile="${profile//[^A-Za-z0-9._-]/-}"
+  safe_app_version="${app_version//[^A-Za-z0-9._-]/-}"
+  case "$profile" in
+    production) artifact_extension="aab" ;;
+    *) artifact_extension="apk" ;;
+  esac
+  output_dir="$repo_root/apps/mobile/builds"
+  output_file="agent-tick-android-${safe_profile}-v${safe_app_version}-${timestamp}.${artifact_extension}"
+  mkdir -p "$output_dir"
+  extra_args+=(--output "$output_dir/$output_file")
+  echo "Writing Android build artifact to $output_dir/$output_file" >&2
+fi
+
 export EXPO_NO_TELEMETRY=1
 export EAS_NO_VCS="${EAS_NO_VCS:-1}"
 export EAS_PROJECT_ROOT="${EAS_PROJECT_ROOT:-$repo_root}"
 
 cd "$repo_root/apps/mobile"
-exec corepack pnpm dlx --allow-build=dtrace-provider eas-cli build --platform android --profile "$profile" --local "$@"
+exec corepack pnpm dlx --allow-build=dtrace-provider eas-cli build --platform android --profile "$profile" --local "${extra_args[@]}"

@@ -25,20 +25,24 @@ describe('AgentTickClient', () => {
     await expect(client.getMe()).rejects.toMatchObject<Partial<AgentTickApiError>>({ name: 'AgentTickApiError', status: 401, code: 'not_authenticated', requestId: 'req-1' });
   });
 
-  it('creates and lists routed Status Updates', async () => {
+  it('creates and lists routed Status Updates and creates Tool Activity', async () => {
     const requests: Array<{ url: string; method?: string; body?: unknown }> = [];
     const status = { statusId: 'stat_123', workspaceId: 'wsp_123', agentTokenId: 'agt_123', message: 'Running tests', state: 'working', sessionId: 'run_123', session: { title: 'Billing migration' }, createdAt: '2026-01-01T00:00:00.000Z' };
+    const toolActivity = { toolActivityId: 'toolact_123', workspaceId: 'wsp_123', agentTokenId: 'agt_123', sessionId: 'run_123', turnId: 'turn_1', toolCallId: 'call_1', toolName: 'bash', state: 'finished', outcome: 'success', summary: 'Ran validation', createdAt: '2026-01-01T00:00:01.000Z' };
     const client = new AgentTickClient({
       baseUrl: 'https://tick.example.com',
       fetch: async (input, init) => {
         requests.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        if (String(input).endsWith('/tool-activities')) return jsonResponse(toolActivity);
         return jsonResponse(init?.method === 'POST' ? status : [status]);
       }
     });
     await expect(client.createStatusUpdate({ message: 'Running tests', sessionId: 'run_123', session: { title: 'Billing migration' } })).resolves.toMatchObject({ statusId: 'stat_123', session: { title: 'Billing migration' } });
+    await expect(client.createToolActivity({ sessionId: 'run_123', turnId: 'turn_1', toolCallId: 'call_1', toolName: 'bash', state: 'finished', outcome: 'success', summary: 'Ran validation' })).resolves.toMatchObject({ toolActivityId: 'toolact_123', toolName: 'bash', outcome: 'success' });
     await expect(client.listStatusUpdates({ limit: 5 })).resolves.toEqual([expect.objectContaining({ message: 'Running tests' })]);
     expect(requests).toEqual([
       { method: 'POST', url: 'https://tick.example.com/v1/status-updates', body: { message: 'Running tests', sessionId: 'run_123', session: { title: 'Billing migration' }, state: 'working' } },
+      { method: 'POST', url: 'https://tick.example.com/v1/tool-activities', body: { sessionId: 'run_123', turnId: 'turn_1', toolCallId: 'call_1', toolName: 'bash', state: 'finished', outcome: 'success', summary: 'Ran validation' } },
       { method: 'GET', url: 'https://tick.example.com/v1/status-updates?limit=5', body: undefined }
     ]);
   });
