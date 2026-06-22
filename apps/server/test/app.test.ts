@@ -147,7 +147,7 @@ describe('server Workspace routing API', () => {
 
   it('serves health, well-known app association, and public auth config', async () => {
     const server = await buildSingle();
-    expect((await server.inject({ method: 'GET', url: '/healthz' })).json()).toMatchObject({ status: 'ok', version: '1.3.1' });
+    expect((await server.inject({ method: 'GET', url: '/healthz' })).json()).toMatchObject({ status: 'ok', version: '1.4.0' });
     const association = await server.inject({ method: 'GET', url: '/.well-known/apple-app-site-association' });
     expect(association.headers['content-type']).toContain('application/json');
     expect(association.json()).toEqual({ webcredentials: { apps: ['2559B88H6C.ai.selfdeprecated.agenttick'] } });
@@ -411,10 +411,17 @@ describe('server Workspace routing API', () => {
     expect(blocked.json()).toMatchObject({ error: { code: 'billing_test_mode_required' } });
   });
 
-  it('matches billing dev grant email domains by exact domain or subdomain suffix', () => {
+  it('matches billing dev grant email domains exactly unless explicit wildcard syntax is used', () => {
     expect(emailDomainAllowedForBillingDevGrant('person@allowed.test', ['allowed.test'])).toBe(true);
-    expect(emailDomainAllowedForBillingDevGrant('person@sub.allowed.test', ['allowed.test'])).toBe(true);
+    expect(emailDomainAllowedForBillingDevGrant('person@sub.allowed.test', ['allowed.test'])).toBe(false);
+    expect(emailDomainAllowedForBillingDevGrant('person@sub.allowed.test', ['*.allowed.test'])).toBe(true);
+    expect(emailDomainAllowedForBillingDevGrant('person@deep.sub.allowed.test', ['*.allowed.test'])).toBe(true);
+    expect(emailDomainAllowedForBillingDevGrant('person@allowed.test', ['*.allowed.test'])).toBe(false);
     expect(emailDomainAllowedForBillingDevGrant('person@notallowed.test', ['allowed.test'])).toBe(false);
+    expect(emailDomainAllowedForBillingDevGrant('person@allowed.test', [''])).toBe(false);
+    expect(emailDomainAllowedForBillingDevGrant('', ['allowed.test'])).toBe(false);
+    expect(emailDomainAllowedForBillingDevGrant('not-an-email', ['not-an-email'])).toBe(false);
+    expect(emailDomainAllowedForBillingDevGrant('person@@allowed.test', ['allowed.test'])).toBe(false);
   });
 
   it('routes Personal Workspace Status Updates and Requests to the sole human', async () => {
@@ -1087,6 +1094,34 @@ describe('server Workspace routing API', () => {
     expect(detail.json().timeline.map((item: { id: string }) => item.id)).toEqual([status.statusId, legacyRequest.id]);
   });
 
+  it('orders Session source labels by project before generic agent token labels', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Agent on lattice' }, '2026-05-08T00:00:00.000Z');
+    const server = await buildSingle(localStore);
+
+    localStore.createToolActivity({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, toolName: 'bash', state: 'started', sessionId: 'run_project_labels', metadata: { clientName: 'pi-questions', host: 'lattice' } }, '2026-05-08T00:01:00.000Z');
+    localStore.createStatusUpdate({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, message: 'Waiting on mobile check', state: 'waiting', sessionId: 'run_project_labels', session: { title: 'Project label run' }, clientName: 'pi-questions', host: 'lattice', workingDirectory: '/repo/pi-questions' }, '2026-05-08T00:02:00.000Z');
+
+    const summaries = await server.inject({ method: 'GET', url: '/v1/sessions?limit=100' });
+    expect(summaries.statusCode).toBe(200);
+    const session = (summaries.json() as Array<{ title: string; sourceLabels: string[] }>).find((candidate) => candidate.title === 'Project label run')!;
+    expect(session.sourceLabels).toEqual(['pi-questions', 'Agent on lattice', 'lattice']);
+  });
+
+  it('uses project context instead of individual Tool Activity summaries for tool-only Session titles', async () => {
+    const localStore = testStore();
+    const credential = localStore.createAgentToken({ label: 'Agent on lattice' }, '2026-05-08T00:00:00.000Z');
+    const server = await buildSingle(localStore);
+
+    localStore.createToolActivity({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, toolName: 'bash', state: 'started', sessionId: 'run_tool_only', metadata: { workingDirectory: '/repo/mono-fiction', host: 'lattice' } }, '2026-05-08T00:01:00.000Z');
+    localStore.createToolActivity({ workspaceId: DEFAULT_WORKSPACE_ID, agentTokenId: credential.agentTokenId, toolName: 'bash', state: 'finished', outcome: 'success', summary: 'bash finished', sessionId: 'run_tool_only', metadata: { workingDirectory: '/repo/mono-fiction', host: 'lattice' } }, '2026-05-08T00:02:00.000Z');
+
+    const summaries = await server.inject({ method: 'GET', url: '/v1/sessions?limit=100' });
+    expect(summaries.statusCode).toBe(200);
+    const session = (summaries.json() as Array<{ title: string; sourceLabels: string[]; latestActivity: { preview: string } }>).find((candidate) => candidate.title === 'mono-fiction')!;
+    expect(session).toMatchObject({ sourceLabels: ['mono-fiction', 'Agent on lattice', 'lattice'], latestActivity: { preview: 'bash finished' } });
+  });
+
   it('proves cross-surface Session flow fixtures stay grouped through response and history', async () => {
     const localStore = testStore();
     const credential = localStore.createAgentToken({ label: 'Pi' }, '2026-05-08T00:00:00.000Z');
@@ -1491,17 +1526,20 @@ describe('server Workspace routing API', () => {
     expect(secondMobileResponse.json()).toMatchObject({ status: 'responded', response: { choiceId: 'approve' } });
   });
 
-  it('suppresses redundant waiting Status Updates in derived Session timelines', async () => {
+  it('suppresses only redundant waiting Status Updates in derived Session timelines', async () => {
     const localStore = testStore();
     const request = localStore.createRequest({ requester: { name: 'Pi' }, requestType: 'steering', title: 'Choose?', sessionId: 'run_wait', choices: [{ id: 'approve', label: 'Approve' }, { id: 'deny', label: 'Deny', kind: 'deny' }] }, '2026-05-08T00:00:00.000Z');
-    localStore.createStatusUpdate({ workspaceId: request.workspaceId, message: 'Waiting for response', state: 'waiting', sessionId: 'run_wait' }, '2026-05-08T00:00:05.000Z');
+    const redundantWaiting = localStore.createStatusUpdate({ workspaceId: request.workspaceId, message: 'Waiting for response', state: 'waiting', sessionId: 'run_wait' }, '2026-05-08T00:00:05.000Z');
+    const customWaiting = localStore.createStatusUpdate({ workspaceId: request.workspaceId, message: 'Waiting for CI', state: 'waiting_for_ci', sessionId: 'run_wait' }, '2026-05-08T00:00:06.000Z');
+    const laterWaiting = localStore.createStatusUpdate({ workspaceId: request.workspaceId, message: 'Still waiting', state: 'waiting', sessionId: 'run_wait' }, '2026-05-08T00:01:00.000Z');
     app = await buildSingle(localStore);
 
     const summaries = await app.inject({ method: 'GET', url: '/v1/sessions' });
     const sessionId = summaries.json()[0].sessionId as string;
     const detail = await app.inject({ method: 'GET', url: `/v1/sessions/${sessionId}` });
     expect(detail.statusCode).toBe(200);
-    expect(detail.json().timeline.map((item: { kind: string }) => item.kind)).toEqual(['request']);
+    expect(detail.json().timeline.map((item: { id: string }) => item.id)).toEqual([request.id, customWaiting.statusId, laterWaiting.statusId]);
+    expect(detail.json().timeline.map((item: { id: string }) => item.id)).not.toContain(redundantWaiting.statusId);
     expect(detail.json().summary.latestActivity).toMatchObject({ kind: 'request', id: request.id });
   });
 

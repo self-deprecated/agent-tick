@@ -146,6 +146,10 @@ const trialProductIds = new Set([
   "trial_7_day",
   "trial",
 ]);
+// RevenueCat mobile SDK API keys are public client identifiers, not bearer
+// secrets. Keep production defaults in source so published mobile builds and
+// source checkouts have a safe app-store billing fallback; EXPO_PUBLIC_* values
+// can still override them for alternate RevenueCat projects or test channels.
 const defaultRevenueCatIOSAPIKey = "appl_jjQlssmgYrPUZmFPbFuSyVOfPCV";
 const defaultRevenueCatAndroidAPIKey = "goog_OoUVPJdUqfBKgRDuRvIEoBjfJCV";
 const DAY_MS = 24 * 60 * 60 * 1000;

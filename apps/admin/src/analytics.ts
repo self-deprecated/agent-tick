@@ -1,6 +1,6 @@
 const plausibleHost = 'https://analytics.selfdeprecated.ai';
 const plausibleScriptId = 'agent-tick-plausible';
-const analyticsOptOutKey = 'agent_tick_analytics_opt_out';
+export const analyticsOptOutKey = 'agent_tick_analytics_opt_out';
 
 type PlausibleEvent = 'onboarding_started' | 'onboarding_completed' | 'paywall_viewed' | 'setup_completed';
 
@@ -45,11 +45,27 @@ export function trackPlausibleEventOncePerSession(eventName: PlausibleEvent, pro
 	trackPlausibleEvent(eventName, props);
 }
 
-function analyticsOptedOut(): boolean {
+export function analyticsOptedOut(): boolean {
 	if (typeof window === 'undefined') return true;
 	try {
 		return window.localStorage.getItem(analyticsOptOutKey) === 'true' || window.localStorage.getItem('plausible_ignore') === 'true';
 	} catch {
 		return true;
+	}
+}
+
+export function setAnalyticsOptOut(optedOut: boolean): void {
+	if (typeof window === 'undefined') return;
+	try {
+		if (optedOut) {
+			window.localStorage.setItem(analyticsOptOutKey, 'true');
+			window.localStorage.setItem('plausible_ignore', 'true');
+			if (typeof document !== 'undefined') document.getElementById(plausibleScriptId)?.remove();
+			return;
+		}
+		window.localStorage.removeItem(analyticsOptOutKey);
+		window.localStorage.removeItem('plausible_ignore');
+	} catch {
+		// If storage is unavailable, leave the runtime default as privacy-preserving.
 	}
 }

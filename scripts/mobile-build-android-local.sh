@@ -34,7 +34,7 @@ export PATH="$local_tools_bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT
 if ! command -v sdkmanager >/dev/null 2>&1; then
   cat >&2 <<'EOF'
 sdkmanager is required to bootstrap the Android SDK.
-Install Android Studio command-line tools or enter the root mono-sd devenv shell with android-studio-tools installed.
+Install Android Studio command-line tools or enter a shell that provides the Android SDK tools.
 EOF
   exit 1
 fi

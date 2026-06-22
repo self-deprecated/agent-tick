@@ -5,7 +5,7 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { assertAgentToken, clientConfigPath, loadClientConfig, maskAgentToken, resolveServerAndToken, saveClientConfig } from '../src/config.js';
-import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, claudeHookSessionId, createProgram, handleMcpRequest, hostedAgentTickURL, installClaudePermissionHook, installClaudeQuestionHook, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, removeAgentTickClaudeHooks, resolveAgentTickSessionId, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage, ensureAgentFeaturesConfig, loadEffectiveAgentFeaturesConfig, setAgentFeature, renderAgentFeaturesConfigTuiScreen } from '../src/index.js';
+import { agentInstructionBlock, agentTickStatePath, buildCliSetupURL, claudeHookSessionId, createProgram, handleMcpRequest, hostedAgentTickURL, installClaudePermissionHook, installClaudeQuestionHook, loadAgentTickMode, mcpToolDefinitions, normalizeAgentTickMode, removeAgentTickClaudeHooks, resolveAgentTickSessionId, saveAgentTickMode, isRiskyCommand, parseChoices, parseDurationMs, tryReadMcpMessage, ensureAgentFeaturesConfig, loadEffectiveAgentFeaturesConfig, setAgentFeature, renderAgentFeaturesConfigTuiScreen, listenForSetupCallback } from '../src/index.js';
 
 const tmpRoots: string[] = [];
 
@@ -335,6 +335,49 @@ describe('browser setup', () => {
 
     expect(url.origin).toBe(hostedAgentTickURL);
     expect(url.searchParams.get('cli_server')).toBeNull();
+  });
+
+  it('accepts setup tokens in a POST body and saves CLI config', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-cli-callback-'));
+    tmpRoots.push(root);
+    const configPath = path.join(root, 'config.json');
+
+    await withProcessEnv({ AGENT_TICK_CONFIG: configPath }, async () => {
+      const callbackServer = await listenForSetupCallback({ expectedState: 'state_123', fallbackServer: 'https://fallback.example.com' });
+      try {
+        const response = await fetch(callbackServer.callbackURL, {
+          method: 'POST',
+          body: new URLSearchParams({ state: 'state_123', token: 'agent_post_token', server: 'https://tick.example.com' })
+        });
+        await expect(callbackServer.result).resolves.toEqual({ path: configPath });
+        expect(response.status).toBe(200);
+        await expect(loadClientConfig({ AGENT_TICK_CONFIG: configPath })).resolves.toEqual({ server: 'https://tick.example.com', token: 'agent_post_token' });
+      } finally {
+        callbackServer.server.close();
+      }
+    });
+  });
+
+  it('rejects setup tokens in callback query strings', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-tick-cli-callback-query-'));
+    tmpRoots.push(root);
+    const configPath = path.join(root, 'config.json');
+
+    await withProcessEnv({ AGENT_TICK_CONFIG: configPath }, async () => {
+      const callbackServer = await listenForSetupCallback({ expectedState: 'state_123', fallbackServer: 'https://fallback.example.com' });
+      try {
+        const url = new URL(callbackServer.callbackURL);
+        url.searchParams.set('state', 'state_123');
+        url.searchParams.set('token', 'agent_query_token');
+        url.searchParams.set('server', 'https://tick.example.com');
+        const response = await fetch(url);
+        expect(response.status).toBe(400);
+        await expect(response.text()).resolves.toContain('Token-in-query setup callbacks are no longer supported');
+        await expect(loadClientConfig({ AGENT_TICK_CONFIG: configPath })).resolves.toEqual({});
+      } finally {
+        callbackServer.server.close();
+      }
+    });
   });
 });
 

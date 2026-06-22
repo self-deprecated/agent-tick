@@ -12,8 +12,8 @@ import { useAgentTickRequestHandlingActions } from "./useAgentTickRequestHandlin
 import { useAgentTickBillingController } from "./useAgentTickBillingController";
 import { useAgentTickSettingsActions } from "./useAgentTickSettingsActions";
 import { useAgentTickDiagnosticsFlushBinding } from "./useAgentTickDiagnosticsFlushBinding";
-import { useAgentTickBillingAccessState } from "./useAgentTickBillingAccessState";
-import { useAgentTickSelectionState } from "./useAgentTickSelectionState";
+import { useMobileBillingAccessState } from "./useMobileBillingAccessState";
+import { useMobileSelectionState } from "./useMobileSelectionState";
 import { AgentTickAppView } from "./AgentTickAppView";
 import { buildAgentTickAppViewPropsFromState } from "./buildAgentTickAppViewPropsFromState";
 import { choiceInteractionMode, confirmBeforeSubmit, optionPlacement } from "./useMobileRuntimeRefs";
@@ -81,17 +81,48 @@ export function AgentTickApp({
     notificationTargetState,
   });
 
-  const selectionState = useAgentTickSelectionState({
-    activeConnectionIdentity,
-    activityState,
-    connectionAccountState,
+  const selectionState = useMobileSelectionState({
+    activeClerkSessionID: activeConnectionIdentity.activeClerkSessionID,
+    currentAccountProfile: connectionAccountState.currentAccountProfile,
+    deviceID: connectionAccountState.deviceID,
+    requests: activityState.requests,
+    runtimeAuthProvider: connectionAccountState.runtimeAuthConfig?.authProvider,
+    savedAccounts: connectionAccountState.savedAccounts,
+    selectedID: activityState.selectedID,
+    selectedSourceID: activityState.selectedSourceID,
+    selectedWorkspaceID: connectionAccountState.selectedWorkspaceID,
+    serverURL: connectionAccountState.serverURL,
+    token: connectionAccountState.token,
+    workspaces: connectionAccountState.workspaces,
   });
 
-  const billingAccessState = useAgentTickBillingAccessState({
-    appStatusState,
-    billingState,
-    connectionAccountState,
-    selectionState,
+  const billingAccessState = useMobileBillingAccessState({
+    billingAccessGraceNowMs: billingState.billingAccessGraceNowMs,
+    billingAccessGraceStartedAtMs: billingState.billingAccessGraceStartedAtMs,
+    connectedBillingAccountCount: selectionState.connectedBillingAccounts.length,
+    connectedBillingEntitlementGrant: billingState.connectedBillingEntitlementGrant,
+    connectedBillingSettled: billingState.connectedBillingSettled,
+    currentAccountEmail: connectionAccountState.currentAccountProfile?.email,
+    currentAccountUserID: connectionAccountState.currentAccountProfile?.userId,
+    debugPaywallVisible: billingState.debugPaywallVisible,
+    hasRequestAuth: selectionState.hasRequestAuth,
+    localDevAppAccessUnlocked: billingState.localDevAppAccessUnlocked,
+    localStoreHostedSubscriptionActive: billingState.localStoreHostedSubscriptionActive,
+    localStoreLifetimeUnlocked: billingState.localStoreLifetimeUnlocked,
+    localStoreTrialPurchased: billingState.localStoreTrialPurchased,
+    localStoreTrialStartedAt: billingState.localStoreTrialStartedAt,
+    firstRealResponseBeforePaywallPending: billingState.firstRealResponseBeforePaywallPending,
+    paywallDismissedKey: billingState.paywallDismissedKey,
+    personalBillingSettled: billingState.personalBillingSettled,
+    personalBillingStatus: billingState.personalBillingStatus,
+    purchaseInFlightProductKey: billingState.purchaseInFlightProductKey,
+    revenueCatAppUserID: billingState.revenueCatAppUserID,
+    runtimeAuthProvider: connectionAccountState.runtimeAuthConfig?.authProvider,
+    selected: selectionState.selected,
+    serverURL: connectionAccountState.serverURL,
+    settingsLoaded: appStatusState.settingsLoaded,
+    storeCustomerInfo: billingState.storeCustomerInfo,
+    storeEntitlementsSettled: billingState.storeEntitlementsSettled,
   });
   const requestDraft = useSelectedRequestDraft(selectionState.selected);
 

@@ -131,17 +131,23 @@ function summarizeSession(sessionId: string, timeline: ActivityItem[], now: Date
   if (!latestOverall) throw new Error('Cannot summarize an empty Session');
   const pendingRequests = pendingRequestSummaries(timeline);
   const latest = latestActivityAnchor(timeline, pendingRequests) ?? latestOverall;
+  const labels = sourceLabels(timeline);
   return {
     sessionId,
-    title: deriveSessionSummaryTitle(timeline),
+    title: sessionTitle(timeline, labels),
     state: deriveSessionState(timeline, now),
     latestActivity: latestActivityPreview(latest),
     pendingRequestCount: pendingRequests.length,
     ...(pendingRequests.length ? { pendingRequests } : {}),
-    sourceLabels: sourceLabels(timeline),
+    sourceLabels: labels,
     startedAt: timeline[0]?.createdAt ?? latestOverall.createdAt,
     updatedAt: latestOverall.createdAt
   };
+}
+
+function sessionTitle(timeline: ActivityItem[], labels: string[]): string {
+  if (timeline.every((item) => item.kind === 'tool_activity')) return labels[0] ?? 'Tools';
+  return deriveSessionSummaryTitle(timeline);
 }
 
 function pendingRequestSummaries(timeline: ActivityItem[]): SessionPendingRequestSummary[] {
@@ -210,26 +216,43 @@ function latestActivityPreview(item: ActivityItem): SessionLatestActivity {
 }
 
 function sourceLabels(timeline: ActivityItem[]): string[] {
-  const labels = new Set<string>();
+  const clientLabels = new Set<string>();
+  const agentLabels = new Set<string>();
+  const hostLabels = new Set<string>();
   for (const item of timeline) {
     if (item.kind === 'request') {
-      addLabel(labels, item.request.requester.clientName);
-      addLabel(labels, item.request.requester.name);
-      addLabel(labels, item.request.requester.host);
+      addLabel(clientLabels, item.request.requester.clientName);
+      addLabel(agentLabels, item.request.requester.name);
+      addLabel(hostLabels, item.request.requester.host);
     } else if (item.kind === 'tool_activity') {
-      addLabel(labels, item.toolActivity.agentTokenLabel);
+      addLabel(clientLabels, item.toolActivity.metadata?.clientName);
+      addLabel(clientLabels, workingDirectoryLabel(item.toolActivity.metadata?.workingDirectory));
+      addLabel(agentLabels, item.toolActivity.agentTokenLabel);
+      addLabel(hostLabels, item.toolActivity.metadata?.host);
     } else {
-      addLabel(labels, item.statusUpdate.clientName);
-      addLabel(labels, item.statusUpdate.agentTokenLabel);
-      addLabel(labels, item.statusUpdate.host);
+      addLabel(clientLabels, item.statusUpdate.clientName);
+      addLabel(agentLabels, item.statusUpdate.agentTokenLabel);
+      addLabel(hostLabels, item.statusUpdate.host);
     }
   }
-  return [...labels].slice(0, 4);
+  return uniqueLabels(clientLabels, agentLabels, hostLabels).slice(0, 4);
+}
+
+function uniqueLabels(...groups: Array<Set<string>>): string[] {
+  const labels = new Set<string>();
+  for (const group of groups) {
+    for (const label of group) labels.add(label);
+  }
+  return [...labels];
 }
 
 function addLabel(labels: Set<string>, value: string | undefined): void {
   const label = value?.trim();
   if (label) labels.add(label);
+}
+
+function workingDirectoryLabel(value: string | undefined): string | undefined {
+  return value?.split('/').filter(Boolean).at(-1);
 }
 
 function sessionSortKey(summary: SessionSummary): string {

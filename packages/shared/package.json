@@ -1,6 +1,6 @@
 {
   "name": "@self-deprecated/agent-tick-shared",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Shared schemas and API types for Agent Tick.",
   "private": false,
   "type": "module",

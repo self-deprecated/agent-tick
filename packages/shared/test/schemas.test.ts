@@ -203,15 +203,35 @@ describe('shared Workspace and Request schemas', () => {
       semanticState: undefined,
       stateBehavior: 'display_only'
     });
+    const otherSourceWaiting = StatusUpdateRecordSchema.parse({
+      ...redundantWaiting,
+      statusId: 'stat_other_source',
+      agentTokenId: 'agt_2'
+    });
 
     expect(isRedundantWaitingStatusUpdateAfterRequest(redundantWaiting, request)).toBe(true);
     expect(isRedundantWaitingStatusUpdateAfterRequest(laterWaiting, request)).toBe(false);
     expect(isRedundantWaitingStatusUpdateAfterRequest(customWaiting, request)).toBe(false);
+    expect(isRedundantWaitingStatusUpdateAfterRequest(otherSourceWaiting, request)).toBe(false);
+    const requestItem = { kind: 'request' as const, id: request.id, workspaceId: request.workspaceId, createdAt: request.createdAt, request };
+    const redundantWaitingItem = { kind: 'status_update' as const, id: redundantWaiting.statusId, workspaceId: redundantWaiting.workspaceId, createdAt: redundantWaiting.createdAt, statusUpdate: redundantWaiting };
+    const customWaitingItem = { kind: 'status_update' as const, id: customWaiting.statusId, workspaceId: customWaiting.workspaceId, createdAt: customWaiting.createdAt, statusUpdate: customWaiting };
+    const laterWaitingItem = { kind: 'status_update' as const, id: laterWaiting.statusId, workspaceId: laterWaiting.workspaceId, createdAt: laterWaiting.createdAt, statusUpdate: laterWaiting };
+    const otherSourceWaitingItem = { kind: 'status_update' as const, id: otherSourceWaiting.statusId, workspaceId: otherSourceWaiting.workspaceId, createdAt: otherSourceWaiting.createdAt, statusUpdate: otherSourceWaiting };
+
     expect(suppressRedundantWaitingStatusUpdates([
-      { kind: 'request', id: request.id, workspaceId: request.workspaceId, createdAt: request.createdAt, request },
-      { kind: 'status_update', id: redundantWaiting.statusId, workspaceId: redundantWaiting.workspaceId, createdAt: redundantWaiting.createdAt, statusUpdate: redundantWaiting },
-      { kind: 'status_update', id: customWaiting.statusId, workspaceId: customWaiting.workspaceId, createdAt: customWaiting.createdAt, statusUpdate: customWaiting }
-    ]).map((item) => item.id)).toEqual(['req_1', 'stat_custom']);
+      requestItem,
+      redundantWaitingItem,
+      customWaitingItem,
+      laterWaitingItem,
+      otherSourceWaitingItem
+    ]).map((item) => item.id)).toEqual(['req_1', 'stat_custom', 'stat_later', 'stat_other_source']);
+    expect(suppressRedundantWaitingStatusUpdates([
+      laterWaitingItem,
+      customWaitingItem,
+      redundantWaitingItem,
+      requestItem
+    ]).map((item) => item.id)).toEqual(['stat_later', 'stat_custom', 'req_1']);
   });
 
   it('projects hosted personal lifecycle from shared entitlement policy', () => {

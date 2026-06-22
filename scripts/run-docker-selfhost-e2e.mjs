@@ -197,6 +197,7 @@ async function runPlaywright(selectedMode, env) {
       'tests/e2e/docker/selfhost-single.spec.ts',
       'tests/e2e/docker/selfhost-single-persistence.spec.ts',
       'tests/e2e/docker/selfhost-dashboard-smoke.spec.ts',
+      'tests/e2e/docker/selfhost-cli-setup.spec.ts',
       'tests/e2e/docker/selfhost-invalid-payloads.spec.ts',
       'tests/e2e/docker/selfhost-waiter-lifecycle.spec.ts',
       'tests/e2e/docker/selfhost-admin-token-boundaries.spec.ts',

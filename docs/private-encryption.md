@@ -7,7 +7,7 @@ description: How Agent Tick Private Requests and private Status Updates use devi
 
 Agent Tick can store some Activity content as **private encrypted content**. Private encryption is used for Private Requests and private full-reply Status Updates when an integration or Workspace enables it.
 
-The goal is server-opaque storage and routing: Agent Tick servers can route Activity, track status, send minimal notifications, and return bounded responses, while sensitive display content is encrypted for Approval Devices.
+The goal is server-opaque storage and routing: Agent Tick servers can route Activity, track status, send minimal notifications, and return bounded responses, while sensitive display content is encrypted for Approval Devices. This is different from malicious-server-proof end-to-end encryption; see [Server trust model](#server-trust-model).
 
 ## Where the key lives
 
@@ -28,7 +28,7 @@ For private encrypted Activity, Agent Tick servers store:
 - an encrypted payload containing the private display content;
 - encrypted key envelopes for the recipient device public keys.
 
-The server does not receive the device private key needed to decrypt the payload.
+The server does not receive the device private key needed to decrypt the payload. It does still store and process the clear operational fields needed to deliver the product.
 
 ## How multiple recipients work
 
@@ -54,7 +54,7 @@ Private encryption is not a replacement for normal operational security. Agent T
 - Request type, status, deadlines, and response policy;
 - Session identity and timestamps;
 - generic notification-safe labels such as “Assistant replied”;
-- bounded response identifiers such as `approve` or `deny`.
+- bounded response identifiers such as `approve`, `deny`, or selected option IDs.
 
 Do not put secrets in clear operational fields, titles, logs, diagnostics, analytics, or notification copy.
 
@@ -62,7 +62,9 @@ Do not put secrets in clear operational fields, titles, logs, diagnostics, analy
 
 Private encryption is designed to make stored Request and Status Update content opaque to normal Agent Tick server storage, backups, logs, and admin tools.
 
-It is not currently a malicious-server-proof end-to-end encryption system. In the first version, the server supplies recipient public keys during private content creation. A compromised server could substitute keys unless a future key transparency, pinning, or out-of-band verification model is added.
+It is not currently a malicious-server-proof end-to-end encryption system. The server supplies recipient public keys during private content creation. A compromised or malicious server could substitute keys unless a future key transparency, pinning, or out-of-band verification model is added.
+
+Agent Tick's current public claim is therefore server-opaque storage and routing: sensitive display payloads are encrypted for Approval Devices and should not be readable through normal server databases, backups, logs, or admin tools. It is not a claim that an actively malicious server cannot interfere with key selection, metadata, routing, or bounded response processing.
 
 ## Multiple devices and old Activity
 

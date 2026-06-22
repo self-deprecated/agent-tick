@@ -1029,7 +1029,7 @@ async function setupWithBrowser(options: { server: string; name?: string | undef
   }
 }
 
-function listenForSetupCallback(options: { expectedState: string; fallbackServer: string }): Promise<{
+export function listenForSetupCallback(options: { expectedState: string; fallbackServer: string }): Promise<{
   callbackURL: string;
   server: Server;
   result: Promise<{ path: string }>;
@@ -1042,6 +1042,11 @@ function listenForSetupCallback(options: { expectedState: string; fallbackServer
         if (url.pathname !== '/agent-tick/setup/callback') {
           response.writeHead(404, { 'content-type': 'text/plain' });
           response.end('Not found');
+          return;
+        }
+        if (url.searchParams.has('token')) {
+          response.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
+          response.end('<h1>Agent Tick configuration failed</h1><p>Token-in-query setup callbacks are no longer supported because Agent Tick tokens are bearer credentials. Please retry with a current <code>agent-tick login</code> command.</p>');
           return;
         }
         const params = await readCallbackParams(request, url);
@@ -1115,7 +1120,7 @@ function defaultAgentName(): string {
   return `Agent on ${os.hostname() || 'local machine'}`;
 }
 
-const CLI_VERSION = '1.3.1';
+const CLI_VERSION = '1.4.0';
 
 function cliMetadata(metadata: Record<string, string> = {}): Record<string, string> {
   return { ...metadata, agentTickCliVersion: CLI_VERSION };

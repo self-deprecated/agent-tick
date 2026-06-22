@@ -321,6 +321,8 @@ AGENT_TICK_ANDROID_CLERK_SERVER_URL=https://tick.example.com \
 
 The keyboard smoke uses `adb` + Android `uiautomator` to launch the Native App, tap "Use a self-hosted server instead", focus the Server URL input, capture screenshots/XML, and verify the input plus Continue button remain visible after the keyboard opens. The local integration smoke additionally starts a temporary single-mode backend with an isolated SQLite database, runs `adb reverse tcp:18787 tcp:18787`, enters `http://127.0.0.1:18787` in the app, taps Continue, and waits for the main Agent Tick UI. The Clerk sign-in smoke drives the hosted sign-in path by default, or enters `AGENT_TICK_ANDROID_CLERK_SERVER_URL` first, opens native Clerk auth, taps GitHub, and captures the browser/custom-tab handoff. These smokes write artifacts to a directory printed in the output; set `AGENT_TICK_ANDROID_UI_ARTIFACT_DIR=/path/to/dir` to choose it. Watch tasks open the artifact directory first, then open screenshots with `xdg-open`/`open` as they are captured. If opening fails, check `opener.log` in the artifact directory.
 
+Android production builds do not enable broad cleartext HTTP traffic. Use a development build (`APP_VARIANT=development` or EAS `development` profile) when testing local HTTP self-hosted servers from the app. Prefer `adb reverse` with a loopback URL such as `http://127.0.0.1:18787` for emulator/device smoke tests; for production or shared self-hosted deployments, put the server behind HTTPS and use that public origin in the Native App.
+
 Useful environment variables:
 
 - `AGENT_TICK_ANDROID_SERIAL=<serial>` — target a specific device from `adb devices`.

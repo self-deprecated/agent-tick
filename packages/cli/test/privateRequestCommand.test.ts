@@ -27,7 +27,7 @@ describe('CLI Private Request command flow', () => {
         'POST /v1/requests'
       ]);
       const created = fixture.requests[1]!.body as Record<string, any>;
-      expect(created).toMatchObject({ title: 'Private Request', contentMode: 'private', allowFreeformReply: false, privateRecipientVersion: 'version_1', metadata: { agentTickCliVersion: '1.3.1' } });
+      expect(created).toMatchObject({ title: 'Private Request', contentMode: 'private', allowFreeformReply: false, privateRecipientVersion: 'version_1', metadata: { agentTickCliVersion: '1.4.0' } });
       expect(created.encryptedPayload.keyEnvelopes).toEqual([expect.objectContaining({ deviceKeyId: 'devkey_cli' })]);
       expect(JSON.stringify(created)).not.toContain('Secret CLI action');
       expect(JSON.stringify(created)).not.toContain('Hidden CLI body');
@@ -46,7 +46,7 @@ describe('CLI Private Request command flow', () => {
         'POST /v1/status-updates'
       ]);
       const created = fixture.requests[1]!.body as Record<string, any>;
-      expect(created).toMatchObject({ message: 'Private Status Update', state: 'working', contentMode: 'private', privateRecipientVersion: 'version_1', metadata: { agentTickCliVersion: '1.3.1' } });
+      expect(created).toMatchObject({ message: 'Private Status Update', state: 'working', contentMode: 'private', privateRecipientVersion: 'version_1', metadata: { agentTickCliVersion: '1.4.0' } });
       expect(created.nextStep).toBeUndefined();
       expect(created.encryptedPayload.keyEnvelopes).toEqual([expect.objectContaining({ deviceKeyId: 'devkey_cli' })]);
       expect(JSON.stringify(created)).not.toContain('Secret status detail');

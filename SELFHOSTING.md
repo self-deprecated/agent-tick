@@ -4,162 +4,223 @@ Use this guide when you want to run Agent Tick yourself. If you want the managed
 
 Agent Tick is source-available under BSL 1.1. Internal commercial self-hosting is allowed, including use by a business on its own infrastructure. Offering Agent Tick as a hosted or managed service to third parties is prohibited. The BSL change date is 2028-05-31.
 
-Agent Tick can run either as the published Docker image or as the Nix flake package/NixOS module. The server runs the TypeScript API server, serves the built Svelte dashboard, and stores durable data in local SQLite by default or PostgreSQL when configured.
+The server Docker image runs the TypeScript API server, serves the built Svelte dashboard, and stores durable data in local SQLite by default or PostgreSQL when configured. The repository also includes a Nix flake package and NixOS module for Nix-based operators.
 
-## Single-user local mode
+## 5-minute Docker quickstart: localhost SQLite
 
-Create `.env`:
+This path runs a single-user local Agent Tick server with the published image and a Docker-managed SQLite volume. It does not require Clerk, PostgreSQL, Redis, billing, email, or push-provider credentials.
+
+```sh
+cp .env.example .env
+cat > .env.localhost <<'EOF'
+AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
+AGENT_TICK_MODE=single
+AGENT_TICK_PUBLIC_URL=http://localhost:8787
+AGENT_TICK_PORT=8787
+AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db
+AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+EOF
+cat .env.localhost > .env
+docker compose -f docker-compose.selfhost.yml up -d
+curl http://127.0.0.1:8787/healthz
+curl http://127.0.0.1:8787/readyz
+```
+
+Open <http://localhost:8787>. In local single mode without `AGENT_TICK_ADMIN_TOKEN`, the dashboard can create the first local Workspace and Agent Token directly.
+
+Connect an agent host:
+
+```sh
+npx @self-deprecated/agent-tick setup --server http://localhost:8787
+```
+
+For CI or a non-interactive machine, create or copy an `agent_...` token from the dashboard and save it locally:
+
+```sh
+agent-tick config --server http://localhost:8787 --token agent_...
+```
+
+For rich agent message/tool mirroring, connect the Native App to the self-hosted server and enable **Settings → General → Private encryption** before setting `privacy.defaultContentMode` to `private` in `agent-tick features`.
+
+## Published-image Compose file
+
+Use `docker-compose.selfhost.yml` for operator deployments. It uses only published images and has no `build:` stanza. The repository `docker-compose.yml` is the development Compose file and can build the server image from this checkout.
+
+Common commands:
+
+```sh
+# Start SQLite/single-mode from .env
+docker compose -f docker-compose.selfhost.yml up -d
+
+# Include Compose-managed PostgreSQL
+docker compose -f docker-compose.selfhost.yml --profile postgres up -d
+
+# Include Redis for multi-process coordination
+docker compose -f docker-compose.selfhost.yml --profile redis up -d
+
+# Inspect rendered config before starting
+docker compose -f docker-compose.selfhost.yml config
+
+# Watch logs
+docker compose -f docker-compose.selfhost.yml logs -f server
+```
+
+## Which mode should I choose?
+
+| Choice | Use it when | Configure |
+| --- | --- | --- |
+| `single` mode | You want one self-hosted operator/admin path with no third-party human identity provider. This is the default and the recommended first deployment. | `AGENT_TICK_MODE=single`; optionally set `AGENT_TICK_ADMIN_TOKEN` outside localhost. |
+| Clerk mode | You need multi-user browser/mobile sign-in backed by Clerk. Agent Tick still owns Workspaces, members, Agent Tokens, Requests, audit logs, and billing/seat-limit state. | `AGENT_TICK_MODE=clerk` plus Clerk keys and authorized parties. |
+| SQLite | You want the simplest durable store for localhost, a small VPS, or a single server instance. | `AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db`. |
+| PostgreSQL | You want an external/managed database, operational backups, or production-style database operations. | `AGENT_TICK_DATABASE_URL=postgresql://...`. |
+| Compose-managed PostgreSQL | You want Docker Compose to run PostgreSQL beside Agent Tick. | Use the `postgres` profile and point `AGENT_TICK_DATABASE_URL` at `postgres:5432`. |
+| Redis | You run multiple Agent Tick server instances or want Redis-backed event wakeups/rate limits/retention locks. Single-instance SQLite deployments do not need Redis. | Set `AGENT_TICK_REDIS_URL` and selected `*_BACKEND=redis` values; use the `redis` profile if Compose should run Redis. |
+
+## First-run checklist
+
+1. Set `AGENT_TICK_PUBLIC_URL` to the URL users and agent hosts will open. For localhost, use `http://localhost:8787`. For production, use your HTTPS origin, for example `https://tick.example.com`.
+2. Start the server and wait for readiness:
+
+   ```sh
+   docker compose -f docker-compose.selfhost.yml up -d
+   docker compose -f docker-compose.selfhost.yml ps
+   curl http://127.0.0.1:8787/readyz
+   ```
+
+3. Open the dashboard at `AGENT_TICK_PUBLIC_URL`.
+4. If `AGENT_TICK_ADMIN_TOKEN` is configured, enter it when prompted. This token is an admin bootstrap/dashboard gate; protect it like a secret.
+5. Create the first Workspace if the dashboard asks for one.
+6. Create or authorize the first Agent Token. The token starts with `agent_...`; store it like a bearer secret.
+7. Configure an agent host with either:
+
+   ```sh
+   npx @self-deprecated/agent-tick setup --server https://tick.example.com
+   ```
+
+   or, for non-interactive hosts:
+
+   ```sh
+   agent-tick config --server https://tick.example.com --token agent_...
+   ```
+
+8. Send a safe test Request:
+
+   ```sh
+   npx @self-deprecated/agent-tick send steering \
+     --title "Self-hosted Agent Tick test" \
+     --choice works="It works" \
+     --choice stop:deny="Stop testing"
+   ```
+
+## Deployment recipes
+
+### Localhost SQLite
+
+Use this for first local success:
+
+```env
+AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
+AGENT_TICK_MODE=single
+AGENT_TICK_PUBLIC_URL=http://localhost:8787
+AGENT_TICK_PORT=8787
+AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db
+AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+```
+
+```sh
+docker compose -f docker-compose.selfhost.yml up -d
+curl http://127.0.0.1:8787/readyz
+```
+
+### VPS or reverse-proxy SQLite
+
+Use this for a small single-server deployment behind Caddy, Traefik, nginx, or another HTTPS reverse proxy:
 
 ```env
 AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
 AGENT_TICK_MODE=single
 AGENT_TICK_PUBLIC_URL=https://tick.example.com
 AGENT_TICK_PORT=8787
-
-# Optional. Defaults to true for simple self-hosting; pre-launch builds use this
-# to ensure the current schema exists on startup.
-# AGENT_TICK_DATABASE_MIGRATE_ON_START=true
-
-# Optional but recommended outside localhost.
-AGENT_TICK_ADMIN_TOKEN=change-me
-
-# Optional local active-member seat guard. Omit for unlimited self-hosted seats.
-# AGENT_TICK_MAX_ACTIVE_MEMBERS=10
-
-# Optional Request notification webhook in addition to mobile push.
-# AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/requests
-
-# Optional rate limit overrides for auth-sensitive token endpoints.
-# AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
-# AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
-
-# Optional Redis coordination for multi-process deployments. SQLite remains the
-# default simple self-hosted path; use Redis when multiple server instances need
-# shared event wakeups/rate limits.
-# AGENT_TICK_REDIS_URL=redis://redis:6379
-# AGENT_TICK_EVENT_BUS_BACKEND=redis
-# AGENT_TICK_RATE_LIMIT_BACKEND=redis
-
-# Optional retention cleanup windows. Omit to retain operational history indefinitely.
-# Set Request/status update days to 0 to turn Activity History content retention off.
-# AGENT_TICK_REQUEST_RETENTION_DAYS=180
-# AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS=180
-# AGENT_TICK_AUDIT_RETENTION_DAYS=365
-# AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
-# AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
-# AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES=60
-# AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
-# AGENT_TICK_RETENTION_CLEANUP_LOCK_TTL_MS=600000
-# Optional server-wide Private Requests (end-to-end encrypted) policy.
-#   off     each Workspace/Routing Rule decides via its own toggle (default)
-#   default new Workspaces start with Private Requests required (toggleable)
-#   forced  Private Requests required for every Workspace/Routing Rule on this
-#           server; plain CLI requests are rejected with HTTP 409 private_required
-# AGENT_TICK_PRIVATE_REQUESTS_POLICY=off
-```
-
-Start it:
-
-```sh
-docker compose up -d
-```
-
-Open `AGENT_TICK_PUBLIC_URL`. If `AGENT_TICK_ADMIN_TOKEN` is set, enter it in the dashboard. For an interactive agent host, run setup against your server:
-
-```sh
-npx @self-deprecated/agent-tick setup --server https://tick.example.com
-```
-
-For rich agent message/tool mirroring, connect the Native App to the self-hosted server and enable **Settings → General → Private encryption** before setting `privacy.defaultContentMode` to `private` in `agent-tick features`.
-
-For CI or non-interactive hosts, create or copy an `agent_...` token from the dashboard, then save it locally with the CLI available on that host:
-
-```sh
-agent-tick config --server https://tick.example.com --token agent_...
-```
-
-The public product surfaces are <https://agenttick.sh> for marketing, <https://app.agenttick.sh> for the hosted app and API, and <https://docs.agenttick.sh> for documentation. Self-hosted deployments use their own `AGENT_TICK_PUBLIC_URL`.
-
-## Durable store and Redis production mode
-
-SQLite remains the default durable store for local and simple self-hosted deployments. PostgreSQL is also supported for production-style deployments by setting `AGENT_TICK_DATABASE_URL` to a `postgres://` or `postgresql://` URL. Agent Tick is still pre-launch, so schema setup installs the current schema rather than preserving historical migrations; local/dev databases may need to be reset instead of migrated forward. Delete `agent-tick.db` or reset a pre-launch PostgreSQL schema if an older database shape no longer boots. There is no automatic SQLite-to-PostgreSQL data migration unless a separate migration tool is built.
-
-SQLite example:
-
-```env
 AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db
 AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+AGENT_TICK_ADMIN_TOKEN=replace-with-a-long-random-value
 ```
 
-PostgreSQL plus Redis example:
+```sh
+docker compose -f docker-compose.selfhost.yml up -d
+curl http://127.0.0.1:8787/readyz
+```
+
+Point your reverse proxy at `http://127.0.0.1:8787`, terminate HTTPS at the proxy, and make sure the external URL exactly matches `AGENT_TICK_PUBLIC_URL`.
+
+### Compose-managed PostgreSQL
+
+Use this when you want Compose to run PostgreSQL for Agent Tick:
 
 ```env
-# Docker Compose defaults to SQLite; set this to point the server at an external
-# PostgreSQL database managed by your platform/operator.
+AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
+AGENT_TICK_MODE=single
+AGENT_TICK_PUBLIC_URL=https://tick.example.com
+AGENT_TICK_PORT=8787
 AGENT_TICK_DATABASE_URL=postgresql://agent_tick:change-me@postgres:5432/agent_tick
 AGENT_TICK_DATABASE_MIGRATE_ON_START=true
 AGENT_TICK_POSTGRES_USER=agent_tick
 AGENT_TICK_POSTGRES_PASSWORD=change-me
 AGENT_TICK_POSTGRES_DB=agent_tick
-AGENT_TICK_REDIS_URL=redis://redis:6379
+AGENT_TICK_ADMIN_TOKEN=replace-with-a-long-random-value
+```
+
+```sh
+docker compose -f docker-compose.selfhost.yml --profile postgres up -d
+docker compose -f docker-compose.selfhost.yml --profile postgres ps
+curl http://127.0.0.1:8787/readyz
+```
+
+### Managed PostgreSQL with optional Redis
+
+Use this when your platform provides PostgreSQL and, optionally, Redis:
+
+```env
+AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
+AGENT_TICK_MODE=single
+AGENT_TICK_PUBLIC_URL=https://tick.example.com
+AGENT_TICK_PORT=8787
+AGENT_TICK_DATABASE_URL=postgresql://agent_tick:change-me@db.example.com:5432/agent_tick
+AGENT_TICK_DATABASE_MIGRATE_ON_START=true
+AGENT_TICK_ADMIN_TOKEN=replace-with-a-long-random-value
+
+# Optional, recommended only when you need Redis-backed coordination.
+AGENT_TICK_REDIS_URL=redis://redis.example.com:6379
 AGENT_TICK_EVENT_BUS_BACKEND=redis
 AGENT_TICK_RATE_LIMIT_BACKEND=redis
 AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
 ```
 
-The included Compose file has an optional PostgreSQL service behind the `postgres` profile. Enable it when you want Compose to run PostgreSQL for you:
-
 ```sh
-docker compose --profile postgres up -d
+docker compose -f docker-compose.selfhost.yml up -d
+curl http://127.0.0.1:8787/readyz
 ```
 
-If you operate PostgreSQL separately, leave the profile disabled and point `AGENT_TICK_DATABASE_URL` at your managed PostgreSQL endpoint.
+PostgreSQL pool tuning is optional. For many server instances, keep `AGENT_TICK_POSTGRES_POOL_MAX` small enough that total app connections fit the database limit, or put PgBouncer in transaction-pooling mode in front of PostgreSQL.
 
-PostgreSQL pool tuning is optional. Small single-instance deployments can use the defaults. For many server instances, keep `AGENT_TICK_POSTGRES_POOL_MAX` small enough that total app connections fit the database limit, or put PgBouncer in transaction-pooling mode in front of PostgreSQL:
+### Clerk multi-user mode
 
-```env
-AGENT_TICK_POSTGRES_POOL_MAX=10
-AGENT_TICK_POSTGRES_POOL_IDLE_TIMEOUT_MS=30000
-AGENT_TICK_POSTGRES_POOL_CONNECTION_TIMEOUT_MS=5000
-AGENT_TICK_POSTGRES_STATEMENT_TIMEOUT_MS=30000
-AGENT_TICK_POSTGRES_QUERY_TIMEOUT_MS=30000
-```
-Back up the selected durable store before upgrades. For PostgreSQL, use regular logical dumps or physical backups appropriate to your operator stack. Keep `/readyz` as the traffic readiness check so load balancers only route to tasks that can reach configured dependencies. With Redis configured, readiness checks also cover Redis-backed event/rate-limit dependencies and retention cleanup uses a Redis lock by default so duplicate cleanup workers do not run concurrently.
+Use Clerk mode when you need multi-user dashboard/mobile sign-in. Clerk authenticates humans. Agent Tick still owns local users, Workspaces, Approval Devices, Agent Tokens, Requests, billing seat limits, and audit data.
 
-## Clerk multi-user mode
-
-Clerk authenticates dashboard/mobile humans. Agent Tick still owns local users, Workspaces, Approval Devices, Agent Tokens, Requests, billing seat limits, and audit data.
-
-Create a Clerk application, configure your dashboard origin in Clerk, then set:
+Create a Clerk application, configure your dashboard origin in Clerk, and set real Clerk credentials:
 
 ```env
 AGENT_TICK_IMAGE=ghcr.io/self-deprecated/agent-tick:latest
 AGENT_TICK_MODE=clerk
 AGENT_TICK_PUBLIC_URL=https://tick.example.com
 AGENT_TICK_PORT=8787
-# Keep first-party hosted billing gates off for self-hosted Clerk deployments.
+AGENT_TICK_DATABASE_URL=file:/data/agent-tick.db
+AGENT_TICK_DATABASE_MIGRATE_ON_START=true
 AGENT_TICK_HOSTED_SERVICE=false
-# AGENT_TICK_DATABASE_MIGRATE_ON_START=true
 AGENT_TICK_CLERK_PUBLISHABLE_KEY=pk_...
 AGENT_TICK_CLERK_SECRET_KEY=sk_...
 AGENT_TICK_CLERK_AUTHORIZED_PARTIES=https://tick.example.com
-```
-
-Optional local active-member seat guard, webhooks, rate limits, Redis coordination, and retention cleanup windows (also available in single mode):
-
-```env
-AGENT_TICK_MAX_ACTIVE_MEMBERS=10
-AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL=https://hooks.example.com/agent-tick/requests
-AGENT_TICK_RATE_LIMIT_WINDOW_MS=60000
-AGENT_TICK_RATE_LIMIT_MAX_REQUESTS=60
-AGENT_TICK_REDIS_URL=redis://redis:6379
-AGENT_TICK_EVENT_BUS_BACKEND=redis
-AGENT_TICK_RATE_LIMIT_BACKEND=redis
-AGENT_TICK_REQUEST_RETENTION_DAYS=180
-AGENT_TICK_AUDIT_RETENTION_DAYS=365
-AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS=90
-AGENT_TICK_RETENTION_CLEANUP_ENABLED=true
-AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND=redis
+AGENT_TICK_SESSION_SECRET=replace-with-a-long-random-value
 ```
 
 Optional networkless verification key:
@@ -168,17 +229,146 @@ Optional networkless verification key:
 AGENT_TICK_CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----..."
 ```
 
-Start it with Docker Compose. The dashboard fetches `/v1/auth/config`, loads Clerk with the publishable key, and sends Clerk session tokens to the API. The server maps Clerk `(issuer, subject)` to local `usr_...` IDs and requires a verified primary email.
-
-After the server is running, set up an agent host with the CLI:
-
 ```sh
-npx @self-deprecated/agent-tick setup --server https://tick.example.com
+docker compose -f docker-compose.selfhost.yml up -d
+curl http://127.0.0.1:8787/readyz
 ```
 
-The CLI opens the dashboard, waits while you sign in with Clerk, saves the returned Agent Tick `agent_...` token, and offers to install local coding-agent Request instructions. The token is written to `~/.config/agent-tick/config.json` by default; use `AGENT_TICK_CONFIG=/path/to/config.json` to choose a different file. For CI/non-interactive hosts, create an agent token in the dashboard and run `agent-tick config --server https://tick.example.com --token agent_...` instead.
+The dashboard fetches `/v1/auth/config`, loads Clerk with the publishable key, and sends Clerk session tokens to the API. The server maps Clerk `(issuer, subject)` to local `usr_...` IDs and requires a verified primary email. Do not expect Clerk mode to work without real Clerk credentials.
 
-## Local image build
+## Configuration reference
+
+See `.env.example` for grouped settings:
+
+- required/public server settings
+- database settings for SQLite, Compose-managed PostgreSQL, and managed PostgreSQL
+- single-mode access settings
+- Clerk multi-user settings
+- Redis coordination settings
+- request notification webhooks
+- rate limiting
+- retention cleanup
+- webhook/billing integration secrets
+- server-wide Private Requests policy
+
+Agent Tick is still pre-launch, so schema setup installs the current schema rather than preserving historical migrations; local/dev databases may need to be reset instead of migrated forward. Delete `agent-tick.db` or reset a pre-launch PostgreSQL schema if an older database shape no longer boots. There is no automatic SQLite-to-PostgreSQL data migration unless a separate migration tool is built.
+
+## Backup and restore
+
+Back up the selected durable store before upgrades. The database contains users, Clerk identity mappings, Workspaces, Agent Token hashes, Activity history, device registrations, and audit events.
+
+### SQLite Docker volume backup
+
+```sh
+mkdir -p backups
+docker compose -f docker-compose.selfhost.yml stop server
+docker run --rm \
+  -v agent_tick_data:/data:ro \
+  -v "$PWD/backups:/backup" \
+  alpine sh -c 'cp /data/agent-tick.db /backup/agent-tick-$(date +%Y%m%d-%H%M%S).db'
+docker compose -f docker-compose.selfhost.yml up -d
+```
+
+Restore SQLite into the Docker volume:
+
+```sh
+docker compose -f docker-compose.selfhost.yml stop server
+docker run --rm \
+  -v agent_tick_data:/data \
+  -v "$PWD/backups:/backup:ro" \
+  alpine sh -c 'cp /backup/agent-tick.db /data/agent-tick.db'
+docker compose -f docker-compose.selfhost.yml up -d
+curl http://127.0.0.1:8787/readyz
+```
+
+### PostgreSQL backup and restore
+
+For Compose-managed PostgreSQL:
+
+```sh
+mkdir -p backups
+docker compose -f docker-compose.selfhost.yml --profile postgres exec -T postgres \
+  pg_dump -U agent_tick -d agent_tick --format=custom \
+  > backups/agent-tick-$(date +%Y%m%d-%H%M%S).dump
+```
+
+Restore into an empty PostgreSQL database:
+
+```sh
+cat backups/agent-tick.dump | docker compose -f docker-compose.selfhost.yml --profile postgres exec -T postgres \
+  pg_restore -U agent_tick -d agent_tick --clean --if-exists
+```
+
+For managed PostgreSQL, use your provider's backups plus regular `pg_dump`/`pg_restore` from a network location allowed to reach the database.
+
+### Upgrade checklist
+
+1. Read the release notes for config or schema changes.
+2. Back up SQLite/PostgreSQL.
+3. Pull the new image:
+
+   ```sh
+   docker compose -f docker-compose.selfhost.yml pull server
+   ```
+
+4. Render config and confirm the intended image/env:
+
+   ```sh
+   docker compose -f docker-compose.selfhost.yml config
+   ```
+
+5. Restart:
+
+   ```sh
+   docker compose -f docker-compose.selfhost.yml up -d
+   curl http://127.0.0.1:8787/readyz
+   ```
+
+6. Open the dashboard and send a safe test Request from an agent host.
+
+## Troubleshooting
+
+### `/readyz` is unhealthy
+
+Check logs first:
+
+```sh
+docker compose -f docker-compose.selfhost.yml logs --tail=200 server
+```
+
+Common causes are a database URL typo, PostgreSQL not ready/reachable, Redis selected but unavailable, or a malformed environment value. `/healthz` only verifies that the process is alive; `/readyz` verifies configured dependencies.
+
+### Dashboard opens the wrong URL or callbacks fail
+
+`AGENT_TICK_PUBLIC_URL` must be the exact externally reachable origin, including scheme and host. Use `http://localhost:8787` for local testing and `https://tick.example.com` behind a production reverse proxy. Do not set it to the internal Docker service name.
+
+### The dashboard asks for an admin token
+
+In single mode, `AGENT_TICK_ADMIN_TOKEN` gates bootstrap/admin dashboard access. Enter the value from `.env`. If you lost it, update `.env` with a new long random value and restart the server.
+
+### Clerk sign-in loops or fails
+
+Confirm `AGENT_TICK_MODE=clerk`, `AGENT_TICK_CLERK_PUBLISHABLE_KEY`, `AGENT_TICK_CLERK_SECRET_KEY`, and `AGENT_TICK_CLERK_AUTHORIZED_PARTIES` are set. The authorized parties value must include the exact dashboard origin. Check Clerk's dashboard for the same allowed origin and make sure users have verified primary email addresses.
+
+### PostgreSQL connection failures
+
+For Compose-managed PostgreSQL, start with `--profile postgres`, confirm `docker compose -f docker-compose.selfhost.yml --profile postgres ps`, and make sure `AGENT_TICK_DATABASE_URL` uses host `postgres`, port `5432`, and credentials matching `AGENT_TICK_POSTGRES_*`. For managed PostgreSQL, check firewall rules, TLS/provider requirements, password encoding in the URL, and connection limits.
+
+### Volume or permission issues
+
+The server writes SQLite data under `/data` in the container. With Docker volumes, Docker owns the volume and permissions are usually automatic. If you bind mount a host directory instead, ensure the container can read and write the database file and parent directory.
+
+### Inspecting logs and configuration
+
+```sh
+docker compose -f docker-compose.selfhost.yml ps
+docker compose -f docker-compose.selfhost.yml logs -f server
+docker compose -f docker-compose.selfhost.yml config
+```
+
+## Local image build for development
+
+Use the repository development Compose file when you want to build from this checkout:
 
 ```sh
 docker build -f apps/server/Dockerfile -t agent-tick:dev .
@@ -245,11 +435,9 @@ AGENT_TICK_DATABASE_URL=file:./agent-tick.db \
 nix run .
 ```
 
-## Data, backup, and operator responsibility
+## Data and operator responsibility
 
-SQLite data is in the `agent_tick_data` Docker volume for Docker deployments, or `/var/lib/agent-tick/agent-tick.db` by default for the NixOS module. Back up the database regularly. It contains users, Clerk identity mappings, Workspaces, Agent Token hashes, Activity history, device registrations, and audit events.
-
-Self-hosted operators are responsible for their own deployment's data, backups, access controls, analytics, notification providers, retention windows, deletion processes, user notices, and legal compliance. Self-Deprecated ApS operates the hosted Agent Tick service and Native App, but cannot delete or control data on infrastructure it does not operate.
+SQLite data is in the `agent_tick_data` Docker volume for Docker deployments, or `/var/lib/agent-tick/agent-tick.db` by default for the NixOS module. Self-hosted operators are responsible for their own deployment's data, backups, access controls, analytics, notification providers, retention windows, deletion processes, user notices, and legal compliance. Self-Deprecated ApS operates the hosted Agent Tick service and Native App, but cannot delete or control data on infrastructure it does not operate.
 
 By default, self-hosted operational history is retained indefinitely except short-lived event tickets, Request waiter tokens, and pairing codes. Set the retention environment variables above to have startup/hourly cleanup remove old completed/expired Requests, Status Updates, audit events, and unregistered devices. Set Request/status update retention days to `0` to turn Activity History content retention off while keeping minimal operational metadata where the service requires it.
 

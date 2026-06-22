@@ -100,6 +100,16 @@ Do not document or call missing commands such as `agent-tick adapter`, `agent-ti
 - Request expiration is enforced in list/get/respond/resolve/wait flows.
 - Treat sanction titles, steering bodies, status messages, commands, metadata, webhooks, logs, and notifications as disclosure surfaces. Do not include secrets.
 
+## Social/release storytelling check
+
+Agent Tick product work should not silently ship if it is useful to talk about publicly. At the end of any meaningful feature, release, bug fix, docs improvement, or workflow improvement, ask:
+
+> Is there anything here that's worth talking about?
+
+Use `../social-media/CONTENT_ENGINE.md` and `../social-media/templates/social-review.md` for the social-worthiness query. If the change is worth posting about, create or recommend a `../social-media/posts/YYYY-MM-DD-topic/social-review.md` draft with the core angle, likely channels, and any asset needs. If it is not worth posting, say so in the task summary with a one-sentence reason.
+
+Good candidates usually demonstrate bounded human input, the local-first trust boundary, reduced agent babysitting, self-hosting/source-available trust, or the "building Agent Tick with Agent Tick" story.
+
 ## Documentation expectations
 
 Keep the first-time user flow simple:
@@ -181,6 +191,10 @@ Final dependency/Nix audit before finishing:
 1. Run `jj diff --summary --no-pager` and look for `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, version files, or `flake.nix` changes.
 2. If dependencies or package versions changed, verify every affected `fetchPnpmDeps` hash in `flake.nix` by running `nix run .#check-pnpm-deps-hash` plus the narrowest relevant Nix build, for example `nix build .#agent-tick-cli --no-link --print-build-logs` for CLI changes.
 3. If the hash check fails, run `nix run .#update-pnpm-deps-hash`; if a Nix build reports a fixed-output hash mismatch manually, replace the stale hash with the reported `got:` hash and rerun the same Nix build successfully before committing.
+
+## Release/public mirror workflow
+
+When preparing or reviewing an Agent Tick release, public mirror publish, or npm package publish, load `.pi/skills/agent-tick-release/SKILL.md` from the monorepo root. The release workflow must run the public mirror plan/check for both `agent-tick` and `pi-agent-tick`, review what is about to become public, draft a public-safe release message, consider social content via `../social-media/CONTENT_ENGINE.md`, and get explicit user approval before mirror commits or package publishing.
 
 ## Commit guidance
 

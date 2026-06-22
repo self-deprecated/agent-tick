@@ -30,7 +30,7 @@
 	import type { AdminConfig } from './app';
 	import { clerkRedirectTarget, hasClerkRedirectCallback } from './clerkRedirect';
 	import { canManageConnections, pageFromPath, pathForPage, selectedWorkspaceReadiness, type Page, type ShellPage } from './pageRouting';
-	import { initPlausibleAnalytics, trackPlausibleEvent } from './analytics';
+	import { analyticsOptedOut, initPlausibleAnalytics, setAnalyticsOptOut, trackPlausibleEvent } from './analytics';
 	import {
 		activateMessages,
 		defaultLocale,
@@ -93,6 +93,7 @@
 	let cliFollowUpURL = $state('');
 	let activeLocale = $state<SupportedLocale>(defaultLocale);
 	let localePreference = $state<LocalePreference>('system');
+	let productAnalyticsOptedOut = $state(true);
 	let pendingRequestCount = $state(0);
 	let activeClerkOrganizationId = $state<string | null | undefined>();
 
@@ -119,6 +120,7 @@
 	}
 
 	onMount(() => {
+		productAnalyticsOptedOut = analyticsOptedOut();
 		initPlausibleAnalytics();
 		adminToken = localStorage.getItem(adminTokenStorageKey) ?? '';
 		testAuthToken = localStorage.getItem(testAuthTokenStorageKey) ?? '';
@@ -151,6 +153,12 @@
 		localePreference = nextPreference;
 		localStorage.setItem(localePreferenceStorageKey, nextPreference);
 		activeLocale = await activateMessages(resolveLocalePreference(nextPreference, systemLocaleFromIntl()));
+	}
+
+	function changeProductAnalyticsOptOut(optedOut: boolean): void {
+		productAnalyticsOptedOut = optedOut;
+		setAnalyticsOptOut(optedOut);
+		if (!optedOut) initPlausibleAnalytics();
 	}
 
 	function syncCliSetupFromLocation(): void {
@@ -586,11 +594,11 @@
 		try {
 			const credential = await apiClient().createAgentToken({ label: cliSetup.name, workspaceId: selectedWorkspaceId });
 			createdCredential = credential;
-			const callback = new URL(cliSetup.callbackURL);
-			callback.searchParams.set('state', cliSetup.state);
-			callback.searchParams.set('token', credential.token);
-			callback.searchParams.set('server', cliSetup.server);
-			await fetch(callback.toString(), { method: 'GET', mode: 'no-cors' });
+			const callbackBody = new URLSearchParams();
+			callbackBody.set('state', cliSetup.state);
+			callbackBody.set('token', credential.token);
+			callbackBody.set('server', cliSetup.server);
+			await fetch(cliSetup.callbackURL, { method: 'POST', mode: 'no-cors', body: callbackBody, referrerPolicy: 'no-referrer' });
 			const followUpURL = `${window.location.origin}/connections`;
 			cliFollowUpURL = followUpURL;
 			if (followUp) followUp.location.href = followUpURL;
@@ -744,6 +752,7 @@
 			newRoutingRuleRecipients={newRoutingRuleRecipientUserIds.join(',')}
 			{activeLocale}
 			{localePreference}
+			analyticsOptedOut={productAnalyticsOptedOut}
 			{localeOptions}
 			onCreateWorkspace={() => void createSharedWorkspace()}
 			onCreateToken={() => void createAgentToken()}
@@ -754,6 +763,7 @@
 			onDeleteRoutingRule={deleteRoutingRule}
 			onRunRuleTest={(rule, kind) => runTest(kind, { routingRuleId: rule.routingRuleId })}
 			onLocaleChange={changeLocalePreference}
+			onAnalyticsOptOutChange={changeProductAnalyticsOptOut}
 			onWorkspaceNameChange={(value) => (newWorkspaceName = value)}
 			onTokenLabelChange={(value) => (newTokenLabel = value)}
 			onRoutingRuleNameChange={(value) => (newRoutingRuleName = value)}
@@ -764,6 +774,7 @@
 		<SetupPage
 			serverUrl={window.location.origin}
 			workspace={selectedWorkspace}
+			privateRequestsPolicy={currentUser?.privateRequestsPolicy}
 			onboarding={onboardingStatus}
 			{agentTokens}
 			{routingRules}

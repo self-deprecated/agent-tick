@@ -10,6 +10,7 @@ import { DirectChoiceCards, QuestionnaireOptionCards, isRequestLevelCancelChoice
 import { RequestWaiterLivenessPanel } from "../RequestWaiterLiveness";
 import { styles } from "../mobileStyles";
 import { AudienceRequestPanel, QuorumProgressPanel } from "../requestsScreen/RequestPanels";
+import { RequestPromptBody } from "../requestsScreen/RequestPromptBody";
 import { formatRequestTime, requestTitleStyles } from "../requestsScreen/requestDisplayHelpers";
 import {
   canRespondToRequest,
@@ -854,8 +855,7 @@ function SessionRequestTimelineItem({
 }) {
   const requestCanRespond = canRespondToRequest(request);
   const isPastRequest = request.status !== "pending" || Boolean(request.response);
-  const forceCollapsedPastRequest = pastRequestPresentation === "collapsed" && isPastRequest;
-  const [expandedPastRequest, setExpandedPastRequest] = useState(!isPastRequest);
+  const [expandedPastRequest, setExpandedPastRequest] = useState(!isPastRequest && pastRequestPresentation !== "collapsed");
   const effectiveReadOnly = (readOnly && !request.isTest) || responding;
   const canShowReadOnlyChoices = effectiveReadOnly && request.status === "pending" && !request.response && (request.choices?.length ?? 0) > 0;
   const canRespond = !effectiveReadOnly && requestCanRespond;
@@ -927,13 +927,13 @@ function SessionRequestTimelineItem({
     wasPastRequest.current = isPastRequest;
   }, [isPastRequest]);
 
-  if (isPastRequest && (forceCollapsedPastRequest || !expandedPastRequest)) {
+  if (isPastRequest && !expandedPastRequest) {
     return (
       <Pressable
         accessibilityLabel={`Expand past Request ${request.title}`}
         accessibilityRole="button"
         onLayout={(event) => onLayout?.(event.nativeEvent.layout.y)}
-        onPress={() => { if (!forceCollapsedPastRequest) setExpandedPastRequest(true); }}
+        onPress={() => setExpandedPastRequest(true)}
         style={[styles.sessionTimelineItem, styles.pastRequestCollapsed]}
       >
         <View style={styles.pastRequestCollapsedHeader}>
@@ -965,7 +965,7 @@ function SessionRequestTimelineItem({
         {request.deadline ? <Text style={styles.factText}>Expires {formatRequestTime(request.deadline)}</Text> : null}
       </View>
       {staleWarning ? <Text style={styles.warningText}>{staleWarning}</Text> : null}
-      {request.body ? <MarkdownText selectable style={styles.markdownBody} text={request.body} /> : null}
+      {request.body ? <RequestPromptBody selectable body={request.body} /> : null}
       {request.command ? <Text selectable style={styles.commandText}>{request.command}</Text> : null}
       <AudienceRequestPanel request={request} />
       {request.status === "pending" ? <QuorumProgressPanel request={request} /> : null}

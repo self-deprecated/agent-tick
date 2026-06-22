@@ -1,0 +1,88 @@
+services:
+  server:
+    image: ${AGENT_TICK_IMAGE:-ghcr.io/self-deprecated/agent-tick:latest}
+    environment:
+      AGENT_TICK_MODE: ${AGENT_TICK_MODE:-single}
+      AGENT_TICK_PUBLIC_URL: ${AGENT_TICK_PUBLIC_URL:-http://localhost:8787}
+      AGENT_TICK_DATABASE_URL: ${AGENT_TICK_DATABASE_URL:-file:/data/agent-tick.db}
+      AGENT_TICK_DATABASE_MIGRATE_ON_START: ${AGENT_TICK_DATABASE_MIGRATE_ON_START:-true}
+      AGENT_TICK_ADMIN_TOKEN: ${AGENT_TICK_ADMIN_TOKEN:-}
+      AGENT_TICK_TOKEN: ${AGENT_TICK_TOKEN:-}
+      AGENT_TICK_MAX_ACTIVE_MEMBERS: ${AGENT_TICK_MAX_ACTIVE_MEMBERS:-}
+      AGENT_TICK_PRIVATE_REQUESTS_POLICY: ${AGENT_TICK_PRIVATE_REQUESTS_POLICY:-}
+      AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL: ${AGENT_TICK_REQUEST_NOTIFICATION_WEBHOOK_URL:-}
+      AGENT_TICK_RATE_LIMIT_WINDOW_MS: ${AGENT_TICK_RATE_LIMIT_WINDOW_MS:-}
+      AGENT_TICK_RATE_LIMIT_MAX_REQUESTS: ${AGENT_TICK_RATE_LIMIT_MAX_REQUESTS:-}
+      AGENT_TICK_REDIS_URL: ${AGENT_TICK_REDIS_URL:-}
+      AGENT_TICK_EVENT_BUS_BACKEND: ${AGENT_TICK_EVENT_BUS_BACKEND:-}
+      AGENT_TICK_RATE_LIMIT_BACKEND: ${AGENT_TICK_RATE_LIMIT_BACKEND:-}
+      AGENT_TICK_REQUEST_RETENTION_DAYS: ${AGENT_TICK_REQUEST_RETENTION_DAYS:-}
+      AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS: ${AGENT_TICK_STATUS_UPDATE_RETENTION_DAYS:-}
+      AGENT_TICK_AUDIT_RETENTION_DAYS: ${AGENT_TICK_AUDIT_RETENTION_DAYS:-}
+      AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS: ${AGENT_TICK_UNREGISTERED_DEVICE_RETENTION_DAYS:-}
+      AGENT_TICK_RETENTION_CLEANUP_ENABLED: ${AGENT_TICK_RETENTION_CLEANUP_ENABLED:-}
+      AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES: ${AGENT_TICK_RETENTION_CLEANUP_INTERVAL_MINUTES:-}
+      AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND: ${AGENT_TICK_RETENTION_CLEANUP_LOCK_BACKEND:-}
+      AGENT_TICK_RETENTION_CLEANUP_LOCK_TTL_MS: ${AGENT_TICK_RETENTION_CLEANUP_LOCK_TTL_MS:-}
+      AGENT_TICK_HOSTED_SERVICE: ${AGENT_TICK_HOSTED_SERVICE:-}
+      AGENT_TICK_CLERK_PUBLISHABLE_KEY: ${AGENT_TICK_CLERK_PUBLISHABLE_KEY:-}
+      AGENT_TICK_CLERK_SECRET_KEY: ${AGENT_TICK_CLERK_SECRET_KEY:-}
+      AGENT_TICK_CLERK_AUTHORIZED_PARTIES: ${AGENT_TICK_CLERK_AUTHORIZED_PARTIES:-}
+      AGENT_TICK_CLERK_JWT_KEY: ${AGENT_TICK_CLERK_JWT_KEY:-}
+      AGENT_TICK_SESSION_SECRET: ${AGENT_TICK_SESSION_SECRET:-}
+      AGENT_TICK_CLERK_WEBHOOK_SECRET: ${AGENT_TICK_CLERK_WEBHOOK_SECRET:-}
+      AGENT_TICK_REVENUECAT_WEBHOOK_SECRET: ${AGENT_TICK_REVENUECAT_WEBHOOK_SECRET:-}
+    ports:
+      - "${AGENT_TICK_PORT:-8787}:8787"
+    volumes:
+      - ${AGENT_TICK_DATA_VOLUME:-agent_tick_data}:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8787/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    profiles:
+      - postgres
+    environment:
+      POSTGRES_USER: ${AGENT_TICK_POSTGRES_USER:-agent_tick}
+      POSTGRES_PASSWORD: ${AGENT_TICK_POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${AGENT_TICK_POSTGRES_DB:-agent_tick}
+    volumes:
+      - ${AGENT_TICK_POSTGRES_DATA_VOLUME:-agent_tick_postgres_data}:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    profiles:
+      - redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ${AGENT_TICK_REDIS_DATA_VOLUME:-agent_tick_redis_data}:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  agent_tick_data:
+  agent_tick_postgres_data:
+  agent_tick_redis_data:

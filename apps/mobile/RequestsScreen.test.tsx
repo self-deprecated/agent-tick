@@ -242,7 +242,7 @@ function renderSessionApprovalFlow(props: { summaries: any[]; details?: Record<s
   return { onSelectSession, onExitSessionDetail, onRespond, onToggleLaneSize, onReorderSession };
 }
 
-function renderSessionDetail(detail: any, options: { onRespond?: jest.Mock; onSubmitQuestionnaire?: jest.Mock; setQuestionnaireAnswer?: jest.Mock; questionnaireAnswers?: Record<string, string[]>; readOnly?: boolean; readOnlyReason?: string; onUnlockResponses?: jest.Mock; confirmBeforeSubmit?: boolean; userIdle?: boolean; userAtTimelineEnd?: boolean } = {}) {
+function renderSessionDetail(detail: any, options: { onRespond?: jest.Mock; onSubmitQuestionnaire?: jest.Mock; setQuestionnaireAnswer?: jest.Mock; questionnaireAnswers?: Record<string, string[]>; readOnly?: boolean; readOnlyReason?: string; onUnlockResponses?: jest.Mock; confirmBeforeSubmit?: boolean; userIdle?: boolean; userAtTimelineEnd?: boolean; pastRequestPresentation?: "auto" | "collapsed" } = {}) {
   const onRespond = options.onRespond ?? jest.fn();
   render(
     <SessionDetailTimeline
@@ -260,6 +260,7 @@ function renderSessionDetail(detail: any, options: { onRespond?: jest.Mock; onSu
       confirmBeforeSubmit={options.confirmBeforeSubmit ?? false}
       userIdle={options.userIdle}
       userAtTimelineEnd={options.userAtTimelineEnd}
+      pastRequestPresentation={options.pastRequestPresentation}
     />,
   );
   return onRespond;
@@ -831,6 +832,36 @@ describe("SessionDetailTimeline", () => {
     expect(screen.getByText("done")).toBeTruthy();
   });
 
+  it("allows resolved past Session Requests to expand even from collapsed presentation", () => {
+    renderSessionDetail(sessionDetail([
+      { kind: "request", request: request({
+        id: "req_resolved",
+        requestType: "steering",
+        title: "Does the prompt body contrast feel better now?",
+        body: [
+          "Previous context:",
+          "Decisions:",
+          "- Keep the separated prompt layout.",
+          "",
+          "Details:",
+          "Verify the readable mobile history body.",
+        ].join("\n"),
+        status: "resolved",
+        choices: [{ id: "option_1", label: "Yes", kind: "approve" }],
+      }) },
+    ]), { pastRequestPresentation: "collapsed" });
+
+    expect(screen.getByText(/Answer: Resolved/)).toBeTruthy();
+    expect(screen.queryByText("Previous context")).toBeNull();
+
+    fireEvent.press(screen.getByLabelText("Expand past Request Does the prompt body contrast feel better now?"));
+
+    expect(screen.getByText("Steering Request")).toBeTruthy();
+    expect(screen.getByTestId("request-prompt-section-previousContext")).toBeTruthy();
+    expect(screen.getByText("Keep the separated prompt layout.")).toBeTruthy();
+    expect(screen.getByText("Verify the readable mobile history body.")).toBeTruthy();
+  });
+
   it("forces high-risk Sanction confirmation before responding", () => {
     const alertSpy = jest.spyOn(Alert, "alert").mockImplementation((() => undefined) as any);
     const onRespond = renderSessionDetail(sessionDetail([
@@ -1237,6 +1268,31 @@ describe("RequestsScreen quorum-aware Request UI", () => {
     expect(screen.getByText("Review the deployment.")).toBeTruthy();
     expect(screen.getByText("Approve")).toBeTruthy();
     expect(screen.getByText("Deny")).toBeTruthy();
+  });
+
+  it("renders Pi prompt body sections as separated mobile panels", () => {
+    renderRequest(request({
+      title: "Does the prompt body contrast feel better now?",
+      body: [
+        "Previous context:",
+        "Decisions:",
+        "- Keep the Previous context → Question → Details → options order.",
+        "",
+        "Findings:",
+        "- The contrast tweak passed tests.",
+        "",
+        "Details:",
+        "Check whether the previous-context and details text is readable.",
+      ].join("\n"),
+    }));
+
+    expect(screen.getByText("Does the prompt body contrast feel better now?")).toBeTruthy();
+    expect(screen.getByTestId("request-prompt-section-previousContext")).toBeTruthy();
+    expect(screen.getByTestId("request-prompt-section-details")).toBeTruthy();
+    expect(screen.getByText("Previous context")).toBeTruthy();
+    expect(screen.getByText("Details")).toBeTruthy();
+    expect(screen.getByText("Keep the Previous context → Question → Details → options order.")).toBeTruthy();
+    expect(screen.getByText("Check whether the previous-context and details text is readable.")).toBeTruthy();
   });
 
   it("hides the single-account connection label on the request detail", () => {

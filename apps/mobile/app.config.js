@@ -9,6 +9,26 @@ function withoutUndefined(value) {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }
 
+function withDevelopmentAndroidCleartext(plugins, enabled) {
+  return plugins.map((plugin) => {
+    if (!Array.isArray(plugin) || plugin[0] !== "expo-build-properties") return plugin;
+
+    const options = plugin[1] ?? {};
+    const android = withoutUndefined({
+      ...(options.android ?? {}),
+      usesCleartextTraffic: enabled ? true : undefined,
+    });
+
+    return [
+      plugin[0],
+      withoutUndefined({
+        ...options,
+        android: Object.keys(android).length > 0 ? android : undefined,
+      }),
+    ];
+  });
+}
+
 module.exports = {
   expo: {
     ...base.expo,
@@ -26,5 +46,6 @@ module.exports = {
       playStoreUrl: isDev ? undefined : base.expo.android.playStoreUrl,
       intentFilters: isDev ? [] : base.expo.android.intentFilters,
     }),
+    plugins: withDevelopmentAndroidCleartext(base.expo.plugins, isDev),
   },
 };

@@ -10,6 +10,8 @@ import type { PrivateEncryptionConnectionStatus, PrivateEncryptionStatus } from 
 import { mobileInstallationID } from "./mobileNotificationHelpers";
 import { getStoredConnectionToken } from "./mobileSessionClientHelpers";
 
+type DevicePublicKeyRecord = Awaited<ReturnType<AgentTickClient["listDevicePublicKeys"]>>[number];
+
 type PrivateEncryptionTarget = {
   id: string;
   label: string;
@@ -225,36 +227,13 @@ async function checkPrivateEncryptionTarget(
   });
 
   try {
-    if (repair) await ensurePrivateRequestDeviceKeyRegistered(client, target.deviceID);
     const serverKeys = await client.listDevicePublicKeys(target.deviceID);
-    const activeKeys = serverKeys.filter((key) => !key.revokedAt && key.algorithm === localKey.algorithm);
-    const matchingKey = activeKeys.find((key) => key.publicKey === localKey.publicKey);
-    if (matchingKey) {
-      return {
-        ...base,
-        status: "registered",
-        statusLabel: "Registered",
-        message: "This phone's install key is registered on this server for future private Activity.",
-        publicKeyFingerprint: matchingKey.publicKeyFingerprint,
-        updatedAt: matchingKey.updatedAt,
-      };
-    }
-    if (activeKeys.length > 0) {
-      const firstKey = activeKeys[0];
-      return {
-        ...base,
-        status: "different_key",
-        statusLabel: "Different key",
-        message: "This server has public key records for the remote Approval Device, but none match this phone's install key.",
-        ...(firstKey ? { publicKeyFingerprint: firstKey.publicKeyFingerprint, updatedAt: firstKey.updatedAt } : {}),
-      };
-    }
-    return {
-      ...base,
-      status: "not_registered",
-      statusLabel: "Not registered",
-      message: "This phone has an install key, but this server does not have a matching active public key for this connection yet.",
-    };
+    const initialStatus = privateEncryptionConnectionStatusForKeys(base, localKey, serverKeys);
+    if (!repair || initialStatus.status === "registered") return initialStatus;
+
+    await ensurePrivateRequestDeviceKeyRegistered(client, target.deviceID);
+    const repairedKeys = await client.listDevicePublicKeys(target.deviceID);
+    return privateEncryptionConnectionStatusForKeys(base, localKey, repairedKeys);
   } catch (error) {
     return {
       ...base,
@@ -263,6 +242,41 @@ async function checkPrivateEncryptionTarget(
       message: error instanceof Error ? error.message : "The app could not check this server's key registration.",
     };
   }
+}
+
+function privateEncryptionConnectionStatusForKeys(
+  base: Omit<PrivateEncryptionConnectionStatus, "status" | "statusLabel" | "message" | "publicKeyFingerprint" | "updatedAt">,
+  localKey: Extract<Awaited<ReturnType<typeof privateRequestLocalInstallKeyStatus>>, { status: "ready" }>,
+  serverKeys: DevicePublicKeyRecord[],
+): PrivateEncryptionConnectionStatus {
+  const activeKeys = serverKeys.filter((key) => !key.revokedAt && key.algorithm === localKey.algorithm);
+  const matchingKey = activeKeys.find((key) => key.publicKey === localKey.publicKey);
+  if (matchingKey) {
+    return {
+      ...base,
+      status: "registered",
+      statusLabel: "Registered",
+      message: "This phone's install key is registered on this server for future private Activity.",
+      publicKeyFingerprint: matchingKey.publicKeyFingerprint,
+      updatedAt: matchingKey.updatedAt,
+    };
+  }
+  if (activeKeys.length > 0) {
+    const firstKey = activeKeys[0];
+    return {
+      ...base,
+      status: "different_key",
+      statusLabel: "Different key",
+      message: "This server has public key records for the remote Approval Device, but none match this phone's install key.",
+      ...(firstKey ? { publicKeyFingerprint: firstKey.publicKeyFingerprint, updatedAt: firstKey.updatedAt } : {}),
+    };
+  }
+  return {
+    ...base,
+    status: "not_registered",
+    statusLabel: "Not registered",
+    message: "This phone has an install key, but this server does not have a matching active public key for this connection yet.",
+  };
 }
 
 function summarizePrivateEncryptionStatus(

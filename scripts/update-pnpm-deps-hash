@@ -5,7 +5,7 @@ if [ ! -f pnpm-lock.yaml ] || [ ! -f flake.nix ]; then
   if [ -f projects/agent-tick/pnpm-lock.yaml ] && [ -f projects/agent-tick/flake.nix ]; then
     cd projects/agent-tick
   else
-    echo "error: run from the Agent Tick flake root (or the mono-sd root)" >&2
+    echo "error: run from the Agent Tick flake root (or a monorepo root containing projects/agent-tick)" >&2
     exit 1
   fi
 fi

@@ -11,7 +11,7 @@ build_tools="${AGENT_TICK_ANDROID_BUILD_TOOLS:-build-tools;36.0.0}"
 log() { printf '[android-setup] %s\n' "$*" >&2; }
 fail() { log "FAILED: $*"; exit 1; }
 
-command -v sdkmanager >/dev/null 2>&1 || fail "sdkmanager is required. Enter the mono-sd devenv/direnv shell first."
+command -v sdkmanager >/dev/null 2>&1 || fail "sdkmanager is required. Install Android Studio command-line tools or enter a shell that provides the Android SDK tools."
 
 mkdir -p "$sdk_root"
 log "Using Android SDK root: $sdk_root"
@@ -53,7 +53,7 @@ fi
 
 cat >&2 <<EOF
 [android-setup] Done.
-[android-setup] Add this to your shell or rely on the mono-sd devenv exports:
+[android-setup] Add this to your shell or rely on your development shell exports:
 [android-setup]   export ANDROID_HOME="$sdk_root"
 [android-setup]   export ANDROID_SDK_ROOT="$sdk_root"
 [android-setup]   export PATH="$sdk_root/cmdline-tools/latest/bin:$sdk_root/platform-tools:$sdk_root/emulator:\$PATH"

@@ -113,12 +113,27 @@ async function allowsBillingDevGrant(config: ServerConfig, store: AgentTickStore
 }
 
 export function emailDomainAllowedForBillingDevGrant(email: string | undefined, allowedDomains: string[]): boolean {
-  const domain = email?.split('@').at(-1)?.trim().toLowerCase();
+  const domain = verifiedEmailDomain(email);
   if (!domain) return false;
   return allowedDomains.some((candidate) => {
     const allowed = candidate.trim().toLowerCase().replace(/^@+/, '');
-    return allowed !== '' && (domain === allowed || domain.endsWith(`.${allowed}`));
+    if (!allowed) return false;
+    if (allowed.startsWith('*.')) {
+      const suffix = allowed.slice(2);
+      return suffix !== '' && domain !== suffix && domain.endsWith(`.${suffix}`);
+    }
+    return domain === allowed;
   });
+}
+
+function verifiedEmailDomain(email: string | undefined): string | null {
+  const normalized = email?.trim().toLowerCase();
+  if (!normalized) return null;
+  const parts = normalized.split('@');
+  if (parts.length !== 2) return null;
+  const [local, domain] = parts;
+  if (!local || !domain || /\s/.test(local) || /\s/.test(domain)) return null;
+  return domain;
 }
 
 function addDays(now: Date, days: number): string {

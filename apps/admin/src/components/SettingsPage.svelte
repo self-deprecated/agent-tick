@@ -22,6 +22,7 @@
 		selectedRoutingRuleId: _selectedRoutingRuleId = '',
 		activeLocale,
 		localePreference,
+		analyticsOptedOut = false,
 		localeOptions = [],
 		onCreateWorkspace: _onCreateWorkspace,
 		onCreateToken: _onCreateToken,
@@ -32,6 +33,7 @@
 		onDeleteRoutingRule: _onDeleteRoutingRule,
 		onRunRuleTest: _onRunRuleTest,
 		onLocaleChange,
+		onAnalyticsOptOutChange,
 		onWorkspaceNameChange: _onWorkspaceNameChange,
 		onTokenLabelChange: _onTokenLabelChange,
 		onRoutingRuleNameChange: _onRoutingRuleNameChange,
@@ -56,6 +58,7 @@
 		selectedRoutingRuleId?: string;
 		activeLocale: SupportedLocale;
 		localePreference: LocalePreference;
+		analyticsOptedOut?: boolean;
 		localeOptions: Array<{ value: LocalePreference; label: string }>;
 		onCreateWorkspace: () => void | Promise<void>;
 		onCreateToken: () => void | Promise<void>;
@@ -66,6 +69,7 @@
 		onDeleteRoutingRule: (rule: RoutingRuleRecord) => void | Promise<void>;
 		onRunRuleTest: (rule: RoutingRuleRecord, kind: 'status' | 'steering' | 'sanction') => void | Promise<void>;
 		onLocaleChange: (preference: LocalePreference) => void | Promise<void>;
+		onAnalyticsOptOutChange: (optedOut: boolean) => void | Promise<void>;
 		onWorkspaceNameChange: (value: string) => void;
 		onTokenLabelChange: (value: string) => void;
 		onRoutingRuleNameChange: (value: string) => void;
@@ -133,6 +137,17 @@
 				<p>Current locale: {activeLocale}</p>
 			</div>
 		</details>
+
+		<details open>
+			<summary>Product Analytics</summary>
+			<div class="settings-section">
+				<label class="checkbox-row">
+					<input type="checkbox" checked={analyticsOptedOut} onchange={(event) => void onAnalyticsOptOutChange(event.currentTarget.checked)} />
+					<span>Opt out of Product Analytics on this browser</span>
+				</label>
+				<p>Product Analytics are minimal usage-shape events that help improve Agent Tick. They exclude Request bodies, commands, choices, Status Update messages, and other approval content.</p>
+			</div>
+		</details>
 	</div>
 
 	<div class="settings-group" aria-labelledby="settings-private-requests-heading">
@@ -140,7 +155,7 @@
 		<details open>
 			<summary>How encryption is enforced</summary>
 			<div class="settings-section">
-				<p>Agent Tick supports end-to-end encrypted Private Requests. When required for a Workspace or Routing Rule, plain CLI requests are rejected until the agent uses Private Request encryption.</p>
+				<p>Agent Tick supports server-opaque Private Requests: sensitive Request content is encrypted for Approval Devices while operational routing fields remain visible to the server. When required for a Workspace or Routing Rule, plain CLI requests are rejected until the agent uses Private Request encryption.</p>
 				<p>Manage the per-Workspace toggle on the Workspace page.</p>
 				{#if currentUser?.privateRequestsPolicy === 'forced'}
 					<p>This server enforces Private Requests for all Workspaces. The toggle cannot be disabled.</p>

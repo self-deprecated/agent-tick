@@ -18,7 +18,7 @@
       perSystem = { pkgs, lib, system, ... }:
         let
           nodejs = pkgs.nodejs_24;
-          pnpm = pkgs.pnpm_10;
+          pnpm = pkgs.pnpm_10_29_2;
           pnpmDepsHash = "sha256-Ug+a/jyRGlZjIeQgVmnTAUsbznGZ42veHoSxYnak/ls=";
 
           src = lib.cleanSourceWith {
@@ -39,27 +39,15 @@
                 ]);
           };
 
-          dependencySrc = lib.cleanSourceWith {
-            src = ./.;
-            filter = path: type:
-              let
-                base = baseNameOf path;
-              in
-                type == "directory" || lib.hasInfix "/patches/" (toString path) || lib.elem base [
-                  ".npmrc"
-                  "package.json"
-                  "pnpm-lock.yaml"
-                  "pnpm-workspace.yaml"
-                ];
-          };
 
           agent-tick-cli = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-cli";
-            version = "1.3.1";
+            version = "1.4.0";
             inherit src;
 
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
+              inherit pnpm;
               fetcherVersion = 3;
               hash = pnpmDepsHash;
             };
@@ -105,11 +93,12 @@
 
           agent-tick-docs-node-modules = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-docs-node-modules";
-            version = "1.3.1";
-            src = dependencySrc;
+            version = "1.4.0";
+            inherit src;
 
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
+              inherit pnpm;
               fetcherVersion = 3;
               hash = pnpmDepsHash;
             };
@@ -140,7 +129,7 @@
 
           agent-tick-docs = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-docs";
-            version = "1.3.1";
+            version = "1.4.0";
             inherit src;
 
             nativeBuildInputs = [
@@ -227,11 +216,12 @@
 
           agent-tick-server-node-modules = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-server-node-modules";
-            version = "1.3.1";
-            src = dependencySrc;
+            version = "1.4.0";
+            inherit src;
 
             pnpmDeps = pkgs.fetchPnpmDeps {
               inherit (finalAttrs) pname version src;
+              inherit pnpm;
               fetcherVersion = 3;
               hash = pnpmDepsHash;
             };
@@ -277,7 +267,7 @@
 
           agent-tick-server = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "agent-tick-server";
-            version = "1.3.1";
+            version = "1.4.0";
             inherit src;
 
             nativeBuildInputs = [

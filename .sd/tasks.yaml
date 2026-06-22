@@ -41,20 +41,20 @@ tasks:
   final-review:
     desc: Run Agent Tick end-of-turn checks when Agent Tick changed
     whenChanged:
-      - projects/agent-tick/**
+      - "**"
     run: sd agent-tick docker-config && sd agent-tick nix/pnpm-deps-check && sd agent-tick i18n-audit && sd agent-tick i18n-audit-test && sd agent-tick full-check && sd agent-tick mobile bundle-check
 
   nix/pnpm-deps-check:
     desc: Verify the Nix fetchPnpmDeps hash matches the current pnpm-lock.yaml
     whenChanged:
-      - projects/agent-tick/package.json
-      - projects/agent-tick/pnpm-lock.yaml
-      - projects/agent-tick/pnpm-workspace.yaml
-      - projects/agent-tick/flake.nix
-      - projects/agent-tick/scripts/update-pnpm-deps-hash
-      - projects/agent-tick/apps/**/package.json
-      - projects/agent-tick/packages/**/package.json
-      - projects/agent-tick/sites/**/package.json
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - flake.nix
+      - scripts/update-pnpm-deps-hash
+      - apps/**/package.json
+      - packages/**/package.json
+      - sites/**/package.json
     run: nix run .#check-pnpm-deps-hash
 
   docker-config:
@@ -168,12 +168,12 @@ tasks:
   mobile/bundle-check:
     desc: Bundle mobile dev-client JS for iOS and Android with Metro
     whenChanged:
-      - projects/agent-tick/apps/mobile/**
-      - projects/agent-tick/packages/shared/**
-      - projects/agent-tick/packages/sdk/**
-      - projects/agent-tick/pnpm-lock.yaml
-      - projects/agent-tick/pnpm-workspace.yaml
-      - projects/agent-tick/package.json
+      - apps/mobile/**
+      - packages/shared/**
+      - packages/sdk/**
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - package.json
     run: |
       set -euo pipefail
       for platform in ios android; do
@@ -410,8 +410,15 @@ tasks:
         run: cd packages/cli && corepack pnpm publish --access public --no-git-checks --no-provenance{{publishArgs}}
       pi-agent-tick:
         label: Publish Pi Agent Tick only
-        desc: Publish @self-deprecated/pi-agent-tick
-        run: cd ../pi-agent-tick && corepack pnpm publish --access public --no-git-checks --no-provenance{{publishArgs}}
+        desc: Publish @self-deprecated/pi-agent-tick from an adjacent checkout
+        run: |
+          if [ ! -d ../pi-agent-tick ]; then
+            echo "../pi-agent-tick is required for this optional release step." >&2
+            echo "Clone or check out pi-agent-tick next to agent-tick, or publish it from its own repository." >&2
+            exit 1
+          fi
+          cd ../pi-agent-tick
+          corepack pnpm publish --access public --no-git-checks --no-provenance{{publishArgs}}
 
 passthrough:
   pnpm:

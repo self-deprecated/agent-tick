@@ -21,6 +21,23 @@ test('Connections page keeps setup instructions visible and tests usable', () =>
 	assert.match(source, /Send Steering Test Request/);
 });
 
+test('Connections page explains Private Request-only test paths', () => {
+	assert.match(appSource, /privateRequestsPolicy=\{currentUser\?\.privateRequestsPolicy\}/);
+	assert.match(source, /privateRequestTestReason\(rule\)/);
+	assert.match(source, /Web Steering and Sanction tests are plaintext/);
+	assert.match(source, /agent-tick send steering --private/);
+	assert.match(source, /disabled=\{Boolean\(testBusy\) \|\| Boolean\(selectedTestRoutePrivateRequiredReason\)\}/);
+	assert.match(source, /disabled=\{Boolean\(testBusy\) \|\| Boolean\(routePrivateRequiredReason\)\}/);
+	assert.match(source, /Status Update tests remain available/);
+});
+
+test('CLI authorization posts setup tokens outside the callback URL', () => {
+	assert.match(appSource, /new URLSearchParams\(\)/);
+	assert.match(appSource, /callbackBody\.set\('token', credential\.token\)/);
+	assert.match(appSource, /fetch\(cliSetup\.callbackURL, \{ method: 'POST'/);
+	assert.doesNotMatch(appSource, /callback\.searchParams\.set\('token'/);
+});
+
 test('Connections page gates mutating routing controls and uses server preview for saved rules', () => {
 	assert.match(appSource, /selectedWorkspaceCanManageConnections/);
 	assert.match(appSource, /canManageConnections\(selectedWorkspace\)/);

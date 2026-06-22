@@ -3,12 +3,13 @@ import { type StatusUpdateRecord } from "@self-deprecated/agent-tick-sdk";
 
 import { translateSource } from "@agent-tick/i18n";
 import { recordDiagnostic } from "../diagnostics";
-import { MarkdownInlineText, MarkdownText } from "../MarkdownText";
+import { MarkdownInlineText } from "../MarkdownText";
 import { DirectChoiceCards, QuestionnaireOptionCards, isRequestLevelCancelChoice } from "../RequestChoiceControls";
 import { RequestWaiterLivenessPanel } from "../RequestWaiterLiveness";
 import { styles } from "../mobileStyles";
 import { LatestStatusCard } from "./LatestStatusCard";
 import { AudienceRequestPanel, RequestContextPanel, QuorumProgressPanel } from "./RequestPanels";
+import { RequestPromptBody } from "./RequestPromptBody";
 import { formatRequestTime, requestTitleStyles } from "./requestDisplayHelpers";
 import {
   canRespondToRequest,
@@ -332,7 +333,7 @@ export function RequestsScreen({
             </Text>
           ) : null}
         </View>
-        {body ? <MarkdownText selectable style={styles.markdownBody} text={body} /> : null}
+        {body ? <RequestPromptBody selectable body={body} /> : null}
         {command ? (
           <Text selectable style={styles.commandText}>
             {command}

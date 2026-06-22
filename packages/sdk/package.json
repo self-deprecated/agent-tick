@@ -1,6 +1,6 @@
 {
   "name": "@self-deprecated/agent-tick-sdk",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "TypeScript HTTP client for Agent Tick.",
   "private": false,
   "type": "module",

@@ -7,6 +7,7 @@
 	let {
 		serverUrl,
 		workspace,
+		privateRequestsPolicy,
 		onboarding,
 		agentTokens = [],
 		routingRules = [],
@@ -33,6 +34,7 @@
 	}: {
 		serverUrl: string;
 		workspace?: WorkspaceMemberRecord;
+		privateRequestsPolicy?: string;
 		onboarding?: OnboardingStatus;
 		agentTokens?: AgentTokenRecord[];
 		routingRules?: RoutingRuleRecord[];
@@ -72,9 +74,26 @@
 	let phoneStateLabel = $derived(phoneReady ? 'Push ready' : activeDevices.length ? 'Push not registered' : 'No push-ready Approval Device');
 	let setupPrompt = $derived(`Connect Agent Tick for this Workspace. Use server ${serverUrl}. Install the Agent Tick setup skill from https://agenttick.sh/skill, sign in, create or connect an Agent Token named after this machine, ask me to enable Private encryption in the Native App at Settings → General before rich mirroring, offer agent-tick features with private Activity as the recommended default, then send a Test Request.`);
 	let routingRulesById = $derived(Object.fromEntries(routingRules.map((rule) => [rule.routingRuleId, rule])));
+	let serverForcesPrivateRequests = $derived(privateRequestsPolicy === 'forced');
+	let workspaceRequiresPrivateRequests = $derived(serverForcesPrivateRequests || Boolean(workspace?.privateRequestsRequired));
 	let sharedRoutingRules = $derived(workspace?.type === 'shared' ? routingRules : []);
 	let assignedAgentsByRule = $derived(Object.fromEntries(sharedRoutingRules.map((rule) => [rule.routingRuleId, connectedTokens.filter((token) => token.routingRuleId === rule.routingRuleId)])));
+	let selectedTestRoutingRule = $derived(selectedToken?.routingRuleId ? routingRulesById[selectedToken.routingRuleId] : undefined);
+	let selectedTestRoutePrivateRequiredReason = $derived(privateRequestTestReason(selectedTestRoutingRule));
 	let newRoutingRuleHealth = $derived(routeHealthForInput(newRoutingRuleRecipientUserIds, newRoutingRuleRequiredResponseCount));
+
+
+	function privateRequestTestReason(rule?: RoutingRuleRecord): string {
+		if (serverForcesPrivateRequests) return 'This server requires Private Requests for all Workspaces.';
+		if (workspaceRequiresPrivateRequests) return 'This Workspace requires Private Requests.';
+		if (rule?.privateRequestsRequired) return `The ${rule.name} Routing Rule requires Private Requests.`;
+		return '';
+	}
+
+	function privateRequestCliCommand(kind: 'steering' | 'sanction'): string {
+		if (kind === 'steering') return 'agent-tick send steering --private --title "Agent Tick steering test" --choice approve="Looks good" --choice cancel:deny="Cancel"';
+		return `agent-tick send sanction --private --title "Approve test command?" --command 'echo "Agent Tick test"'`;
+	}
 
 	function copySetupPrompt(): void {
 		void navigator.clipboard?.writeText(setupPrompt);
@@ -344,6 +363,7 @@
 								{@const recipients = editRecipients(rule)}
 								{@const requiredCount = editRequiredCount(rule)}
 								{@const health = routeHealth(rule)}
+								{@const routePrivateRequiredReason = privateRequestTestReason(rule)}
 								<li class="item-row routing-row">
 									<div>
 										<strong>{rule.name}</strong>
@@ -374,7 +394,8 @@
 									<div class="row-actions">
 										<span class="status-pill" class:warning={health.state === 'unhealthy'}>{health.state}</span>
 										{#if onUpdateRoutingRuleRecipients}<button class="secondary" onclick={() => void onUpdateRoutingRuleRecipients?.(rule, recipients, requiredCount)}>Save recipients</button>{/if}
-										{#if onRunRuleTest}<button class="secondary" disabled={Boolean(testBusy)} onclick={() => void onRunRuleTest?.(rule, 'steering')}>Send route test</button>{/if}
+										{#if onRunRuleTest}<button class="secondary" disabled={Boolean(testBusy) || Boolean(routePrivateRequiredReason)} title={routePrivateRequiredReason || undefined} onclick={() => void onRunRuleTest?.(rule, 'steering')}>Send route test</button>{/if}
+										{#if routePrivateRequiredReason}<p class="warning">{routePrivateRequiredReason} Web route Request tests are plaintext, so use a configured agent CLI with <code>{privateRequestCliCommand('steering')}</code>.</p>{/if}
 									</div>
 								</li>
 							{/each}
@@ -387,9 +408,12 @@
 
 	<aside class="side-panel">
 		<h2>Connection tests</h2>
-		<p>Send a first-party Test Request from the web app. Current backend routing limits still apply for Shared Workspaces.</p>
+		<p>Send first-party test Activity from the web app. Status Update tests stay available when Private Requests are required; Request tests need a private-capable agent CLI.</p>
 		{#if testRequirements.length}
 			<p class="warning">Recommended after there is {testRequirements.join(' and ')}.</p>
+		{/if}
+		{#if selectedTestRoutePrivateRequiredReason}
+			<p class="warning">{selectedTestRoutePrivateRequiredReason} Web Steering and Sanction tests are plaintext, so use a configured agent CLI instead: <code>{privateRequestCliCommand('steering')}</code>. Status Update tests remain available.</p>
 		{/if}
 		{#if agentTokens.length > 1}
 			<label>
@@ -402,9 +426,9 @@
 			</label>
 		{/if}
 		<div class="button-stack">
-			<button disabled={Boolean(testBusy)} onclick={() => void onRunTest('steering')}>{testBusy === 'steering' ? 'Sending…' : 'Send Steering Test Request'}</button>
+			<button disabled={Boolean(testBusy) || Boolean(selectedTestRoutePrivateRequiredReason)} title={selectedTestRoutePrivateRequiredReason || undefined} onclick={() => void onRunTest('steering')}>{testBusy === 'steering' ? 'Sending…' : 'Send Steering Test Request'}</button>
 			<button class="secondary" disabled={Boolean(testBusy)} onclick={() => void onRunTest('status')}>{testBusy === 'status' ? 'Sending…' : 'Send Status Update test'}</button>
-			<button class="secondary" disabled={Boolean(testBusy)} onclick={() => void onRunTest('sanction')}>{testBusy === 'sanction' ? 'Sending…' : 'Send Sanction Test Request'}</button>
+			<button class="secondary" disabled={Boolean(testBusy) || Boolean(selectedTestRoutePrivateRequiredReason)} title={selectedTestRoutePrivateRequiredReason || undefined} onclick={() => void onRunTest('sanction')}>{testBusy === 'sanction' ? 'Sending…' : 'Send Sanction Test Request'}</button>
 		</div>
 		{#if lastTest}
 			<p class="success">Sent {lastTest.kind} test at {new Date(lastTest.sentAt).toLocaleTimeString()} · {lastTest.status}</p>

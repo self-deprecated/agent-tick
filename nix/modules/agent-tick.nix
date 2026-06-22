@@ -150,7 +150,7 @@ in
     billingDevGrantEmailDomains = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
-      description = "Verified email domains allowed to use the hosted development billing grant while billing test mode remains disabled.";
+      description = "Verified email domains allowed to use the hosted development billing grant while billing test mode remains disabled. Entries match exact domains by default; use *.example.com to allow subdomains.";
     };
 
     privateRequestsPolicy = lib.mkOption {

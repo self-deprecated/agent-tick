@@ -128,7 +128,7 @@
 			{#if isSharedWorkspace}
 				<label class="inline-field" style="display:flex;align-items:center;gap:.5rem;min-width:auto">
 					<input type="checkbox" checked={privateRequestsEffective} disabled={privateRequestsToggleLocked} onchange={() => { if (!privateRequestsToggleLocked) void onTogglePrivateRequestsRequired(!privateRequestsEffective); }} />
-					<span>Require Private Requests (end-to-end encrypted)</span>
+					<span>Require Private Requests (server-opaque encrypted)</span>
 				</label>
 				{#if serverForcesPrivateRequests}
 					<p class="warning">Required server-wide by the operator. Plain CLI requests are rejected until the agent uses Private Request encryption.</p>

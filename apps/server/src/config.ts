@@ -94,6 +94,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     revenueCatWebhookSecret: optionalEnv(env.AGENT_TICK_REVENUECAT_WEBHOOK_SECRET),
     revenueCatProjectId: optionalEnv(env.AGENT_TICK_REVENUECAT_PROJECT_ID),
     billingTestMode: booleanEnv(env.AGENT_TICK_BILLING_TEST_MODE, false),
+    // Hosted-service development grants match exact verified email domains by default; use *.example.com for subdomains.
     billingDevGrantEmailDomains: splitCSV(env.AGENT_TICK_BILLING_DEV_GRANT_EMAIL_DOMAINS),
     mobileMinimumSupportedVersion: optionalEnv(env.AGENT_TICK_MOBILE_MINIMUM_SUPPORTED_VERSION),
     mobileUpdateURL: optionalEnv(env.AGENT_TICK_MOBILE_UPDATE_URL),

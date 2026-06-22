@@ -1252,6 +1252,25 @@ export const styles = StyleSheet.create({
   markdownBody: {
     marginTop: 22,
   },
+  requestPromptBody: {
+    gap: 12,
+    marginTop: 22,
+  },
+  requestPromptSection: {
+    backgroundColor: "#ffffff",
+    borderColor: "#b8dacd",
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+    padding: 12,
+  },
+  requestPromptSectionTitle: {
+    color: "#1f6f5b",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
   commandText: {
     backgroundColor: "#202124",
     borderRadius: 8,

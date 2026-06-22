@@ -53,13 +53,13 @@ describe("purchases", () => {
     delete process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY;
   });
 
-  it("configures RevenueCat with a stable install identity for self-hosted lifetime purchases", async () => {
+  it("configures RevenueCat with a stable install identity and the bundled public iOS SDK key", async () => {
     setPlatform("ios");
     const purchases = loadPurchases();
 
     await purchases.configureLocalStorePurchases("install_test_123");
 
-    expect(mockPurchases.configure).toHaveBeenCalledWith(expect.objectContaining({ apiKey: expect.stringMatching(/^appl_/), appUserID: "install_test_123" }));
+    expect(mockPurchases.configure).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "appl_jjQlssmgYrPUZmFPbFuSyVOfPCV", appUserID: "install_test_123" }));
     expect(mockPurchases.logIn).not.toHaveBeenCalled();
     expect(mockPurchases.logOut).not.toHaveBeenCalled();
   });
@@ -71,6 +71,16 @@ describe("purchases", () => {
     await purchases.configureLocalStorePurchases("install_test_123");
 
     expect(mockPurchases.configure).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "goog_OoUVPJdUqfBKgRDuRvIEoBjfJCV", appUserID: "install_test_123" }));
+  });
+
+  it("lets environment-specific public SDK keys override bundled RevenueCat defaults", async () => {
+    setPlatform("ios");
+    process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = "appl_channel_specific";
+    const purchases = loadPurchases();
+
+    await purchases.configureLocalStorePurchases("install_test_123");
+
+    expect(mockPurchases.configure).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "appl_channel_specific", appUserID: "install_test_123" }));
   });
 
   it("configures hosted purchases directly as the signed-in Agent Tick user id", async () => {
